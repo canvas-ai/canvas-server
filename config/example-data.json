@@ -1,0 +1,28 @@
+{
+    "backends": {
+        "nas@home": {
+            "driver": "smb",
+            "driverConfig": {
+                "host": "172.16.2.200",
+                "user": "{{ os.user }}",
+                "password": "{{ os.password }}"
+            }
+        },
+        "file.json": {
+            "driver": "file",
+            "driverConfig": {
+                "dataPath": "{{ canvas.user.data }}",
+                "onDiskFormat": {
+                    "type": "json",
+                    "pretty": true,
+                    "split": false
+                },
+                "versioning": {
+                    "enabled": true,
+                    "maxVersions": 10
+                }
+            },
+            "supportedAbstractions": []
+        }
+    }
+}
