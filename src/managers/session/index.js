@@ -180,9 +180,9 @@ class SessionManager extends EventEmitter {
         return id;
     }
 
-    saveSessions() {
+    async saveSessions() {
         for (let session of this.sessions.values()) {
-            this.#saveSessionToDb(session);
+            await this.#saveSessionToDb(session);
         }
     }
 
