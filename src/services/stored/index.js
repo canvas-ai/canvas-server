@@ -166,13 +166,6 @@ class Stored {
 
     }
 
-    /**
-     * getFile: Get a file from the backends
-     * @param {*} hash
-     * @param {*} backendNameOrArray
-     * @param {*} options
-     * @return {  } Returns file data as a stream or a direct file path
-     */
     async getFile(hash, backendNameOrArray = null, options = {
         // Return as a stream
         // stream: false

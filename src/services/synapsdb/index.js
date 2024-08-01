@@ -3,10 +3,10 @@ const debug = require('debug')('canvas:db');
 const EE = require('eventemitter2');
 
 // Backend
-const Db = require('./backends/lmdb/index.js');
+const Db = require('./backends/lmdb');
 
 // App includes
-const Index = require('./index/index.js');
+const Index = require('./index1');
 
 // Schemas
 const documentSchemas = require('./schemas/registry.js');
