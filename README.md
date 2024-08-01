@@ -55,9 +55,12 @@ CANVAS_USER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
 
 ## Configuration
 
+All settings stored in ./config are meant as server-defaults  
+To enable a seamless roaming/portable experience, make sure everything non-default is configured in your `CANVAS_USER_CONFIG` directory (defaults to **./user/config** in portable mode, **~/.canvas/config** || **Canvas/Config** otherwise)
+
 ```bash
 # To disable "portable" mode, create /path/to/canvas-server/user/.ignore
-# This will store all Canvas server data to your home dir ~/.canvas
+# or set CANVAS_USER_CONFIG
 
 # Edit canvas-server configuration before starting the server
 $ cd /path/to/canvas-server/config  # Or ~/.canvas/config

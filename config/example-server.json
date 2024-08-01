@@ -27,6 +27,16 @@
                 "password": "",
                 "token": "canvas-server-token"
             }
+        },
+        "webdav": {
+            "host": "0.0.0.0",
+            "port": 8000,
+            "auth": {
+                "enabled": true,
+                "user": "",
+                "password": "",
+                "token": "canvas-server-token"
+            }
         }
     }
 }
