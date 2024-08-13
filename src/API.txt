@@ -1,9 +1,102 @@
+
+[REST].v2
+basePath: /rest/v2
+
+Paths:
+  /index:
+    GET: Retrieve index information
+    /bitmaps:
+      GET: List all bitmaps
+      POST: Create a new bitmap
+      /{bitmapId}:
+        GET: Retrieve a specific bitmap
+        PUT: Update a specific bitmap
+        DELETE: Delete a specific bitmap
+
+  /data:
+    /schemas:
+      GET: Retrieve all schemas
+      POST: Create a new schema
+    /backends:
+      GET: List all backends
+      POST: Create a new backend
+      /{backendId}:
+        GET: Retrieve a specific backend
+        PUT: Update a specific backend
+        DELETE: Delete a specific backend
+    /abstr:
+      /notes:
+        GET: Retrieve notes (query param: metaOnly)
+      /emails:
+        GET: Retrieve emails (query param: metaOnly)
+
+  /contexts:
+    /{contextId}:
+      /data:
+        /abstr:
+          /emails:
+            GET: Retrieve emails for a specific context
+      /tree:
+        GET: Retrieve tree for a specific context
+      /url:
+        GET: Retrieve URL for a specific context
+      /path:
+        /copy:
+          POST: Copy a path within the context
+        /move:
+          POST: Move a path within the context
+
+  /sessions:
+    /{sessionId}:
+      GET: Retrieve session information
+      PUT: Update session information
+      DELETE: End a session
+
+  /tree:
+    GET: Retrieve global tree
+    /layers:
+      GET: List all layers
+      POST: Create a new layer
+      /{layerId}:
+        GET: Retrieve a specific layer
+        PUT: Update a specific layer
+        DELETE: Delete a specific layer
+    /paths:
+      GET: List all paths
+      POST: Create a new path
+      /{*path}:
+        GET: Retrieve a specific path
+        PUT: Update a specific path
+        DELETE: Delete a specific path
+    /operations:
+      /copy:
+        POST: Copy a path (with recursive option)
+      /move:
+        POST: Move a path (with recursive option)
+      /remove:
+        POST: Remove a path (with recursive option)
+
+
+  /stats:
+    GET: Retrieve API statistics
+
+
+POST /rest/v2/tree/operations/copy
+Content-Type: application/json
+
+{
+  "sourcePath": "/operations/foo/bar",
+  "destinationPath": "/new/path/for/operations/foo/bar",
+  "recursive": true
+}
+
+
 canvas
     [service]
     - start
         - init services
             - db
-            - 
+            -
         - init managers
             - context
             - session
