@@ -40,11 +40,11 @@ const SERVER_ROLES = process.env['CANVAS_SERVER_ROLES'] || path.join(SERVER_ROOT
 // another server instance(lets say from your local ws to your NAS) should be as painless as possible
 const CANVAS_USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
 const CANVAS_USER_CONFIG = process.env['CANVAS_USER_CONFIG'] || path.join(CANVAS_USER_HOME, 'config');
-const CANVAS_USER_DATA = process.env['CANVAS_USER_DATA'] || path.join(CANVAS_USER_HOME, 'data');
-const CANVAS_USER_CACHE = process.env['CANVAS_USER_CACHE'] || path.join(CANVAS_USER_HOME, 'cache');
+const CANVAS_USER_INDEX = process.env['CANVAS_USER_INDEX'] || path.join(CANVAS_USER_HOME, 'index');
 const CANVAS_USER_DB = process.env['CANVAS_USER_DB'] || path.join(CANVAS_USER_HOME, 'db');
+const CANVAS_USER_CACHE = process.env['CANVAS_USER_CACHE'] || path.join(CANVAS_USER_HOME, 'cache');
+const CANVAS_USER_DATA = process.env['CANVAS_USER_DATA'] || path.join(CANVAS_USER_HOME, 'data');
 const CANVAS_USER_WORKSPACES = process.env['CANVAS_USER_WORKSPACES'] || path.join(CANVAS_USER_HOME, 'workspaces');
-
 
 // Collect all ENV constants
 const env = {
@@ -79,9 +79,10 @@ const env = {
         paths: {
             home: CANVAS_USER_HOME,
             config: CANVAS_USER_CONFIG,
-            data: CANVAS_USER_DATA,
-            cache: CANVAS_USER_CACHE,
+            index: CANVAS_USER_INDEX,
             db: CANVAS_USER_DB,
+            cache: CANVAS_USER_CACHE,
+            data: CANVAS_USER_DATA,
             workspaces: CANVAS_USER_WORKSPACES,
         },
     },
@@ -122,9 +123,10 @@ const ini = {
 
     CANVAS_USER_HOME: env.user.paths.home,
     CANVAS_USER_CONFIG: env.user.paths.config,
-    CANVAS_USER_DATA: env.user.paths.data,
-    CANVAS_USER_CACHE: env.user.paths.cache,
+    CANVAS_USER_INDEX: env.user.paths.index,
     CANVAS_USER_DB: env.user.paths.db,
+    CANVAS_USER_CACHE: env.user.paths.cache,
+    CANVAS_USER_DATA: env.user.paths.data,
     CANVAS_USER_WORKSPACES: env.user.paths.workspaces,
 };
 

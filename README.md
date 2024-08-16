@@ -2,6 +2,14 @@
 
 Server component for the Canvas project
 
+## ! Refactor in progress
+
+**! use the main branch for now**  
+**! beware of the mess in dev**  
+**! beware of the upcoming schema change**
+
+
+
 ## Installation
 
 ### Linux
@@ -50,6 +58,7 @@ CANVAS_USER_CONFIG: ${CANVAS_USER_CONFIG:-./user/config}
 CANVAS_USER_DATA: ${CANVAS_USER_DATA:-./user/data}
 CANVAS_USER_CACHE: ${CANVAS_USER_CACHE:-./user/cache}
 CANVAS_USER_DB: ${CANVAS_USER_DB:-./user/db}
+CANVAS_USER_DB: ${CANVAS_USER_INDEX:-./user/index}
 CANVAS_USER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
 ```
 
@@ -72,7 +81,7 @@ $ cp example-client.json client.json
 ## Update Canvas Server
 
 ```bash
-$ cd /path/to/canvas-server/src
+$ cd /path/to/canvas-server
 # Stop the canvas server
 $ npm run stop # or npm run pm2:stop
 $ rm -rf ./node_modules # Ensure we have a clean plate

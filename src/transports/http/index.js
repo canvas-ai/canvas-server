@@ -63,12 +63,14 @@ class HttpTransport extends Service {
     #host;
     #port;
     #auth;
+    #apiVersion;
 
     constructor({
         protocol = DEFAULT_PROTOCOL,
         host = DEFAULT_HOST,
         port = DEFAULT_PORT,
-        baseUrl = `${DEFAULT_API_BASE_PATH}/${DEFAULT_API_VERSION}`,
+        apiVersion = DEFAULT_API_VERSION,
+        baseUrl = `${DEFAULT_API_BASE_PATH}/${apiVersion}`,
         auth = {
             token: DEFAULT_ACCESS_TOKEN,
             enabled: true,
@@ -82,6 +84,7 @@ class HttpTransport extends Service {
         this.#host = host;
         this.#port = port;
         this.#auth = auth;
+        this.#apiVersion = apiVersion;
         this.restApiBasePath = baseUrl;
 
         // The really ugly part

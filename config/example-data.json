@@ -3,64 +3,39 @@
         "enabled": "true",
         "rootPath": "CANVAS_USER_CACHE"
     },
-    "backends": {
-        "fs": {
-            "type": "local",
-            "enabled": true,
-            "backend": "fs",
-            "backendConfig": {},
-            "storeMetaData": false,
-            "localCacheEnabled": false,
-            "permissions": "rw",
-            "dataAbstractions": []
-        },
-        "file": {
-            "type": "local",
-            "enabled": true,
-            "backend": "fs",
-            "backendConfig": {
-                "rootPath": "CANVAS_USER_DATA",
-                "storeMetaData": true
+    "sources": {
+        "local": {
+            "file": {
+                "enabled": true,
+                "localCacheEnabled": false,
+                "permissions": "rw",
+                "dataAbstractions": [],
+                "driver": "file",
             },
-            "localCacheEnabled": false,
-            "permissions": "rw",
-            "dataAbstractions": []
+            "db": {
+                "enabled": true,
+                "localCacheEnabled": false,
+                "permissions": "rw",
+                "dataAbstractions": [],
+                "driver": "lmdb",
+                "driverConfig": {}
+            }
         },
-        "lmdb": {
-            "type": "local",
-            "enabled": true,
-            "backend": "lmdb",
-            "backendConfig": {
-                "rootPath": "CANVAS_USER_DB",
-                "storeMetaData": false
+        "home": {
+            "s3@nas": {
+                "enabled": true,
+                "localCacheEnabled": true,
+                "driver": "s3",
+                "driverConfig": {},
+                "permissions": "rw",
+                "dataAbstractions": []
             },
-            "localCacheEnabled": false,
-            "permissions": "rw",
-            "dataAbstractions": ["tab", "note", "todo"]
-        },
-        "s3@nas": {
-            "type": "remote",
-            "enabled": true,
-            "backend": "s3",
-            "backendConfig": {
-            },
-            "ignoreBackendErrors": false,
-            "repeatOnError": true,
-            "repeatIntervalSeconds": 10,
-            "localCacheEnabled": true,
-            "dataAbstractions": []
-        },
-        "s3@getcanvas.org": {
-            "type": "remote",
-            "enabled": true,
-            "backend": "s3",
-            "backendConfig": {
-            },
-            "ignoreBackendErrors": false,
-            "repeatOnError": true,
-            "repeatIntervalSeconds": 10,
-            "localCacheEnabled": true,
-            "dataAbstractions": []
+            "s3@ws": {
+                "enabled": true,
+                "localCacheEnabled": true,
+                "driver": "s3",
+                "driverConfig": {}
+            }
         }
     }
 }

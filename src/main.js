@@ -6,25 +6,38 @@
 const path = require('path');
 const debug = require('debug')('canvas-main');
 const EventEmitter = require('eventemitter2');
-const winston = require('winston');
 const Config = require('./utils/config/index.js');
+const winston = require('winston');
 
 // Core services
-const SynapsDB = require('./services/synapsdb/index.js');
-const StoreD = require('./services/stored/index.js');
+const EventD = require('./core/eventd');
+const SynapsD = require('./core/synapsd/index.old.js');
+const NeuralD = require('./core/neurald');
+const StoreD = require('./core/stored');
 
 // Manager classes
-const RoleManager = require('./managers/role/index.js');
-const SessionManager = require('./managers/session/index.js');
+const AppManager = require('./managers/app');
 const ContextManager = require('./managers/context/index.js');
-const DeviceManager = require('./managers/device/index.js');
+const DeviceManager = require('./managers/device');
+const PeerManager = require('./managers/peer');
+const RoleManager = require('./managers/role');
+const ServiceManager = require('./managers/service');
+const SessionManager = require('./managers/session');
+const UserManager = require('./managers/user');
 
 // Transports
 const TransportHttp = require('./transports/http');
 
 // App constants
-const MAX_SESSIONS = 32; // 2^5
-const MAX_CONTEXTS_PER_SESSION = 32; // 2^5
+const MAX_SESSIONS = 32;
+const MAX_CONTEXTS_PER_SESSION = 32;
+const APP_STATUSES = [
+    'stopped',
+    'initialized',
+    'starting',
+    'running',
+    'stopping'
+];
 
 
 /**
@@ -61,9 +74,10 @@ class Canvas extends EventEmitter {
         if (options.mode === 'full' &&
             !options.paths.user ||
             !options.paths.user.config ||
-            !options.paths.user.data ||
-            !options.paths.user.cache ||
+            !options.paths.user.index ||
             !options.paths.user.db ||
+            !options.paths.user.cache ||
+            !options.paths.user.data ||
             !options.paths.user.workspaces) {
             throw new Error('Canvas Server user paths not specified');
         }
@@ -75,21 +89,22 @@ class Canvas extends EventEmitter {
 
         super(); // EventEmitter2
 
+        this.app = options.app;
         this.#mode = options.mode;
         this.#server.paths = options.paths.server;
         this.#user.paths = options.paths.user;
         this.#device = DeviceManager.getCurrentDevice();
-        this.app = options.app;
 
         this.config = Config({
             serverConfigDir: this.#server.paths.config,
-            userConfigDir: (this.#mode === 'full') ? this.#user.paths.config : null,
-            configPriority: 'server',
+            userConfigDir: this.#user.paths.config,
+            configPriority: (this.#mode === 'full') ? 'user' : 'server',
             versioning: false,
         });
 
         let logFile = path.join(this.#server.paths.var, 'canvas-server.log');
         debug('Log file:', logFile);
+
         this.logger = winston.createLogger({
             level: process.env['LOG_LEVEL'] || 'info',
             format: winston.format.simple(),
@@ -113,9 +128,7 @@ class Canvas extends EventEmitter {
         this.logger.info(`Server mode: ${this.#mode}`);
 
         debug('Server paths:', this.#server.paths);
-        if (this.#mode === 'full') {
-            debug('User paths:', this.#user.paths);
-        }
+        debug('User paths:', this.#user.paths);
 
 
         /**
@@ -126,8 +139,9 @@ class Canvas extends EventEmitter {
             rolesPath: this.#server.paths.roles,
         });
 
+        // TODO: Initialize transports for the minimal mode || refactor
         if (this.#mode !== 'full') {
-            this.logger.info('Canvas Server initialized');
+            this.logger.info('Canvas Server initialized in minimal mode');
             this.#status = 'initialized';
             return;
         }
@@ -137,19 +151,24 @@ class Canvas extends EventEmitter {
          * Core services
          */
 
-        this.db = new SynapsDB({
-            path: path.join(this.#user.paths.db, 'db'),
-            backupPath: path.join(this.#user.paths.db, 'db', 'backup'),
+        // Canvas index service
+        this.index = new IndexD({
+            path: path.join(this.#user.paths.index),
+            backupPath: path.join(this.#user.paths.index, 'backup'),
+            // TODO: Replace with config.get('index')
             backupOnOpen: true,
             backupOnClose: false,
             compression: true,
         });
 
-        this.stored = new StoreD({
+        // Canvas data service
+        this.data = new StoreD({
             paths: {
                 data: this.#user.paths.data,
-                cache: this.#user.paths.cache
+                cache: this.#user.paths.cache,
             },
+            // TODO: Replace with config.get('data')
+            backends: {},
             cachePolicy: 'pull-through',
         });
 
@@ -158,18 +177,25 @@ class Canvas extends EventEmitter {
          * Managers
          */
 
+        this.appManager = new AppManager({
+            index: this.index.createIndex('apps', 'file'),
+        });
+
         this.deviceManager = new DeviceManager({
-            db: this.db,
+            index: this.index.createIndex('devices', 'file'),
         });
 
         this.contextManager = new ContextManager({
+            index: this.index,
             db: this.db,
+            data: this.data,
+            maxContexts: 32,
         });
 
-        // TODO: Refactor
         this.sessionManager = new SessionManager({
-            sessionStore: this.db.createDataset('session'),
+            sessionStore: this.index.createDataset('session'),
             contextManager: this.contextManager,
+            // TODO: Replace with config.get('session')
             maxSessions: MAX_SESSIONS,
             maxContextsPerSession: MAX_CONTEXTS_PER_SESSION,
         });
@@ -201,6 +227,12 @@ class Canvas extends EventEmitter {
 
     async start(url, options) {
         if (this.#status === 'running') { throw new Error('Canvas Server already running'); }
+
+        // Initialize the universe
+        // indexes
+        // data backends
+        // load system context
+        // load user context
 
         this.#status = 'starting';
         this.emit('starting');

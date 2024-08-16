@@ -1,0 +1,28 @@
+{
+    "home": {
+        "address": {
+            "street": "1234 Elm St",
+            "city": "Springfield",
+            "state": "IL",
+            "zip": "62701"
+        },
+        "coordinates": {
+            "latitude": 39.7993,
+            "longitude": -89.6446
+        },
+        "timezone": "America/Chicago",
+        "network": {
+            "ssid": "HomeNetwork",
+            "cidr": "172.16.2.0/24"
+        }
+    },
+    "office": {
+
+    },
+    "school": {
+
+    },
+    "parents": {
+
+    }
+}

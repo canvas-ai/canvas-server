@@ -31,20 +31,8 @@ const canvas = new Canvas({
         license: server.license,
     },
     paths: {
-        server: {
-            config: server.paths.config,
-            data: server.paths.data,
-            roles: server.paths.roles,
-            var: server.paths.var,
-        },
-        user: (serverMode === 'full') ? {
-            home: user.paths.home,
-            config: user.paths.config,
-            data: user.paths.data,
-            cache: user.paths.cache,
-            db: user.paths.db,
-            workspaces: user.paths.workspaces
-        } : {}, // false?null
+        server: server.paths,
+        user: user.paths,
     },
 });
 

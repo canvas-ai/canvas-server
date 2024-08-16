@@ -16,9 +16,9 @@ services:
       CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-./extensions/roles}
       CANVAS_USER_HOME: ${CANVAS_USER_HOME:-./user}
       CANVAS_USER_CONFIG: ${CANVAS_USER_CONFIG:-./user/config}
-      CANVAS_USER_DATA: ${CANVAS_USER_DATA:-./user/data}
-      CANVAS_USER_CACHE: ${CANVAS_USER_CACHE:-./user/cache}
+      CANVAS_USER_INDEX: ${CANVAS_USER_INDEX:-./user/index}
       CANVAS_USER_DB: ${CANVAS_USER_DB:-./user/db}
+      CANVAS_USER_DATA: ${CANVAS_USER_DATA:-./user/data}
       CANVAS_USER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
     volumes:
       - ${CANVAS_SERVER_CONFIG}:/opt/canvas-server/config
@@ -27,7 +27,7 @@ services:
       - ${CANVAS_SERVER_ROLES}:/opt/canvas-server/extensions/roles
       - ${CANVAS_USER_HOME}:/opt/canvas-server/user
       - ${CANVAS_USER_CONFIG}:/opt/canvas-server/user/config
-      - ${CANVAS_USER_DATA}:/opt/canvas-server/user/data
-      - ${CANVAS_USER_CACHE}:/opt/canvas-server/user/cache
+      - ${CANVAS_USER_INDEX}:/opt/canvas-server/user/index
       - ${CANVAS_USER_DB}:/opt/canvas-server/user/db
+      - ${CANVAS_USER_DATA}:/opt/canvas-server/user/data
       - ${CANVAS_USER_WORKSPACES}:/opt/canvas-server/user/workspaces
