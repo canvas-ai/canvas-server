@@ -10,20 +10,15 @@ const Config = require('./utils/config/index.js');
 const winston = require('winston');
 
 // Core services
-const EventD = require('./core/eventd');
-const SynapsD = require('./core/synapsd/index.old.js');
-const NeuralD = require('./core/neurald');
+const IndexD = require('./core/synapsd/index.old.js');
 const StoreD = require('./core/stored');
 
 // Manager classes
 const AppManager = require('./managers/app');
 const ContextManager = require('./managers/context/index.js');
 const DeviceManager = require('./managers/device');
-const PeerManager = require('./managers/peer');
 const RoleManager = require('./managers/role');
-const ServiceManager = require('./managers/service');
 const SessionManager = require('./managers/session');
-const UserManager = require('./managers/user');
 
 // Transports
 const TransportHttp = require('./transports/http');
@@ -162,7 +157,7 @@ class Canvas extends EventEmitter {
         });
 
         // Canvas data service
-        this.data = new StoreD({
+        this.storage = new StoreD({
             paths: {
                 data: this.#user.paths.data,
                 cache: this.#user.paths.cache,
@@ -187,13 +182,11 @@ class Canvas extends EventEmitter {
 
         this.contextManager = new ContextManager({
             index: this.index,
-            db: this.db,
-            data: this.data,
-            maxContexts: 32,
+            maxContexts: MAX_CONTEXTS_PER_SESSION,
         });
 
         this.sessionManager = new SessionManager({
-            sessionStore: this.index.createDataset('session'),
+            sessionStore: this.index.createIndex('session', 'file'),
             contextManager: this.contextManager,
             // TODO: Replace with config.get('session')
             maxSessions: MAX_SESSIONS,
