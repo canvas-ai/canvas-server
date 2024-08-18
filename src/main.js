@@ -6,11 +6,11 @@
 const path = require('path');
 const debug = require('debug')('canvas-main');
 const EventEmitter = require('eventemitter2');
-const Config = require('./utils/config/index.js');
+const Config = require('./utils/config');
 const winston = require('winston');
 
 // Core services
-const IndexD = require('./core/synapsd/index.old.js');
+const IndexD = require('./core/indexd');
 const StoreD = require('./core/stored');
 
 // Manager classes
@@ -162,7 +162,7 @@ class Canvas extends EventEmitter {
                 data: this.#user.paths.data,
                 cache: this.#user.paths.cache,
             },
-            // TODO: Replace with config.get('data')
+            // TODO: Replace with config.get('storage')
             backends: {},
             cachePolicy: 'pull-through',
         });
