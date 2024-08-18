@@ -2,7 +2,7 @@
 
 const RoaringBitmap32 = require('roaring/RoaringBitmap32');
 const Bitmap = require('./Bitmap');
-const { uuid12 } = require('../../../../managers/context/lib/utils');
+const { uuid12 } = require('../../../managers/context/lib/utils');
 const debug = require('debug')('canvas:db:index:BitmapCollection');
 
 

@@ -9,7 +9,7 @@ module.exports = {
         type: 'universe',
         name: '/',
         label: 'Universe',
-        description: 'And then, there was light',
+        description: 'And then, there was ..no  geometry',
         color: '#fff',
         locked: true,
     },

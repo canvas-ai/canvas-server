@@ -2,12 +2,13 @@
 
 // Utils
 const debug = require('debug')('canvas:stored');
+const EE = require('eventemitter2');
 const { isFile, isBinary } = require('./utils/common');
 
 // StoreD caching layer
 const Cache = require('./cache');
 
-// StoreD backends
+// StoreD backend loader
 const BackendLoader = require('./BackendLoader');
 
 
@@ -17,7 +18,7 @@ const BackendLoader = require('./BackendLoader');
  * GET operations will by default try local cache, then cycle through the backends in the order submitted
  * in the backend array, returning the first successful operation(optionally populating the cache).
  *
- * PUT operations will first try to store an object in a backend of type: local, honoring the backend cache
+ * Insert operations will first try to store an object in a backend of type: local, honoring the backend cache
  * configuration for write operations. If no local backend is provided, we'll default to cache if enabled,
  * then send the internal cache url to a syncd queue read by a worker process synchronizing to all selected
  * backends.
@@ -26,139 +27,102 @@ const BackendLoader = require('./BackendLoader');
  * @param {Object} config - StoreD configuration object
  */
 
-class Stored {
+class Stored extends EE {
 
     constructor(config = {}) {
         debug('Initializing Canvas StoreD');
+        if (!config) { throw new Error('No configuration provided'); }
+        if (!config.cache) { throw new Error('No configuration object provided at options.config.cache'); }
+        if (!config.backends) { throw new Error('No configuration object provided at options.config'); }
 
-        if (!config) {
-            throw new Error('No configuration provided');
-        }
+        // Initialize event emitter
+        super(config.eventEmitter || {});
 
-        if (!config.backends || Object.keys(config.backends).length === 0) {
-            throw new Error('No backends configured at config.backends');
-        }
-
-        if (!config.cache) {
-            //throw new Error('No cache configuration provided at config.cache');
-            console.error('No cache configuration provided at config.cache, using default cache configuration');
-            config.cache = {
-                enabled: true,
-                type: 'file',
-                maxSizeInMb: 2048,
-                maxAgeInMinutes: -1,
-                rootPath: './cache'
-            }
-        }
-
+        // Initialize utils
         this.config = config;
+        this.logger = config.logger || console; // will break, fixme
 
         // Initialize global cache
         this.cache = new Cache(this.config.cache);
 
         // Initialize backends
+        // Naming convention is not very flexible but should be enough for now
+        // canvas://{instance}:{backend}/{type}/{identifier}
+        // canvas://local:lmdb/document/sha1-hash
+        // canvas://office:s3/file/path/to/object
+        // canvas://remote:api/blob/12345
+        // canvas://deviceid:fs/path/to/indexed/file
         this.backends = {};
-        this.backendLoader = new BackendLoader();
-        this.initializeBackends();
+        this.backendLoader = new BackendLoader( /* ./backends + ../extensions/storage/backends */ );
+        this.#initializeBackends();
     }
 
-    initializeBackends() {
-        for (const [name, backendConfig] of Object.entries(this.config.backends)) {
-            if (!backendConfig.driver) {
-                throw new Error(`No driver specified for backend ${name} at config.backends.${name}.driver`);
-            }
 
-            if (!backendConfig.driverConfig) {
-                throw new Error(`No driver configuration specified for backend ${name} at config.backends.${name}.driverConfig`);
-            }
+    /**
+     * Main interface
+     */
 
-            const BackendClass = this.backendLoader.getBackendClass(backendConfig.driver);
-            this.backends[name] = new BackendClass(backendConfig.driverConfig);
-        }
-    }
-
-    // Test method to open a file with the default OS application
-    openFile(hash, backendNameOrArray) {
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
-
-        for (const backendName of backendNames) {
-            const backend = this.getBackend(backendName);
-            try {
-                return backend.openFile(hash);
-            } catch (error) {
-                debug(`Error opening file from backend ${backendName}: ${error.message}`);
-                if (!this.config.backends[backendName].ignoreBackendErrors) {
-                    continue;
-                } else {
-                    throw error;
-                }
-            }
-        }
-
-        throw new Error(`Object not found: ${hash}`);
-    }
-
-    async putFile(filePath, metadata = {}, backendNameOrArray, options = {}) {
-        // Implementation for files
-        if (!isFile(filePath)) {
-            throw new Error(`File not found: ${filePath}`);
-        }
-
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+    /**
+     * Inserts a document into the storage backend(s).
+     * @param {Object} document - The document to insert.
+     * @param {Object} metadata - Optional metadata associated with the document.
+     * @param {string|string[]} backends - Name or array of backend names.
+     * @param {Object} options - Additional options for the insertion.
+     */
+    async insertDocument(document, metadata = {}, backends = this.backends, options = {}) {
 
     }
 
-    async putDocument(document, metadata = {}, backendNameOrArray, options = {}) {
-        // Implementation for JSON documents
-        if (!document) {
-            throw new Error('No document provided');
-        }
-
-        if (typeof document !== 'object') {
-            throw new Error('Invalid document provided');
-        }
-
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
-        if (backendNames.length === 0) {
-            throw new Error('No backend specified');
-        }
-
+    /**
+     * Inserts a file into the storage backend(s) by file path.
+     * @param {string} filePath - The file path to insert.
+     * @param {Object} metadata - Optional metadata associated with the file.
+     * @param {string|string[]} backends - Name or array of backend names.
+     * @param {Object} options - Additional options for the insertion.
+     * @returns {Promise} - Result of inserting the file as a URL.
+     */
+    async insertFile(filePath, metadata = {}, backends = this.backends, options = {}) {
+        return this.insertUrl(filePath, metadata, backends, options);
     }
 
-    async putBinary(data, metadata = {}, backendNameOrArray, options = {}) {
-        // Implementation for binary data
-        if (!isBinary(data)) {
-            throw new Error('Invalid binary data provided');
-        }
-
-        if (!metadata || typeof metadata !== 'object') {
-            throw new Error('Metadata is required and must be an object');
-        }
-
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
-        if (backendNames.length === 0) {
-            throw new Error('No backend specified');
-        }
-
-
+    /**
+     * Inserts a URL into the storage backend(s).
+     * @param {string} resourceUrl - The URL to insert.
+     * @param {Object} metadata - Optional metadata associated with the URL.
+     * @param {string|string[]} backends - Name or array of backend names.
+     * @param {Object} options - Additional options for the insertion.
+     */
+    async insertUrl(resourceUrl, metadata = {}, backends = this.backends, options = {}) {
+        // Implementation here
     }
 
-    async getFile(hash, backendNameOrArray = null, options = {
+    /**
+     * Inserts binary data (blob) into the storage backend(s).
+     * @param {Buffer|ArrayBuffer} data - The binary data to insert.
+     * @param {Object} metadata - Optional metadata associated with the blob.
+     * @param {string|string[]} backends - Name or array of backend names.
+     * @param {Object} options - Additional options for the insertion.
+     */
+    async insertBlob(data, metadata = {}, backends = this.backends, options = {}) {
+        // Implementation here
+    }
+
+
+    async getFile(hash, backends = this.backends, options = {
         // Return as a stream
         // stream: false
         // Return as a direct file path
         // filePath: false
     }) {
         if (!hash) { throw new Error('No hash provided'); }
-
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+        const backendNames = Array.isArray(backends) ? backends : [backends];
         if (backendNames.length === 0) {
             throw new Error('No backend specified');
         }
     }
 
     // Returns structured data(JSON document) parsed into an object
-    async getDocument(hash, backendNameOrArray = null, options = {
+    async getDocument(hash, backends = this.backends, options = {
         // Return raw JSON string instead of parsed object
         // raw: false
         // Return only metadata
@@ -166,7 +130,7 @@ class Stored {
     }) {
         if (!hash) { throw new Error('No hash provided'); }
 
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+        const backendNames = Array.isArray(backends) ? backends : [backends];
         if (backendNames.length === 0) {
             throw new Error('No backend specified');
         }
@@ -174,19 +138,19 @@ class Stored {
         // Documents are not cached for now, so no cache logic here
     }
 
-    // Returns binary data as a buffer
-    async getBinary(hash, backendNameOrArray = null, options = {}) {
+    // Returns binary data(blob) as a Buffer
+    async getBLob(hash, backends = this.backends, options = {}) {
         if (!hash) { throw new Error('No hash provided'); }
 
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+        const backendNames = Array.isArray(backends) ? backends : [backends];
         if (backendNames.length === 0) {
             throw new Error('No backend specified');
         }
     }
 
-    async has(hash, backendNameOrArray, ) {
+    async has(hash, backends = this.backends, options = {}) {
         if (!hash) { throw new Error('No hash provided'); }
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+        const backendNames = Array.isArray(backends) ? backends : [backends];
 
         for (const backendName of backendNames) {
             const backend = this.getBackend(backendName);
@@ -222,8 +186,8 @@ class Stored {
         return false;
     }
 
-    async stat(hash, backendNameOrArray) {
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+    async stat(hash, backends = this.backends) {
+        const backendNames = Array.isArray(backends) ? backends : [backends];
 
         for (const backendName of backendNames) {
             const backend = this.getBackend(backendName);
@@ -242,8 +206,8 @@ class Stored {
         throw new Error(`Object not found: ${hash}`);
     }
 
-    async delete(hash, backendNameOrArray) {
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
+    async delete(hash, backends) {
+        const backendNames = Array.isArray(backends) ? backends : [backends];
         const results = [];
 
         for (const backendName of backendNames) {
@@ -268,49 +232,6 @@ class Stored {
         return results;
     }
 
-    async list(backendNameOrArray) {
-        const backendNames = Array.isArray(backendNameOrArray) ? backendNameOrArray : [backendNameOrArray];
-        const results = {};
-
-        for (const backendName of backendNames) {
-            const backend = this.getBackend(backendName);
-            try {
-                results[backendName] = await backend.list();
-            } catch (error) {
-                debug(`Error listing objects from backend ${backendName}: ${error.message}`);
-                if (!this.config.backends[backendName].ignoreBackendErrors) {
-                    continue;
-                } else {
-                    throw error;
-                }
-            }
-        }
-
-        return results;
-    }
-
-    /**
-     * StoreD Utils
-     */
-
-    #findBackendForHash(hash, backendNames) {
-        for (const backendName of backendNames) {
-            const backend = this.getBackend(backendName);
-            if (backend.status !== 'online') { continue; } // Skip offline backends
-            try {
-                if (backend.has(hash)) { return backendName; }
-            } catch (error) {
-                debug(`Error checking object existence in backend ${backendName}: ${error.message}`);
-                if (this.config.backends[backendName].ignoreBackendErrors) {
-                    continue;
-                } else {
-                    throw error;
-                }
-            }
-        }
-
-        return null;
-    }
 
     /**
      * Backend methods
@@ -338,6 +259,21 @@ class Stored {
 
     getBackendConfiguration(backendName) {
         return this.getBackend(backendName).getConfiguration();
+    }
+
+    #initializeBackends() {
+        for (const [name, backendConfig] of Object.entries(this.config.backends)) {
+            if (!backendConfig.driver) {
+                throw new Error(`No driver specified for backend ${name} at config.backends.${name}.driver`);
+            }
+
+            if (!backendConfig.driverConfig) {
+                throw new Error(`No driver configuration specified for backend ${name} at config.backends.${name}.driverConfig`);
+            }
+
+            const BackendClass = this.backendLoader.getBackendClass(backendConfig.driver);
+            this.backends[name] = new BackendClass(backendConfig.driverConfig);
+        }
     }
 }
 

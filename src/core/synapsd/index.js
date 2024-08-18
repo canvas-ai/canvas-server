@@ -3,9 +3,9 @@ const debug = require('debug')('canvas:db');
 const EventEmitter = require('eventemitter2');
 
 // App includes
-const Db = require('../db/index.js').lmdb;
-const MemCache = require('./lib/MemCache.js');
-const BitmapCollection = require('./lib/BitmapCollection.js');
+const Db = require('../../services/db');
+const MemCache = require('./index/lib/MemCache.js');
+const BitmapCollection = require('../../services/synapsd/lib/BitmapCollection.js');
 
 // Constants
 const INTERNAL_BITMAP_ID_MIN = 1000;

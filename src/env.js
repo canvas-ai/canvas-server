@@ -18,6 +18,8 @@ const device = require('./managers/device').getCurrentDevice();
  * ├── data
  * ├── extensions
  * |   ├── roles
+ * |   ├── storage
+ * |   ├── transports
  * ├── user
  * ├── var
  * |   ├── log
@@ -32,7 +34,7 @@ const SERVER_SRC = path.join(SERVER_ROOT, 'src');
 const SERVER_CONFIG = process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config');
 const SERVER_DATA = process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data');
 const SERVER_VAR = process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var');
-const SERVER_ROLES = process.env['CANVAS_SERVER_ROLES'] || path.join(SERVER_ROOT, 'extensions', 'roles');
+const SERVER_EXT = process.env['CANVAS_SERVER_EXT'] || path.join(SERVER_ROOT, 'extensions');
 
 // User directories
 // For portable mode, the user home is in server ./user, otherwise it's in the system home
@@ -40,10 +42,12 @@ const SERVER_ROLES = process.env['CANVAS_SERVER_ROLES'] || path.join(SERVER_ROOT
 // another server instance(lets say from your local ws to your NAS) should be as painless as possible
 const CANVAS_USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
 const CANVAS_USER_CONFIG = process.env['CANVAS_USER_CONFIG'] || path.join(CANVAS_USER_HOME, 'config');
+// User "Universe"
 const CANVAS_USER_INDEX = process.env['CANVAS_USER_INDEX'] || path.join(CANVAS_USER_HOME, 'index');
 const CANVAS_USER_DB = process.env['CANVAS_USER_DB'] || path.join(CANVAS_USER_HOME, 'db');
 const CANVAS_USER_CACHE = process.env['CANVAS_USER_CACHE'] || path.join(CANVAS_USER_HOME, 'cache');
 const CANVAS_USER_DATA = process.env['CANVAS_USER_DATA'] || path.join(CANVAS_USER_HOME, 'data');
+// User workspaces
 const CANVAS_USER_WORKSPACES = process.env['CANVAS_USER_WORKSPACES'] || path.join(CANVAS_USER_HOME, 'workspaces');
 
 // Collect all ENV constants
@@ -51,17 +55,20 @@ const env = {
     file: path.join(SERVER_ROOT, '.env'),
     isPortable: isPortable(),
 
-    server: {
-        appName: (pkg.productName) ? pkg.productName : pkg.name,
+    app: {
+        name: pkg.productName,
         version: pkg.version,
         description: pkg.description,
         license: pkg.license,
+    },
+
+    server: {
         paths: {
             root: SERVER_ROOT,
             src: SERVER_SRC,
             config: SERVER_CONFIG,
             data: SERVER_DATA,
-            roles: SERVER_ROLES,
+            ext: SERVER_EXT,
             var: SERVER_VAR,
         },
     },
@@ -94,23 +101,24 @@ const env = {
 
 };
 
-// Generate a .env ini file
+// Generate a .env ini file (needed for external server roles)
 const ini = {
     // Runtime
     CANVAS_RUNTIME: 'server',
     CANVAS_PORTABLE: env.isPortable,
 
-    // Server
-    CANVAS_SERVER_APP_NAME: env.server.name,
-    CANVAS_SERVER_APP_VERSION: env.server.version,
-    CANVAS_SERVER_APP_DESCRIPTION: env.server.description,
-    CANVAS_SERVER_APP_LICENSE: env.server.license,
+    // App
+    CANVAS_APP_NAME: env.app.name,
+    CANVAS_APP_VERSION: env.app.version,
+    CANVAS_APP_DESCRIPTION: env.app.description,
+    CANVAS_APP_LICENSE: env.app.license,
 
+    // Server
     CANVAS_SERVER_ROOT: env.server.paths.root,
     CANVAS_SERVER_SRC: env.server.paths.src,
     CANVAS_SERVER_CONFIG: env.server.paths.config,
     CANVAS_SERVER_DATA: env.server.paths.data,
-    CANVAS_SERVER_ROLES: env.server.paths.roles,
+    CANVAS_SERVER_EXT: env.server.paths.ext,
     CANVAS_SERVER_VAR: env.server.paths.var,
 
     // Server runtime
@@ -121,6 +129,7 @@ const ini = {
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
 
+    // User
     CANVAS_USER_HOME: env.user.paths.home,
     CANVAS_USER_CONFIG: env.user.paths.config,
     CANVAS_USER_INDEX: env.user.paths.index,
@@ -134,10 +143,9 @@ const ini = {
 generateDotenvFile(ini, env.file);
 
 // Update process env vars
-// We could just run require('dotenv').config() at this point
+// Could just run require('dotenv').config()
 process.title = `${pkg.productName} | v${pkg.version}`;
 Object.assign(process.env, {...ini});
-
 
 /**
  * Exports

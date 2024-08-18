@@ -9,9 +9,13 @@ const EventEmitter = require('eventemitter2');
 const Config = require('./utils/config/index.js');
 const winston = require('winston');
 
-// Core services
+// Services
+const Db = require('./services/db');
+const Jim = require('./services/jim');
+const IndexD
+
 const EventD = require('./core/eventd');
-const SynapsD = require('./core/synapsd/index.old.js');
+const SynapsD = require('./core/synapsd');
 const NeuralD = require('./core/neurald');
 const StoreD = require('./core/stored');
 
@@ -26,17 +30,17 @@ const SessionManager = require('./managers/session');
 const UserManager = require('./managers/user');
 
 // Transports
-const TransportHttp = require('./transports/http');
+const TransportHttp = require('./io/http');
 
 // App constants
 const MAX_SESSIONS = 32;
 const MAX_CONTEXTS_PER_SESSION = 32;
 const APP_STATUSES = [
-    'stopped',
     'initialized',
     'starting',
     'running',
-    'stopping'
+    'stopping',
+    'stopped',
 ];
 
 
@@ -47,9 +51,9 @@ const APP_STATUSES = [
 class Canvas extends EventEmitter {
 
     #mode;
-    #user = {};
+    #device = {};
     #server = {};
-    #device;
+    #user = {};
     #status = 'stopped'; // stopped, initialized, starting, running, stopping;
 
     constructor(options = {}) {
@@ -66,7 +70,7 @@ class Canvas extends EventEmitter {
         if (!options.paths.server ||
             !options.paths.server.config ||
             !options.paths.server.data ||
-            !options.paths.server.roles ||
+            !options.paths.server.ext ||
             !options.paths.server.var) {
             throw new Error('Canvas Server paths not specified');
         }
@@ -82,19 +86,20 @@ class Canvas extends EventEmitter {
             throw new Error('Canvas Server user paths not specified');
         }
 
-
         /**
          * Utils
          */
 
         super(); // EventEmitter2
 
+        // App info
         this.app = options.app;
         this.#mode = options.mode;
         this.#server.paths = options.paths.server;
         this.#user.paths = options.paths.user;
         this.#device = DeviceManager.getCurrentDevice();
 
+        // Global config modulle
         this.config = Config({
             serverConfigDir: this.#server.paths.config,
             userConfigDir: this.#user.paths.config,
@@ -102,15 +107,14 @@ class Canvas extends EventEmitter {
             versioning: false,
         });
 
+        // Global Logger
         let logFile = path.join(this.#server.paths.var, 'canvas-server.log');
-        debug('Log file:', logFile);
-
+        debug('Server log file: ', logFile);
         this.logger = winston.createLogger({
             level: process.env['LOG_LEVEL'] || 'info',
             format: winston.format.simple(),
             transports: [
                 new winston.transports.File({ filename: logFile }),
-                new winston.transports.Console(),
             ],
         });
 
@@ -126,7 +130,6 @@ class Canvas extends EventEmitter {
         // Bling-bling for the literature lovers
         this.logger.info(`Starting ${this.app.name} v${this.app.version}`);
         this.logger.info(`Server mode: ${this.#mode}`);
-
         debug('Server paths:', this.#server.paths);
         debug('User paths:', this.#user.paths);
 
@@ -148,28 +151,67 @@ class Canvas extends EventEmitter {
 
 
         /**
-         * Core services
+         * Canvas services
          */
 
-        // Canvas index service
-        this.index = new IndexD({
-            path: path.join(this.#user.paths.index),
+        this.index = new SynapsD({
+            config: this.config.open('index'),
+            logger: this.logger,
+            rootPath: this.#user.paths.index,
             backupPath: path.join(this.#user.paths.index, 'backup'),
-            // TODO: Replace with config.get('index')
             backupOnOpen: true,
             backupOnClose: false,
             compression: true,
         });
 
-        // Canvas data service
-        this.data = new StoreD({
-            paths: {
-                data: this.#user.paths.data,
-                cache: this.#user.paths.cache,
+        this.db = new Db({  // To be integrated under StoreD
+            config: this.config.open('db'),
+            logger: this.logger,
+            rootPath: this.#user.paths.db,
+            backupPath: path.join(this.#user.paths.db, 'backup'),
+            backupOnOpen: true,
+            backupOnClose: false,
+            compression: true,
+        });
+
+        // Canvas data/storage service
+        this.storage = new StoreD({
+            logger: this.logger,
+            extensionRoot: path.join(this.#server.paths.ext, 'storage'),
+            cache: {
+                enabled: true,
+                maxAge: -1,
+                rootPath: this.#user.paths.cache,
+                cachePolicy: 'pull-through',
             },
-            // TODO: Replace with config.get('data')
-            backends: {},
-            cachePolicy: 'pull-through',
+            // TODO: Replace with config.get('storage')
+            // canvas://{instance}:{backend}/{type}/{identifier}
+            backends: {
+                local: {
+                    file: {
+                        enabled: true,
+                        rootPath: this.#user.paths.data,
+                    },
+                    lmdb: {
+                        enabled: true,
+                        rootPath: this.#user.paths.db,
+                        backupPath: path.join(this.#user.paths.db, 'backup'),
+                        backupOnOpen: true,
+                        backupOnClose: false,
+                        compression: true,
+                    },
+                    // Assuming canvas-server is running locally on the same machine
+                    fs: (this.#mode === 'full') ? {
+                        enabled: true,
+                        watch: true,
+                        allowedPaths: [
+                            path.join(this.#device.user.homedir, 'Documents'),
+                            path.join(this.#device.user.homedir, 'Desktop'),
+                            path.join(this.#device.user.homedir, 'Downloads'),
+                        ],
+                    } : { enabled: false },
+                },
+            },
         });
 
 
@@ -216,10 +258,9 @@ class Canvas extends EventEmitter {
         };
     }
     get mode() { return this.#mode; }
+    get currentDevice() { return this.#device; }
     get pid() { return this.PID; }
     get ipc() { return this.IPC; }
-    get currentDevice() { return this.#device; }
-
 
     /**
      * Canvas service controls
@@ -229,10 +270,16 @@ class Canvas extends EventEmitter {
         if (this.#status === 'running') { throw new Error('Canvas Server already running'); }
 
         // Initialize the universe
-        // indexes
-        // data backends
-        // load system context
-        // load user context
+        this.contextManager.initUniverse({
+            device: this.#device,
+
+        })
+        // Inject the system context (for remote instances, this has to be provided by the client!)
+
+        // Indexes
+        // Storage
+        // Load system context
+        // Load user context
 
         this.#status = 'starting';
         this.emit('starting');
@@ -439,6 +486,48 @@ class Canvas extends EventEmitter {
         return true;
     }
 
+    /**
+     * Storage
+     */
+
+    async insertDocument(doc, backendArray, contextArray = [], featureArray = []) {
+                /*
+        let validatedDocument = await this.??.validateDocument(doc); // returns a proper document object with schema based on doc.type
+        let documentMeta = await this.storage.insertDocument(validatedDocument, backendArray); // will extract features?
+
+        documentMeta = {
+            id: '1234567890abcdef',
+            type: 'note',
+            checksums: {
+                md5: '1234567890abcdef',
+                sha1: '1234567890abcdef1234567890abcdef',
+                sha256: '1234567890abcdef1234567890abcdef',
+            },
+            paths: [
+                'canvas://local:lmdb/note/sha1-1234567890abcdef1234567890abcdef',
+                'canvas://local:file/notes/20241201.a2va23o4iqaa.json',
+                'canvas://office:s3/notes/20241201.a2va23o4iqaa.json',
+            ],
+            features: {
+                mime: 'application/json',
+            }
+            size: 12345,
+            created: 1634867200
+        }
+        */
+        return this.index.insertObject(documentMeta, contextArray, featureArray);
+
+    }
+
+    updateDocument(doc, contextArray = [], featureArray = []) {
+        return this.storage.updateDocument(doc, contextArray, featureArray);
+    }
+
+    removeDocument(doc, contextArray = [], featureArray = []) { }
+
+    deleteDocument(doc, contextArray = [], featureArray = []) {
+        return this.storage.deleteDocument(doc, contextArray, featureArray);
+    }
 
     /**
      * Process Event Listeners

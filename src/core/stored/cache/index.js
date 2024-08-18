@@ -71,7 +71,7 @@ class Cache {
         // This can introduce problems, but hey, we can handle it in stored
         // A better implementation would be to strip cacache metadata
         // const metadata = cacache.get.info(this.#cacheRoot, key);
-        // if (!metadata.checksum) { metadata.checksums[defaultalgo] = metadata.integrity; }
+        // if (!metadata.checksum) { metadata.checksums[defaultAlgo] = metadata.integrity; }
         // return metadata.metadata;
     }
 

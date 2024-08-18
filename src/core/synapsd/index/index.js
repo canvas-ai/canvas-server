@@ -3,7 +3,7 @@ const EE = require('eventemitter2');
 const debug = require('debug')('canvas:db:index');
 
 // App includes
-const BitmapCollection = require('./lib/BitmapCollection');
+const BitmapCollection = require('../../../services/synapsd/lib/BitmapCollection');
 const MemCache = require('./lib/MemCache');
 
 // Constants

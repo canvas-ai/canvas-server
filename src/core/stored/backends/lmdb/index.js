@@ -1,7 +1,6 @@
 // Utils
 const path = require('path');
 const debug = require('debug')('canvas:stored:backend:lmdb');
-const { isFile, isBinary } = require('../../utils/common');
 
 // Includes
 const StorageBackend = require('../StorageBackend');
@@ -28,8 +27,8 @@ class LmdbBackend extends StorageBackend {
         }
 
         super(config);
-        this.name = 'file';
-        this.description = 'Simple Canvas StoreD file backend module';
+        this.name = 'lmdb';
+        this.description = 'Canvas StoreD LMDB Backend';
         this.rootPath = config.rootPath;
         this.hashAlgorithm = config?.hashAlgorithm || DEFAULT_HASH_ALGO;
         this.metadataExtension = config?.metadataExtension || DEFAULT_METADATA_EXTENSION;

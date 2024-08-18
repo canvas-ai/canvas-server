@@ -52,20 +52,21 @@ Supported ENV vars with their defaults
 CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-./config}
 CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-./data}
 CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-./var}
-CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-./extensions/roles}
+CANVAS_SERVER_EXT: ${CANVAS_SERVER_EXT:-./extensions}
 CANVAS_USER_HOME: ${CANVAS_USER_HOME:-./user}
 CANVAS_USER_CONFIG: ${CANVAS_USER_CONFIG:-./user/config}
 CANVAS_USER_DATA: ${CANVAS_USER_DATA:-./user/data}
 CANVAS_USER_CACHE: ${CANVAS_USER_CACHE:-./user/cache}
+CANVAS_USER_INDEX: ${CANVAS_USER_INDEX:-./user/index}
 CANVAS_USER_DB: ${CANVAS_USER_DB:-./user/db}
-CANVAS_USER_DB: ${CANVAS_USER_INDEX:-./user/index}
 CANVAS_USER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
 ```
 
 ## Configuration
 
 All settings stored in ./config are meant as server-defaults  
-To enable a seamless roaming/portable experience, make sure everything non-default is configured in your `CANVAS_USER_CONFIG` directory (defaults to **./user/config** in portable mode, **~/.canvas/config** || **Canvas/Config** otherwise)
+To enable a seamless roaming/portable experience, make sure everything non-default is configured in your `CANVAS_USER_CONFIG` directory (defaults to **./user/config** in portable mode, **~/.canvas/config** || **Canvas/Config** otherwise)  
+Modules (should) have some sensible defaults..
 
 ```bash
 # To disable "portable" mode, create /path/to/canvas-server/user/.ignore

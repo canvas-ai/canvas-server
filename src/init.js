@@ -1,14 +1,22 @@
 /**
- * Canvas server
+ * Canvas server initialization script
  */
 
 // Environment variables
 const {
+    app,
     server,
     user,
 } = require('./env.js');
 
-// Server mode
+/*
+ * ! The current script - as of now - is not really needed, but the aim is to keep the main
+ * script as clean as possible. This script will be responsible for initializing the server
+ * and the user environment based on CLI/env args and starting the server. Maybe we can merge
+ * it with the env script in the future (?)
+ */
+
+// Server mode (names subject to change)
 // full: server is running with a user environment
 // minimal: server is only running the roleManager module and default transports
 let serverMode = 'full';
@@ -24,12 +32,7 @@ if (argv.standalone) {
 const Canvas = require('./main');
 const canvas = new Canvas({
     mode: serverMode,
-    app: {
-        name: server.appName,
-        version: server.version,
-        description: server.description,
-        license: server.license,
-    },
+    app: app,
     paths: {
         server: server.paths,
         user: user.paths,

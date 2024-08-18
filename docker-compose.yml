@@ -13,7 +13,7 @@ services:
       CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-./config}
       CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-./data}
       CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-./var}
-      CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-./extensions/roles}
+      CANVAS_SERVER_EXT: ${CANVAS_SERVER_EXT:-./extensions}
       CANVAS_USER_HOME: ${CANVAS_USER_HOME:-./user}
       CANVAS_USER_CONFIG: ${CANVAS_USER_CONFIG:-./user/config}
       CANVAS_USER_INDEX: ${CANVAS_USER_INDEX:-./user/index}
@@ -24,7 +24,7 @@ services:
       - ${CANVAS_SERVER_CONFIG}:/opt/canvas-server/config
       - ${CANVAS_SERVER_DATA}:/opt/canvas-server/data
       - ${CANVAS_SERVER_VAR}:/opt/canvas-server/var
-      - ${CANVAS_SERVER_ROLES}:/opt/canvas-server/extensions/roles
+      - ${CANVAS_SERVER_EXT}:/opt/canvas-server/extensions
       - ${CANVAS_USER_HOME}:/opt/canvas-server/user
       - ${CANVAS_USER_CONFIG}:/opt/canvas-server/user/config
       - ${CANVAS_USER_INDEX}:/opt/canvas-server/user/index

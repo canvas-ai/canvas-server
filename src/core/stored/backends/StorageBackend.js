@@ -1,8 +1,12 @@
+// Common interface for all storage backends
+// Should finally switch to TypeScript!
+
 class StorageBackend {
     constructor(config) {
         if (new.target === StorageBackend) {
             throw new TypeError("Cannot construct StorageBackend instances directly");
         }
+
         this.config = config;
         // type: 'local' | 'remote'
         // driver: 's3' | 'gcs' | 'azure' | 'local.file' | 'local.memory'
@@ -27,6 +31,8 @@ class StorageBackend {
     async putBinary(key, data, metadata) {
         throw new Error('putAsBinary method must be implemented');
     }
+
+    // TODO: Add stream support
 
     async getFile(key, options = {}) {
         throw new Error('getFile method must be implemented');

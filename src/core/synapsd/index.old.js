@@ -3,7 +3,7 @@ const debug = require('debug')('canvas:db');
 const EventEmitter = require('eventemitter2');
 
 // Use the lmdb backend
-const Db = require('../db/index.js').lmdb;
+const Db = require('../../services/db');
 
 // App includes
 const Index = require('./index/index.js');
