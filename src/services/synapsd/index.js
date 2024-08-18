@@ -107,6 +107,3 @@ class SynapsD extends EventEmitter {
 }
 
 module.exports = SynapsD;
-
-
-const synapsd = new SynapsD({path: '/tmp/test'});

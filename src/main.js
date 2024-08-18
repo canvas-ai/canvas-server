@@ -12,12 +12,8 @@ const winston = require('winston');
 // Services
 const Db = require('./services/db');
 const Jim = require('./services/jim');
-const IndexD
+const SynapsD = require('./services/synapsd');
 
-const EventD = require('./core/eventd');
-const SynapsD = require('./core/synapsd');
-const NeuralD = require('./core/neurald');
-const StoreD = require('./core/stored');
 
 // Manager classes
 const AppManager = require('./managers/app');
