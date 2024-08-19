@@ -3,7 +3,23 @@
 // Utils
 const debug = require('debug')('canvas:stored');
 const EE = require('eventemitter2');
-const { isFile, isBinary } = require('./utils/common');
+
+// Data ingestion utils
+const {
+    usJson,
+    isFile,
+    isBuffer,
+    isBinary
+} = require('./utils/common');
+const {
+    checksumJson,
+    checksumBuffer,
+    checksumFile,
+    checksumFileArray,
+} = require('./utils/checksums');
+
+const embeddings = require('./utils/embeddings');
+const fileinfo = require('./utils/fileinfo');
 
 // StoreD caching layer
 const Cache = require('./cache');

@@ -29,7 +29,7 @@ class SynapsD extends EventEmitter {
         // Event emitter
         super(options.eventEmitter);
 
-        // Initialize database backend
+        // Initialize database backends
         if (!options.path) { throw new Error('Database path required'); }
         this.#db = new IndexDB(options);
         this.#vectordb = VectorDB.connect(path.join(options.path, 'embeddings'));
@@ -103,6 +103,16 @@ class SynapsD extends EventEmitter {
 
     }
 
+    /**
+     * Features
+     */
+
+    tickFeatureArray(doc, featureArray = []) {
+    }
+
+    untickFeatureArray(doc, featureArray = []) {
+
+    }
 
 }
 
