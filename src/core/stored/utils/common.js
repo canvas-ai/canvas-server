@@ -21,6 +21,7 @@ function isFile(input) {
     }
 }
 
+// https://github.com/juliangruber/isbuffer/blob/master/index.js
 function isBuffer(input) {
     return Buffer.isBuffer(input);
 }
