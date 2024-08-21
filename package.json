@@ -43,6 +43,7 @@
     "flexsearch": "^0.7.31",
     "fs-extra": "^11.1.1",
     "ip": "^2.0.0",
+    "langchain": "^0.2.16",
     "lmdb": "^2.8.5",
     "lokijs": "^1.5.12",
     "lru-ttl-cache": "^2.4.7",

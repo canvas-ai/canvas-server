@@ -5,11 +5,19 @@ const EventEmitter = require('eventemitter2');
 const path = require('path');
 const debug = require('debug')('canvas:service:synapsd');
 
-// App includes
-const IndexDB = require('../db');
-const VectorDB = require('@lancedb/lancedb');
+// Services
+const Db = require('../db');
 
+// App includes
+const MemCache = require('./index/lib/MemCache.js');
+const VectorDB = require('@lancedb/lancedb');
 const BitmapCollection = require('./lib/BitmapCollection.js');
+
+// Constants
+const INTERNAL_BITMAP_ID_MIN = 1000;
+const INTERNAL_BITMAP_ID_MAX = 1000000;
+
+
 
 /**
  * SynapsD index class
@@ -18,6 +26,8 @@ const BitmapCollection = require('./lib/BitmapCollection.js');
 class SynapsD extends EventEmitter {
 
     #db;
+    #indexdb;
+    #chunkdb;
     #vectordb;
 
     constructor(options = {
@@ -58,6 +68,32 @@ class SynapsD extends EventEmitter {
         });
 
     }
+
+    /*
+    createIndex(name, backend) { }
+
+    listIndexes() {}
+
+    hasIndex(name) {}
+
+    openIndex(name) {}
+
+    createBitmap(name) {}
+
+    clearBitmap(name) {}
+
+    index.tree
+    index.layers
+
+    index.sessions
+
+    index.devices
+    index.apps
+    index.roles
+    index.identities
+
+    ? index.users
+    */
 
     insert(doc, contextArray = [], featureArray = [], filterArray = []) {
 
