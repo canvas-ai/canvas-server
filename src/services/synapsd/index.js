@@ -9,7 +9,6 @@ const debug = require('debug')('canvas:service:synapsd');
 const Db = require('../db');
 
 // App includes
-const MemCache = require('./index/lib/MemCache.js');
 const VectorDB = require('@lancedb/lancedb');
 const BitmapCollection = require('./lib/BitmapCollection.js');
 
@@ -20,15 +19,12 @@ const INTERNAL_BITMAP_ID_MAX = 1000000;
 
 
 /**
- * SynapsD index class
+ * Simplified SynapsD index class
  */
 
 class SynapsD extends EventEmitter {
 
     #db;
-    #indexdb;
-    #chunkdb;
-    #vectordb;
 
     constructor(options = {
         backupOnOpen: false,
@@ -41,32 +37,31 @@ class SynapsD extends EventEmitter {
 
         // Initialize database backends
         if (!options.path) { throw new Error('Database path required'); }
-        this.#db = new IndexDB(options);
-        this.#vectordb = VectorDB.connect(path.join(options.path, 'embeddings'));
+        this.#db = new Db(options);
 
         // Initialize in-memory bitmap cache
         this.cache = new Map();
 
+        // Initialize system bitmap collection
         this.system = new BitmapCollection({
             db: this.#db.createDataset('system'),
             cache: this.cache,
         });
 
-        this.context = new BitmapCollection({
-            db: this.#db.createDataset('contexts'),
+        // Initialize hashmaps
+        this.hashmaps = this.#db.createDataset('hashmaps');
+
+        // Initialize global bitmap collection
+        this.bitmaps = new BitmapCollection({
+            db: this.#db.createDataset('bitmaps'),
             cache: this.cache,
         });
 
-        this.feature = new BitmapCollection({
-            db: this.#db.createDataset('features'),
-            cache: this.cache,
-        });
+        // RAG
+        this.chunks = this.#db.createDataset('chunks');
+        this.embeddings = VectorDB.connect(path.join(options.path, 'embeddings'));
 
-        this.filter = new BitmapCollection({
-            db: this.#db.createDataset('filters'),
-            cache: this.cache,
-        });
-
+        debug('SynapsD initialized');
     }
 
     /*
@@ -93,60 +88,56 @@ class SynapsD extends EventEmitter {
     index.identities
 
     ? index.users
+
+    context/<layerid>
+    feature/<mime/type/application/json>
+    custom/<tag>/<foo>
     */
 
-    insert(doc, contextArray = [], featureArray = [], filterArray = []) {
+
+    insert(doc, bitmapArray = []) {
 
     }
 
-    update(doc, contextArray = [], featureArray = [], filterArray = []) {
+    update(doc, bitmapArray = []) {
 
     }
 
-    delete(doc, contextArray = [], featureArray = [], filterArray = []) {
+    remove(id, bitmapArray = []) {
 
     }
 
-    find(query, contextArray = [], featureArray = [], filterArray = []) {
+    delete(id) {
 
     }
 
-    query(query) {
+    get(id) {
 
     }
 
-    get(doc) {
+    list(andArray = [], orArray = [], filterArray = []) {
 
     }
 
-    list() {
+    has(id, andArray = [], orArray = [], filterArray = []) {
+
+
+    find(query, andArray = [], orArray = [], filterArray = []) {
 
     }
 
-    has(doc) {
+    query(query) {}
 
-    }
-
-    size() {
-
-    }
-
-    clear() {
-
-    }
-
-    close() {
-
-    }
 
     /**
-     * Features
+     * Metadata document schemas
      */
 
-    tickFeatureArray(doc, featureArray = []) {
+    listSchemas() {
+
     }
 
-    untickFeatureArray(doc, featureArray = []) {
+    getSchema(name) {
 
     }
 
