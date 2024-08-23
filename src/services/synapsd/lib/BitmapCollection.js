@@ -1,7 +1,7 @@
 const RoaringBitmap32 = require('roaring/RoaringBitmap32');
 const Bitmap = require('./Bitmap');
 const { uuid12 } = require('../../../utils/uuid');
-const debug = require('debug')('canvas:service:synapsd:BitmapCollection');
+const debug = require('debug')('canvas:synapsd:BitmapCollection');
 
 class BitmapCollection {
 
@@ -103,6 +103,20 @@ class BitmapCollection {
         return keyArray.map(key => this.untickSync(key, ids));
     }
 
+    tickAllSync(ids) {
+        debug('Ticking all bitmaps in collection for IDs', ids);
+        for (const key of this.store.getKeys()) {
+            this.tickSync(key, ids);
+        }
+    }
+
+    untickAllSync(ids) {
+        debug('Unticking all bitmaps in collection for IDs', ids);
+        for (const key of this.store.getKeys()) {
+            this.untickSync(key, ids);
+        }
+    }
+
     /**
      * Logical operations
      */
@@ -115,20 +129,28 @@ class BitmapCollection {
 
         let result = null;
         for (const key of keys) {
-            const bitmap = this.getBitmap(key);
+            const bitmap = this.getBitmap(key, true);
             if (bitmap && bitmap.size > 0) {
                 if (result === null) { result = bitmap.clone();
                 } else { result.andInPlace(bitmap); }
             }
         }
 
-        return result || new this.RoaringBitmap32();
+        return result;
     }
 
 
     OR(keys) {
         debug('OR', keys);
-        return RoaringBitmap32.orMany(keys.map(key => this.getBitmap(key)).filter(Boolean));
+        return RoaringBitmap32.orMany(keys.map(key => this.getBitmap(key, true)).filter(Boolean));
+    }
+
+    OR(keyArray) {
+        debug(`${this.tag} -> OR(): keyArray: "${keyArray}"`);
+        if (!Array.isArray(keyArray)) {throw new TypeError(`First argument must be an array of bitmap keys, "${typeof keyArray}" given`);}
+        // Filter out invalid bitmaps, for OR we are pretty tolerant (for now at least)
+        const validBitmaps = keyArray.map(key => this.getBitmap(key)).filter(Boolean);
+        return validBitmaps.length ? RoaringBitmap32.orMany(validBitmaps) : new RoaringBitmap32();
     }
 
     XOR(keys) {
@@ -142,7 +164,11 @@ class BitmapCollection {
      */
 
     listBitmaps() {
-        return this.store.getKeys();
+        let bitmapList = [];
+        for (const key of this.store.getKeys()) {
+            bitmapList.push(key);
+        }
+        return bitmapList;
     }
 
     clearCache() {

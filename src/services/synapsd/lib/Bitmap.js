@@ -1,5 +1,5 @@
 const { RoaringBitmap32 } = require('roaring');
-const debug = require('debug')('canvas:service:synapsd:bitmap');
+const debug = require('debug')('canvas:synapsd:bitmap');
 
 class Bitmap extends RoaringBitmap32 {
     constructor(oidArrayOrBitmap, options = {}) {

@@ -19,8 +19,6 @@ class Tab extends BaseDocument {
             index: {
                 primaryChecksumAlgorithm: 'sha1',
                 primaryChecksumFields: ['data.url'],
-                staticFeatureBitmapFields: [],
-                dynamicFeatureBitmapFields: [],
                 fullTextIndexFields: ['data.title'],
                 embeddingFields: ['data.title'],
                 ...options.index,
@@ -46,8 +44,6 @@ class Tab extends BaseDocument {
             ...base.index,
             primaryChecksumAlgorithm: 'sha1',
             primaryChecksumFields: ['document.url'],
-            staticFeatureBitmapFields: [],
-            dynamicFeatureBitmapFields: [],
             fullTextIndexFields: ['document.title'],
             embeddingFields: ['document.title'],
 
@@ -57,7 +53,6 @@ class Tab extends BaseDocument {
             dataContentType: DOCUMENT_DATA_TYPE,
             dataContentEncoding: DOCUMENT_DATA_ENCODING,
         };
-        base.data = [];
         return base;
     }
 

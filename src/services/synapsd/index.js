@@ -3,7 +3,7 @@
 // Utils
 const EventEmitter = require('eventemitter2');
 const path = require('path');
-const debug = require('debug')('canvas:service:synapsd');
+const debug = require('debug')('canvas:synapsd');
 
 // Services
 const Db = require('../db');
@@ -47,21 +47,21 @@ class SynapsD extends EventEmitter {
         if (!options.path) { throw new Error('Database path required'); }
         this.#db = new Db(options);
 
-        // Initialize in-memory bitmap cache
+        // Initialize a global in-memory bitmap cache
         this.cache = new Map();
 
         // Main document store
         this.documents = this.#db.createDataset('documents'); // id -> document
 
-        // Initialize hashmaps
-        this.hashmaps = this.#db.createDataset('checksums'); // algo/checksum -> id
+        // Initialize inverted checksum index
+        this.hash2id = this.#db.createDataset('checksums'); // algo/checksum -> id
 
         // Initialize bitmap store
-        this.bitmaps = this.#db.createDataset('bitmaps');
+        this.bitmaps = this.#db.createDataset('bitmaps');   // id -> bitmap
 
-        // Initialize bitmap collection
+        // Initialize bitmap collections
         this.contexts = new BitmapCollection(
-            this.bitmaps,
+            this.bitmaps.createDataset('contexts'),
             this.cache,
             {
                 tag: 'contexts',
@@ -70,7 +70,7 @@ class SynapsD extends EventEmitter {
             });
 
         this.features = new BitmapCollection(
-            this.bitmaps,
+            this.bitmaps.createDataset('features'),
             this.cache,
             {
                 tag: 'features',
@@ -86,29 +86,29 @@ class SynapsD extends EventEmitter {
     }
 
     async insert(document, contextArray = [], featureArray = []) {
-        debug('Inserting document', document);
+        debug('Inserting document to index', document);
         if (!(document instanceof DOCUMENT_SCHEMAS.get('data/abstraction/document'))) {
             throw new Error('Invalid document type');
         }
 
-        if (!document.validate()) {
-            throw new Error('Invalid document');
-        }
+        if (!document.validate()) { throw new Error('Invalid document'); }
 
         let primaryChecksum = document.getChecksum(); //document.checksums.get(document.index.primaryChecksumAlgorithm);
         if (!primaryChecksum) { throw new Error('Document primary checksum not found'); }
 
-        let existingId = await this.findIdByChecksum(document.index.primaryChecksumAlgorithm, primaryChecksum);
+        let existingId = await this.checksumToId(document.index.primaryChecksumAlgorithm, primaryChecksum);
         if (existingId) {
-            debug(`Document already exists: ${existingId}`);
-            return this.update(document, contextArray, featureArray);
+            debug(`Document already exists, doc ID: ${existingId}`);
+            return existingId;
         }
 
         // Insert document to database
         await this.documents.put(document.id, document); //document.toJSON()
 
-        // Update hashmaps
-        await this.insertChecksum(document.index.primaryChecksumAlgorithm, primaryChecksum, document.id);
+        // Update checksums
+        for (const [algo, checksum] of document.checksums) {
+            await this.insertChecksum(algo, checksum, document.id);
+        }
 
         // Update bitmaps
         this.contexts.tickManySync(contextArray, document.id);
@@ -119,59 +119,100 @@ class SynapsD extends EventEmitter {
 
         // Return document.id
         return document.id;
-
     }
 
-    async update(doc, bitmapArray = []) {
-        
+    async update(document, contextArray = [], featureArray = []) {
+        debug('Updating document', document);
+        if (!(document instanceof DOCUMENT_SCHEMAS.get('data/abstraction/document'))) {
+            throw new Error('Invalid document type');
+        }
+        // TODO
+        return document.id;
     }
 
-    async remove(id, bitmapArray = []) {
+    async remove(id, contextArray = [], featureArray = []) {
+        debug(`Removing document ${id} from bitmap indexes ctx: ${contextArray} ftr: ${featureArray}`);
+        let document = await this.documents.get(id);
+        if (!document) { return false; }
 
+        if (contextArray.length > 0) {
+            this.contexts.untickManySync(contextArray, id);
+        }
+
+        if (featureArray.length > 0) {
+            this.features.untickManySync(featureArray, id);
+        }
+
+        this.emit('index:remove', id);
+        return id;
     }
 
     async delete(id) {
+        debug(`Deleting document ${id} from index`);
+        let document = await this.documents.get(id);
+        if (!document) { return false; }
 
+        // Remove document from database
+        await this.documents.del(id);
+
+        // Remove checksums
+        for (const [algo, checksum] of document.checksums) {
+            await this.hash2id.del(`${algo}/${checksum}`);
+        }
+
+        // Remove bitmaps
+        this.contexts.untickAllSync(id);
+        this.features.untickAllSync(id);
+
+        // Emit event
+        this.emit('index:delete', id);
+        return id;
     }
 
     async get(id) {
+        debug(`Getting document ${id}`);
+        if (!id) { throw new Error('Document ID required'); }
+        if (!Number.isInteger(id)) { throw new Error('Document ID must be an integer'); }
+
+        let document = await this.documents.get(id);
+        if (!document) { return null; }
+
+        return document;
+    }
+
+    async list(contextArray = [], featureArray = [], filterArray = []) {
+        debug(`Listing documents ctx: ${contextArray} ftr: ${featureArray} flt: ${filterArray}`);
+        let result = [];
+        let contextBitmap = this.contexts.AND(contextArray);
+        let featureBitmap = this.features.OR(featureArray);
+        console.log(contextBitmap);
+        console.log(featureBitmap);
+
+
+        return result;
+    }
+
+    async has(id, contextArray = [], featureArray = [], filterArray = []) {
 
     }
 
-    async list(andArray = [], orArray = [], filterArray = []) {
-        let bitmapArray = await this.bitmaps.getMany(andArray);
-        if (bitmapArray.length === 0) { return []; }
-        let idArray = [];
-        let resultBitmap;
-        resultBitmap = this.contexts.AND(andArray);
-        idArray = resultBitmap.toArray();
-//        for (let bitmap of bitmapArray) {}
-        return idArray;
-
-
-    }
-
-    async has(id, andArray = [], orArray = [], filterArray = []) {
-
-    }
-
-    async find(query, andArray = [], orArray = [], filterArray = []) {
+    async find(query, contextArray = [], featureArray = [], filterArray = []) {
 
     }
 
     async insertChecksum(algo, checksum, id) {
-        return await this.hashmaps.put(`${algo}/${checksum}`, id);
+        return await this.hash2id.put(`${algo}/${checksum}`, id);
     }
 
-    async findIdByChecksum(algo, checksum) {
-        return await this.hashmaps.get(`${algo}/${checksum}`);
+    async checksumToId(algo, checksum) {
+        return await this.hash2id.get(`${algo}/${checksum}`);
     }
 
     async query(query) {}
 
 
     /**
-     * Metadata document schemas
+     * Document schemas
      */
 
     listSchemas() {
@@ -193,7 +234,7 @@ class SynapsD extends EventEmitter {
 
     async close() {
         await this.#db.close();
-        debug('SynapsD closed');
+        debug('SynapsD Index database closed');
     }
 
 }

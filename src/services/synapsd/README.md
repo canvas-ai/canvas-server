@@ -39,12 +39,12 @@ Main function is to:
   - `device/os/<os>` | bitmap
   - `action/<action>` | bitmap
 - Context ("user" context)
-  - `context/<uuid>` | bitmap; Implicit AND on all context bitmaps
+  - `context/<uuid>` | bitmap; **Implicit AND** on all context bitmaps
 - Features
   - `data/abstraction/{tab,note,file,email,...}` | bitmap
   - `mime/application/json` | bitmap
   - `data/abstraction/email/attachment` | bitmap  
-  - `custom/<category>/<tag>` | bitmap; (custom/browser/chrome or custom/tag/work; AND, OR)  
+  - `custom/<category>/<tag>` | bitmap; (custom/browser/chrome or custom/tag/work; **implicit OR**, NOT support via ! prefix)  
 - Filters
   - `date/YYYYmmdd` | bitmap; AND, OR
   - `name/<bitmap-based-fts-test :)>` | bitmap
