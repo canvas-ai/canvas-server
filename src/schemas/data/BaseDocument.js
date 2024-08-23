@@ -27,11 +27,9 @@ class Document {
 
         this.index = {
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-            primaryChecksumFields: ['document'],
-            staticFeatureBitmapFields: [],
-            dynamicFeatureBitmapFields: [],
-            fullTextIndexFields: [],
-            embeddingFields: ['document'],
+            primaryChecksumFields: ['data'],
+            fullTextIndexFields: ['data'],
+            embeddingFields: ['data'],
             ...options.index,
         };
 
@@ -41,7 +39,6 @@ class Document {
             dataContentEncoding: options.meta?.dataContentEncoding ?? DEFAULT_DOCUMENT_DATA_ENCODING,
             ...options.meta,
         };
-
         this.data = options.data ?? {};
 
         this.storagePaths = options.storagePaths ?? [];
@@ -56,19 +53,6 @@ class Document {
     update(document) {
         Object.assign(this, document);
         this.updated_at = new Date().toISOString();
-        /*
-        this.id = document.id;
-        this.checksums = new Map(Object.entries(document.checksums));
-        this.data = document.data;
-        if (document.meta?.dataContentType) {
-            this.meta.dataContentType = document.meta.dataContentType;
-        }
-        // TODO: Fixme, this assumes that the features are always an array
-        if (document.features) {
-            this.features = new Set(document.features);
-        }
-        this.updated_at = new Date().toISOString();
-        */
     }
 
     /**
@@ -93,11 +77,12 @@ class Document {
 
     hasStoragePath(path) { return this.storagePaths.includes(path); }
 
+
     /**
      * Checksum helpers
      */
 
-    addChecksum(algorithm, value) {
+    addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
         this.checksums.set(algorithm, value);
     }
 
@@ -196,6 +181,7 @@ class Document {
             checksums: Object.fromEntries(this.checksums),
             meta: this.meta,
             data: this.data,
+            storagePaths: this.storagePaths,
             features: Array.from(this.features),
             parent_id: this.parent_id,
             versions: this.versions,
@@ -237,8 +223,6 @@ class Document {
     static validate(document) {
         if (!document) throw new Error('Document is not defined');
         return document.schema &&
-               Array.isArray(document.data) &&
-               document.data.length > 0 &&
                document.checksums instanceof Map &&
                document.checksums.has(document.index.primaryChecksumAlgorithm) &&
                document.meta.dataContentType &&
@@ -259,7 +243,8 @@ class Document {
             index: 'object',
             checksums: 'array', // Set
             meta: 'object',
-            data: 'array',
+            data: 'object',
+            storagePaths: 'array',
             features: 'array',  // Set
             parent_id: 'string',
             versions: 'array',
