@@ -22,14 +22,14 @@ class LmdbBackend extends StorageBackend {
 
     constructor(config) {
         debug('Initializing StoreD LMDB backend..');
-        if (!config.rootPath || typeof config.rootPath !== 'string') {
-            throw new Error('No or Invalid rootPath configuration');
+        if (!config.path || typeof config.path !== 'string') {
+            throw new Error('No or Invalid path configuration');
         }
 
         super(config);
         this.name = 'lmdb';
         this.description = 'Canvas StoreD LMDB Backend';
-        this.rootPath = config.rootPath;
+        this.path = config.path;
         this.hashAlgorithm = config?.hashAlgorithm || DEFAULT_HASH_ALGO;
         this.metadataExtension = config?.metadataExtension || DEFAULT_METADATA_EXTENSION;
     }

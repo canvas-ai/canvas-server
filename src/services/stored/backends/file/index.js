@@ -1,11 +1,11 @@
 // Utils
 const path = require('path');
 const fs = require('fs').promises;
-const debug = require('debug')('canvas:stored:backend:files');
+const debug = require('debug')('canvas:stored:backend:file');
 const {
     calculateBinaryChecksum,
     calculateObjectChecksum,
-    calculateFileChecksum } = require('../../utils/checksum');
+    calculateFileChecksum } = require('../../utils/checksums');
 
 const { isFile, isBinary } = require('../../utils/common');
 

@@ -19,58 +19,6 @@ class BitmapCollection {
     }
 
     /**
-     * Bitmap index ops
-     */
-
-    getBitmap(key, autoCreateBitmap = false) {
-        debug('Getting bitmap', key, 'autoCreateBitmap:', autoCreateBitmap);
-        if (this.cache.has(key)) { return this.cache.get(key); }
-
-        const serializedBitmap = this.store.get(key);
-        if (!serializedBitmap) {
-            debug('Bitmap not found', key);
-            return (autoCreateBitmap) ? this.createBitmap(key) : null;
-        }
-
-        const bitmap = new Bitmap(RoaringBitmap32.deserialize(serializedBitmap, true), { key, rangeMin: this.rangeMin, rangeMax: this.rangeMax });
-        this.cache.set(key, bitmap);
-        return bitmap;
-    }
-
-    setBitmap(key, bitmap) {
-        debug('Storing bitmap', key);
-        if (!key) { throw new Error('Key is required'); }
-        if (!bitmap) { throw new Error('Bitmap is required'); }
-        if (!(bitmap instanceof Bitmap)) { throw new Error('Bitmap must be an instance of Bitmap'); }
-        const serializedBitmap = bitmap.serialize(true);
-        this.store.put(key, serializedBitmap);
-        this.cache.set(key, bitmap);
-    }
-
-    createBitmap(key, idArray = []) {
-        debug(`Creating bitmap "${key}" with ${idArray.length} objects`);
-        const bitmap = new Bitmap(idArray, { key, rangeMin: this.rangeMin, rangeMax: this.rangeMax });
-        this.setBitmap(key, bitmap);
-        return bitmap;
-    }
-
-    renameBitmap(oldKey, newKey) {
-        debug(`Renaming bitmap "${oldKey}" to "${newKey}"`);
-        const bitmap = this.getBitmap(oldKey);
-        if (!bitmap) { return null; }
-        this.deleteBitmap(oldKey);
-        this.setBitmap(newKey, bitmap.serialize());
-        return bitmap;
-    }
-
-    deleteBitmap(key) {
-        debug(`Deleting bitmap "${key}"`);
-        this.cache.delete(key);
-        this.store.del(key);
-    }
-
-
-    /**
      * Bitmap operations
      */
 
@@ -78,7 +26,7 @@ class BitmapCollection {
         debug('Ticking', key, ids);
         const bitmap = this.getBitmap(key, true);
         bitmap.addMany(Array.isArray(ids) ? ids : [ids]);
-        this.setBitmap(key, bitmap);
+        this.saveBitmap(key, bitmap);
         return bitmap;
     }
 
@@ -87,7 +35,7 @@ class BitmapCollection {
         const bitmap = this.getBitmap(key, false);
         if (!bitmap) return null;
         bitmap.removeMany(Array.isArray(ids) ? ids : [ids]);
-        this.setBitmap(key, bitmap);
+        this.saveBitmap(key, bitmap);
         return bitmap;
     }
 
@@ -121,28 +69,25 @@ class BitmapCollection {
      * Logical operations
      */
 
-    AND(keys) {
-        debug('AND', keys);
-        if (!Array.isArray(keys)) {
-            throw new TypeError(`First argument must be an array of bitmap keys, "${typeof keys}" given`);
-        }
+    AND(keyArray) {
+        debug(`${this.tag} -> AND(): keyArray: "${keyArray}"`);
+        if (!Array.isArray(keyArray)) {throw new TypeError(`First argument must be an array of bitmap keys, "${typeof keyArray}" given`);}
 
-        let result = null;
-        for (const key of keys) {
+        let partial = null;
+        for (const key of keyArray) {
             const bitmap = this.getBitmap(key, true);
-            if (bitmap && bitmap.size > 0) {
-                if (result === null) { result = bitmap.clone();
-                } else { result.andInPlace(bitmap); }
+
+            // Initialize partial with the first non-empty bitmap
+            if (!partial) {
+                partial = bitmap;
+                continue;
             }
+            // Perform AND operation
+            partial.andInPlace(bitmap);
         }
 
-        return result;
-    }
-
-
-    OR(keys) {
-        debug('OR', keys);
-        return RoaringBitmap32.orMany(keys.map(key => this.getBitmap(key, true)).filter(Boolean));
+        // Return partial or an empty roaring bitmap
+        return partial || new RoaringBitmap32();
     }
 
     OR(keyArray) {
@@ -153,15 +98,87 @@ class BitmapCollection {
         return validBitmaps.length ? RoaringBitmap32.orMany(validBitmaps) : new RoaringBitmap32();
     }
 
-    XOR(keys) {
-        debug('XOR', keys);
-        return RoaringBitmap32.xorMany(keys.map(key => this.getBitmap(key)).filter(Boolean));
-    }
+    XOR(keyArray) {
+        debug(`${this.tag} -> XOR(): keyArray: "${keyArray}"`);
+        if (!Array.isArray(keyArray)) {
+            throw new TypeError(`First argument must be an array of bitmap keys, "${typeof keyArray}" given`);
+        }
 
+        const validBitmaps = [];
+        for (const key of keyArray) {
+            const bitmap = this.getBitmap(key, false);
+            if (bitmap && bitmap instanceof Bitmap && !bitmap.isEmpty()) {
+                validBitmaps.push(bitmap);
+            }
+        }
+
+        return validBitmaps.length > 0
+            ? RoaringBitmap32.xorMany(validBitmaps)
+            : new RoaringBitmap32();
+    }
 
     /**
      * Utils
      */
+
+    getBitmap(key, autoCreateBitmap = false) {
+        debug('Getting bitmap', key, 'autoCreateBitmap:', autoCreateBitmap);
+        if (this.cache.has(key)) {
+            debug(`Returning Bitmap key "${key}" from cache`);
+            return this.cache.get(key);
+        }
+
+        // Load from store
+        if (this.hasBitmap(key)) { return this.loadBitmap(key); }
+
+        debug(`Bitmap at key ${key} found in the persistent store`);
+        if (!autoCreateBitmap) { return null; }
+
+        let bitmap = this.createBitmap(key);
+        if (!bitmap) {throw new Error(`Unable to create bitmap with key ID "${key}"`);}
+
+        return bitmap;
+    }
+
+    createBitmap(key, oidArrayOrBitmap = null) {
+        debug(`${this.tag} -> createBitmap(): Creating bitmap with key ID "${key}"`);
+
+        if (this.hasBitmap(key)) {
+            debug(`Bitmap with key ID "${key}" already exists`);
+            return false;
+        }
+
+        const bitmapData = this.#parseInput(oidArrayOrBitmap);
+        const bitmap = new Bitmap(bitmapData, {
+            type: 'static',
+            key: key,
+            rangeMin: this.rangeMin,
+            rangeMax: this.rangeMax,
+        });
+
+        this.saveBitmap(key, bitmap);
+        debug(`Bitmap with key ID "${key}" created successfully`);
+        return bitmap;
+    }
+
+    renameBitmap(oldKey, newKey) {
+        debug(`Renaming bitmap "${oldKey}" to "${newKey}"`);
+        const bitmap = this.getBitmap(oldKey);
+        if (!bitmap) { return null; }
+        this.deleteBitmap(oldKey);
+        this.saveBitmap(newKey, bitmap.serialize());
+        return bitmap;
+    }
+
+    deleteBitmap(key) {
+        debug(`Deleting bitmap "${key}"`);
+        this.cache.delete(key);
+        this.store.del(key);
+    }
+
+    hasBitmap(key) {
+        return this.store.has(key);
+    }
 
     listBitmaps() {
         let bitmapList = [];
@@ -171,9 +188,58 @@ class BitmapCollection {
         return bitmapList;
     }
 
+    saveBitmap(key, bitmap) {
+        debug('Storing bitmap to persistent store', key);
+        if (!key) { throw new Error('Key is required'); }
+        if (!bitmap) { throw new Error('Bitmap is required'); }
+        if (!(bitmap instanceof Bitmap)) { throw new Error('Bitmap must be an instance of Bitmap'); }
+        const serializedBitmap = bitmap.serialize(true);
+        this.store.put(key, serializedBitmap);
+        this.cache.set(key, bitmap);
+    }
+
+    loadBitmap(key) {
+        debug(`Loading bitmap with key ID "${key}" from persistent store`);
+        let bitmapData = this.store.get(key);
+        if (!bitmapData) {
+            debug(`Unable to load bitmap "${key}" from the database`);
+            return null;
+        }
+
+        let bitmap = new RoaringBitmap32();
+        return Bitmap.create(bitmap.deserialize(bitmapData, true), {
+            type: 'static',
+            key: key,
+            rangeMin: this.rangeMin,
+            rangeMax: this.rangeMax,
+        });
+    }
+
     clearCache() {
         this.cache.clear();
     }
+
+    /**
+     * Internal methods (sync, using a Map() like interface)
+     */
+
+    #parseInput(input) {
+        if (!input) {
+            debug('Creating new empty bitmap');
+            return new RoaringBitmap32();
+        } else if (input instanceof RoaringBitmap32) {
+            debug(`RoaringBitmap32 supplied as input with ${input.size} elements`);
+            return input;
+        } else if (Array.isArray(input)) {
+            debug(`OID Array supplied as input with ${input.length} elements`);
+            return new RoaringBitmap32(input);
+        } else if (typeof input === 'number') {
+            return input;
+        } else {
+            throw new TypeError(`Invalid input type: ${typeof input}`);
+        }
+    }
+
 }
 
 module.exports = BitmapCollection;

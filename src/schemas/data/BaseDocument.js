@@ -233,6 +233,7 @@ class Document {
         return this.toJSON();
     }
 
+    // We should use a proper schema library for this
     static get schemaDefinition() {
         return {
             id: 'string',

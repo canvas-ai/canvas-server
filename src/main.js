@@ -159,41 +159,35 @@ class Canvas extends EventEmitter {
         });
 
         // Canvas data/storage service
-        this.storage = new StoreD({
-            logger: this.logger,
-            extensionRoot: path.join(this.#server.paths.ext, 'storage'),
+        this.storage = new Storage({
             cache: {
                 enabled: true,
                 maxAge: -1,
-                rootPath: this.#user.paths.cache,
+                rootPath: user.paths.cache,
                 cachePolicy: 'pull-through',
             },
-            // TODO: Replace with config.get('storage')
-            // canvas://{instance}:{backend}/{type}/{identifier}
             backends: {
-                local: {
-                    file: {
-                        enabled: true,
-                        rootPath: this.#user.paths.data,
-                    },
-                    lmdb: {
-                        enabled: true,
-                        rootPath: this.#user.paths.db,
-                        backupPath: path.join(this.#user.paths.db, 'backup'),
+                file: {
+                    enabled: true,
+                    priority: 1,
+                    type: 'local',
+                    backend: 'file',
+                    backendConfig: {
+                        path: user.paths.data,
+                    }
+                },
+                db: {
+                    enabled: true,
+                    primary: true,
+                    type: 'local',
+                    backend: 'lmdb',
+                    backendConfig: {
+                        path: user.paths.db,
+                        backupPath: path.join(user.paths.db, 'backup'),
                         backupOnOpen: true,
                         backupOnClose: false,
                         compression: true,
                     },
-                    // Assuming canvas-server is running locally on the same machine
-                    fs: (this.#mode === 'full') ? {
-                        enabled: true,
-                        watch: true,
-                        allowedPaths: [
-                            path.join(this.#device.user.homedir, 'Documents'),
-                            path.join(this.#device.user.homedir, 'Desktop'),
-                            path.join(this.#device.user.homedir, 'Downloads'),
-                        ],
-                    } : { enabled: false },
                 },
             },
         });

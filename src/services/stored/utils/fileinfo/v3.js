@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const mime = require('mime');
 const log = console.log;
-const device = require('../../../context/env/device');
 
 
 // TODO add win32 bins
@@ -37,10 +36,10 @@ module.exports = async function(fullPath) {
     file.contentExt = mime.getExtension(file.contentType);
 
     if (!file.contentType || !file.contentExt) {
-        log('Fallback to the unix file command wrapper');      
+        log('Fallback to the unix file command wrapper');
         file.contentType = getMimeTypeSync(fullPath);
         file.contentExt = mime.getExtension(file.contentType);
-    } 
+    }
 
     return file;
 
@@ -48,7 +47,7 @@ module.exports = async function(fullPath) {
 
 function getMimeType(file, cb) {
     cp.execFile(fileExec, fileFlags.concat(Array.isArray(file) ? file : [file]), function (err, stdout) {
-        stdout = stdout.trim();    
+        stdout = stdout.trim();
         if (err) {
             if (stdout) {
                 err.message = stdout;

@@ -1,8 +1,8 @@
 'use strict';
 
 // Utils
-const debug = require('debug')('canvas:stored');
 const EE = require('eventemitter2');
+const debug = require('debug')('canvas:stored');
 
 // Data ingestion utils
 const {
@@ -23,9 +23,6 @@ const fileinfo = require('./utils/fileinfo');
 
 // StoreD caching layer
 const Cache = require('./cache');
-
-// StoreD backend loader
-const BackendLoader = require('./BackendLoader');
 
 
 /**
@@ -57,6 +54,16 @@ class Stored extends EE {
         // Initialize utils
         this.config = config;
         this.logger = config.logger || console; // will break, fixme
+        this.utils = {
+            isJson,
+            isFile,
+            isBuffer,
+            isBinary,
+            checksumJson,
+            checksumBuffer,
+            checksumFile,
+            checksumFileArray
+        };
 
         // Initialize global cache
         this.cache = new Cache(this.config.cache);
@@ -64,12 +71,12 @@ class Stored extends EE {
         // Initialize backends
         // Naming convention is not very flexible but should be enough for now
         // canvas://{instance}:{backend}/{type}/{identifier}
-        // canvas://local:lmdb/document/sha1-hash
+        // canvas://local:lmdb/checksum/sha1/hash
+        // canvas://local:lmdb/id/1234
         // canvas://office:s3/file/path/to/object
         // canvas://remote:api/blob/12345
         // canvas://deviceid:fs/path/to/indexed/file
         this.backends = {};
-        this.backendLoader = new BackendLoader( /* ./backends + ../extensions/storage/backends */ );
         this.#initializeBackends();
     }
 
@@ -278,17 +285,12 @@ class Stored extends EE {
     }
 
     #initializeBackends() {
-        for (const [name, backendConfig] of Object.entries(this.config.backends)) {
-            if (!backendConfig.driver) {
-                throw new Error(`No driver specified for backend ${name} at config.backends.${name}.driver`);
-            }
-
-            if (!backendConfig.driverConfig) {
-                throw new Error(`No driver configuration specified for backend ${name} at config.backends.${name}.driverConfig`);
-            }
-
-            const BackendClass = this.backendLoader.getBackendClass(backendConfig.driver);
-            this.backends[name] = new BackendClass(backendConfig.driverConfig);
+        for (const [name, config] of Object.entries(this.config.backends)) {
+            const backend = config.backend;
+            const backendConfig = config.backendConfig;
+            // Load backend class
+            const BackendClass = require(`./backends/${backend}`);
+            this.backends[name] = new BackendClass(backendConfig);
         }
     }
 }

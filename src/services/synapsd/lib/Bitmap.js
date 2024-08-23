@@ -2,7 +2,7 @@ const { RoaringBitmap32 } = require('roaring');
 const debug = require('debug')('canvas:synapsd:bitmap');
 
 class Bitmap extends RoaringBitmap32 {
-    constructor(oidArrayOrBitmap, options = {}) {
+    constructor(oidArrayOrBitmap = [], options = {}) {
         super(oidArrayOrBitmap);
 
         this.type = options.type || 'static';
@@ -10,15 +10,15 @@ class Bitmap extends RoaringBitmap32 {
             throw new Error('Bitmap key required');
         }
         this.key = options.key;
-
         if (!options.rangeMin || !options.rangeMax) {
             throw new Error(`Invalid range: ${options.rangeMin} - ${options.rangeMax}`);
         }
-
         this.rangeMin = options.rangeMin;
         this.rangeMax = options.rangeMax;
+
         debug(`Bitmap "${this.key}" type ${this.type}, ID range: ${this.rangeMin} - ${this.rangeMax} initialized`);
         debug(`Bitmap "${this.key}" has ${this.size} objects`);
+        debug(`Bitmap instance of RoaringBitmap32: ${this instanceof RoaringBitmap32}`);
     }
 
     tick(oid) {
