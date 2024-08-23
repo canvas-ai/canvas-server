@@ -16,10 +16,18 @@ const BitmapCollection = require('./lib/BitmapCollection.js');
 const INTERNAL_BITMAP_ID_MIN = 1000;
 const INTERNAL_BITMAP_ID_MAX = 1000000;
 
+// Schemas (temporary implementation, MVP)
+const DOCUMENT_SCHEMAS = new Map();
+DOCUMENT_SCHEMAS.set('data/abstraction/document', require('../../schemas/data/BaseDocument.js'));
+DOCUMENT_SCHEMAS.set('data/abstraction/file', require('../../schemas/data/abstractions/File.js'));
+DOCUMENT_SCHEMAS.set('data/abstraction/note', require('../../schemas/data/abstractions/Note.js'));
+DOCUMENT_SCHEMAS.set('data/abstraction/tab', require('../../schemas/data/abstractions/Tab.js'));
+DOCUMENT_SCHEMAS.set('data/abstraction/todo', require('../../schemas/data/abstractions/Todo.js'));
+DOCUMENT_SCHEMAS.set('data/abstraction/app', require('../../schemas/data/abstractions/App.js'));
 
 
 /**
- * Simplified SynapsD index class
+ * SynapsD index class
  */
 
 class SynapsD extends EventEmitter {
@@ -42,20 +50,33 @@ class SynapsD extends EventEmitter {
         // Initialize in-memory bitmap cache
         this.cache = new Map();
 
-        // Initialize system bitmap collection
-        this.system = new BitmapCollection({
-            db: this.#db.createDataset('system'),
-            cache: this.cache,
-        });
+        // Main document store
+        this.documents = this.#db.createDataset('documents'); // id -> document
 
         // Initialize hashmaps
-        this.hashmaps = this.#db.createDataset('hashmaps');
+        this.hashmaps = this.#db.createDataset('checksums'); // algo/checksum -> id
 
-        // Initialize global bitmap collection
-        this.bitmaps = new BitmapCollection({
-            db: this.#db.createDataset('bitmaps'),
-            cache: this.cache,
-        });
+        // Initialize bitmap store
+        this.bitmaps = this.#db.createDataset('bitmaps');
+
+        // Initialize bitmap collection
+        this.contexts = new BitmapCollection(
+            this.bitmaps,
+            this.cache,
+            {
+                tag: 'contexts',
+                rangeMin: INTERNAL_BITMAP_ID_MIN,
+                rangeMax: INTERNAL_BITMAP_ID_MAX,
+            });
+
+        this.features = new BitmapCollection(
+            this.bitmaps,
+            this.cache,
+            {
+                tag: 'features',
+                rangeMin: INTERNAL_BITMAP_ID_MIN,
+                rangeMax: INTERNAL_BITMAP_ID_MAX,
+            });
 
         // RAG
         this.chunks = this.#db.createDataset('chunks');
@@ -64,69 +85,89 @@ class SynapsD extends EventEmitter {
         debug('SynapsD initialized');
     }
 
-    /*
-    createIndex(name, backend) { }
+    async insert(document, contextArray = [], featureArray = []) {
+        debug('Inserting document', document);
+        if (!(document instanceof DOCUMENT_SCHEMAS.get('data/abstraction/document'))) {
+            throw new Error('Invalid document type');
+        }
 
-    listIndexes() {}
+        if (!document.validate()) {
+            throw new Error('Invalid document');
+        }
 
-    hasIndex(name) {}
+        let primaryChecksum = document.getChecksum(); //document.checksums.get(document.index.primaryChecksumAlgorithm);
+        if (!primaryChecksum) { throw new Error('Document primary checksum not found'); }
 
-    openIndex(name) {}
+        let existingId = await this.findIdByChecksum(document.index.primaryChecksumAlgorithm, primaryChecksum);
+        if (existingId) {
+            debug(`Document already exists: ${existingId}`);
+            return this.update(document, contextArray, featureArray);
+        }
 
-    createBitmap(name) {}
+        // Insert document to database
+        await this.documents.put(document.id, document); //document.toJSON()
 
-    clearBitmap(name) {}
+        // Update hashmaps
+        await this.insertChecksum(document.index.primaryChecksumAlgorithm, primaryChecksum, document.id);
 
-    index.tree
-    index.layers
+        // Update bitmaps
+        this.contexts.tickManySync(contextArray, document.id);
+        this.features.tickManySync(featureArray, document.id);
 
-    index.sessions
+        // Emit event
+        this.emit('index:insert', document.id);
 
-    index.devices
-    index.apps
-    index.roles
-    index.identities
-
-    ? index.users
-
-    context/<layerid>
-    feature/<mime/type/application/json>
-    custom/<tag>/<foo>
-    */
-
-
-    insert(doc, bitmapArray = []) {
-
-    }
-
-    update(doc, bitmapArray = []) {
+        // Return document.id
+        return document.id;
 
     }
 
-    remove(id, bitmapArray = []) {
+    async update(doc, bitmapArray = []) {
+        
+    }
+
+    async remove(id, bitmapArray = []) {
 
     }
 
-    delete(id) {
+    async delete(id) {
 
     }
 
-    get(id) {
+    async get(id) {
 
     }
 
-    list(andArray = [], orArray = [], filterArray = []) {
+    async list(andArray = [], orArray = [], filterArray = []) {
+        let bitmapArray = await this.bitmaps.getMany(andArray);
+        if (bitmapArray.length === 0) { return []; }
+        let idArray = [];
+        let resultBitmap;
+        resultBitmap = this.contexts.AND(andArray);
+        idArray = resultBitmap.toArray();
+//        for (let bitmap of bitmapArray) {}
+        return idArray;
+
 
     }
 
-    has(id, andArray = [], orArray = [], filterArray = []) {
-
-
-    find(query, andArray = [], orArray = [], filterArray = []) {
+    async has(id, andArray = [], orArray = [], filterArray = []) {
 
     }
 
-    query(query) {}
+    async find(query, andArray = [], orArray = [], filterArray = []) {
+
+    }
+
+    async insertChecksum(algo, checksum, id) {
+        return await this.hashmaps.put(`${algo}/${checksum}`, id);
+    }
+
+    async findIdByChecksum(algo, checksum) {
+        return await this.hashmaps.get(`${algo}/${checksum}`);
+    }
+
+    async query(query) {}
 
 
     /**
@@ -134,11 +175,25 @@ class SynapsD extends EventEmitter {
      */
 
     listSchemas() {
-
+        return DOCUMENT_SCHEMAS.keys();
     }
 
     getSchema(name) {
+        const SchemaClass = DOCUMENT_SCHEMAS.get(name);
+        if (!SchemaClass) {
+            throw new Error(`Schema '${name}' not found`);
+        }
+        return SchemaClass;
+    }
 
+
+    /**
+     * Utils
+     */
+
+    async close() {
+        await this.#db.close();
+        debug('SynapsD closed');
     }
 
 }

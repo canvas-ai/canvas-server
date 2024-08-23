@@ -1,8 +1,6 @@
 'use strict';
 
-const path = require('path');
 const {
-    format,
     parseISO,
     isToday,
     isYesterday,
@@ -16,7 +14,7 @@ const {
 const DOCUMENT_SCHEMA = 'data/abstraction/document';
 const DOCUMENT_SCHEMA_VERSION = '2.0';
 const DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO = 'sha1';
-const DEFAULT_DOCUMENT_DATA_FORMAT = 'application/json';
+const DEFAULT_DOCUMENT_DATA_TYPE = 'application/json';
 const DEFAULT_DOCUMENT_DATA_ENCODING = 'utf8';
 
 class Document {
@@ -29,32 +27,114 @@ class Document {
 
         this.index = {
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-            primaryChecksumFields: ['data'],
+            primaryChecksumFields: ['document'],
             staticFeatureBitmapFields: [],
             dynamicFeatureBitmapFields: [],
             fullTextIndexFields: [],
-            embeddingFields: ['data'],
+            embeddingFields: ['document'],
             ...options.index,
         };
 
         this.checksums = new Map(options.checksums ?? [[DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, null]]);
         this.meta = {
-            dataContentType: options.meta?.dataContentType ?? DEFAULT_DOCUMENT_DATA_FORMAT,
+            dataContentType: options.meta?.dataContentType ?? DEFAULT_DOCUMENT_DATA_TYPE,
             dataContentEncoding: options.meta?.dataContentEncoding ?? DEFAULT_DOCUMENT_DATA_ENCODING,
             ...options.meta,
         };
 
-        this.data = options.data ?? [];
+        this.data = options.data ?? {};
+
+        this.storagePaths = options.storagePaths ?? [];
         this.features = new Set(options.features ?? []);
 
-        this.parent_id = options.parent_id ?? null;
-        this.versions = options.versions ?? [];
+        this.parent_id = options.parent_id ?? null; // Stored in the child document
+        this.versions = options.versions ?? []; // Stored in the parent document
         this.version_number = options.version_number ?? 1;
-        this.latest_version = options.latest_version ?? 1;
+        this.latest_version = options.latest_version ?? 1; // Stored in the parent document
     }
+
+    update(document) {
+        Object.assign(this, document);
+        this.updated_at = new Date().toISOString();
+        /*
+        this.id = document.id;
+        this.checksums = new Map(Object.entries(document.checksums));
+        this.data = document.data;
+        if (document.meta?.dataContentType) {
+            this.meta.dataContentType = document.meta.dataContentType;
+        }
+        // TODO: Fixme, this assumes that the features are always an array
+        if (document.features) {
+            this.features = new Set(document.features);
+        }
+        this.updated_at = new Date().toISOString();
+        */
+    }
+
+    /**
+     * Storage path helpers
+     */
+
+    addStoragePath(path) {
+        if (!this.storagePaths.includes(path)) {
+            this.storagePaths.push(path);
+        }
+    }
+
+    addStoragePathArray(pathArray) {
+        pathArray.forEach((path) => this.storagePaths(path));
+    }
+
+    removeStoragePath(path) {
+        this.storagePaths = this.storagePaths.filter((storagePath) => storagePath !== path);
+    }
+
+    getStoragePaths() { return this.storagePaths; }
+
+    hasStoragePath(path) { return this.storagePaths.includes(path); }
+
+    /**
+     * Checksum helpers
+     */
+
+    addChecksum(algorithm, value) {
+        this.checksums.set(algorithm, value);
+    }
+
+    addChecksumArray(checksums) {
+        checksums.forEach(([algorithm, value]) => this.checksums.set(algorithm, value));
+    }
+
+    getChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO) {
+        return this.checksums.get(algorithm);
+    }
+
+    removeChecksum(algorithm) {
+        this.checksums.delete(algorithm);
+    }
+
+    hasChecksum(algorithm) {
+        return this.checksums.has(algorithm);
+    }
+
+    getChecksums() {
+        return Array.from(this.checksums);
+    }
+
+    clearChecksums() {
+        this.checksums.clear();
+    }
+
+    /**
+     * Feature helpers
+     */
 
     addFeature(feature) {
         this.features.add(feature);
+    }
+
+    addFeatureArray(features) {
+        features.forEach((feature) => this.features.add(feature));
     }
 
     removeFeature(feature) {
@@ -65,14 +145,30 @@ class Document {
         return this.features.has(feature);
     }
 
-    getAllFeatures() {
+    getFeatures() {
         return Array.from(this.features);
     }
 
-    updateFields(data) {
-        Object.assign(this, data);
-        this.updated_at = new Date().toISOString();
+    clearFeatures() {
+        this.features.clear();
     }
+
+
+    /**
+     * Versioning helpers
+    */
+
+    addVersion(version) {
+        this.versions.push(version);
+    }
+
+    removeVersion(version) {
+        this.versions = this.versions.filter((v) => v !== version);
+    }
+
+    /**
+     * Utils
+     */
 
     static isWithinTimeframe(dateString, timeframe) {
         const date = parseISO(dateString);
@@ -118,16 +214,24 @@ class Document {
     }
 
     validate() {
-        if (!this.schema) throw new Error('Document schema is not defined');
-        if (!Array.isArray(this.data)) throw new Error('Document data must be an array');
-        if (this.data.length === 0) throw new Error('Document must have at least one data URL');
-        if (!(this.checksums instanceof Map)) throw new Error('Document checksums must be a Map');
+        if (!this.schema) { throw new Error('Document schema is not defined'); }
+        if (!this.id) { throw new Error('Document ID is not defined'); }
+        if (!Number.isInteger(this.id)) { throw new Error('Document id has to be INT32'); }
+        if (!(this.checksums instanceof Map)) { throw new Error('Document checksums must be a Map'); }
         if (!this.checksums.has(this.index.primaryChecksumAlgorithm)) {
             throw new Error(`Document must have a checksum for the primary algorithm: ${this.index.primaryChecksumAlgorithm}`);
         }
-        if (!this.meta.dataContentType) throw new Error('Document must have a dataContentType');
-        if (!(this.features instanceof Set)) throw new Error('Document features must be a Set');
+        if (!this.meta.dataContentType) { throw new Error('Document must have a dataContentType'); }
+        if (!(this.features instanceof Set)) { throw new Error('Document features must be a Set'); }
+
         return true;
+    }
+
+    validateData() {
+        if (this.isJsonDocument()) {
+            return this.data && typeof this.data === 'object' && Object.keys(this.data).length > 0;
+        }
+        return this.isBlob();
     }
 
     static validate(document) {
@@ -153,10 +257,10 @@ class Document {
             created_at: 'string',
             updated_at: 'string',
             index: 'object',
-            checksums: 'array',
+            checksums: 'array', // Set
             meta: 'object',
             data: 'array',
-
+            features: 'array',  // Set
             parent_id: 'string',
             versions: 'array',
             version_number: 'number',
@@ -174,41 +278,6 @@ class Document {
         return this.meta.dataContentType !== 'application/json';
     }
 
-    update(document) {
-        this.id = document.id;
-        this.checksums = new Map(Object.entries(document.checksums));
-        this.data = document.data;
-        if (document.meta?.dataContentType) {
-            this.meta.dataContentType = document.meta.dataContentType;
-        }
-        // TODO: Fixme, this assumes that the features are always an array
-        if (document.features) {
-            this.features = new Set(document.features);
-        }
-        this.updated_at = new Date().toISOString();
-    }
-
-    addDataUrl(url) {
-        if (!this.data.includes(url)) {
-            this.data.push(url);
-        }
-    }
-
-    addChecksum(algorithm, value) {
-        this.checksums.set(algorithm, value);
-    }
-
-    getChecksum(algorithm) {
-        return this.checksums.get(algorithm);
-    }
-
 }
 
-// Export the Document class
 module.exports = Document;
-
-// Export schema loader function
-module.exports.loadSchema = (schemaName) => {
-    const schemaPath = path.join(__dirname, 'schemas', `${schemaName}.js`);
-    return require(schemaPath);
-};

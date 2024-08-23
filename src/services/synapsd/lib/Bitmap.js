@@ -1,14 +1,14 @@
 const { RoaringBitmap32 } = require('roaring');
-const debug = require('debug')('canvas:db:index:bitmap');
+const debug = require('debug')('canvas:service:synapsd:bitmap');
 
 class Bitmap extends RoaringBitmap32 {
-
-    constructor(oidArrayOrBitmap, options = {
-        type: 'static', // 'static' or 'dynamic
-    }) {
-
+    constructor(oidArrayOrBitmap, options = {}) {
         super(oidArrayOrBitmap);
-        this.type = options.type;
+
+        this.type = options.type || 'static';
+        if (!options.key) {
+            throw new Error('Bitmap key required');
+        }
         this.key = options.key;
 
         if (!options.rangeMin || !options.rangeMax) {
@@ -17,152 +17,101 @@ class Bitmap extends RoaringBitmap32 {
 
         this.rangeMin = options.rangeMin;
         this.rangeMax = options.rangeMax;
-
         debug(`Bitmap "${this.key}" type ${this.type}, ID range: ${this.rangeMin} - ${this.rangeMax} initialized`);
         debug(`Bitmap "${this.key}" has ${this.size} objects`);
     }
 
     tick(oid) {
-        if (!this.#oidIsWithinRange(oid)) {
-            throw new Error(`Object ID ${oid} not within range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
+        this.#validateOid(oid);
         this.add(oid);
     }
 
-    tickMany(oidArray) {
-        if (!this.#arrayIsWithinRange(oidArray)) {
-            throw new Error(`Invalid oidArray: ${oidArray}, range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
-        this.addMany(oidArray);
-    }
-
     tickArray(oidArray) {
-        if (!Array.isArray(oidArray)) { throw new Error(`Not an array: ${oidArray}`); }
-        if (oidArray.length === 0) {return;}
-
-        // Range check
-        for (const oid of oidArray) {
-            if (oid < this.rangeMin || oid > this.rangeMax) {
-                throw new Error(`Out of range: ${oid}`);
-            }
-        }
-
+        this.#validateArray(oidArray);
         this.addMany(oidArray);
     }
 
     tickBitmap(bitmap) {
-        if (!this.#bitmapIsWithinRange(bitmap)) {
-            throw new Error(`Invalid bitmap: ${bitmap}, range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
+        this.#validateBitmap(bitmap);
         this.addMany(bitmap);
     }
 
     untick(oid) {
-        if (!this.#oidIsWithinRange(oid)) {
-            throw new Error(`Object ID "${oid}" out of range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
+        this.#validateOid(oid);
         this.remove(oid);
     }
 
-    untickMany(oidArray) {
-        if (!this.#arrayIsWithinRange(oidArray)) {
-            throw new Error(`Out of range: ${oidArray}, range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
-        this.removeMany(oidArray);
-    }
-
     untickArray(oidArray) {
-        if (!this.#arrayIsWithinRange(oidArray)) {
-            throw new Error(`Out of range: ${oidArray}, range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
-        if (oidArray.length === 0) {return;}
-
+        this.#validateArray(oidArray);
         this.removeMany(oidArray);
     }
 
     untickBitmap(bitmap) {
-        if (!this.#bitmapIsWithinRange(bitmap)) {
-            throw new Error(`Invalid bitmap: ${bitmap}, range: ${this.rangeMin} - ${this.rangeMax}`);
-        }
+        this.#validateBitmap(bitmap);
         this.removeMany(bitmap);
     }
-
-
-    /**
-     * Static methods
-     */
 
     static create(oidArrayOrBitmap, options = {
         type: 'static',
         rangeMin: 0,
         rangeMax: 4294967296,
     }) {
-
-        // Perform validation
         Bitmap.validateRange(oidArrayOrBitmap, options.rangeMin, options.rangeMax);
-
-        // Return a new instance
         return new Bitmap(oidArrayOrBitmap, options);
     }
 
     static validateRange(inputData, rangeMin, rangeMax) {
-        if (rangeMin < 0) {
-            throw new Error(`Invalid rangeMin: ${rangeMin}`);
-        }
-        if (rangeMax < 0) {
-            throw new Error(`Invalid rangeMax: ${rangeMax}`);
-        }
-        if (rangeMin > rangeMax) {
+        if (rangeMin < 0 || rangeMax < 0 || rangeMin > rangeMax) {
             throw new Error(`Invalid range: ${rangeMin} - ${rangeMax}`);
         }
 
+        const validateOid = (oid) => {
+            if (oid < rangeMin || oid > rangeMax) {
+                throw new Error(`Out of range: ${oid}`);
+            }
+        };
+
         if (typeof inputData === 'number') {
-            if (inputData < rangeMin || inputData > rangeMax) {
-                throw new Error(`Out of range: ${inputData}`);
-            }
+            validateOid(inputData);
         } else if (Array.isArray(inputData)) {
-            for (const oid of inputData) {
-                if (oid < rangeMin || oid > rangeMax) {
-                    throw new Error(`Out of range: ${oid}`);
-                }
-            }
+            inputData.forEach(validateOid);
         } else if (inputData instanceof RoaringBitmap32) {
-            const minId = inputData.minimum();
-            const maxId = inputData.maximum();
-            if (minId < rangeMin || maxId > rangeMax) {
-                throw new Error(`Out of range: ${minId} - ${maxId}`);
-            }
+            validateOid(inputData.minimum());
+            validateOid(inputData.maximum());
         } else {
             throw new Error(`Invalid input data: ${inputData}`);
         }
-
     }
 
-    /**
-     * Private methods
-     */
-
-    #oidIsWithinRange(oid) {
-        return (oid >= this.rangeMin && oid <= this.rangeMax);
-    }
-
-    #arrayIsWithinRange(oidArray) {
-        if (!Array.isArray(oidArray)) { throw new Error(`Not an array: ${oidArray}`); }
-        for (const oid of oidArray) {
-            if (!this.#oidIsWithinRange(oid)) {return false;}
+    #validateOid(oid) {
+        if (oid < this.rangeMin || oid > this.rangeMax) {
+            throw new Error(`Object ID ${oid} not within range: ${this.rangeMin} - ${this.rangeMax}`);
         }
-        return true;
     }
 
-    #bitmapIsWithinRange(bitmap) {
+    #validateArray(oidArray) {
+        if (!Array.isArray(oidArray)) {
+            throw new Error(`Not an array: ${oidArray}`);
+        }
+        if (oidArray.length === 0) return;
+
+        const minOid = Math.min(...oidArray);
+        const maxOid = Math.max(...oidArray);
+        if (minOid < this.rangeMin || maxOid > this.rangeMax) {
+            throw new Error(`Array contains out of range values. Range: ${this.rangeMin} - ${this.rangeMax}`);
+        }
+    }
+
+    #validateBitmap(bitmap) {
         if (!(bitmap instanceof RoaringBitmap32)) {
             throw new Error(`Not a RoaringBitmap32 instance: ${bitmap}`);
         }
         const minId = bitmap.minimum();
         const maxId = bitmap.maximum();
-        return this.#oidIsWithinRange(minId) && this.#oidIsWithinRange(maxId);
+        if (minId < this.rangeMin || maxId > this.rangeMax) {
+            throw new Error(`Bitmap contains out of range values. Range: ${this.rangeMin} - ${this.rangeMax}`);
+        }
     }
-
 }
 
 module.exports = Bitmap;

@@ -25,27 +25,13 @@ logger.info = console.log;
 logger.warn = console.log;
 logger.error = console.error;
 
-class ResponseObject {
-
-    constructor(opts = {}) {
-        this.type = opts.type || 'response';
-        this.message = opts.message || null;
-        this.data = opts.data || null;
-    }
-
-}
-
 function ensureContextDirectory(dir) {
-
     if (dir.startsWith('~/') || dir === '~') {
         dir = dir.replace('~', os.homedir());
     }
-
     dir = path.resolve(dir);
     ensureDirSync(dir);
-
     return dir;
-
 }
 
 function getDefaultContextDirectory() {
@@ -65,7 +51,6 @@ function uuid12(delimiter = true) {
 }
 
 const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
-
     if (!o[n.id]) {o[n.id] = {};}
     if (!o[n[p]]) {o[n[p]] = {};}
     if (!o[n[p]].children) {o[n[p]].children= [];}

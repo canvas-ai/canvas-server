@@ -13,7 +13,7 @@ const winston = require('winston');
 const Db = require('./services/db');
 const Jim = require('./services/jim');
 const SynapsD = require('./services/synapsd');
-
+const StoreD = require('./services/stored');
 
 // Manager classes
 const AppManager = require('./managers/app');
@@ -95,7 +95,7 @@ class Canvas extends EventEmitter {
         this.#user.paths = options.paths.user;
         this.#device = DeviceManager.getCurrentDevice();
 
-        // Global config modulle
+        // Global config module
         this.config = Config({
             serverConfigDir: this.#server.paths.config,
             userConfigDir: this.#user.paths.config,
@@ -111,9 +111,9 @@ class Canvas extends EventEmitter {
             format: winston.format.simple(),
             transports: [
                 new winston.transports.File({ filename: logFile }),
+                // TODO: Add a debug-based transport
             ],
         });
-
 
         /**
          * Runtime environment
@@ -128,7 +128,6 @@ class Canvas extends EventEmitter {
         this.logger.info(`Server mode: ${this.#mode}`);
         debug('Server paths:', this.#server.paths);
         debug('User paths:', this.#user.paths);
-
 
         /**
          * Canvas Server RoleManager (minimal mode)
@@ -145,7 +144,6 @@ class Canvas extends EventEmitter {
             return;
         }
 
-
         /**
          * Canvas services
          */
@@ -155,16 +153,6 @@ class Canvas extends EventEmitter {
             logger: this.logger,
             rootPath: this.#user.paths.index,
             backupPath: path.join(this.#user.paths.index, 'backup'),
-            backupOnOpen: true,
-            backupOnClose: false,
-            compression: true,
-        });
-
-        this.db = new Db({  // To be integrated under StoreD
-            config: this.config.open('db'),
-            logger: this.logger,
-            rootPath: this.#user.paths.db,
-            backupPath: path.join(this.#user.paths.db, 'backup'),
             backupOnOpen: true,
             backupOnClose: false,
             compression: true,
@@ -210,14 +198,9 @@ class Canvas extends EventEmitter {
             },
         });
 
-
         /**
          * Managers
          */
-
-        this.appManager = new AppManager({
-            index: this.index.createIndex('apps', 'file'),
-        });
 
         this.deviceManager = new DeviceManager({
             index: this.index.createIndex('devices', 'file'),
@@ -225,9 +208,9 @@ class Canvas extends EventEmitter {
 
         this.contextManager = new ContextManager({
             index: this.index,
-            db: this.db,
-            data: this.data,
-            maxContexts: 32,
+            storage: this.storage,
+            // TODO: Replace with config.get('context')
+            maxContexts: MAX_SESSIONS * MAX_CONTEXTS_PER_SESSION,
         });
 
         this.sessionManager = new SessionManager({
