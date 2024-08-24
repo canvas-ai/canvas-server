@@ -8,7 +8,7 @@ Server component for the Canvas project
 **! beware of the mess in dev**  
 **! beware of the upcoming schema change**
 
-
+`Universe -> |||| (bitmaps) -> Contexts -> User`
 
 ## Installation
 

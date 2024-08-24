@@ -1,6 +1,5 @@
 'use strict';
 
-const e = require('cors');
 const {
     parseISO,
     isToday,

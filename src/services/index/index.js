@@ -34,7 +34,7 @@ class Index extends EventEmitter {
         // Event emitter
         super(options.eventEmitter);
 
-        // Initialize database backend
+        // Initialize database backend, or use provided instance
         if (options.db && options.db instanceof Db) {
             this.#db = options.db;
         } else {
@@ -42,7 +42,10 @@ class Index extends EventEmitter {
             this.#db = new Db(options);
         }
 
-        this.cache = new Map();
+        // Support for custom caching backend(assuming it implements the Map interface)
+        this.cache = options.cache ?? new Map();
+
+        // Initialize datasets
         this.metadata = this.#db.createDataset('metadata');
         this.bitmaps = this.#db.createDataset('bitmaps');   // id -> bitmap
 
@@ -50,6 +53,9 @@ class Index extends EventEmitter {
         this.hash2id = this.#db.createDataset('checksums');
 
         // FTS index (until we move to something better)
+        // For flexsearch, we should switch to Document instead of Index
+        // See https://github.com/nextapps-de/flexsearch?tab=readme-ov-file#document.add
+        // We should also support a separate FTS index for paths
         this.fts = new FtsIndex(this.#db.createDataset('fts'), {
             preset: 'performance',
             tokenize: 'forward',
@@ -76,7 +82,7 @@ class Index extends EventEmitter {
             });
 
         // RAG
-        this.dChunks = this.#db.createDataset('chunks');
+        this.dChunks = this.#db.createDataset('chunks'); // Useless for now
         this.vEmbeddings = VectorIndex.connect(path.join(options.path, 'embeddings'));
 
         debug('Index class initialized');
@@ -93,7 +99,7 @@ class Index extends EventEmitter {
         await this.#validateObject(obj);
         const document = this.#parseDocument(obj);
 
-        // Insert document to metadata
+        // Insert document to metadata store
         await this.metadata.put(document.id, document);
 
         // Update checksum index
@@ -106,7 +112,7 @@ class Index extends EventEmitter {
         this.bFeatures.tickManySync(featureArray, document.id);
 
         // Update FTS index
-        await this.fts.insert(document.id, document.ftsArray);
+        await this.fts.insert(document.id, document.searchArray);
 
         // Emit event
         this.emit('index:insert', document.id);
@@ -135,7 +141,7 @@ class Index extends EventEmitter {
         this.bFeatures.tickManySync(featureArray, document.id);
 
         // Update FTS index
-        await this.fts.update(document.id, document.ftsArray);
+        await this.fts.update(document.id, document.searchArray);
 
         // Emit event
         this.emit('index:update', document.id);
@@ -336,6 +342,20 @@ class Index extends EventEmitter {
      * Utils
      */
 
+    get schema() { return Index.schema; }
+
+    static get schema() {
+        return {
+            id: 'integer',
+            created_at: 'string',
+            updated_at: 'string',
+            action: 'string',
+            checksums: 'map',
+            embeddings: 'array',
+            searchArray: 'array',
+        };
+    }
+
     objectCount() {
         let stats = this.metadata.getStats();
         return stats.entryCount;
@@ -346,20 +366,23 @@ class Index extends EventEmitter {
         if (!obj.id) { throw new Error('Object ID required'); }
         if (!obj.created_at) { throw new Error('Object created_at required'); }
         if (!obj.updated_at) { throw new Error('Object updated_at required'); }
+        if (!obj.action) { throw new Error('Object action required'); }
         if (!obj.checksums) { throw new Error('Object checksums required'); }
-        if (!obj.ftsArray) { throw new Error('Object ftsArray required'); }
         if (!obj.embeddings) { throw new Error('Object embeddings array required'); }
+        if (!obj.searchArray) { throw new Error('Object searchArray required'); }
         return true;
     }
 
     #parseDocument(obj) {
+        // Return only what we care about
         return {
             id: obj.id,
             created_at: obj.created_at,
             updated_at: obj.updated_at,
+            action: obj.action,
             checksums: obj.checksums,
-            ftsArray: obj.ftsArray,
             embeddings: obj.embeddings,
+            searchArray: obj.searchArray,
         };
     }
 
