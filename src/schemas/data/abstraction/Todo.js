@@ -6,11 +6,19 @@ const DOCUMENT_DATA_TYPE = 'application/json';
 const DOCUMENT_DATA_ENCODING = 'utf8';
 
 class Todo extends BaseDocument {
+
     constructor(options = {}) {
         super({
             schema: DOCUMENT_SCHEMA,
             schemaVersion: DOCUMENT_SCHEMA_VERSION,
-            meta: {
+            index: {
+                primaryChecksumAlgorithm: 'sha1',
+                primaryChecksumFields: ['data.url'],
+                fullTextIndexFields: ['data.url', 'data.title'],
+                embeddingFields: ['data.title'],
+                ...options.index,
+            },
+            metadata: {
                 dataContentType: DOCUMENT_DATA_TYPE,
                 dataContentEncoding: DOCUMENT_DATA_ENCODING,
                 ...options.meta,
@@ -18,6 +26,7 @@ class Todo extends BaseDocument {
             ...options,
         });
     }
+
 }
 
 module.exports = Todo;

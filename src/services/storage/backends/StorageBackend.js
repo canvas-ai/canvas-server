@@ -1,23 +1,26 @@
 // Common interface for all storage backends
 // Should finally switch to TypeScript!
 
+
 class StorageBackend {
+
     constructor(config) {
         if (new.target === StorageBackend) {
             throw new TypeError("Cannot construct StorageBackend instances directly");
         }
 
-        this.config = config;
         // type: 'local' | 'remote'
         // driver: 's3' | 'gcs' | 'azure' | 'local.file' | 'local.memory'
         // priority: INT
         // cacheEnabled: BOOLEAN
         // name
         // description
-        // config: {} // config.driverConfig
-        // status
-
-        this._status = 'uninitialized';
+        this.name = config.name;
+        this.description = config.description;
+        this.type = config.type;
+        this.driver = config.driver;
+        this.driverConfig = config.driverConfig;
+        this._status = 'initialized';
     }
 
     async putFile(key, filePath, metadata) {
@@ -46,36 +49,46 @@ class StorageBackend {
         throw new Error('getBinary method must be implemented');
     }
 
-    async has(key) {
-        throw new Error('has method must be implemented');
+    async getStream(key, options = {}) {
+        throw new Error('getBinary method must be implemented');
     }
 
-    async delete(key) {
-        throw new Error('delete method must be implemented');
+    /**
+     * Common methods
+     */
+
+    async has(key) {
+        throw new Error('has method must be implemented');
     }
 
     async list(options = {}) {
         throw new Error('list method must be implemented');
     }
 
+    async delete(key) {
+        throw new Error('delete method must be implemented');
+    }
+
     async stat(key) {
         throw new Error('stat method must be implemented');
     }
 
-    getConfiguration() {
-        return this.config;
+    /**
+     * Utils
+     */
+
+    get config() {
+        return {
+            name: this.name,
+            description: this.description,
+            type: this.type,
+            driver: this.driver,
+            driverConfig: this.driverConfig
+        };
     }
 
     get status() {
         return this._status;
-    }
-
-    set status(value) {
-        this._status = value;
-    }
-
-    get supportsLocalCache() {
-        return this.config.localCacheEnabled;
     }
 
 }

@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const debug = require('debug')('canvas:schema:registry');
 
 const SCHEMA_TYPES = [
     'data/abstraction',
@@ -20,6 +19,7 @@ class SchemaRegistry {
         this.schemas.set('data/abstraction/note', require('./data/abstraction/Note'));
         this.schemas.set('data/abstraction/tab', require('./data/abstraction/Tab'));
         this.schemas.set('data/abstraction/todo', require('./data/abstraction/Todo'));
+        this.schemas.set('transport/response', require('./transport/ResponseObject'));
     }
 
     getSchema(name) {

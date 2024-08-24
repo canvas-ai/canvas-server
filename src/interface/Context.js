@@ -9,8 +9,8 @@ const {
 const path = require('path');
 
 // Services
-const Index = require('../services/synapsd');
-const Storage = require('../services/stored');
+const Index = require('../services/index');
+const Storage = require('../services/storage');
 
 // Schemas
 const SchemaRegistry = require('../schemas/SchemaRegistry.js');
@@ -58,8 +58,8 @@ class ContextInterface {
                     enabled: true,
                     priority: 1,
                     type: 'local',
-                    backend: 'file',
-                    backendConfig: {
+                    driver: 'file',
+                    driverConfig: {
                         rootPath: user.paths.data,
                     }
                 },
@@ -67,8 +67,8 @@ class ContextInterface {
                     enabled: true,
                     primary: true,
                     type: 'local',
-                    backend: 'lmdb',
-                    backendConfig: {
+                    driver: 'lmdb',
+                    driverConfig: {
                         path: user.paths.db,
                         backupPath: path.join(user.paths.db, 'backup'),
                         backupOnOpen: true,
@@ -87,23 +87,15 @@ class ContextInterface {
     }
 
 
-    async insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = []) {
+    async insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = 'db') {
         // Validate document
-        if (!document) {
-            throw new Error('Document is required');
-        }
-
-        if (!document.schema) {
-            throw new Error('Document schema is required');
-        }
+        if (!document) { throw new Error('Document is required'); }
+        if (!document.schema) { throw new Error('Document schema is required'); }
 
         const Schema = this.schemas.getSchema(document.schema);
-        if (!Schema) {
-            throw new Error(`Schema not found: ${document.schema}`);
-        }
+        if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
 
         const parsedDocument = Schema.fromJSON(document);
-        console.log(parsedDocument);
 
         // Calculate checksums
         let data = parsedDocument.getChecksumFields();
@@ -121,12 +113,13 @@ class ContextInterface {
 
         // Validate document
         parsedDocument.validate();
+        console.log(parsedDocument);
 
         // Insert into index
-        await this.index.insertDocument(parsedDocument, contextArray, featureArray);
+        await this.index.insert(parsedDocument, contextArray, featureArray);
 
         // Insert into storage
-        await this.storage.insertDocument(parsedDocument, backends);
+        await this.storage.insertDocument(parsedDocument, null, backends);
 
     }
 
@@ -153,12 +146,27 @@ const doc2 = new Doc({
     data: { title: 'Hello World from doc2' },
 })
 
+/*
+if (!obj.id) { throw new Error('Object ID required'); }
+if (!obj.created_at) { throw new Error('Object created_at required'); }
+if (!obj.updated_at) { throw new Error('Object updated_at required'); }
+if (!obj.checksums) { throw new Error('Object checksums required'); }
+if (!obj.ftsArray) { throw new Error('Object ftsArray required'); }
+if (!obj.embeddings) { throw new Error('Object embeddings array required'); }
+*/
 
-context.insertDocument(doc1);
-context.insertDocument(doc2, [], ['feature1', 'feature2']);
-context.insertFile('/opt/ollama.service');
-context.insertNote({
-    title: 'Note 1',
-    content: 'This is a note',
-    tags: ['note', 'important'],
-});
+console.log(context.index.objectCount());
+
+async function test() {
+    await context.insertDocument(doc1);
+    await context.insertDocument(doc2, [], ['feature1', 'feature2']);
+    await context.insertFile('/opt/ollama.service');
+    await context.insertNote({
+        title: 'Note 1',
+        content: 'This is a note',
+        tags: ['note', 'important'],
+    });
+}
+
+
+test()

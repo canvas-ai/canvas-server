@@ -62,7 +62,7 @@ class Stored extends EE {
             checksumJson,
             checksumBuffer,
             checksumFile,
-            checksumFileArray
+            checksumFileArray,
         };
 
         // Initialize global cache
@@ -80,7 +80,6 @@ class Stored extends EE {
         this.#initializeBackends();
     }
 
-
     /**
      * Main interface
      */
@@ -88,12 +87,34 @@ class Stored extends EE {
     /**
      * Inserts a document into the storage backend(s).
      * @param {Object} document - The document to insert.
-     * @param {Object} metadata - Optional metadata associated with the document.
      * @param {string|string[]} backends - Name or array of backend names.
      * @param {Object} options - Additional options for the insertion.
+     * @returns {Promise} - Result of inserting the document as a URL.
      */
-    async insertDocument(document, metadata = {}, backends = this.backends, options = {}) {
+    async insertDocument(document, backends = this.backends, options = {}) {
+        if (!document) { throw new Error('No document provided'); }
+        if (!Array.isArray(backends) || !backends.length) { throw new Error('Backends must be an array'); }
 
+        // Validate basic document schema (we do not care about the actual schema here)
+        // Maybe we should..?
+        if (!this.#validateDocument(document)) { throw new Error('Schema validation failed', document); }
+
+        // We will use a sync queue => store documents in local backend first
+        // then sync to all selected backends but for now, we'll look through
+        // all backends instead(file, lmdb, both should be fast enough)
+        let resourceUrls = []; // URLs of the stored document in each backend
+        for (const backendName of backends) {
+            const backend = this.getBackend(backendName);
+            try {
+                // Insert the document into the backend
+                const url = await backend.putDocument(document.id, document);
+                resourceUrls.push(url);
+            } catch (error) {
+                throw new Error(`Failed to insert document to backend ${backendName}: ${error.message}`);
+            }
+        }
+
+        return resourceUrls;
     }
 
     /**
@@ -104,7 +125,9 @@ class Stored extends EE {
      * @param {Object} options - Additional options for the insertion.
      * @returns {Promise} - Result of inserting the file as a URL.
      */
-    async insertFile(filePath, metadata = {}, backends = this.backends, options = {}) {
+    async insertFile(filePath, metadata, backends = this.backends, options = {}) {
+        if (!filePath) { throw new Error('No file path provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
         return this.insertUrl(filePath, metadata, backends, options);
     }
 
@@ -127,6 +150,7 @@ class Stored extends EE {
      * @param {Object} options - Additional options for the insertion.
      */
     async insertBlob(data, metadata = {}, backends = this.backends, options = {}) {
+        if (typeof backends === 'string') { backends = [backends]; }
         // Implementation here
     }
 
@@ -137,58 +161,68 @@ class Stored extends EE {
         // filePath: false
     }) {
         if (!hash) { throw new Error('No hash provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
         const backendNames = Array.isArray(backends) ? backends : [backends];
         if (backendNames.length === 0) {
             throw new Error('No backend specified');
         }
     }
 
-    // Returns structured data(JSON document) parsed into an object
-    async getDocument(hash, backends = this.backends, options = {
-        // Return raw JSON string instead of parsed object
-        // raw: false
-        // Return only metadata
-        // metadataOnly: false
-    }) {
-        if (!hash) { throw new Error('No hash provided'); }
+    async getDocument(id, backends = this.backends, options = {}) {
+        if (!id) { throw new Error('No ID provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
 
         const backendNames = Array.isArray(backends) ? backends : [backends];
         if (backendNames.length === 0) {
             throw new Error('No backend specified');
         }
 
-        // Documents are not cached for now, so no cache logic here
+        for (const backendName of backendNames) {
+            const backend = this.getBackend(backendName);
+            try {
+                // Lets return the first successful result
+                return await backend.getDocument(id);
+            } catch (error) {
+                debug(`Error getting document from backend ${backendName}: ${error.message}`);
+                if (!this.config.backends[backendName].ignoreBackendErrors) {
+                    continue;
+                } else {
+                    throw error;
+                }
+            }
+        }
+
     }
 
     // Returns binary data(blob) as a Buffer
     async getBLob(hash, backends = this.backends, options = {}) {
         if (!hash) { throw new Error('No hash provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
 
-        const backendNames = Array.isArray(backends) ? backends : [backends];
-        if (backendNames.length === 0) {
+        if (backends.length === 0) {
             throw new Error('No backend specified');
         }
     }
 
-    async has(hash, backends = this.backends, options = {}) {
-        if (!hash) { throw new Error('No hash provided'); }
-        const backendNames = Array.isArray(backends) ? backends : [backends];
+    async has(id, backends = this.backends, options = {}) {
+        if (!id) { throw new Error('No id provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
 
-        for (const backendName of backendNames) {
+        for (const backendName of backends) {
             const backend = this.getBackend(backendName);
 
             if (this.config.backends[backendName].localCacheEnabled) {
                 try {
-                    const cacheInfo = await this.cache.has(hash);
+                    const cacheInfo = await this.cache.has(id);
                     if (cacheInfo) {
-                        debug(`Cache hit for ${hash} in backend ${backendName}`);
-                        // return true;
+                        debug(`Cache hit for ID ${id} in backend ${backendName}`);
+                        return true;
                     } else {
-                        debug(`Cache miss for ${hash} in backend ${backendName}`);
+                        debug(`Cache miss for ID ${id} in backend ${backendName}`);
                         // Log miss and update cache if found?
                     }
                 } catch (error) {
-                    debug(`Cache error for ${hash} in backend ${backendName}: ${error.message}`);
+                    debug(`Cache error for ID ${id} in backend ${backendName}: ${error.message}`);
                 }
             }
 
@@ -208,13 +242,13 @@ class Stored extends EE {
         return false;
     }
 
-    async stat(hash, backends = this.backends) {
-        const backendNames = Array.isArray(backends) ? backends : [backends];
+    async stat(id, backends = this.backends) {
+        if (typeof backends === 'string') { backends = [backends]; }
 
-        for (const backendName of backendNames) {
+        for (const backendName of backends) {
             const backend = this.getBackend(backendName);
             try {
-                return await backend.stat(hash);
+                return await backend.stat(id);
             } catch (error) {
                 debug(`Error getting stats for object in backend ${backendName}: ${error.message}`);
                 if (!this.config.backends[backendName].ignoreBackendErrors) {
@@ -225,14 +259,15 @@ class Stored extends EE {
             }
         }
 
-        throw new Error(`Object not found: ${hash}`);
+        throw new Error(`Object ID ${id} not found on any backend`);
     }
 
     async delete(hash, backends) {
-        const backendNames = Array.isArray(backends) ? backends : [backends];
+        if (!hash) { throw new Error('No hash provided'); }
+        if (typeof backends === 'string') { backends = [backends]; }
         const results = [];
 
-        for (const backendName of backendNames) {
+        for (const backendName of backends) {
             const backend = this.getBackend(backendName);
             try {
                 const result = await backend.delete(hash);
@@ -259,38 +294,56 @@ class Stored extends EE {
      * Backend methods
      */
 
+    listBackends() { return Object.keys(this.backends); }
+
     getBackend(backendName) {
         const backend = this.backends[backendName];
-        if (!backend) {
-            throw new Error(`Backend not found: ${backendName}`);
-        }
+        if (!backend) { throw new Error(`Backend not found: ${backendName}`); }
         return backend;
-    }
-
-    listBackends() {
-        return Object.keys(this.backends);
-    }
-
-    setBackendStatus(backendName, status) {
-        this.getBackend(backendName).status = status;
-    }
-
-    getBackendStatus(backendName) {
-        return this.getBackend(backendName).status;
-    }
-
-    getBackendConfiguration(backendName) {
-        return this.getBackend(backendName).getConfiguration();
     }
 
     #initializeBackends() {
         for (const [name, config] of Object.entries(this.config.backends)) {
-            const backend = config.backend;
-            const backendConfig = config.backendConfig;
-            // Load backend class
-            const BackendClass = require(`./backends/${backend}`);
-            this.backends[name] = new BackendClass(backendConfig);
+            const driver = config.driver;
+            const driverConfig = config.driverConfig;
+            // Load backend class (TODO: Refactor/cleanup)
+            const BackendClass = require(`./backends/${driver}`);
+            this.backends[name] = new BackendClass(driverConfig);
         }
+    }
+
+    /**
+     * Utils
+     */
+
+    #validateDocument(document) {
+        // Base
+        if (!document) { throw new Error('Document is not defined'); }
+        if (!document.id) { throw new Error('Document ID is not defined'); }
+
+        // Schema
+        if (!Number.isInteger(document.id)) { throw new Error('Document ID must be an integer'); }
+        if (!document.schema) { throw new Error('Document schema is not defined'); }
+
+        // Timestamps
+        if (!document.created_at) { throw new Error('Document created_at is not defined'); }
+        if (!document.updated_at) { throw new Error('Document updated_at is not defined'); }
+
+        // Checksums
+        if (!document.checksums) { throw new Error('Document checksums are not defined'); }
+
+        // Metadata
+        if (!document.metadata) { throw new Error('Document metadata is not defined'); }
+        this.#validateDocumentMetadata(document.metadata);
+
+        return true;
+    }
+
+    #validateDocumentMetadata(metadata) {
+        if (!metadata) { throw new Error('Metadata is not defined'); }
+        if (!metadata.dataContentType) { throw new Error('Metadata dataContentType is not defined'); }
+        if (!metadata.dataContentEncoding) { throw new Error('Metadata dataContentEncoding is not defined'); }
+        return true;
     }
 }
 

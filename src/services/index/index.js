@@ -336,6 +336,11 @@ class Index extends EventEmitter {
      * Utils
      */
 
+    objectCount() {
+        let stats = this.metadata.getStats();
+        return stats.entryCount;
+    }
+
     async #validateObject(obj) {
         if (!obj) { throw new Error('Object required'); }
         if (!obj.id) { throw new Error('Object ID required'); }

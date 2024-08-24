@@ -1,5 +1,6 @@
 'use strict';
 
+const e = require('cors');
 const {
     parseISO,
     isToday,
@@ -18,34 +19,54 @@ const DEFAULT_DOCUMENT_DATA_TYPE = 'application/json';
 const DEFAULT_DOCUMENT_DATA_ENCODING = 'utf8';
 
 class Document {
+
     constructor(options = {}) {
+        // Base
         this.id = options.id ?? null;
         this.schema = options.schema ?? DOCUMENT_SCHEMA;
         this.schemaVersion = options.schemaVersion ?? DOCUMENT_SCHEMA_VERSION;
+
+        // Timestamps
         this.created_at = options.created_at ?? new Date().toISOString();
         this.updated_at = options.updated_at ?? this.created_at;
 
-        // Configuration for the index module
+        // Internal index configuration
         this.index = {
-            checksumAlhorithms: [DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, 'sha256'],
+            checksumAlhorithms: [
+                DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
+                'sha256'
+            ],
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
             checksumFields: ['data'],
-            ftsFields: ['data'],
-            embeddingFields: ['data'],
+            searchFields: ['data.title', 'data.content'],
+            embeddingFields: ['data.title', 'data.content'],
             ...options.index,
         };
 
-        this.checksums = new Map(options.checksums ?? [[DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, null]]);
-        this.meta = {
+        /**
+         * Metadata section
+         */
+
+        this.metadata = {
             dataContentType: options.meta?.dataContentType ?? DEFAULT_DOCUMENT_DATA_TYPE,
             dataContentEncoding: options.meta?.dataContentEncoding ?? DEFAULT_DOCUMENT_DATA_ENCODING,
             ...options.meta,
         };
+
+        this.checksums = options.checksums ?? new Map(); // Checksums for the document data
+        this.embeddings = options.embeddings ?? []; // Extracted embeddings
+        this.features = options.features ?? new Map(); // Extracted features
+        this.paths = options.paths ?? []; // Storage path reference URLs
+
+        /**
+         * Document data/payload, omitted for blobs
+         */
+
         this.data = options.data ?? {};
 
-        this.storagePaths = options.storagePaths ?? [];
-        this.features = new Set(options.features ?? []);
-
+        /**
+         * Versioning
+         */
         this.parent_id = options.parent_id ?? null; // Stored in the child document
         this.versions = options.versions ?? []; // Stored in the parent document
         this.version_number = options.version_number ?? 1;
@@ -57,13 +78,12 @@ class Document {
         this.updated_at = new Date().toISOString();
     }
 
-
     /**
      * Checksum helpers
      */
 
     getChecksumAlgorithms() {
-        return this.index.checksumAlhorithms;
+        return this.index.checksumAlgorithms;
     }
 
     getChecksumFields() {
@@ -74,13 +94,8 @@ class Document {
         return data;
     }
 
-
     addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
         this.checksums.set(algorithm, value);
-    }
-
-    addChecksumArray(checksums) {
-        checksums.forEach(([algorithm, value]) => this.checksums.set(algorithm, value));
     }
 
     getChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO) {
@@ -108,11 +123,11 @@ class Document {
      */
 
     addFeature(feature) {
-        this.features.add(feature);
+        this.features.set(feature);
     }
 
     addFeatureArray(features) {
-        features.forEach((feature) => this.features.add(feature));
+        features.forEach((feature) => this.features.set(feature));
     }
 
     removeFeature(feature) {
@@ -165,17 +180,29 @@ class Document {
 
     toJSON() {
         return {
+            // Base
             id: this.id,
             schema: this.schema,
             schemaVersion: this.schemaVersion,
+
+            // Timestamps
             created_at: this.created_at,
             updated_at: this.updated_at,
+
+            // Internal index configuration
             index: this.index,
-            checksums: Object.fromEntries(this.checksums),
-            meta: this.meta,
-            data: this.data,
-            storagePaths: this.storagePaths,
+
+            // Metadata section
+            metadata: this.metadata,
+            checksums: Array.from(this.checksums),
+            embeddings: this.embeddings,
             features: Array.from(this.features),
+            paths: this.paths,
+
+            // Document data/payload, omitted for blobs
+            data: this.data,
+
+            // Versioning
             parent_id: this.parent_id,
             versions: this.versions,
             version_number: this.version_number,
@@ -187,22 +214,31 @@ class Document {
         const doc = new Document({
             ...json,
             checksums: new Map(Object.entries(json.checksums)),
-            features: new Set(json.features),
+            features: new Map(Object.entries(json.features)),
         });
         return doc;
     }
 
     validate() {
-        if (!this.schema) { throw new Error('Document schema is not defined'); }
         if (!this.id) { throw new Error('Document ID is not defined'); }
         if (!Number.isInteger(this.id)) { throw new Error('Document id has to be INT32'); }
+        if (!this.schema) { throw new Error('Document schema is not defined'); }
+        if (!this.schemaVersion) { throw new Error('Document schema version is not defined'); }
+
+        if (!this.metadata) { throw new Error('Document metadata is not defined'); }
+        if (!this.metadata.dataContentType) { throw new Error('Document must have a dataContentType'); }
+        if (!this.metadata.dataContentEncoding) { throw new Error('Document must have a dataContentEncoding'); }
+
         if (!(this.checksums instanceof Map)) { throw new Error('Document checksums must be a Map'); }
         if (!this.checksums.has(this.index.primaryChecksumAlgorithm)) {
             throw new Error(`Document must have a checksum for the primary algorithm: ${this.index.primaryChecksumAlgorithm}`);
         }
-        if (!this.meta.dataContentType) { throw new Error('Document must have a dataContentType'); }
-        if (!(this.features instanceof Set)) { throw new Error('Document features must be a Set'); }
 
+        if (!this.embeddings) { throw new Error('Document embeddings is not defined'); }
+        if (!this.features) { throw new Error('Document features is not defined'); }
+        if (!this.paths) { throw new Error('Document paths is not defined'); }
+
+        if (!this.data) { throw new Error('Document data is not defined'); }
         return true;
     }
 
@@ -215,11 +251,22 @@ class Document {
 
     static validate(document) {
         if (!document) throw new Error('Document is not defined');
-        return document.schema &&
-               document.checksums instanceof Map &&
-               document.checksums.has(document.index.primaryChecksumAlgorithm) &&
-               document.meta.dataContentType &&
-               document.features instanceof Set;
+        return  document.id &&
+                Number.isInteger(document.id) &&
+                document.schema &&
+                document.schemaVersion &&
+                document.created_at &&
+                document.updated_at &&
+                document.index &&
+                document.metadata &&
+                document.metadata.dataContentType &&
+                document.metadata.dataContentEncoding &&
+                document.checksums instanceof Map &&
+                document.checksums.has(document.index.primaryChecksumAlgorithm) &&
+                document.embeddings &&
+                document.features instanceof Map &&
+                document.paths &&
+                document.data;
     }
 
     get schemaDefinition() {
@@ -229,18 +276,24 @@ class Document {
     // We should use a proper schema library for this
     static get schemaDefinition() {
         return {
-            id: 'string',
+            id: 'number',
             schema: 'string',
             schemaVersion: 'string',
+
             created_at: 'string',
             updated_at: 'string',
+
             index: 'object',
-            checksums: 'array', // Set
-            meta: 'object',
+
+            metadata: 'object',
+            checksums: 'map',
+            embeddings: 'array',
+            features: 'map',
+            paths: 'array',
+
             data: 'object',
-            storagePaths: 'array',
-            features: 'array',  // Set
-            parent_id: 'string',
+
+            parent_id: 'number',
             versions: 'array',
             version_number: 'number',
             latest_version: 'number',
@@ -248,13 +301,13 @@ class Document {
     }
 
     isJsonDocument() {
-        return this.meta.dataContentType === 'application/json';
+        return this.metadata.dataContentType === 'application/json';
     }
 
     // TODO: Fixme, this assumes everything other than a blob is stored as JSON
     // which may not be the case
     isBlob() {
-        return this.meta.dataContentType !== 'application/json';
+        return this.metadata.dataContentType !== 'application/json';
     }
 
 }

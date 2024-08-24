@@ -23,6 +23,7 @@ class Fts {
     async insert(id, str) {
         if (!id || !str) { return false; }
         if (typeof str === 'string') { str = [str]; }
+        if (str.length === 0) { return false; }
 
         for (const input of str) {
             await this.index.addAsync(id, input); // Uses update internally anyway
