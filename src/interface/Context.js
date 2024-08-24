@@ -15,8 +15,6 @@ const Storage = require('../services/storage');
 // Schemas
 const SchemaRegistry = require('../schemas/SchemaRegistry.js');
 
-
-
 class ContextInterface {
 
     constructor() {
@@ -94,32 +92,32 @@ class ContextInterface {
 
         const Schema = this.schemas.getSchema(document.schema);
         if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
+        if (!Schema.validate(document)) { throw new Error('Document validation failed'); }
 
-        const parsedDocument = Schema.fromJSON(document);
+        // Create document(handy)
+        const doc = new Schema(document);
 
         // Calculate checksums
-        let data = parsedDocument.getChecksumFields();
-        let algorithms = parsedDocument.getChecksumAlgorithms();
+        let data = doc.getChecksumFields();
+        console.log(data)
+        let algorithms = doc.getChecksumAlgorithms();
         for (let i = 0; i < algorithms.length; i++) {
             let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
-            parsedDocument.addChecksum(algorithms[i], checksum);
+            doc.addChecksum(algorithms[i], checksum);
         }
 
+        // Generate embeddings
+        //let embeddings = // TODO;
+        //doc.addEmbeddings(embeddings);
+
         // Extract features
-        let features = [document.schema, ...featureArray];
-        parsedDocument.addFeatureArray(features);
-
-        // Calculate embeddings
-
-        // Validate document
-        parsedDocument.validate();
-        console.log(parsedDocument);
 
         // Insert into index
-        await this.index.insert(parsedDocument, contextArray, featureArray);
+        const id = await this.index.insertDocument(doc, contextArray, featureArray);
+        doc.id = id;
 
         // Insert into storage
-        await this.storage.insertDocument(parsedDocument, null, backends);
+        await this.storage.insertDocument(doc, backends);
 
     }
 
@@ -138,7 +136,7 @@ const context = new ContextInterface();
 const Doc = context.schemas.getSchema('data/abstraction/document');
 const doc1 = new Doc({
     id: 100001,
-    data: { title: 'Hello World from doc1' },
+    data: { title: 'Hello World from doc1', test: { test2: 'test2' } },
 })
 
 const doc2 = new Doc({

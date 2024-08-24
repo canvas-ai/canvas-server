@@ -366,7 +366,6 @@ class Index extends EventEmitter {
         if (!obj.id) { throw new Error('Object ID required'); }
         if (!obj.created_at) { throw new Error('Object created_at required'); }
         if (!obj.updated_at) { throw new Error('Object updated_at required'); }
-        if (!obj.action) { throw new Error('Object action required'); }
         if (!obj.checksums) { throw new Error('Object checksums required'); }
         if (!obj.embeddings) { throw new Error('Object embeddings array required'); }
         if (!obj.searchArray) { throw new Error('Object searchArray required'); }

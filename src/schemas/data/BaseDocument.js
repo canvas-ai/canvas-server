@@ -31,12 +31,12 @@ class Document {
 
         // Internal index configuration
         this.index = {
-            checksumAlhorithms: [
+            checksumAlgorithms: [
                 DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
                 'sha256'
             ],
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-            checksumFields: ['data'],
+            checksumFields: ['title','test.test2'],
             searchFields: ['data.title', 'data.content'],
             embeddingFields: ['data.title', 'data.content'],
             ...options.index,
@@ -86,11 +86,20 @@ class Document {
     }
 
     getChecksumFields() {
-        let data = {};
-        this.index.checksumFields.forEach((field) => {
-            data[field] = this.data[field];
+        // Default to the whole data object if no specific fields are set
+        if (this.index.checksumFields.length === 0 ||
+            this.index.checksumFields.includes('data')) {
+            return JSON.stringify(this.data);
+        }
+
+        // Extract and concatenate specified fields
+        let fieldValues = this.index.checksumFields.map((field) => {
+            const value = this.getNestedValue(this.data, field);
+            return value !== undefined ? JSON.stringify(value) : '';
         });
-        return data;
+
+        // Concatenate the field values into a single string
+        return fieldValues.join('');
     }
 
     addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
@@ -121,12 +130,12 @@ class Document {
      * Feature helpers
      */
 
-    addFeature(feature) {
-        this.features.set(feature);
+    addFeature(type, feature) {
+        this.features.set(type, feature);
     }
 
     addFeatureArray(features) {
-        features.forEach((feature) => this.features.set(feature));
+        features.forEach((type, feature) => this.features.set(type, feature));
     }
 
     removeFeature(feature) {
@@ -141,8 +150,28 @@ class Document {
         return Array.from(this.features);
     }
 
+    getFeatureArray() {
+        return Array.from(this.features).map(([type, feature]) => `${type}/${feature}`);
+    }
+
     clearFeatures() {
         this.features.clear();
+    }
+
+    getSearchFields() {
+        // Default to the whole data object if no specific fields are set
+        if (this.index.searchFields.length === 0) { return null; }
+
+        // Extract specified fields
+        let fieldValues = this.index.searchFields.map((field) => {
+            const value = this.getNestedValue(this, field);
+            if (value !== undefined && value !== '') {
+                return value;  //JSON.stringify(value);
+            }
+        });
+
+        // Return the field array
+        return fieldValues;
     }
 
 
@@ -238,7 +267,27 @@ class Document {
         if (!this.paths) { throw new Error('Document paths is not defined'); }
 
         if (!this.data) { throw new Error('Document data is not defined'); }
-        return true;
+        return true; // Maybe we should stop throwing errors like this
+    }
+
+    static validate(document) {
+        if (!document) { throw new Error('Document is not defined'); }
+        return  document.id &&
+            Number.isInteger(document.id) &&
+            document.schema &&
+            document.schemaVersion &&
+            document.created_at &&
+            document.updated_at &&
+            document.index &&
+            document.metadata &&
+            document.metadata.dataContentType &&
+            document.metadata.dataContentEncoding &&
+            document.checksums &&
+            document.embeddings &&
+            document.features &&
+            document.paths &&
+            document.data &&
+            true || false;
     }
 
     validateData() {
@@ -248,25 +297,6 @@ class Document {
         return this.isBlob();
     }
 
-    static validate(document) {
-        if (!document) throw new Error('Document is not defined');
-        return  document.id &&
-                Number.isInteger(document.id) &&
-                document.schema &&
-                document.schemaVersion &&
-                document.created_at &&
-                document.updated_at &&
-                document.index &&
-                document.metadata &&
-                document.metadata.dataContentType &&
-                document.metadata.dataContentEncoding &&
-                document.checksums instanceof Map &&
-                document.checksums.has(document.index.primaryChecksumAlgorithm) &&
-                document.embeddings &&
-                document.features instanceof Map &&
-                document.paths &&
-                document.data;
-    }
 
     get schemaDefinition() {
         return this.toJSON();
@@ -307,6 +337,10 @@ class Document {
     // which may not be the case
     isBlob() {
         return this.metadata.dataContentType !== 'application/json';
+    }
+
+    getNestedValue(obj, path) {
+        return path.split('.').reduce((acc, part) => acc && acc[part], obj);
     }
 
 }
