@@ -10,10 +10,10 @@ const Config = require('./utils/config/index.js');
 const winston = require('winston');
 
 // Services
-const Db = require('./services/db');
+const Db = require('./services/db');    // We can use a single lmdb instance for both, index and as the storage lmdb backend
 const Jim = require('./services/jim');
-const SynapsD = require('./services/synapsd');
-const StoreD = require('./services/stored');
+const Index = require('./services/index');
+const Storage = require('./services/storage');
 
 // Manager classes
 const AppManager = require('./managers/app');
@@ -148,9 +148,8 @@ class Canvas extends EventEmitter {
          * Canvas services
          */
 
-        this.index = new SynapsD({
-            config: this.config.open('index'),
-            logger: this.logger,
+        // Canvas indexing service
+        this.index = new Index({
             rootPath: this.#user.paths.index,
             backupPath: path.join(this.#user.paths.index, 'backup'),
             backupOnOpen: true,
@@ -163,7 +162,7 @@ class Canvas extends EventEmitter {
             cache: {
                 enabled: true,
                 maxAge: -1,
-                rootPath: user.paths.cache,
+                rootPath: this.#user.paths.cache,
                 cachePolicy: 'pull-through',
             },
             backends: {
@@ -173,7 +172,7 @@ class Canvas extends EventEmitter {
                     type: 'local',
                     backend: 'file',
                     backendConfig: {
-                        path: user.paths.data,
+                        path: this.#user.paths.data,
                     }
                 },
                 db: {
@@ -182,8 +181,7 @@ class Canvas extends EventEmitter {
                     type: 'local',
                     backend: 'lmdb',
                     backendConfig: {
-                        path: user.paths.db,
-                        backupPath: path.join(user.paths.db, 'backup'),
+                        path: this.#user.paths.db,
                         backupOnOpen: true,
                         backupOnClose: false,
                         compression: true,
@@ -239,7 +237,7 @@ class Canvas extends EventEmitter {
      * Canvas service controls
      */
 
-    async start(url, options) {
+    async start() {
         if (this.#status === 'running') { throw new Error('Canvas Server already running'); }
 
         // Initialize the universe

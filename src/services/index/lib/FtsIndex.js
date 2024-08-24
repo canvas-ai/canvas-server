@@ -12,7 +12,7 @@ class Fts {
         tokenize: 'forward',
         cache: true,
     }) {
-        if (!backingStore) { throw new Error('backingStore is required'); }
+        if (!backingStore) { throw new Error('Map() - like backingStore is required'); }
         this.#store = backingStore;
         this.#options = indexOptions;
         // https://github.com/nextapps-de/flexsearch
@@ -20,66 +20,24 @@ class Fts {
         this.loadIndex();
     }
 
-    /**
-     * Document methods (to decide whether to keep them or not)
-     */
+    async insert(id, str) {
+        if (!id || !str) { return false; }
+        if (typeof str === 'string') { str = [str]; }
 
-    async addDocument(doc) {
-        const indexFields = doc.index.fullTextIndexFields || [];
-        let indexContent = '';
-
-        for (const field of indexFields) {
-            const value = this.getNestedValue(doc, field);
-            if (value) {
-                debug(`Adding field ${field} with value ${value}`);
-                indexContent += value + ' ';
-            }
+        for (const input of str) {
+            await this.index.addAsync(id, input); // Uses update internally anyway
         }
 
-        await this.index.add(doc.id, indexContent.trim());
         await this.saveIndex();
     }
 
-    async removeDocument(id) {
-        await this.index.remove(id);
-        await this.saveIndex();
+    async update(id, str) {
+        await this.remove(id);
+        await this.insert(id, str);
     }
 
-    async updateDocument(doc) {
-        await this.removeDocument(doc.id);
-        await this.addDocument(doc);
-    }
-
-    async searchDocuments(query, limit = 100) {
-        const results = await this.search(query, limit);
-        return results;
-    }
-
-    /**
-     * Low level FTS index methods
-     */
-
-    async addString(id, content) {
-        await this.index.addAsync(id, content);
-        await this.saveIndex();
-    }
-
-    async addStringArray(id, contentArray) {
-        for (const content of contentArray) {
-            await this.index.addAsync(id, content);
-        }
-        await this.saveIndex();
-    }
-
-    async removeString(id) {
+    async remove(id) {
         await this.index.removeAsync(id);
-        await this.saveIndex();
-    }
-
-    async removeStringArray(id, contentArray) {
-        for (const content of contentArray) {
-            await this.index.removeAsync(id, content);
-        }
         await this.saveIndex();
     }
 
@@ -88,12 +46,11 @@ class Fts {
         return results;
     }
 
-    // TODO: Current backend does not support searching on a subset of documents
-    // We can get those cheaply, so a nice task for whoever picks this up
     searchSync(query, limit = 100) {
+        // TODO: Current backend does not support searching on a subset of documents
+        // We can get those cheaply, so a nice task for whoever picks this up
         return this.index.search(query, limit);
     }
-
 
     /**
      * Utils
@@ -136,10 +93,6 @@ class Fts {
         } catch (error) {
             console.error('Error saving index:', error);
         }
-    }
-
-    getNestedValue(obj, path) {
-        return path.split('.').reduce((acc, part) => acc && acc[part], obj);
     }
 }
 

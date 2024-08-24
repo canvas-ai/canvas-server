@@ -13,23 +13,29 @@ class CanvasInterface {
     }
 
 
-    insertDocument(document, contextArray, featureArray, backends = []) {
+    insertDocument(document, contextArray, featureArray, backends = []) { }
 
-    }
+    listDocuments(contextArray, featureArray, filterArray, backends = []) { }
 
-    insertFile(filePath, backends = []) { }
+    getDocument(id, contextArray, featureArray, filterArray) { }
 
-    }
+    getDocumentByChecksum(algo, checksum, contextArray, featureArray, filterArray) { }
 
-    insertNote(note) { }
+    hasDocument(id, contextArray, featureArray, filterArray) { }
 
-    insertTab(tab) { }
+    hasDocumentByChecksum(algo, checksum, contextArray, featureArray, filterArray) { }
 
-    insertTodo(todo) { }
+    findDocuments(query, contextArray, featureArray, filterArray) { }
 
+    // ...
 
+    insertFile(filePath, contextArray, featureArray, backends = []) { }
 
+    insertNote(note, contextArray, featureArray, backends = []) { }
 
+    insertTab(tab, contextArray, featureArray, backends = []) { }
 
+    insertTodo(todo, contextArray, featureArray, backends = []) { }
 
+    // ...
 }

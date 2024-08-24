@@ -130,7 +130,6 @@ class Stored extends EE {
         // Implementation here
     }
 
-
     async getFile(hash, backends = this.backends, options = {
         // Return as a stream
         // stream: false

@@ -87,7 +87,7 @@ class ContextInterface {
     }
 
 
-    insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = []) {
+    async insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = []) {
         // Validate document
         if (!document) {
             throw new Error('Document is required');
@@ -106,16 +106,27 @@ class ContextInterface {
         console.log(parsedDocument);
 
         // Calculate checksums
+        let data = parsedDocument.getChecksumFields();
+        let algorithms = parsedDocument.getChecksumAlgorithms();
+        for (let i = 0; i < algorithms.length; i++) {
+            let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
+            parsedDocument.addChecksum(algorithms[i], checksum);
+        }
 
         // Extract features
+        let features = [document.schema, ...featureArray];
+        parsedDocument.addFeatureArray(features);
 
         // Calculate embeddings
 
-        //parsedDocument.validate();
+        // Validate document
+        parsedDocument.validate();
 
         // Insert into index
+        await this.index.insertDocument(parsedDocument, contextArray, featureArray);
 
         // Insert into storage
+        await this.storage.insertDocument(parsedDocument, backends);
 
     }
 

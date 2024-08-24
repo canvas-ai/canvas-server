@@ -25,10 +25,12 @@ class Document {
         this.created_at = options.created_at ?? new Date().toISOString();
         this.updated_at = options.updated_at ?? this.created_at;
 
+        // Configuration for the index module
         this.index = {
+            checksumAlhorithms: [DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, 'sha256'],
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-            primaryChecksumFields: ['data'],
-            fullTextIndexFields: ['data'],
+            checksumFields: ['data'],
+            ftsFields: ['data'],
             embeddingFields: ['data'],
             ...options.index,
         };
@@ -55,32 +57,23 @@ class Document {
         this.updated_at = new Date().toISOString();
     }
 
-    /**
-     * Storage path helpers
-     */
-
-    addStoragePath(path) {
-        if (!this.storagePaths.includes(path)) {
-            this.storagePaths.push(path);
-        }
-    }
-
-    addStoragePathArray(pathArray) {
-        pathArray.forEach((path) => this.storagePaths(path));
-    }
-
-    removeStoragePath(path) {
-        this.storagePaths = this.storagePaths.filter((storagePath) => storagePath !== path);
-    }
-
-    getStoragePaths() { return this.storagePaths; }
-
-    hasStoragePath(path) { return this.storagePaths.includes(path); }
-
 
     /**
      * Checksum helpers
      */
+
+    getChecksumAlgorithms() {
+        return this.index.checksumAlhorithms;
+    }
+
+    getChecksumFields() {
+        let data = {};
+        this.index.checksumFields.forEach((field) => {
+            data[field] = this.data[field];
+        });
+        return data;
+    }
+
 
     addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
         this.checksums.set(algorithm, value);

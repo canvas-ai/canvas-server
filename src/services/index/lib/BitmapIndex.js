@@ -3,7 +3,7 @@ const Bitmap = require('./Bitmap');
 const { uuid12 } = require('../../../utils/uuid');
 const debug = require('debug')('canvas:synapsd:BitmapCollection');
 
-class BitmapCollection {
+class BitmapIndex {
 
     constructor(store = new Map(), cache = new Map(), options = {
         tag: uuid12(),
@@ -19,7 +19,7 @@ class BitmapCollection {
     }
 
     /**
-     * Bitmap operations
+     * Bitmap index operations
      */
 
     tickSync(key, ids) {
@@ -51,17 +51,19 @@ class BitmapCollection {
         return keyArray.map(key => this.untickSync(key, ids));
     }
 
-    tickAllSync(ids) {
-        debug('Ticking all bitmaps in collection for IDs', ids);
-        for (const key of this.store.getKeys()) {
-            this.tickSync(key, ids);
-        }
+    removeSync(key, ids) {
+        debug('Removing', key, ids);
+        const bitmap = this.getBitmap(key, false);
+        if (!bitmap) return null;
+        bitmap.removeMany(Array.isArray(ids) ? ids : [ids]);
+        this.saveBitmap(key, bitmap);
+        return bitmap;
     }
 
-    untickAllSync(ids) {
-        debug('Unticking all bitmaps in collection for IDs', ids);
-        for (const key of this.store.getKeys()) {
-            this.untickSync(key, ids);
+    deleteSync(id) {
+        debug(`Deleting object references with ID "${id}" from all bitmaps in collection`);
+        for (const key of this.listBitmaps()) {
+            this.remove(key, id);
         }
     }
 
@@ -242,4 +244,4 @@ class BitmapCollection {
 
 }
 
-module.exports = BitmapCollection;
+module.exports = BitmapIndex;
