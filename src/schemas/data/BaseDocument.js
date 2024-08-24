@@ -36,7 +36,7 @@ class Document {
                 'sha256'
             ],
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-            checksumFields: ['title','test.test2'],
+            checksumFields: ['data.title','data.content'],
             searchFields: ['data.title', 'data.content'],
             embeddingFields: ['data.title', 'data.content'],
             ...options.index,
@@ -78,14 +78,10 @@ class Document {
     }
 
     /**
-     * Checksum helpers
+     * Data helpers
      */
 
-    getChecksumAlgorithms() {
-        return this.index.checksumAlgorithms;
-    }
-
-    getChecksumFields() {
+    generateChecksumData() {
         // Default to the whole data object if no specific fields are set
         if (this.index.checksumFields.length === 0 ||
             this.index.checksumFields.includes('data')) {
@@ -94,12 +90,52 @@ class Document {
 
         // Extract and concatenate specified fields
         let fieldValues = this.index.checksumFields.map((field) => {
-            const value = this.getNestedValue(this.data, field);
+            const value = this.getNestedValue(this, field); // Originally this.data
             return value !== undefined ? JSON.stringify(value) : '';
         });
 
         // Concatenate the field values into a single string
         return fieldValues.join('');
+    }
+
+    generateFtsData() {
+        // Default to the whole data object if no specific fields are set
+        if (this.index.searchFields.length === 0) { return null; }
+
+        // Extract specified fields
+        let fieldValues = this.index.searchFields.map((field) => {
+            const value = this.getNestedValue(this, field);
+            if (value !== undefined && value !== '') {
+                return value.trim();  //JSON.stringify(value);
+            }
+        });
+
+        // Return the field array
+        return fieldValues;
+    }
+
+    generateEmbeddingData() {
+        // Default to the whole data object if no specific fields are set
+        if (this.index.embeddingFields.length === 0) { return null; }
+
+        // Extract specified fields
+        let fieldValues = this.index.embeddingFields.map((field) => {
+            const value = this.getNestedValue(this, field);
+            if (value !== undefined && value !== '') {
+                return value;  //JSON.stringify(value);
+            }
+        });
+
+        // Return the field array
+        return fieldValues;
+    }
+
+    /**
+     * Checksum helpers
+     */
+
+    getChecksumAlgorithms() {
+        return this.index.checksumAlgorithms;
     }
 
     addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
@@ -157,23 +193,6 @@ class Document {
     clearFeatures() {
         this.features.clear();
     }
-
-    getSearchFields() {
-        // Default to the whole data object if no specific fields are set
-        if (this.index.searchFields.length === 0) { return null; }
-
-        // Extract specified fields
-        let fieldValues = this.index.searchFields.map((field) => {
-            const value = this.getNestedValue(this, field);
-            if (value !== undefined && value !== '') {
-                return value;  //JSON.stringify(value);
-            }
-        });
-
-        // Return the field array
-        return fieldValues;
-    }
-
 
     /**
      * Versioning helpers

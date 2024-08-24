@@ -85,21 +85,19 @@ class ContextInterface {
     }
 
 
-    async insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = 'db') {
+    async insertDocument(document, contextArray = this.contextArray, featureArray = [], backends = ['db']) {
         // Validate document
         if (!document) { throw new Error('Document is required'); }
         if (!document.schema) { throw new Error('Document schema is required'); }
 
         const Schema = this.schemas.getSchema(document.schema);
         if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
-        if (!Schema.validate(document)) { throw new Error('Document validation failed'); }
 
-        // Create document(handy)
+        // Initialize our document(handy)
         const doc = new Schema(document);
 
         // Calculate checksums
-        let data = doc.getChecksumFields();
-        console.log(data)
+        let data = doc.generateChecksumData();
         let algorithms = doc.getChecksumAlgorithms();
         for (let i = 0; i < algorithms.length; i++) {
             let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
@@ -107,13 +105,16 @@ class ContextInterface {
         }
 
         // Generate embeddings
-        //let embeddings = // TODO;
-        //doc.addEmbeddings(embeddings);
+        // TODO
+        //data = doc.generateEmbeddingData();
+        //let embeddings = this.storage.utils.generateEmbeddings(data);
+        doc.embeddings = []
 
         // Extract features
+        // TODO
 
-        // Insert into index
-        const id = await this.index.insertDocument(doc, contextArray, featureArray);
+        // Insert document into index, will get a nice doc.id in return
+        const id = await this.index.insert(doc, contextArray, featureArray);
         doc.id = id;
 
         // Insert into storage
@@ -135,12 +136,10 @@ class ContextInterface {
 const context = new ContextInterface();
 const Doc = context.schemas.getSchema('data/abstraction/document');
 const doc1 = new Doc({
-    id: 100001,
     data: { title: 'Hello World from doc1', test: { test2: 'test2' } },
 })
 
 const doc2 = new Doc({
-    id: 100002,
     data: { title: 'Hello World from doc2' },
 })
 

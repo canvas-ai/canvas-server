@@ -10,11 +10,8 @@ class Bitmap extends RoaringBitmap32 {
             throw new Error('Bitmap key required');
         }
         this.key = options.key;
-        if (!options.rangeMin || !options.rangeMax) {
-            throw new Error(`Invalid range: ${options.rangeMin} - ${options.rangeMax}`);
-        }
-        this.rangeMin = options.rangeMin;
-        this.rangeMax = options.rangeMax;
+        this.rangeMin = options.rangeMin ?? 0;
+        this.rangeMax = options.rangeMax ?? 4294967296;
 
         debug(`Bitmap "${this.key}" type ${this.type}, ID range: ${this.rangeMin} - ${this.rangeMax} initialized`);
         debug(`Bitmap "${this.key}" has ${this.size} objects`);
@@ -51,23 +48,26 @@ class Bitmap extends RoaringBitmap32 {
         this.removeMany(bitmap);
     }
 
-    static create(oidArrayOrBitmap, options = {
-        type: 'static',
-        rangeMin: 0,
-        rangeMax: 4294967296,
-    }) {
+    static create(oidArrayOrBitmap, options = {}) {
+        options = {
+            type: 'static',
+            rangeMin: 0,
+            rangeMax: 4294967296,
+            ...options,
+        };
+
         Bitmap.validateRange(oidArrayOrBitmap, options.rangeMin, options.rangeMax);
         return new Bitmap(oidArrayOrBitmap, options);
     }
 
-    static validateRange(inputData, rangeMin, rangeMax) {
+    static validateRange(inputData, rangeMin = 0, rangeMax = 4294967296) {
         if (rangeMin < 0 || rangeMax < 0 || rangeMin > rangeMax) {
             throw new Error(`Invalid range: ${rangeMin} - ${rangeMax}`);
         }
 
         const validateOid = (oid) => {
             if (oid < rangeMin || oid > rangeMax) {
-                throw new Error(`Out of range: ${oid}`);
+                throw new Error(`ID out of range: ${oid}, range: ${rangeMin} - ${rangeMax}`);
             }
         };
 
