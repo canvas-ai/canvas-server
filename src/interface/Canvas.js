@@ -15,15 +15,15 @@ class CanvasInterface {
 
     insertDocument(document, contextArray, featureArray, backends = []) { }
 
-    listDocuments(contextArray, featureArray, filterArray, backends = []) { }
+    listDocuments(contextArray, featureArray, filterArray) { }
 
-    getDocument(id, contextArray, featureArray, filterArray) { }
+    getDocument(id) { }
 
     getDocumentByChecksum(algo, checksum, contextArray, featureArray, filterArray) { }
 
-    hasDocument(id, contextArray, featureArray, filterArray) { }
+    hasDocument(id, contextArray, featureArray) { }
 
-    hasDocumentByChecksum(algo, checksum, contextArray, featureArray, filterArray) { }
+    hasDocumentByChecksum(algo, checksum, contextArray, featureArray) { }
 
     findDocuments(query, contextArray, featureArray, filterArray) { }
 

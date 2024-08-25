@@ -112,6 +112,7 @@ class ContextInterface {
 
         // Extract features
         // TODO
+        doc.features = featureArray;
 
         // Insert document into index, will get a nice doc.id in return
         const id = await this.index.insert(doc, contextArray, featureArray);
