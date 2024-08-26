@@ -66,6 +66,7 @@ class Document {
         /**
          * Versioning
          */
+
         this.parent_id = options.parent_id ?? null; // Stored in the child document
         this.versions = options.versions ?? []; // Stored in the parent document
         this.version_number = options.version_number ?? 1;

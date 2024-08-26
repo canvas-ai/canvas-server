@@ -24,6 +24,9 @@ const fileinfo = require('./utils/fileinfo');
 // StoreD caching layer
 const Cache = require('./cache');
 
+// StoreD backends
+const BackendManager = require('./backends/BackendManager');
+
 
 /**
  * StoreD
@@ -76,8 +79,7 @@ class Stored extends EE {
         // canvas://office:s3/file/path/to/object
         // canvas://remote:api/blob/12345
         // canvas://deviceid:fs/path/to/indexed/file
-        this.backends = {};
-        this.#initializeBackends();
+        this.backendManager = new BackendManager(config.backends);
     }
 
     /**
@@ -92,8 +94,51 @@ class Stored extends EE {
      * @returns {Promise} - Result of inserting the document as a URL.
      */
     async insertDocument(document, backends = this.backends, options = {}) {
-        if (!document) { throw new Error('No document provided'); }
-        if (!Array.isArray(backends) || !backends.length) { throw new Error('Backends must be an array'); }
+        // Validate document
+        if (!document) { throw new Error('Document is required'); }
+        if (!document.schema) { throw new Error('Document schema is required'); }
+
+        const Schema = this.schemas.getSchema(document.schema);
+        if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
+        if (!Schema.validate(document)) { throw new Error('Document validation failed'); };
+
+        // Validate backends
+        if (!backends || !Array.isArray(backends)) { throw new Error('Backends must be an array'); }
+        for (const backendName of backends) {
+            if (!this.backendManager.hasBackend()) { throw new Error(`Backend not found: ${backendName}`); }
+        }
+
+        // Initialize our document(handy)
+        const doc = new Schema(document);
+
+        // Calculate checksums
+        let data = doc.generateChecksumData();
+        let algorithms = doc.getChecksumAlgorithms();
+        for (let i = 0; i < algorithms.length; i++) {
+            let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
+            doc.addChecksum(algorithms[i], checksum);
+        }
+
+        // Generate embeddings
+        // TODO
+        //data = doc.generateEmbeddingData();
+        //let embeddings = this.storage.utils.generateEmbeddings(data);
+        doc.embeddings = []
+
+        // Extract features
+        // TODO
+        featureArray = [
+            doc.schema,
+            ...featureArray
+        ];
+
+        // Insert document into index, will get a nice doc.id in return
+        doc.id = await this.index.insert(doc, contextArray, featureArray);
+
+        // Insert into storage
+        doc.paths = await this.storage.insertDocument(doc, backends);
+
+
 
         // Validate basic document schema (we do not care about the actual schema here)
         // Maybe we should..?
@@ -125,21 +170,12 @@ class Stored extends EE {
      * @param {Object} options - Additional options for the insertion.
      * @returns {Promise} - Result of inserting the file as a URL.
      */
-    async insertFile(filePath, metadata, backends = this.backends, options = {}) {
+    async insertFile(filePath, metadata, backends = this.backends, options = {
+        // copy, move, index
+    }) {
         if (!filePath) { throw new Error('No file path provided'); }
         if (typeof backends === 'string') { backends = [backends]; }
         return this.insertUrl(filePath, metadata, backends, options);
-    }
-
-    /**
-     * Inserts a URL into the storage backend(s).
-     * @param {string} resourceUrl - The URL to insert.
-     * @param {Object} metadata - Optional metadata associated with the URL.
-     * @param {string|string[]} backends - Name or array of backend names.
-     * @param {Object} options - Additional options for the insertion.
-     */
-    async insertUrl(resourceUrl, metadata = {}, backends = this.backends, options = {}) {
-        // Implementation here
     }
 
     /**
@@ -191,7 +227,6 @@ class Stored extends EE {
                 }
             }
         }
-
     }
 
     // Returns binary data(blob) as a Buffer
@@ -289,28 +324,6 @@ class Stored extends EE {
         return results;
     }
 
-
-    /**
-     * Backend methods
-     */
-
-    listBackends() { return Object.keys(this.backends); }
-
-    getBackend(backendName) {
-        const backend = this.backends[backendName];
-        if (!backend) { throw new Error(`Backend not found: ${backendName}`); }
-        return backend;
-    }
-
-    #initializeBackends() {
-        for (const [name, config] of Object.entries(this.config.backends)) {
-            const driver = config.driver;
-            const driverConfig = config.driverConfig;
-            // Load backend class (TODO: Refactor/cleanup)
-            const BackendClass = require(`./backends/${driver}`);
-            this.backends[name] = new BackendClass(driverConfig);
-        }
-    }
 
     /**
      * Utils

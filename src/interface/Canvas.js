@@ -1,41 +1,11 @@
 
-
-
-
-
-
 class CanvasInterface {
-
 
     constructor() {
         this.index = new Index();
         this.storage = new Storage();
     }
 
+    // TODO
 
-    insertDocument(document, contextArray, featureArray, backends = []) { }
-
-    listDocuments(contextArray, featureArray, filterArray) { }
-
-    getDocument(id) { }
-
-    getDocumentByChecksum(algo, checksum, contextArray, featureArray, filterArray) { }
-
-    hasDocument(id, contextArray, featureArray) { }
-
-    hasDocumentByChecksum(algo, checksum, contextArray, featureArray) { }
-
-    findDocuments(query, contextArray, featureArray, filterArray) { }
-
-    // ...
-
-    insertFile(filePath, contextArray, featureArray, backends = []) { }
-
-    insertNote(note, contextArray, featureArray, backends = []) { }
-
-    insertTab(tab, contextArray, featureArray, backends = []) { }
-
-    insertTodo(todo, contextArray, featureArray, backends = []) { }
-
-    // ...
 }

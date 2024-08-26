@@ -92,35 +92,17 @@ class ContextInterface {
 
         const Schema = this.schemas.getSchema(document.schema);
         if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
+        if (!Schema.validate(document)) { throw new Error('Document validation failed'); };
 
-        // Initialize our document(handy)
-        const doc = new Schema(document);
+        // Insert document to storage backends
+        const doc = await this.storage.insertDocument(document, contextArray, featureArray, backends);
 
-        // Calculate checksums
-        let data = doc.generateChecksumData();
-        let algorithms = doc.getChecksumAlgorithms();
-        for (let i = 0; i < algorithms.length; i++) {
-            let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
-            doc.addChecksum(algorithms[i], checksum);
-        }
+        // Our document should now have all required fields (id, embeddings, checksums, paths)
+        // Insert document to index
+        const id = await this.index.insertDocument(doc);
 
-        // Generate embeddings
-        // TODO
-        //data = doc.generateEmbeddingData();
-        //let embeddings = this.storage.utils.generateEmbeddings(data);
-        doc.embeddings = []
-
-        // Extract features
-        // TODO
-        doc.features = featureArray;
-
-        // Insert document into index, will get a nice doc.id in return
-        const id = await this.index.insert(doc, contextArray, featureArray);
-        doc.id = id;
-
-        // Insert into storage
-        await this.storage.insertDocument(doc, backends);
-
+        // Return document ID
+        return id;
     }
 
     insertFile(filePath) { }
