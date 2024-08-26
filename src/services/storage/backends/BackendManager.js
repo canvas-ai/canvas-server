@@ -5,6 +5,7 @@ const fs = require('fs');
 const options = {
     lmdb: {
         enabled: true,
+        type: 'local',
         priority: 1,
         dataTypes: ['note', 'document'],
         driver: 'lmdb',
@@ -14,6 +15,7 @@ const options = {
     },
     s3: {
         enabled: true,
+        type: 'remote',
         priority: 1,
         dataTypes: ['file'],
         driver: 's3',

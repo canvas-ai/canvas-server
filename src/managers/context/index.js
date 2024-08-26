@@ -11,6 +11,28 @@ const CONTEXT_AUTOCREATE_LAYERS = true;
 const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/'
 
+
+// Sessions
+// Each session has its own context(one) and a single control interface
+// meaning, switching your context on a session
+// connected work-phone will automatically switch it on your work PC assuming its connected to the same session
+// Sessions are decoupled from workspaces
+
+// Workspaces
+// universe://foo/bar/baz - Base URL / (universe)
+// work://work - Base URL set to /work (navigation/data only from the /work subtree)
+// customera://work/cusotmera - Base URL set to /work/customerA (navigation/data only from the /work/customerA subtree)
+// home://home < Base URL set to /home (navigation/data only from the /home subtree)
+
+// Contexts
+// Described elsewhere already
+// A client application can (optionally) submit a client context in the context array
+// Format is client/os/linux, client/user/user1, client/app/obsidian, client/network/172.16.2.0%24
+// This is very useful for calculating optimal routes for resources
+// Retrieving file123.mp3 while sitting at home may fetch it from your home NAS, but use your s3 backend
+// while you are on mobile network sitting on a train on your way to work
+
+
 class ContextManager extends EventEmitter {
 
     #index;
@@ -32,8 +54,14 @@ class ContextManager extends EventEmitter {
         this.#db = options.db;
         this.#data = options.data;
         this.#tree = new Tree({
-            
+
         });
+
+
+        // System context
+
+        // Client context (supplied on client application logon)
+
         this.#layers = this.#tree.layers;
         this.#baseUrl = options.baseUrl || CONTEXT_URL_BASE;
         this.activeContexts = new Map();

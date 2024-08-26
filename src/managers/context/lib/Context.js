@@ -31,6 +31,8 @@ class Context extends EE {
     #layerIndex;
     #tree;
 
+    // Client context
+
     #contextArray = [];
     #featureArray = [];
     #filterArray = [];

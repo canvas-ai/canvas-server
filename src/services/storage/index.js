@@ -35,9 +35,8 @@ const BackendManager = require('./backends/BackendManager');
  * in the backend array, returning the first successful operation(optionally populating the cache).
  *
  * Insert operations will first try to store an object in a backend of type: local, honoring the backend cache
- * configuration for write operations. If no local backend is provided, we'll default to cache if enabled,
- * then send the internal cache url to a syncd queue read by a worker process synchronizing to all selected
- * backends.
+ * configuration for write operations. If no local backend is provided, we'll default to cache(if enabled),
+ * then send the internal cache url to a syncd queue read by a sync worker.
  *
  * @class Stored
  * @param {Object} config - StoreD configuration object
@@ -75,7 +74,7 @@ class Stored extends EE {
         // Naming convention is not very flexible but should be enough for now
         // canvas://{instance}:{backend}/{type}/{identifier}
         // canvas://local:lmdb/checksum/sha1/hash
-        // canvas://local:lmdb/id/1234
+        // canvas://deviceid:lmdb/id/1234
         // canvas://office:s3/file/path/to/object
         // canvas://remote:api/blob/12345
         // canvas://deviceid:fs/path/to/indexed/file

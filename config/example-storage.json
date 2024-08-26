@@ -3,34 +3,23 @@
         "enabled": "true"
     },
     "backends": {
-        "home": {
-            "s3": {
-                "enabled": true,
-                "localCacheEnabled": true,
-                "ignoreBackendErrors": true,
-                "driverConfig": {
-                    "host": "s3-host",
-                    "bucket": "nas-bucket",
-                    "prefix": "nas-prefix",
-                    "token": "s3-token"
-                },
-                "permissions": "rw",
-                "dataAbstractions": []
-            },
-            "smb": {
-                "enabled": true,
-                "location": "home",
-                "localCacheEnabled": true,
-                "ignoreBackendErrors": true,
-                "driverConfig": {
-                    "host": "nas-host",
-                    "share": "nas-share",
-                    "username": "nas-username",
-                    "password": "nas-password"
-                },
-                "permissions": "rw",
-                "dataAbstractions": []
+        "lmdb": {
+            "enabled": true,
+            "type": "local",
+            "priority": 1,
+            "dataTypes": ["note", "document"],
+            "driver": "lmdb",
+            "driverConfig": {
+                "path": "/path/to/lmdb"
             }
+        },
+        "s3": {
+            "enabled": true,
+            "type": "remote",
+            "priority": 1,
+            "dataTypes": ["file"],
+            "driver": "s3",
+            "driverConfig": {}
         }
     }
 }
