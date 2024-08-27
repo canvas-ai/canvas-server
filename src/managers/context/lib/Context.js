@@ -31,7 +31,12 @@ class Context extends EE {
     #layerIndex;
     #tree;
 
-    // Client context
+    // System (remote) context
+    // - Location/network, runtime context
+    // Client (user/app) context
+    // - Sent to the server by each client(eg. client/os/linux, client/user/user1, client/app/obsidian, client/network/)
+    // User context
+    // - context path/tree layers
 
     #contextArray = [];
     #featureArray = [];

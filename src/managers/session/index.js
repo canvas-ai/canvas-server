@@ -52,7 +52,10 @@ class SessionManager extends EventEmitter {
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
         this.#maxContextsPerSession = options.maxContextsPerSession || MAX_CONTEXTS_PER_SESSION;
 
-        // Maybe we should just use utils.conf or utils.JsonMap and get rid of the db dependency
+        // TODO: Refactor to use nested maps and serialize/deserialize to/from the session store
+        // sessionID -> Map() which gets forwarede to the session object
+        // deviceID -> device object within the session object to track
+        // which devices are connected to the session
         this.sessions = new Map();
     }
 
