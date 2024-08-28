@@ -95,11 +95,11 @@ class ContextInterface {
         if (!Schema.validate(document)) { throw new Error('Document validation failed'); };
 
         // Insert document to storage backends
-        const doc = await this.storage.insertDocument(document, contextArray, featureArray, backends);
+        const doc = await this.storage.insertDocument(document, backends);
 
         // Our document should now have all required fields (id, embeddings, checksums, paths)
         // Insert document to index
-        const id = await this.index.insertDocument(doc);
+        const id = await this.index.insertDocument(doc, contextArray, featureArray);
 
         // Return document ID
         return id;

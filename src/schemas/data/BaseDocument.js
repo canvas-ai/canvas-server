@@ -147,6 +147,14 @@ class Document {
         return this.checksums.get(algorithm);
     }
 
+    getPrimaryChecksum() {
+        return this.checksums.get(DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO);
+    }
+
+    getPrimaryChecksumAlgorithm() {
+        return this.index.primaryChecksumAlgorithm;
+    }
+
     removeChecksum(algorithm) {
         this.checksums.delete(algorithm);
     }

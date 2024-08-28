@@ -44,7 +44,7 @@ const BackendManager = require('./backends/BackendManager');
 
 class Stored extends EE {
 
-    constructor(config = {}) {
+    constructor(config = {}, index) {
         debug('Initializing Canvas StoreD');
         if (!config) { throw new Error('No configuration provided'); }
         if (!config.cache) { throw new Error('No configuration object provided at options.config.cache'); }
@@ -67,6 +67,10 @@ class Stored extends EE {
             checksumFileArray,
         };
 
+        // Global index
+        if (!index) { throw new Error('Index module not provided'); }
+        this.index = index;
+
         // Initialize global cache
         this.cache = new Cache(this.config.cache);
 
@@ -79,6 +83,9 @@ class Stored extends EE {
         // canvas://remote:api/blob/12345
         // canvas://deviceid:fs/path/to/indexed/file
         this.backendManager = new BackendManager(config.backends);
+
+        // Initialize data ingestion pipeline
+        // TODO
     }
 
     /**
@@ -114,25 +121,18 @@ class Stored extends EE {
         let data = doc.generateChecksumData();
         let algorithms = doc.getChecksumAlgorithms();
         for (let i = 0; i < algorithms.length; i++) {
-            let checksum = this.storage.utils.checksumJson(data, algorithms[i]);
+            let checksum = this.utils.checksumJson(data, algorithms[i]);
             doc.addChecksum(algorithms[i], checksum);
         }
 
         // Generate embeddings
         // TODO
         //data = doc.generateEmbeddingData();
-        //let embeddings = this.storage.utils.generateEmbeddings(data);
+        //let embeddings = this.utils.generateEmbeddings(data);
         doc.embeddings = []
 
-        // Extract features
-        // TODO
-        featureArray = [
-            doc.schema,
-            ...featureArray
-        ];
+        // Generate ID
 
-        // Insert document into index, will get a nice doc.id in return
-        doc.id = await this.index.insert(doc, contextArray, featureArray);
 
         // Insert into storage
         doc.paths = await this.storage.insertDocument(doc, backends);

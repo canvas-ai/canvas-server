@@ -83,6 +83,12 @@ class Index extends EventEmitter {
         this.dChunks = this.#db.createDataset('chunks'); // Useless for now
         this.vEmbeddings = VectorIndex.connect(path.join(options.path, 'embeddings'));
 
+        // Timestamps
+        this.timestamps = this.#db.createDataset('timestamps');
+
+        // Actions
+
+
         debug('Index class initialized');
     }
 
