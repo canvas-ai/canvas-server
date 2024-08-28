@@ -31,7 +31,7 @@ class Context extends EE {
     #layerIndex;
     #tree;
 
-    // System (remote) context
+    // System (server) context
     // - Location/network, runtime context
     // Client (user/app) context
     // - Sent to the server by each client(eg. client/os/linux, client/user/user1, client/app/obsidian, client/network/)
@@ -42,7 +42,7 @@ class Context extends EE {
     #featureArray = [];
     #filterArray = [];
 
-    #meta = {};
+    #ephemeral = {};
 
 
     // TODO: Refactor to not set the context url in the constructor
