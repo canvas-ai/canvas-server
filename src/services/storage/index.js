@@ -44,7 +44,7 @@ const BackendManager = require('./backends/BackendManager');
 
 class Stored extends EE {
 
-    constructor(config = {}, index) {
+    constructor(config = {}) {
         debug('Initializing Canvas StoreD');
         if (!config) { throw new Error('No configuration provided'); }
         if (!config.cache) { throw new Error('No configuration object provided at options.config.cache'); }
@@ -66,10 +66,6 @@ class Stored extends EE {
             checksumFile,
             checksumFileArray,
         };
-
-        // Global index
-        if (!index) { throw new Error('Index module not provided'); }
-        this.index = index;
 
         // Initialize global cache
         this.cache = new Cache(this.config.cache);
