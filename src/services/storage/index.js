@@ -84,6 +84,13 @@ class Stored extends EE {
         // TODO
     }
 
+
+    extractFeatures(data) {
+        // Implementation here
+    }
+
+    
+
     /**
      * Main interface
      */

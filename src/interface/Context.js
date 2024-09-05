@@ -94,24 +94,30 @@ class ContextInterface {
         if (!Schema) { throw new Error(`Schema not found: ${document.schema}`); }
         if (!Schema.validate(document)) { throw new Error('Document validation failed'); }
 
+        // Initialize document (handy)
+        const doc = new Schema(document);
+
+        // Extract document features
+        doc.features = await this.storage.extractFeatures(document);
+
+        // Calculate checksums for document
+        doc.checksums = await this.storage.calculateChecksums(document);
+
+        // Calculate embeddings
+        doc.embeddings = await this.storage.calculateEmbeddings(document);
+
+        // Generate document ID
+        doc.id = await this.index.generateDocumentId(document);
+
         // Insert document to storage backends
-        const doc = await this.storage.insertDocument(document, backends);
+        doc.paths = await this.storage.insertDocument(document, backends);
 
-        // Our document should now have all required fields (id, embeddings, checksums, paths)
         // Insert document to index
-        const id = await this.index.insertDocument(doc, contextArray, featureArray);
+        await this.index.insertDocument(doc, contextArray, featureArray);
 
-        // Return document ID
-        return id;
+        // Return Metadata document
+        return doc;
     }
-
-    insertFile(filePath) { }
-
-    insertNote(note) {}
-
-    insertTab(tab) { }
-
-    insertTodo(todo) { }
 
 }
 

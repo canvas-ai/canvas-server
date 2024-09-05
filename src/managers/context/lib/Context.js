@@ -21,6 +21,7 @@ class Context extends EE {
 
     #id;
     #systemContext;
+    #sessionContext;
 
     #sessionId;
     #baseUrl;
@@ -42,9 +43,6 @@ class Context extends EE {
     #featureArray = [];
     #filterArray = [];
 
-    #ephemeral = {};
-
-
     // TODO: Refactor to not set the context url in the constructor
     constructor(url, db, tree, options = {}) {
         // Initialize event emitter
@@ -60,8 +58,9 @@ class Context extends EE {
 
         // Generate a runtime uuid
         this.#id = options?.id || uuid12();
-        //if (options.system) { throw new Error('Global system context not provided'); }
-        this.#systemContext =  options?.system;
+
+        this.#systemContext = options?.systemContext;
+        this.#sessionContext = options?.sessionContext;
 
         this.#sessionId = options?.sessionId || 'default'; // Throw?
         this.documents = db;

@@ -33,7 +33,7 @@ class Document {
         this.index = {
             checksumAlgorithms: [
                 DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
-                'sha256'
+                'sha256',
             ],
             primaryChecksumAlgorithm: DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO,
             checksumFields: ['data.title','data.content'],
@@ -139,7 +139,9 @@ class Document {
         return this.index.checksumAlgorithms;
     }
 
-    addChecksum(algorithm = DEFAULT_DOCUMENT_DATA_CHECKSUM_ALGO, value) {
+    addChecksum(algorithm, value) {
+        if (!algorithm) { throw new Error('Checksum algorithm is not defined'); }
+        if (!value) { throw new Error('Checksum value is not defined'); }
         this.checksums.set(algorithm, value);
     }
 
@@ -165,10 +167,6 @@ class Document {
 
     getChecksums() {
         return Array.from(this.checksums);
-    }
-
-    clearChecksums() {
-        this.checksums.clear();
     }
 
     /**
