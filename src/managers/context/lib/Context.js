@@ -39,9 +39,9 @@ class Context extends EE {
     // User context
     // - context path/tree layers
 
-    #contextArray = [];
-    #featureArray = [];
-    #filterArray = [];
+    #contextArray = []; // Implicit AND
+    #featureArray = []; // Default OR
+    #filterArray = [];  // Default AND
 
     // TODO: Refactor to not set the context url in the constructor
     constructor(url, db, tree, options = {}) {
