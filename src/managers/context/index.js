@@ -54,9 +54,9 @@ class ContextManager extends EventEmitter {
         this.#db = options.db;
         this.#data = options.data;
         this.#tree = new Tree({
-
+            treePath: this.#index.path,
+            layerPath: this.#index.path,
         });
-
 
         // System context
 

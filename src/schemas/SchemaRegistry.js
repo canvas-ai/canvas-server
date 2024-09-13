@@ -14,12 +14,12 @@ class SchemaRegistry {
         this.schemas = new Map();
         this.initialized = true;
         //this.loadSchemas(); // lets not waste time and let require handle this
-        this.schemas.set('data/abstraction/document', require('./data/abstraction/Document'));
-        this.schemas.set('data/abstraction/file', require('./data/abstraction/File'));
-        this.schemas.set('data/abstraction/note', require('./data/abstraction/Note'));
-        this.schemas.set('data/abstraction/tab', require('./data/abstraction/Tab'));
-        this.schemas.set('data/abstraction/todo', require('./data/abstraction/Todo'));
-        this.schemas.set('transport/response', require('./transport/ResponseObject'));
+        this.schemas.set('data/abstraction/document', require('./data/abstractions/Document'));
+        this.schemas.set('data/abstraction/file', require('./data/abstractions/File'));
+        this.schemas.set('data/abstraction/note', require('./data/abstractions/Note'));
+        this.schemas.set('data/abstraction/tab', require('./data/abstractions/Tab'));
+        this.schemas.set('data/abstraction/todo', require('./data/abstractions/Todo'));
+        this.schemas.set('transport/response', require('./transports/ResponseObject'));
     }
 
     getSchema(name) {

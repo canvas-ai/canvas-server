@@ -1,5 +1,7 @@
 # CLI Interface (draft)
 
+## TODO: Move to a separate repo + ref as git submodule?
+
 ```bash
 
 # Context CLI Commands
@@ -8,7 +10,7 @@
 # $ context <action> <item> <parms> <opts>
 # $ canvas <action> <item> <parms> <opts>
 # But maybe we should eval the current <item> <action> <parms> <opts> format
-# as some items may support only a subset (or a different set) of actions 
+# as some items may support only a subset (or a different set) of actions
 
 # Context CLI Commands
 
@@ -19,10 +21,10 @@ context list # Returns all documents of a context
 context list notes
 context list todos --filter 'today' --tag 'work'
 context list bookmarks
-context list files 
+context list files
 
 # Context tree operations
-context move /foo/bar /baz 
+context move /foo/bar /baz
 context remove /baz
 context delete /baz # If baz layer is part of any other context tree , we'll fail
 context copy /foo /adhoc --recursive

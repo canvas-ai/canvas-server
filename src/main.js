@@ -6,14 +6,16 @@
 const path = require('path');
 const debug = require('debug')('canvas-main');
 const EventEmitter = require('eventemitter2');
-const Config = require('./utils/config/index.js');
+const Config = require('./utils/config');
 const winston = require('winston');
 
 // Services
 const Db = require('./services/db');    // We can use a single lmdb instance for both, index and as the storage lmdb backend
 const Jim = require('./services/jim');
-const Index = require('./services/index');
-const Storage = require('./services/storage');
+
+// Core components
+const Index = require('./index');
+const Storage = require('./data');
 
 // Manager classes
 const AppManager = require('./managers/app');
@@ -26,7 +28,7 @@ const SessionManager = require('./managers/session');
 const UserManager = require('./managers/user');
 
 // Transports
-const TransportHttp = require('./io/http');
+const TransportHttp = require('./transports/http/index.js');
 
 // App constants
 const MAX_SESSIONS = 32;
@@ -150,7 +152,7 @@ class Canvas extends EventEmitter {
 
         // Canvas indexing service
         this.index = new Index({
-            rootPath: this.#user.paths.index,
+            path: this.#user.paths.index,
             backupPath: path.join(this.#user.paths.index, 'backup'),
             backupOnOpen: true,
             backupOnClose: false,
@@ -195,18 +197,18 @@ class Canvas extends EventEmitter {
          */
 
         this.deviceManager = new DeviceManager({
-            index: this.index.createIndex('devices', 'file'),
+            //index: this.index.createIndex('devices', 'file'),
         });
 
         this.contextManager = new ContextManager({
             index: this.index,
-            storage: this.storage,
+            data: this.storage,
             // TODO: Replace with config.get('context')
             maxContexts: MAX_SESSIONS * MAX_CONTEXTS_PER_SESSION,
         });
 
         this.sessionManager = new SessionManager({
-            sessionStore: this.index.createDataset('session'),
+            sessionStore: this.index.createIndex('session'),
             contextManager: this.contextManager,
             // TODO: Replace with config.get('session')
             maxSessions: MAX_SESSIONS,
@@ -241,12 +243,7 @@ class Canvas extends EventEmitter {
         if (this.#status === 'running') { throw new Error('Canvas Server already running'); }
 
         // Initialize the universe
-        this.contextManager.initUniverse({
-            device: this.#device,
-
-        })
         // Inject the system context (for remote instances, this has to be provided by the client!)
-
         // Indexes
         // Storage
         // Load system context

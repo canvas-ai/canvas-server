@@ -9,8 +9,8 @@ const {
 const path = require('path');
 
 // Services
-const Index = require('../services/index');
-const Storage = require('../services/storage');
+const Index = require('../index');
+const Storage = require('../data');
 
 // Schemas
 const SchemaRegistry = require('../schemas/SchemaRegistry.js');

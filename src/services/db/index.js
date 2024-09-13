@@ -17,6 +17,8 @@ const { open } = require('lmdb');
 class Db {
 
     #dataset = 'default';
+    #path;
+
     // TODO: Wrap versioning support
     // TODO: Rework extending using openAsClass()
     constructor(options, dataset) {
@@ -56,7 +58,7 @@ class Db {
         }
 
         // Set the db path in the wrapper class
-        this.path = options.path;
+        this.#path = options.path;
 
         // This is unfortunate
         this.backupOptions = {
@@ -77,6 +79,9 @@ class Db {
     /**
      * Custom methods
      */
+
+    get path() { return this.#path; }
+    get backupPath() { return this.backupOptions.backupPath; }
 
     // Returns the status of the underlying database / dataset
     get status() { return this.db.status; }
@@ -344,7 +349,7 @@ class Db {
             throw error;
         }
 
-        debug(`Backing up database "${this.path}" to "${backupPath}"`);
+        debug(`Backing up database "${this.#path}" to "${backupPath}"`);
         // TODO: Rework, backup() is async
         this.db.backup(backupPath, compact);
     }

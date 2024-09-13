@@ -4,7 +4,8 @@ const Service = require('../../managers/service/lib/Service');
 // Utils
 const debug = require('debug')('canvas:transports:http');
 const bodyParser = require('body-parser');
-const ResponseObject = require('../../schemas/transport/responseObject');
+// TOOD: Use schema registry
+const ResponseObject = require('../../schemas/transports/ResponseObject');
 
 // Includes
 const express = require('express');

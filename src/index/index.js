@@ -6,7 +6,7 @@ const path = require('path');
 const debug = require('debug')('canvas:synapsd');
 
 // Services
-const Db = require('../db/index.js');
+const Db = require('../services/db');
 const FtsIndex = require('./lib/FtsIndex.js');
 const BitmapIndex = require('./lib/BitmapIndex.js');
 const VectorIndex = require('@lancedb/lancedb');
@@ -24,6 +24,7 @@ const INTERNAL_BITMAP_ID_MAX = 100000;
 class Index extends EventEmitter {
 
     #db;
+    #rootPath;
 
     constructor(options = {
         backupOnOpen: false,
@@ -37,9 +38,11 @@ class Index extends EventEmitter {
         // Initialize database backend, or use provided instance
         if (options.db && options.db instanceof Db) {
             this.#db = options.db;
+            this.#rootPath = this.#db.path;
         } else {
             if (!options.path) { throw new Error('Database path required'); }
             this.#db = new Db(options);
+            this.#rootPath = options.path;
         }
 
         // Support for custom caching backend(assuming it implements the Map interface)
@@ -88,8 +91,15 @@ class Index extends EventEmitter {
 
         // Actions
 
-
         debug('Index class initialized');
+    }
+
+
+    get path() { return this.#rootPath; }
+
+
+    createIndex(name, options = {}) {
+        return this.#db.createDataset(name, options);
     }
 
     /**

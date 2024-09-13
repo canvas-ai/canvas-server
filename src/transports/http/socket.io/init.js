@@ -7,7 +7,7 @@ const debug = require('debug')('canvas:transports:http:socketio');
 const contextRoutes = require('./routes/v1/context.js');
 const documentsRoutes = require('./routes/v1/documents.js');
 const ROUTES = require('./routes.js');
-const ResponseObject = require('../../../schemas/transport/responseObject.js');
+const ResponseObject = require('../../../schemas/transports/ResponseObject.js');
 
 module.exports = (io, parent) => {
     debug('Initializing socket.io routes');
