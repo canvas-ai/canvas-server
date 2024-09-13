@@ -9,17 +9,13 @@ const EventEmitter = require('eventemitter2');
 const Config = require('./utils/config');
 const winston = require('winston');
 
-// Services
-const Db = require('./services/db');    // We can use a single lmdb instance for both, index and as the storage lmdb backend
-const Jim = require('./services/jim');
-
 // Core components
 const Index = require('./index');
-const Storage = require('./data');
+const Storage = require('./storage');
 
 // Manager classes
 const AppManager = require('./managers/app');
-const ContextManager = require('./managers/context/index.js');
+const ContextManager = require('./managers/context');
 const DeviceManager = require('./managers/device');
 const PeerManager = require('./managers/peer');
 const RoleManager = require('./managers/role');
@@ -28,7 +24,7 @@ const SessionManager = require('./managers/session');
 const UserManager = require('./managers/user');
 
 // Transports
-const TransportHttp = require('./transports/http/index.js');
+const TransportHttp = require('./transports/http');
 
 // App constants
 const MAX_SESSIONS = 32;
