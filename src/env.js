@@ -7,7 +7,6 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const pkg = require('../package.json');
-const device = require('./managers/device').getCurrentDevice();
 
 /**
  * System directories
@@ -29,8 +28,7 @@ const device = require('./managers/device').getCurrentDevice();
 const SERVER_ROOT = path.dirname(path.resolve(__dirname));
 const SERVER_SRC = path.join(SERVER_ROOT, 'src');
 
-// A server can be run standalone, just as a thin interface for the roleManager,
-// or hosting the user context runtime
+// Server directories
 const SERVER_CONFIG = process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config');
 const SERVER_DATA = process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data');
 const SERVER_VAR = process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var');
@@ -52,7 +50,7 @@ const CANVAS_USER_WORKSPACES = process.env['CANVAS_USER_WORKSPACES'] || path.joi
 
 // Collect all ENV constants
 const env = {
-    file: path.join(SERVER_ROOT, '.env'),
+    filePath: path.join(SERVER_ROOT, '.env'),
     isPortable: isPortable(),
 
     app: {
@@ -60,6 +58,9 @@ const env = {
         version: pkg.version,
         description: pkg.description,
         license: pkg.license,
+        // Maybe we should use a commonapp.paths {} here, so that
+        // the higher level modules don't have to decide whether to use
+        // a server or a user path
     },
 
     server: {
@@ -71,15 +72,6 @@ const env = {
             ext: SERVER_EXT,
             var: SERVER_VAR,
         },
-    },
-
-    // We should probably remove this part from the env
-    device: {
-        id: device.id,
-        endianness: device.endianness,
-        os: device.os,
-        libc: device.os.libc, // You may have apps or roles where this will come handy(as a filter bitmap)
-        network: device.network,
     },
 
     user: {
@@ -140,7 +132,7 @@ const ini = {
 };
 
 // Update .env to-be read by external server roles
-generateDotenvFile(ini, env.file);
+generateDotenvFile(ini, env.filePath);
 
 // Update process env vars
 // Could just run require('dotenv').config()

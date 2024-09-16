@@ -3,10 +3,10 @@
 // Utils
 const EventEmitter = require('eventemitter2');
 const path = require('path');
-const debug = require('debug')('canvas:synapsd');
+const debug = require('debug')('canvas:indexd');
 
 // Services
-const Db = require('../services/db');
+const Db = require('../../services/db');
 const FtsIndex = require('./lib/FtsIndex.js');
 const BitmapIndex = require('./lib/BitmapIndex.js');
 const VectorIndex = require('@lancedb/lancedb');
@@ -21,7 +21,7 @@ const INTERNAL_BITMAP_ID_MAX = 100000;
  * (further simplified) Index class
  */
 
-class Index extends EventEmitter {
+class IndexD extends EventEmitter {
 
     #db;
     #rootPath;
@@ -32,6 +32,9 @@ class Index extends EventEmitter {
         compression: true,
         eventEmitter: {},
     }) {
+        debug('Initializing Canvas IndexD');
+        debug('Options:', options);
+
         // Event emitter
         super(options.eventEmitter);
 
@@ -90,8 +93,6 @@ class Index extends EventEmitter {
         this.timestamps = this.#db.createDataset('timestamps');
 
         // Actions
-
-        debug('Index class initialized');
     }
 
 
@@ -424,4 +425,4 @@ class Index extends EventEmitter {
 
 }
 
-module.exports = Index;
+module.exports = IndexD;

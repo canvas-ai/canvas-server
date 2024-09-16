@@ -1,7 +1,7 @@
 const RoaringBitmap32 = require('roaring/RoaringBitmap32');
 const Bitmap = require('./Bitmap');
-const { uuid12 } = require('../../utils/uuid');
-const debug = require('debug')('canvas:synapsd:BitmapCollection');
+const { uuid12 } = require('../../../utils/uuid');
+const debug = require('debug')('canvas:indexd:BitmapCollection');
 
 class BitmapIndex {
 

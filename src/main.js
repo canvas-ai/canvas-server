@@ -10,8 +10,10 @@ const Config = require('./utils/config');
 const winston = require('winston');
 
 // Core components
-const Index = require('./index');
-const Storage = require('./storage');
+const Index = require('./core/indexd');
+const Storage = require('./core/stored');
+const Eventd = require('./core/eventd');
+const Neurald = require('./core/neurald');
 
 // Manager classes
 const AppManager = require('./managers/app');
@@ -45,13 +47,13 @@ const APP_STATUSES = [
 class Canvas extends EventEmitter {
 
     #mode;
-    #device = {};
     #server = {};
     #user = {};
     #status = 'stopped'; // stopped, initialized, starting, running, stopping;
 
     constructor(options = {}) {
         debug('Initializing Canvas Server');
+        debug('Options:', options);
 
         /**
          * Lets do some basic options validation
@@ -61,6 +63,7 @@ class Canvas extends EventEmitter {
             throw new Error('Canvas Server mode not specified');
         }
 
+        // TODO: Remove this entire block
         if (!options.paths.server ||
             !options.paths.server.config ||
             !options.paths.server.data ||
@@ -91,7 +94,6 @@ class Canvas extends EventEmitter {
         this.#mode = options.mode;
         this.#server.paths = options.paths.server;
         this.#user.paths = options.paths.user;
-        this.#device = DeviceManager.getCurrentDevice();
 
         // Global config module
         this.config = Config({
@@ -227,7 +229,6 @@ class Canvas extends EventEmitter {
         };
     }
     get mode() { return this.#mode; }
-    get currentDevice() { return this.#device; }
     get pid() { return this.PID; }
     get ipc() { return this.IPC; }
 
@@ -301,7 +302,6 @@ class Canvas extends EventEmitter {
             status: this.#status,
             pid: this.PID,
             ipc: this.IPC,
-            device: this.#device,
             mode: this.#mode,
             server: {
                 appName: this.app.name,

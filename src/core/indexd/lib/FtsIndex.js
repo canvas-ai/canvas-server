@@ -1,6 +1,6 @@
 const { Index, Document } = require("flexsearch");
 const fs = require('fs').promises;
-const debug = require('debug')('canvas:synapsd:fts');
+const debug = require('debug')('canvas:indexd:fts');
 
 class Fts {
 

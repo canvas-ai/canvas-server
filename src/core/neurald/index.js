@@ -12,6 +12,7 @@ class NeuralD {
     }) {
 
         debug('Initializing Canvas NeuralD');
+        debug('Options:', options);
 
         // Inputs
         //canvas(context changes, documents, ui events, etc)
@@ -48,6 +49,10 @@ class NeuralD {
          *                     Internal state
          *
          */
+
+    }
+
+    calculateTextEmbedding(text, model) {
 
     }
 

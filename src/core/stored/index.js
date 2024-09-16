@@ -46,6 +46,8 @@ class Stored extends EE {
 
     constructor(config = {}) {
         debug('Initializing Canvas StoreD');
+        debug('Options:', config);
+
         if (!config) { throw new Error('No configuration provided'); }
         if (!config.cache) { throw new Error('No configuration object provided at options.config.cache'); }
         if (!config.backends) { throw new Error('No configuration object provided at options.config'); }
@@ -89,7 +91,7 @@ class Stored extends EE {
         // Implementation here
     }
 
-    
+
 
     /**
      * Main interface
