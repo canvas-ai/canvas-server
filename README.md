@@ -4,9 +4,8 @@ Server component for the Canvas project
 
 ## ! Refactor in progress
 
-**! use the main branch for now**  
-**! beware of the mess in dev**  
-**! beware of the upcoming schema change**
+**! use the main branch for ..actually running the server**  
+**! use the dev branch to get a preview of whats planned**  
 
 `Universe -> |||| (bitmaps) -> Contexts -> User`
 
