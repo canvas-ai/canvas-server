@@ -1,0 +1,54 @@
+/canvas
+/canvas/version
+/canvas/paths
+/canvas
+
+/transports # Returns a array of availale transports
+
+/auth/login
+/auth/logout
+/auth/status
+/auth/refresh # Token refresh
+
+/devices
+/devices/:id
+
+GET /roles      # list roles
+POST /roles    #register a role, should I use /roles/register?
+GET /roles/:id
+GET /roles/:id/status
+POST /roles/:id/start
+POST /roles/:id/stop
+POST /roles/:id/restart
+
+# Context tree operations
+/tree
+/tree/copy
+/tree/move
+/tree/remove
+PUT /tree to copy/move ?
+DELETE /tree ?
+
+/contexts
+/contexts/:id/
+/contexts/:id/url
+/contexts/:id/path
+/contexts/:id/layers
+/contexts/:id/bitmaps
+/contexts/:id/identity
+/contexts/:id/documents
+
+/context
+/context/id
+/context/url
+/context/path
+/context/layers
+/context/layers/:layerid # GET,
+/context/bitmaps
+/context/identity
+/context/paths
+/context/documents
+
+/documents/abstraction/notes # Returns all notes
+/documents/by-id/1234
+/documents/by-hash/sha1/checksum
