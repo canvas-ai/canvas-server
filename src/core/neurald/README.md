@@ -98,7 +98,7 @@
 - https://github.com/xNul/code-llama-for-vscode
 - https://marketplace.visualstudio.com/items?itemName=Continue.continue
 - https://github.com/Codium-ai/AlphaCodium
-- https://news.ycombinator.com/item?id=39178886- 
+- https://news.ycombinator.com/item?id=39178886-
 
 #### Mini
 
@@ -119,15 +119,3 @@ Using Megatron-LM](https://arxiv.org/pdf/2104.04473.pdf)
 - [SQUEEZELLM: DENSE-AND-SPARSE QUANTIZATION](https://arxiv.org/pdf/2306.07629v2.pdf)
 - https://deepmind.google/discover/blog/alphageometry-an-olympiad-level-ai-system-for-geometry/
 
-
-### Snippets
-
-```bash
-# Deepseek coder test 
-$ ollama run deepseek-coder:6.7b
-# Or via a OpenAI compatible API
-$ pip install litellm
-$ litellm --model deepseek-coder:6.7b
-# Use any GPT plugin to integrate with your editor
-
-```
