@@ -1,221 +1,151 @@
-// Canvas service interface
 const Service = require('../../managers/service/lib/Service');
-
-// Utils
 const debug = require('debug')('canvas:transports:http');
-const bodyParser = require('body-parser');
-// TOOD: Use schema registry
-const ResponseObject = require('../../schemas/transports/ResponseObject');
-
-// Includes
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
-const http = require('http');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const http = require('http');
 const socketIo = require('socket.io');
 
-// Defaults
-const DEFAULT_PROTOCOL = 'http';
-//const DEFAULT_HOST = '127.0.0.1';
-const DEFAULT_HOST = '0.0.0.0'; // TODO: Change me, this is to make Docker happy if no config is supplied
-const DEFAULT_PORT = 8000;
-const DEFAULT_ACCESS_TOKEN = 'canvas-server-token';
-
-// REST API defaults
-const DEFAULT_API_BASE_PATH = '/rest';
-const DEFAULT_API_VERSION = 'v1';
-
-// Middleware functions
-// TODO: Move to utils
-function validateApiKey(key) {
-    return (req, res, next) => {
-        const apiKey = req.headers['authorization'] ||
-            req?.query['access_token'] ||
-            req?.body['access_token'] ||
-            req?.params['access_token'];
-
-        debug('Validating AUTH key');
-        debug(`Auth Timestamp: ${new Date().toISOString()}`);
-        debug(`User-Agent: ${req.get('User-Agent')}`);
-        debug(`Request Method: ${req.method}`);
-        debug(`Request URL: ${req.originalUrl}`);
-        debug(`Client IP: ${req.ip}`);
-
-        if (!apiKey) {
-            debug('Unauthorized: No API Key provided');
-            return res.status(401).send('Unauthorized: No API Key provided');
-        }
-
-        if (apiKey === `Bearer ${key}`) {
-            debug('API Key validated successfully');
-            next();
-        } else {
-            debug('Unauthorized: Invalid API Key');
-            res.status(401).send('Unauthorized: Invalid API Key');
-        }
-    };
-}
-
-module.exports = validateApiKey;
-
-
+const API_VERSIONS = ['v1', 'v2'];
+const DEFAULT_CONFIG = {
+    protocol: process.env.HTTP_PROTOCOL || 'http',
+    host: process.env.HOST || '0.0.0.0',
+    port: process.env.PORT || 8000,
+    basePath: process.env.BASE_PATH || '/rest',
+    accessToken: process.env.ACCESS_TOKEN || 'canvas-server-token',
+    jwtSecret: process.env.JWT_SECRET || 'canvas-jwt-secret',
+    jwtLifetime: process.env.JWT_LIFETIME || '48h',
+};
 
 class HttpTransport extends Service {
-    #protocol;
-    #host;
-    #port;
-    #auth;
-    #apiVersion;
+    #server;
+    #config;
+    #io;
 
-    constructor({
-        protocol = DEFAULT_PROTOCOL,
-        host = DEFAULT_HOST,
-        port = DEFAULT_PORT,
-        apiVersion = DEFAULT_API_VERSION,
-        baseUrl = `${DEFAULT_API_BASE_PATH}/${apiVersion}`,
-        auth = {
-            token: DEFAULT_ACCESS_TOKEN,
-            enabled: true,
-        },
-        ...options
-    } = {}) {
+    constructor(options = {}) {
         super(options);
-        this.server = null;
-
-        this.#protocol = protocol;
-        this.#host = host;
-        this.#port = port;
-        this.#auth = auth;
-        this.#apiVersion = apiVersion;
-        this.restApiBasePath = baseUrl;
-
-        // The really ugly part
-        if (!options.canvas) {throw new Error('Canvas not defined');}
+        this.#config = { ...DEFAULT_CONFIG, ...options };
+        this.ResponseObject = require('../../schemas/transports/ResponseObject');
         this.canvas = options.canvas;
-
-        if (!options.db) {throw new Error('DB not defined');}
-        this.db = options.db;
-
-        if (!options.contextManager) {throw new Error('contextManager not defined');}
-        this.contextManager = options.contextManager;
-
-        if (!options.sessionManager) {throw new Error('sessionManager not defined');}
-        this.sessionManager = options.sessionManager;
-
-        // Set the base path (as we only have one api version, this is ..fine)
-        this.ResponseObject = ResponseObject; // TODO: Refactor
-
-        // Workaround till I implement proper multi-context routes!
-        this.session = this.sessionManager.createSession();
-        //this.context = this.contextManager.getContext();
-        this.context = this.session.getContext();
-
-        debug(`HTTP Transport class initialized, protocol: ${this.#protocol}, host: ${this.#host}, port: ${this.#port}, rest base path: ${this.restApiBasePath}`);
-        debug('Auth:', this.#auth.enabled ? 'enabled' : 'disabled');
+        debug(`HTTP Transport initialized with config:`, this.#config);
     }
 
     async start() {
-        const app = express();
+        const app = this.#configureExpress();
+        this.#setupRoutes(app);
+        this.#server = http.createServer(app);
+        this.#io = socketIo(this.#server);
+        require('./socket.io/init')(this.#io, this);
 
-        // Configure Middleware
-        app.use(cors());
-        app.use(bodyParser.json());
-        app.use(bodyParser.urlencoded({ extended: true }));
-
-        // Add CSP headers
-        app.use((req, res, next) => {
-            res.setHeader('Content-Security-Policy', "default-src 'self'");
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            next();
+        return new Promise((resolve, reject) => {
+            this.#server.listen(this.#config.port, this.#config.host, () => {
+                console.log(`HTTP server running at http://${this.#config.host}:${this.#config.port}/`);
+                resolve();
+            }).on('error', reject);
         });
-
-        /**
-         * Common routes
-         */
-
-        // REST API Ping health check (unauthenticated)
-        app.get(`${this.restApiBasePath}/ping`, (req, res) => {
-            res.status(200).send('pong');
-        });
-
-        // Toggle API Key validation
-        if (this.#auth.enabled) {
-            app.use(validateApiKey(this.#auth.token));
-        }
-
-        /**
-         * REST API routes
-         */
-
-        require('./rest/init')(app, this);
-
-        // Create the HTTP server
-        const server = http.createServer(app);
-
-        /**
-         * Socket.io routes
-         */
-
-        const io = socketIo(server);
-        require('./socket.io/init')(io, this);
-
-        /**
-         * WebDAV
-         */
-
-        // require('./webdav/init')(app, this);
-
-        server.listen(this.#port, this.#host, () => {
-            console.log(`Server running at http://${this.#host}:${this.#port}/`);
-        });
-
-        this.server = server;
     }
 
     async stop() {
-        if (this.server) {
+        if (this.#server) {
             debug('Shutting down server...');
-            this.server.close((err) => {
-                if (err) {
-                    console.error('Error shutting down server:', err);
-                    process.exit(1);
-                }
-                console.log('Server gracefully shut down');
-                process.exit(0);
+            return new Promise((resolve) => {
+                this.#server.close(() => {
+                    if (this.#io) this.#io.close();
+                    console.log('HTTP server gracefully shut down');
+                    resolve();
+                });
             });
-
-            // Close all socket.io connections
-            if (this.io) {
-                this.io.close();
-            }
         }
     }
 
     async restart() {
-        if (this.isRunning()) {
-            await this.stop();
-            await this.start();
-        }
+        await this.stop();
+        await this.start();
     }
 
     status() {
-        if (!this.server) { return { listening: false }; }
+        if (!this.#server) { return { listening: false }; }
 
-        let clientsCount = 0;
-        for (const [id, socket] of this.server.sockets.sockets) {
-            if (socket.connected) {
-                clientsCount++;
-            }
-        }
-
+        const connectedClients = this.#io ? Object.keys(this.#io.sockets.sockets).length : 0;
         return {
-            protocol: this.#protocol,
-            host: this.#host,
-            port: this.#port,
-            listening: true,
-            connectedClients: clientsCount,
+            protocol: this.#config.protocol,
+            host: this.#config.host,
+            port: this.#config.port,
+            listening: this.#server.listening,
+            connectedClients
         };
     }
 
+    #configureExpress() {
+        const app = express();
+        app.use(cors());
+        app.use(express.json());
+        app.use(cookieParser());
+        app.use(this.#setSecurityHeaders);
+        return app;
+    }
+
+    #setSecurityHeaders(req, res, next) {
+        res.setHeader('Content-Security-Policy', "default-src 'self'");
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        next();
+    }
+
+    #setupRoutes(app) {
+        app.post('/login', this.#handleLogin.bind(this));
+        app.post('/logout', this.#authenticate.bind(this), this.#handleLogout);
+        this.#loadApiRoutes(app);
+    }
+
+    #handleLogin(req, res) {
+        debug('Login request:', req.body);
+        const { clientId, accessToken } = req.body;
+        if (accessToken !== this.#config.accessToken) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign({ clientId, accessToken }, this.#config.jwtSecret, { expiresIn: this.#config.jwtLifetime });
+        res.cookie('token', token, { httpOnly: true, maxAge: 172800 });
+        res.json({ token });
+    }
+
+    #handleLogout(req, res) {
+        res.clearCookie('token');
+        res.json({ message: 'Logged out successfully' });
+    }
+
+    #authenticate(req, res, next) {
+        const token = req.cookies.token || req.headers['authorization'];
+        if (!token) return res.status(403).json({ error: 'No token provided' });
+
+        jwt.verify(token, this.#config.jwtSecret, (err, decoded) => {
+            if (err) return res.status(401).json({ error: 'Unauthorized' });
+            req.user = decoded;
+            next();
+        });
+    }
+
+    #loadApiRoutes(app) {
+        API_VERSIONS.forEach(version => {
+            const versionPath = path.join(__dirname, 'routes', version);
+            const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
+
+            routeFiles.forEach(file => {
+                const route = require(path.join(versionPath, file));
+                const routePath = `/${this.#config.basePath}/${version}/${path.parse(file).name}`;
+                app.use(routePath, this.#injectDependencies.bind(this), route);
+            });
+        });
+    }
+
+    #injectDependencies(req, res, next) {
+        req.ResponseObject = this.ResponseObject;
+        req.canvas = this.canvas;
+        next();
+    }
 }
 
 module.exports = HttpTransport;

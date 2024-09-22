@@ -31,14 +31,6 @@ const TransportHttp = require('./transports/http');
 // App constants
 const MAX_SESSIONS = 32;
 const MAX_CONTEXTS_PER_SESSION = 32;
-const APP_STATUSES = [
-    'initialized',
-    'starting',
-    'running',
-    'stopping',
-    'stopped',
-];
-
 
 /**
  * Main application
@@ -371,19 +363,11 @@ class Canvas extends EventEmitter {
         debug('Initializing transports');
         // Load configuration options for transports
         let config = this.config.open('server');
-        const transportsConfig = config.get('transports');
+        const transportsConfig = config.get('rest');
+        console.log('Transports config:', transportsConfig);
 
         // This is a (temporary) placeholder implementation
-        const httpTransport = new TransportHttp({
-            protocol: config.get('transports.rest.protocol'),
-            host: config.get('transports.rest.host'),
-            port: config.get('transports.rest.port'),
-            auth: config.get('transports.rest.auth'),
-            canvas: this,
-            db: this.db,
-            contextManager: this.contextManager,
-            sessionManager: this.sessionManager,
-        });
+        const httpTransport = new TransportHttp({ canvas: this });
 
         try {
             await httpTransport.start();
