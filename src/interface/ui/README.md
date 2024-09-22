@@ -1,1 +1,1 @@
-# TODO: ref the canvas-au/canvas-electron repo as a git submodule
+# TODO: ref the canvas-ai/canvas-electron repo as a git submodule
