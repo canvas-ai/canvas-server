@@ -13,9 +13,9 @@ class BitmapIndex {
         this.store = store;
         this.cache = cache;
         this.rangeMin = options.rangeMin;
-        this.rangeMax = options.rangeMax;
+        this.rangeMax = options.rangeMax || 4294967296; // 2^32
         this.tag = options.tag;
-        debug(`BitmapCollection "${this.tag}" initialized with rangeMin: ${this.rangeMin}, rangeMax: ${this.rangeMax}`);
+        debug(`BitmapIndex "${this.tag}" initialized with rangeMin: ${this.rangeMin}, rangeMax: ${this.rangeMax}`);
     }
 
     /**

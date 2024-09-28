@@ -25,11 +25,11 @@ class HttpTransport extends Service {
     #config;
     #io;
 
-    constructor(options = {}) {
+    constructor(options = {}, canvas) {
         super(options);
         this.#config = { ...DEFAULT_CONFIG, ...options };
         this.ResponseObject = require('../../schemas/transports/ResponseObject');
-        this.canvas = options.canvas;
+        this.canvas = canvas;
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
 
@@ -95,8 +95,12 @@ class HttpTransport extends Service {
     }
 
     #setupRoutes(app) {
-        app.post('/login', this.#handleLogin.bind(this));
-        app.post('/logout', this.#authenticate.bind(this), this.#handleLogout);
+        app.get(`${this.#config.basePath}/ping`, (req, res) => {
+            res.status(200).send('pong');
+        });
+        app.post(`${this.#config.basePath}/login`, this.#handleLogin.bind(this));
+        app.post(`${this.#config.basePath}/logout`, this.#authenticate.bind(this), this.#handleLogout);
+
         this.#loadApiRoutes(app);
     }
 

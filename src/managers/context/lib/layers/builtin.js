@@ -4,7 +4,7 @@ module.exports = [
         type: 'universe',
         name: '/',
         label: 'Universe',
-        description: 'And then, there was ..no geometry',
+        description: 'And then, there was ..geometry',
         color: '#fff',
         locked: true,
     },

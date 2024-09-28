@@ -362,12 +362,12 @@ class Canvas extends EventEmitter {
     async initializeTransports() {
         debug('Initializing transports');
         // Load configuration options for transports
-        let config = this.config.open('server');
-        const transportsConfig = config.get('rest');
-        console.log('Transports config:', transportsConfig);
+        //let config = this.config.open('server');
+        //const transportsConfig = config.get('rest');
+        //console.log('Transports config:', transportsConfig);
 
         // This is a (temporary) placeholder implementation
-        const httpTransport = new TransportHttp({ canvas: this });
+        const httpTransport = new TransportHttp({}, this );
 
         try {
             await httpTransport.start();
@@ -438,34 +438,6 @@ class Canvas extends EventEmitter {
      * Storage
      */
 
-    async insertDocument(doc, backendArray, contextArray = [], featureArray = []) {
-                /*
-        let validatedDocument = await this.??.validateDocument(doc); // returns a proper document object with schema based on doc.type
-        let documentMeta = await this.storage.insertDocument(validatedDocument, backendArray); // will extract features?
-
-        documentMeta = {
-            id: '1234567890abcdef',
-            type: 'note',
-            checksums: {
-                md5: '1234567890abcdef',
-                sha1: '1234567890abcdef1234567890abcdef',
-                sha256: '1234567890abcdef1234567890abcdef',
-            },
-            paths: [
-                'canvas://local:lmdb/note/sha1-1234567890abcdef1234567890abcdef',
-                'canvas://local:file/notes/20241201.a2va23o4iqaa.json',
-                'canvas://office:s3/notes/20241201.a2va23o4iqaa.json',
-            ],
-            features: {
-                mime: 'application/json',
-            }
-            size: 12345,
-            created: 1634867200
-        }
-        */
-        return this.index.insertObject(documentMeta, contextArray, featureArray);
-
-    }
 
     updateDocument(doc, contextArray = [], featureArray = []) {
         return this.storage.updateDocument(doc, contextArray, featureArray);
