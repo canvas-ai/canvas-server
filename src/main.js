@@ -224,6 +224,12 @@ class Canvas extends EventEmitter {
     get pid() { return this.PID; }
     get ipc() { return this.IPC; }
 
+
+    // Global methods
+    getContext(id) { return this.contextManager.getContext(id); }
+    listContexts() { return this.contextManager.listContexts(); }
+
+
     /**
      * Canvas service controls
      */

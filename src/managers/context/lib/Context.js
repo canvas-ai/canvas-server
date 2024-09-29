@@ -194,15 +194,6 @@ class Context extends EE {
         return this.#url;
     }
 
-    importContextData(json) {
-
-    }
-
-    exportContextData(oidArray = []) {
-
-    }
-
-
     /**
 	 * Layer management
 	 */
@@ -286,7 +277,11 @@ class Context extends EE {
         ctxArr = this.#contextArray,
         ftArr = this.#featureArray,
         filArr = this.#filterArray,
-    ) {}
+    ) {
+
+        
+
+    }
 
 
     /**
