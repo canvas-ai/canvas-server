@@ -15,9 +15,12 @@ const DEFAULT_CONFIG = {
     host: process.env.HOST || '0.0.0.0',
     port: process.env.PORT || 8000,
     basePath: process.env.BASE_PATH || '/rest',
-    accessToken: process.env.ACCESS_TOKEN || 'canvas-server-token',
-    jwtSecret: process.env.JWT_SECRET || 'canvas-jwt-secret',
-    jwtLifetime: process.env.JWT_LIFETIME || '48h',
+    auth: {
+        enabled: process.env.AUTH_ENABLED || false, // FIX ME: https://github.com/orgs/canvas-ai/projects/2/views/1?pane=issue&itemId=81465641
+        accessToken: process.env.ACCESS_TOKEN || 'canvas-server-token',
+        jwtSecret: process.env.JWT_SECRET || 'canvas-jwt-secret',
+        jwtLifetime: process.env.JWT_LIFETIME || '48h',
+    }
 };
 
 class HttpTransport extends Service {
@@ -95,12 +98,19 @@ class HttpTransport extends Service {
     }
 
     #setupRoutes(app) {
+        // Health check
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');
         });
+
+        // Authentication
         app.post(`${this.#config.basePath}/login`, this.#handleLogin.bind(this));
         app.post(`${this.#config.basePath}/logout`, this.#authenticate.bind(this), this.#handleLogout);
+        if (this.#config.auth.enabled) {
+            app.use(this.#authenticate.bind(this));
+        }
 
+        // API routes
         this.#loadApiRoutes(app);
     }
 
@@ -139,7 +149,8 @@ class HttpTransport extends Service {
 
             routeFiles.forEach(file => {
                 const route = require(path.join(versionPath, file));
-                const routePath = `/${this.#config.basePath}/${version}/${path.parse(file).name}`;
+                const routePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
+                debug(`Loading route: ${routePath}`);
                 app.use(routePath, this.#injectDependencies.bind(this), route);
             });
         });

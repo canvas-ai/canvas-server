@@ -29,6 +29,10 @@ POST /roles/:id/restart
 PUT /tree to copy/move ?
 DELETE /tree ?
 
+/sessions
+/sessions/:id
+/sessions/:id/context // one context per session to KISS(although looking at the codebase we are long pass KISSing)
+
 /contexts
 /contexts/:id/
 /contexts/:id/url
@@ -37,6 +41,7 @@ DELETE /tree ?
 /contexts/:id/bitmaps
 /contexts/:id/identity
 /contexts/:id/documents
+/contexts/:id/query
 
 /context
 /context/id
