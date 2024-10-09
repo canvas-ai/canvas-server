@@ -26,7 +26,6 @@ const pkg = require('../package.json');
  */
 
 const SERVER_ROOT = path.dirname(path.resolve(__dirname));
-const SERVER_SRC = path.join(SERVER_ROOT, 'src');
 
 // Server directories
 const SERVER_CONFIG = process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config');
@@ -66,7 +65,6 @@ const env = {
     server: {
         paths: {
             root: SERVER_ROOT,
-            src: SERVER_SRC,
             config: SERVER_CONFIG,
             data: SERVER_DATA,
             ext: SERVER_EXT,
@@ -107,7 +105,6 @@ const ini = {
 
     // Server
     CANVAS_SERVER_ROOT: env.server.paths.root,
-    CANVAS_SERVER_SRC: env.server.paths.src,
     CANVAS_SERVER_CONFIG: env.server.paths.config,
     CANVAS_SERVER_DATA: env.server.paths.data,
     CANVAS_SERVER_EXT: env.server.paths.ext,

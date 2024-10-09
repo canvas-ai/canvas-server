@@ -31,8 +31,6 @@ const CONTEXT_URL_BASE_ID = 'universe';
 class SessionManager extends EventEmitter {
 
     #maxSessions;
-    #maxContextsPerSession;
-    #baseUrl; // Might be useful for future use cases
 
     constructor(options = {}) {
         super();
@@ -50,7 +48,6 @@ class SessionManager extends EventEmitter {
         this.contextManager = options.contextManager;
 
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
-        this.#maxContextsPerSession = options.maxContextsPerSession || MAX_CONTEXTS_PER_SESSION;
 
         // TODO: Refactor to use nested maps and serialize/deserialize to/from the session store
         // sessionID -> Map() which gets forwarede to the session object

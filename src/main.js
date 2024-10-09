@@ -10,20 +10,22 @@ const Config = require('./utils/config');
 const winston = require('winston');
 
 // Core components
-const Index = require('./core/indexd');
-const Storage = require('./core/stored');
+const Indexd = require('./core/indexd');
+const Stored = require('./core/stored');
 const Eventd = require('./core/eventd');
 const Neurald = require('./core/neurald');
 
 // Manager classes
 const AppManager = require('./managers/app');
-const ContextManager = require('./managers/context');
+const RoleManager = require('./managers/role');
+const UserManager = require('./managers/user');
 const DeviceManager = require('./managers/device');
 const PeerManager = require('./managers/peer');
-const RoleManager = require('./managers/role');
 const ServiceManager = require('./managers/service');
+
 const SessionManager = require('./managers/session');
-const UserManager = require('./managers/user');
+const WorkspaceManager = require('./managers/workspace');
+const ContextManager = require('./managers/context');
 
 // Transports
 const TransportHttp = require('./transports/http');
@@ -32,58 +34,50 @@ const TransportHttp = require('./transports/http');
 const MAX_SESSIONS = 32;
 const MAX_CONTEXTS_PER_SESSION = 32;
 
+// Environment variables
+const {
+    app,
+    server,
+    user,
+} = require('./env.js');
+
+
 /**
  * Main application
  */
 
-class Canvas extends EventEmitter {
+class CanvasServer extends EventEmitter {
 
-    #mode;
+    #serverMode;
     #server = {};
     #user = {};
     #status = 'stopped'; // stopped, initialized, starting, running, stopping;
 
     constructor(options = {}) {
+        super(); // EventEmitter2
+
         debug('Initializing Canvas Server');
         debug('Options:', options);
 
         /**
-         * Lets do some basic options validation
+         * Default options
          */
-
-        if (!options.mode) {
-            throw new Error('Canvas Server mode not specified');
-        }
-
-        // TODO: Remove this entire block
-        if (!options.paths.server ||
-            !options.paths.server.config ||
-            !options.paths.server.data ||
-            !options.paths.server.ext ||
-            !options.paths.server.var) {
-            throw new Error('Canvas Server paths not specified');
-        }
-
-        if (options.mode === 'full' &&
-            !options.paths.user ||
-            !options.paths.user.config ||
-            !options.paths.user.index ||
-            !options.paths.user.db ||
-            !options.paths.user.cache ||
-            !options.paths.user.data ||
-            !options.paths.user.workspaces) {
-            throw new Error('Canvas Server user paths not specified');
-        }
+        options = {
+            serverMode: options.serverMode || 'full', // full | minimal
+            paths: {
+                server: options.paths?.server || server.paths,
+                user: options.paths?.user || user.paths,
+            },
+            ...options,
+        };
 
         /**
          * Utils
          */
 
-        super(); // EventEmitter2
-
         // App info
-        this.app = options.app;
-        this.#mode = options.mode;
+        this.app = app;
+        this.#serverMode = options.serverMode;
         this.#server.paths = options.paths.server;
         this.#user.paths = options.paths.user;
 
@@ -129,7 +123,7 @@ class Canvas extends EventEmitter {
             rolesPath: this.#server.paths.roles,
         });
 
-        // TODO: Initialize transports for the minimal mode || refactor
+        // Initialize transports for the minimal mode || refactor
         if (this.#mode !== 'full') {
             this.logger.info('Canvas Server initialized in minimal mode');
             this.#status = 'initialized';
@@ -141,7 +135,7 @@ class Canvas extends EventEmitter {
          */
 
         // Canvas indexing service
-        this.index = new Index({
+        this.index = new Indexd({
             path: this.#user.paths.index,
             backupPath: path.join(this.#user.paths.index, 'backup'),
             backupOnOpen: true,
@@ -150,7 +144,7 @@ class Canvas extends EventEmitter {
         });
 
         // Canvas data/storage service
-        this.storage = new Storage({
+        this.storage = new Stored({
             cache: {
                 enabled: true,
                 maxAge: -1,
@@ -182,20 +176,16 @@ class Canvas extends EventEmitter {
             },
         });
 
+        // Canvas event service
+        this.eventd = new Eventd({});
+
+        // Canvas NN integration
+        this.neurald = new Neurald({});
+
+
         /**
-         * Managers
+         * Core managers
          */
-
-        this.deviceManager = new DeviceManager({
-            //index: this.index.createIndex('devices', 'file'),
-        });
-
-        this.contextManager = new ContextManager({
-            index: this.index,
-            data: this.storage,
-            // TODO: Replace with config.get('context')
-            maxContexts: MAX_SESSIONS * MAX_CONTEXTS_PER_SESSION,
-        });
 
         this.sessionManager = new SessionManager({
             sessionStore: this.index.createIndex('session'),
@@ -204,6 +194,18 @@ class Canvas extends EventEmitter {
             maxSessions: MAX_SESSIONS,
             maxContextsPerSession: MAX_CONTEXTS_PER_SESSION,
         });
+
+        this.workspaceManager = new WorkspaceManager({
+
+        })
+
+        this.contextManager = new ContextManager({
+            index: this.index,
+            data: this.storage,
+            // TODO: Replace with config.get('context')
+            maxContexts: MAX_SESSIONS * MAX_CONTEXTS_PER_SESSION,
+        });
+
 
         this.logger.info('Canvas Server initialized');
         this.#status = 'initialized';
@@ -501,4 +503,24 @@ class Canvas extends EventEmitter {
 
 }
 
-module.exports = Canvas;
+
+const canvas = new CanvasServer();
+
+async function main() {
+    await canvas.start();
+
+    // Login to canvas server (access token -> jwt)
+    // - Create a session (sessionId, clientContext)
+    const session = canvas.createSession('work', {
+        baseUrl: '/work',
+
+    });
+
+
+
+}
+
+main();
+
+
+//module.exports = CanvasServer;
