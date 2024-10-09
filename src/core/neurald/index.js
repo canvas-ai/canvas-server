@@ -56,6 +56,10 @@ class NeuralD {
 
     }
 
+    query(query, model, documents = []) {
+
+    }
+
 }
 
 
