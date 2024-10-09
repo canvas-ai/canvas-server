@@ -85,7 +85,7 @@ class CanvasServer extends EventEmitter {
         this.config = Config({
             serverConfigDir: this.#server.paths.config,
             userConfigDir: this.#user.paths.config,
-            configPriority: (this.#mode === 'full') ? 'user' : 'server',
+            configPriority: (this.#serverMode === 'full') ? 'user' : 'server',
             versioning: false,
         });
 
@@ -111,7 +111,7 @@ class CanvasServer extends EventEmitter {
 
         // Bling-bling for the literature lovers
         this.logger.info(`Starting ${this.app.name} v${this.app.version}`);
-        this.logger.info(`Server mode: ${this.#mode}`);
+        this.logger.info(`Server mode: ${this.#serverMode}`);
         debug('Server paths:', this.#server.paths);
         debug('User paths:', this.#user.paths);
 
@@ -124,7 +124,7 @@ class CanvasServer extends EventEmitter {
         });
 
         // Initialize transports for the minimal mode || refactor
-        if (this.#mode !== 'full') {
+        if (this.#serverMode !== 'full') {
             this.logger.info('Canvas Server initialized in minimal mode');
             this.#status = 'initialized';
             return;
