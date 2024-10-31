@@ -1,12 +1,11 @@
 'use strict';
 
-
 // Includes
-const debug = require('debug')('canvas:context:utils');
-const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
-const { ensureDirSync } = require('fs-extra');
+import debug from 'debug';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { ensureDirSync } from 'fs-extra';
 
 /*
  * Temporary logger as per @RFC5424
@@ -123,7 +122,7 @@ function printTree(tree, indent = 0) {
     }
 }
 
-module.exports = {
+export default {
     logger,
     getDefaultContextDirectory,
     ensureContextDirectory,

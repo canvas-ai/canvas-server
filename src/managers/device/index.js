@@ -1,7 +1,4 @@
-
-
-// Temporary
-const Desktop = require('./types/Desktop');
+import Desktop from './types/Desktop';
 
 class DeviceManager {
 
@@ -13,4 +10,4 @@ class DeviceManager {
   
 }
   
-module.exports = DeviceManager;
+export default DeviceManager;

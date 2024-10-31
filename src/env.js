@@ -3,10 +3,10 @@
  */
 
 // Utils
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const pkg = require('../package.json');
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import pkg from '../package.json';
 
 /**
  * System directories
@@ -149,7 +149,7 @@ Object.assign(process.env, {...ini});
  * Exports
  */
 
-module.exports = env;
+export default env;
 
 
 /**

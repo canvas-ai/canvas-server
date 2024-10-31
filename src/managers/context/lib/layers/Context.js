@@ -1,8 +1,4 @@
-'use strict';
-
-// Includes
-const Layer = require('../Layer');
-
+import Layer from '../Layer';
 
 /**
  * Context Layer
@@ -17,4 +13,4 @@ class ContextLayer extends Layer {
 
 }
 
-module.exports = ContextLayer;
+export default ContextLayer;

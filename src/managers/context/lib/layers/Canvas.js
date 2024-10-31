@@ -1,8 +1,4 @@
-'use strict';
-
-// Includes
-const Layer = require('../Layer');
-
+import Layer from '../Layer';
 
 /**
  * Canvas Layer
@@ -17,4 +13,4 @@ class CanvasLayer extends Layer {
 
 }
 
-module.exports = CanvasLayer;
+export default CanvasLayer;

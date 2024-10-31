@@ -3,11 +3,7 @@
  */
 
 // Environment variables
-const {
-    app,
-    server,
-    user,
-} = require('./env.js');
+import { app, server, user } from './env.js';
 
 /*
  * ! The current script - as of now - is not really needed, but the aim is to keep the main
@@ -29,7 +25,7 @@ if (argv.standalone) {
 }
 
 // Canvas
-const Canvas = require('./main');
+import Canvas from './main';
 const canvas = new Canvas({
     mode: serverMode,
     app: app,
@@ -51,4 +47,3 @@ canvas.on('error', (err) => {
     console.error('Canvas server failed to start.');
     console.error(err);
 });
-

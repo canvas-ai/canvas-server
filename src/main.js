@@ -3,43 +3,43 @@
  */
 
 // Utils
-const path = require('path');
-const debug = require('debug')('canvas-main');
-const EventEmitter = require('eventemitter2');
-const Config = require('./utils/config');
-const winston = require('winston');
+import path from 'path';
+import debug from 'debug';
+import EventEmitter from 'eventemitter2';
+import Config from './utils/config';
+import winston from 'winston';
 
 // Core components
-const Indexd = require('./core/indexd');
-const Stored = require('./core/stored');
-const Eventd = require('./core/eventd');
-const Neurald = require('./core/neurald');
+import Indexd from './core/indexd';
+import Stored from './core/stored';
+import Eventd from './core/eventd';
+import Neurald from './core/neurald';
 
 // Manager classes
-const AppManager = require('./managers/app');
-const RoleManager = require('./managers/role');
-const UserManager = require('./managers/user');
-const DeviceManager = require('./managers/device');
-const PeerManager = require('./managers/peer');
-const ServiceManager = require('./managers/service');
+import AppManager from './managers/app';
+import RoleManager from './managers/role';
+import UserManager from './managers/user';
+import DeviceManager from './managers/device';
+import PeerManager from './managers/peer';
+import ServiceManager from './managers/service';
 
-const SessionManager = require('./managers/session');
-const WorkspaceManager = require('./managers/workspace');
-const ContextManager = require('./managers/context');
+import SessionManager from './managers/session';
+import WorkspaceManager from './managers/workspace';
+import ContextManager from './managers/context';
 
 // Transports
-const TransportHttp = require('./transports/http');
+import TransportHttp from './transports/http';
 
 // App constants
 const MAX_SESSIONS = 32;
 const MAX_CONTEXTS_PER_SESSION = 32;
 
 // Environment variables
-const {
+import {
     app,
     server,
     user,
-} = require('./env.js');
+} from './env.js';
 
 
 /**
@@ -504,4 +504,4 @@ class CanvasServer extends EventEmitter {
 
 }
 
-module.exports = CanvasServer;
+export default CanvasServer;

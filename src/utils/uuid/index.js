@@ -1,5 +1,4 @@
-const crypto = require('crypto');
-
+import crypto from 'crypto';
 
 // Credits
 // https://gist.github.com/LeverOne/1308368
@@ -17,7 +16,7 @@ function uuid12(delimiter = true) {
         ([1e3]+1e3+1e3).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16));
 }
 
-module.exports = {
+export default {
     uuid,
     uuid12,
 };

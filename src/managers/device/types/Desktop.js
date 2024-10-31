@@ -1,11 +1,7 @@
-'use strict';
-
-
-// Utils
-const { machineIdSync } = require('node-machine-id');
-const os = require('os');
-const ip = require('ip');
-
+import { machineIdSync } from 'node-machine-id';
+import os from 'os';
+import ip from 'ip';
+import { familySync } from 'detect-libc';
 
 class Desktop {
 
@@ -17,7 +13,7 @@ class Desktop {
             arch: os.arch(),
             platform: os.platform(),
             release: os.release(),
-            libc: require('detect-libc').familySync() || 'n/a',
+            libc: familySync() || 'n/a',
             hostname: os.hostname(),
             homedir: os.homedir(),
             /*
@@ -50,8 +46,7 @@ class Desktop {
 
 }
 
-module.exports = Desktop;
-
+export default Desktop;
 
 function getActiveIP() {
     let nets = require('os').networkInterfaces();

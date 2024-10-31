@@ -1,17 +1,13 @@
-// Utils
-const debug = require('debug')('canvas:context');
-const EE = require('eventemitter2');
-const { uuid12 } = require('./utils');
-
-// App includes
-const Url = require('./Url');
+import debug from 'debug';
+import EE from 'eventemitter2';
+import { uuid12 } from './utils';
+import Url from './Url';
 
 // Module defaults
 const CONTEXT_AUTOCREATE_LAYERS = true;
 const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/';
 const CONTEXT_URL_BASE_ID = 'universe';
-
 
 /**
  * Canvas Context
@@ -572,4 +568,4 @@ class Context extends EE {
     }
 }
 
-module.exports = Context;
+export default Context;
