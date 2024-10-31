@@ -1,8 +1,4 @@
-'use strict';
-
-// Includes
-const Layer = require('../Layer');
-
+import Layer from '../Layer';
 
 /**
  * Label Layer
@@ -17,4 +13,4 @@ class LabelLayer extends Layer {
 
 }
 
-module.exports = LabelLayer;
+export default LabelLayer;

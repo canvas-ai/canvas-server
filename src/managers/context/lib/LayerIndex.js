@@ -1,15 +1,9 @@
-'use strict';
+import debug from 'debug';
+import JsonMap from '../../../utils/JsonMap';
+import Layer from './Layer';
+import builtInLayers from './layers/builtin';
 
-// Utils
-//const Conf = require('conf')
-const JsonMap = require('../../../utils/JsonMap');
-const debug = require('debug')('canvas:context:layer-index');
-
-const Layer = require('./Layer');
-const builtInLayers = require('./layers/builtin');
-
-class LayerIndex  { //extends Conf {
-
+class LayerIndex  {
     constructor(filePath) {
         if (!filePath) {throw new Error('filePath is required');}
         this.index = new JsonMap(filePath);
@@ -23,9 +17,6 @@ class LayerIndex  { //extends Conf {
     hasLayerID(id) { return this.index.has(id); }
     hasLayerName(name) { return this.nameToLayerMap.has(name); }
 
-    // TODO: Remove or refactor
-    isInternalLayer(name) { return this.isInternalLayerName(name); }
-
     isInternalLayerName(name) {
         const layer = this.getLayerByName(name);
         return layer && builtInLayers.find(layer => layer.name === name);
@@ -36,7 +27,6 @@ class LayerIndex  { //extends Conf {
         return layer && builtInLayers.find(layer => layer.id === id);
     }
 
-    // TODO: Remove internal layers from the list ?
     list() {
         let result = [];
         for (const [id, layer] of this.index.entries()) {
@@ -46,7 +36,6 @@ class LayerIndex  { //extends Conf {
     }
 
     createLayer(name, options = {}) {
-        // TODO: Refactor
         if (typeof name === 'string') {
             options = {
                 name: name,
@@ -59,7 +48,6 @@ class LayerIndex  { //extends Conf {
         const layer = new Layer(options);
         if (!layer) {throw new Error(`Failed to create layer with options ${options}`);}
 
-        // We only save non-internal layers
         this.#addLayerToIndex(layer, !this.isInternalLayerID(layer.id));
         return layer;
     }
@@ -92,7 +80,6 @@ class LayerIndex  { //extends Conf {
         }
     }
 
-    // Refactor!
     removeLayer(layer) {
         if (layer.locked) {throw new Error('Layer is locked');}
         this.index.delete(layer.id);
@@ -139,8 +126,6 @@ class LayerIndex  { //extends Conf {
             this.nameToLayerMap.set(layer.name, this.index.get(layer.id));
         }
     }
-
 }
 
-
-module.exports = LayerIndex;
+export default LayerIndex;

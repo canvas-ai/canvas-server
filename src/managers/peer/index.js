@@ -1,10 +1,10 @@
 'use strict';
 
 // Environment
-const { APP, USER, DEVICE } = require('../../env.js');
+import { APP, USER, DEVICE } from '../../env.js';
 
 // Utils
-const EventEmitter = require('eventemitter2');
+import EventEmitter from 'eventemitter2';
 
 
 /**
@@ -15,4 +15,4 @@ class PeerManager extends EventEmitter {}
 
 
 
-module.exports = PeerManager;
+export default PeerManager;

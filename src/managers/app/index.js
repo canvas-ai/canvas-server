@@ -1,6 +1,5 @@
-// Utils
-const EventEmitter = require('eventemitter2');
-const debug = require('debug')('canvas:managers:app');
+import EventEmitter from 'eventemitter2';
+import debug from 'debug';
 
 /**
  * App manager
@@ -21,4 +20,4 @@ class AppManager extends EventEmitter {
 
 }
 
-module.exports = AppManager;
+export default AppManager;

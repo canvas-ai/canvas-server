@@ -1,13 +1,13 @@
-const Service = require('../../managers/service/lib/Service');
-const debug = require('debug')('canvas:transports:http');
-const path = require('path');
-const fs = require('fs');
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
-const cors = require('cors');
-const http = require('http');
-const socketIo = require('socket.io');
+import Service from '../../managers/service/lib/Service';
+import debug from 'debug';
+import path from 'path';
+import fs from 'fs';
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
+import cors from 'cors';
+import http from 'http';
+import socketIo from 'socket.io';
 
 const API_VERSIONS = ['v1', 'v2'];
 const DEFAULT_CONFIG = {
@@ -163,4 +163,4 @@ class HttpTransport extends Service {
     }
 }
 
-module.exports = HttpTransport;
+export default HttpTransport;

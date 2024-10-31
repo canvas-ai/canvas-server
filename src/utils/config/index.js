@@ -1,18 +1,17 @@
 'use strict';
 
-
 /**
  * Simple Config module for Canvas
  *
  * Usage:
- * const Config = require('./utils/config')
+ * import Config from './utils/config';
  * const config = Config({
  *  userConfigDir: 'path/to/user/config',
  *  serverConfigDir: 'path/to/server/config',
  *  versioning: true,
- * })
+ * });
  *
- * const myConfig = config.open('myConfig')
+ * const myConfig = config.open('myConfig');
  *
  * The above will do the following
  * - Check if myConfig.<deviceid>.json exists in the user config dir
@@ -29,10 +28,10 @@
 // If server.transports would not be found in server.json, try file server.transports.json instead
 // For this we need to patch the get/set functions in the Conf class
 
-const Conf = require('conf');
-const fs = require('fs');
-const path = require('path');
-const device = require('../../managers/device').getCurrentDevice(); // TODO: Refactor
+import Conf from 'conf';
+import fs from 'fs';
+import path from 'path';
+import { getCurrentDevice as device } from '../../managers/device'; // TODO: Refactor
 
 const findFile = (files) => {
     for (const file of files) {
@@ -82,4 +81,4 @@ const Config = (configOpts) => {
     };
 };
 
-module.exports = Config;
+export default Config;

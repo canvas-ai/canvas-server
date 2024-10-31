@@ -1,41 +1,25 @@
-'use strict';
+import EventEmitter from 'eventemitter2';
+import debug from 'debug';
+import path from 'path';
+import os from 'os';
 
-
-// Utils
-const EventEmitter = require('eventemitter2');
-const debug = require('debug')('canvas:context:tree');
-const path = require('path');
-const os = require('os');
-
-// App modules
-const LayerIndex = require('./LayerIndex');
-const TreeIndex = require('./TreeIndex');
-const TreeNode = require('./TreeNode');
-
-
-/**
- * Tree class
- * @extends EventEmitter
- */
+import LayerIndex from './LayerIndex';
+import TreeIndex from './TreeIndex';
+import TreeNode from './TreeNode';
 
 class Tree extends EventEmitter {
 
     constructor(options = {
-        // TODO: Refactor!
         treePath: path.join(os.homedir(), '.canvas', 'tree.json'),
         layerPath: path.join(os.homedir(), '.canvas', 'layers.json'),
     }) {
-
-        // Initialize event emitter
         super();
 
-        // Initialize indexes
         this.dbtree = new TreeIndex(options.treePath);
         this.dblayers = new LayerIndex(options.layerPath);
 
         this.showHidden = false;
 
-        // Initialize the root node
         debug('Initializing context tree');
         this.rootLayer = this.dblayers.getLayerByName('/');
         if (!this.rootLayer) {
@@ -45,32 +29,20 @@ class Tree extends EventEmitter {
         this.root = new TreeNode(this.rootLayer.id, this.rootLayer);
         debug(`Root node created with layer ID "${this.rootLayer.id}", name "${this.rootLayer.name}" of type "${this.rootLayer.type}"`);
 
-        // Load tree from the database
         if (this.load()) {
             debug('Context tree loaded from database');
         } else {
             debug('Context tree not found in database, using vanilla root node');
         }
 
-        // Emit the ready event
         debug('Context tree initialized');
         debug(JSON.stringify(this.#buildJsonTree(), null, 2));
 
         this.emit('ready');
-
     }
-
-    /**
-     * Getters
-     */
 
     get paths() { return this.#buildPathArray(); }
     get layers() { return this.dblayers; }
-
-
-    /**
-     * Tree interface methods
-     */
 
     pathExists(path) {
         return this.getNode(path) ? true : false;
@@ -87,9 +59,7 @@ class Tree extends EventEmitter {
         for (const layerName of layerNames) {
             let layer = this.dblayers.getLayerByName(layerName);
             if (this.dblayers.isInternalLayerName(layerName)) {
-                //debug(`Layer "${layerName}" is internal and can not be used in the tree`)
                 throw new Error(`Layer "${layerName}" is internal and can not be used in the tree`);
-                //return false
             }
 
             if (!layer) {
@@ -111,19 +81,15 @@ class Tree extends EventEmitter {
         }
 
         if (node) {
-            // Check if node already exists
             child = currentNode.getChild(node.id);
             if (child && (child instanceof TreeNode)) {
-                // Add node to parent
                 currentNode.addChild(child);
             }
         }
 
-        // Commit changes
         this.save();
         debug(`Path "${path}" inserted successfully.`);
         return true;
-
     }
 
     move(pathFrom, pathTo, recursive = false) {
@@ -148,20 +114,15 @@ class Tree extends EventEmitter {
             return false;
         }
 
-        // Remove existing node from parent
         parentNode.removeChild(node.id);
 
-        // Move all node children to parent
         if (node.hasChildren) {
             for (const [key, value] of node.children.values()) {
-                //parentNode.children.set(key, value);
                 parentNode.addChild(value);
             }
         }
 
-        // Commit changes
         this.save();
-
     }
 
     moveRecursive(pathFrom, pathTo) {
@@ -180,23 +141,16 @@ class Tree extends EventEmitter {
             return false;
         }
 
-        // Remove existing node from parent
         parentNode.removeChild(node.id);
 
-        // Commit changes
         this.save();
-
     }
 
     copy(pathFrom, pathTo, recursive) {
-
-        // Commit changes
         this.save();
     }
 
     copyRecursive(pathFrom, pathTo) {
-
-        // Commit changes
         this.save();
     }
 
@@ -212,16 +166,13 @@ class Tree extends EventEmitter {
         if (!parentNode) {throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);}
 
         if (!recursive && node.hasChildren) {
-            // Merge all node children to parent
             for (const [key, value] of node.children.values()) {
                 parentNode.addChild(value);
             }
         }
 
-        // Remove existing node from parent
         parentNode.removeChild(node.id);
 
-        // Commit changes
         this.save();
         return true;
     }
@@ -230,7 +181,6 @@ class Tree extends EventEmitter {
         return this.dblayers.renameLayer(name, newName);
     }
 
-    // Store tree as JSON to the database (sync!)
     save() {
         debug('Saving in-memory tree to database');
         let data = this.#buildJsonIndexTree();
@@ -239,28 +189,21 @@ class Tree extends EventEmitter {
             debug('Tree saved successfully.');
         } catch (error) {
             debug(`Error saving tree to database: ${error.message}`);
-            throw error; // or handle it as needed
+            throw error;
         }
     }
 
-    // Load JSON tree from the database
     load() {
         debug('Loading JSON Tree from database...');
         const json = this.dbtree.get('tree');
         if (!json) {
             debug('No persistent JSON data found');
             return false;
-            //throw new Error('No JSON data supplied')
         }
 
         this.root = this.#buildTreeFromJson(json);
         return true;
     }
-
-
-    /**
-     * Legacy methods
-     */
 
     fromJSON(json) { return this.load(json); }
     toJSON() { return this.#buildJsonTree(); }
@@ -272,11 +215,6 @@ class Tree extends EventEmitter {
         this.root = new TreeNode(this.rootLayer.id, this.rootLayer);
         this.save();
     }
-
-
-    /**
-     * Tree node methods
-     */
 
     getNode(path) {
         if (path === '/' || !path) {return this.root;}
@@ -314,15 +252,12 @@ class Tree extends EventEmitter {
             return false;
         }
 
-        // Check if node already exists
         if (!targetNode.hasChild(node.id)) {
             targetNode.addChild(node);
         }
 
-        //this.emit('insert', path, node)
         this.save();
         return true;
-
     }
 
     removeNode(path, recursive = false) {
@@ -337,16 +272,13 @@ class Tree extends EventEmitter {
         if (!parentNode) {throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);}
 
         if (!recursive && node.hasChildren) {
-            // Merge all node children to parent
             for (const [key, value] of node.children.values()) {
                 parentNode.addChild(value);
             }
         }
 
-        // Remove existing node from parent
         parentNode.removeChild(node.id);
 
-        // Commit changes
         this.save();
         return true;
     }
@@ -355,13 +287,7 @@ class Tree extends EventEmitter {
 
     moveNodeRecursive(pathFrom, pathTo) { }
 
-
-    /**
-     * Internal methods
-     */
-
     #buildTreeFromJson(rootNode = this.root, autoCreateLayers = true) {
-        // Create a root node if none is provided
         const buildTree = (nodeData) => {
             let node;
             let layer;
@@ -438,13 +364,12 @@ class Tree extends EventEmitter {
                     traverseTree(child, path);
                 }
             } else {
-                paths.push(path.replace(/\/\//g, '/')); // TODO: Fix this
+                paths.push(path.replace(/\/\//g, '/'));
             }
         };
         traverseTree(this.root);
         return sort ? paths.sort() : paths;
     }
-
 }
 
-module.exports = Tree;
+export default Tree;

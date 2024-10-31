@@ -1,17 +1,15 @@
 'use strict';
 
-
 // Credits for this one mostly chat.openai.com
-const fs = require('fs');
-const util = require('util');
-const path = require('path');
+import fs from 'fs';
+import util from 'util';
+import path from 'path';
 
 // TODO: Use https://www.npmjs.com/package/write-file-atomic
 const writeFile = util.promisify(fs.writeFile);
 const readFile = util.promisify(fs.readFile);
 const writeFileSync = fs.writeFileSync;
 const readFileSync = fs.readFileSync;
-
 
 class JsonSet {
 
@@ -77,7 +75,7 @@ class JsonSet {
 
     saveSync() {
         const data = JSON.stringify([...this.set]);
-        writeFileSync(this.filePath, data, 'utf-8');
+        writeFileSync(this.filePath, 'utf-8');
     }
 
     toArray() {
@@ -86,5 +84,4 @@ class JsonSet {
 
 }
 
-
-module.exports = JsonSet;
+export default JsonSet;

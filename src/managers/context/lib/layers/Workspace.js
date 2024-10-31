@@ -1,8 +1,4 @@
-'use strict';
-
-// Includes
-const Layer = require('../Layer');
-
+import Layer from '../Layer';
 
 /**
  * Workspace Layer
@@ -19,4 +15,4 @@ class WorkspaceLayer extends Layer {
 
 }
 
-module.exports = WorkspaceLayer;
+export default WorkspaceLayer;

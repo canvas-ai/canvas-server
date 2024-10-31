@@ -1,4 +1,4 @@
-module.exports = [
+export default [
     {
         id: '0000-0000-0000',
         type: 'universe',

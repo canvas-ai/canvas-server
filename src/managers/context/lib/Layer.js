@@ -1,8 +1,4 @@
-'use strict';
-
-
-// Utils
-const { uuid12 } = require('./utils');
+import { uuid12 } from './utils';
 
 const LAYER_TYPES = [
     'universe',     // TODO
@@ -175,4 +171,4 @@ class Layer {
 
 }
 
-module.exports = Layer;
+export default Layer;
