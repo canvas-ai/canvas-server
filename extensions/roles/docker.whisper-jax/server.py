@@ -1,5 +1,5 @@
 from flask import Flask, request, Response, stream_with_context
-from whisper_jax import FlaxWhisperPipline
+from whisper_jax import FlaxWhisperPipeline
 import numpy as np
 import queue
 import threading
@@ -7,7 +7,7 @@ import threading
 app = Flask(__name__)
 
 # Initialize the Whisper-JAX pipeline
-pipeline = FlaxWhisperPipline("openai/whisper-small")
+pipeline = FlaxWhisperPipeline("openai/whisper-small")
 
 # Create a queue to hold audio chunks
 audio_queue = queue.Queue()

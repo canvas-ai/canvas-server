@@ -1,3 +1,3 @@
-# Augmenttoolkit Canvas Role
+# AugmentToolkit Canvas Role
 
-https://github.com/e-p-armstrong/augmentoolkit
+https://github.com/e-p-armstrong/augmenttoolkit

@@ -4,8 +4,8 @@ Server component for the Canvas project
 
 ## ! Refactor in progress
 
-**! use the main branch for ..actually running the server**  
-**! use the dev branch to get a preview of whats planned**  
+**! use the main branch for ...actually running the server**  
+**! use the dev branch to get a preview of what's planned**  
 
 `Universe -> |||| (bitmaps) -> Contexts -> User`
 
@@ -17,7 +17,7 @@ Server component for the Canvas project
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server/src
 $ npm install
-$ npm start # or npm pm2:start
+$ npm start # or npm run pm2:start
 ```
 
 To automatically start canvas-server as a system (or user) service, please consult https://pm2.keymetrics.io/docs/usage/startup/
@@ -84,7 +84,7 @@ $ cp example-client.json client.json
 $ cd /path/to/canvas-server
 # Stop the canvas server
 $ npm run stop # or npm run pm2:stop
-$ rm -rf ./node_modules # Ensure we have a clean plate
+$ rm -rf ./node_modules # Ensure we have a clean slate
 # Fetch the latest version of canvas-server from Github
 $ git pull origin main # or dev if you are feeling adventurous
 $ npm install
