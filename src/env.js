@@ -26,25 +26,34 @@ const pkg = require('../package.json');
  */
 
 const SERVER_ROOT = path.dirname(path.resolve(__dirname));
-
-// Server directories
 const SERVER_CONFIG = process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config');
 const SERVER_DATA = process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data');
 const SERVER_VAR = process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var');
-const SERVER_EXT = process.env['CANVAS_SERVER_EXT'] || path.join(SERVER_ROOT, 'extensions');
 
-// User directories
-// For portable mode, the user home is in server ./user, otherwise it's in the system home
-// User settings stored in ./config override server settings, moving your "home" folder to
-// another server instance(lets say from your local ws to your NAS) should be as painless as possible
+/**
+ * User directories
+ *
+ * For portable mode, the user home is in server ./user, otherwise it's in the system's $HOME
+ * User settings stored in ./config override server settings, moving your "home" folder to
+ * another server instance(lets say from your local ws to your NAS) should be painless
+ *
+ * USER_HOME
+ * ├── config
+ * ├── cache
+ * ├── data
+ * |    ├── index
+ * |    ├── db
+ * ├── workspaces
+ *      ├── universe
+ *          ├── .workspace.json
+ *          ├── index
+ *      ├── foo
+ */
+
 const CANVAS_USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
 const CANVAS_USER_CONFIG = process.env['CANVAS_USER_CONFIG'] || path.join(CANVAS_USER_HOME, 'config');
-// User "Universe"
-const CANVAS_USER_INDEX = process.env['CANVAS_USER_INDEX'] || path.join(CANVAS_USER_HOME, 'index');
-const CANVAS_USER_DB = process.env['CANVAS_USER_DB'] || path.join(CANVAS_USER_HOME, 'db');
 const CANVAS_USER_CACHE = process.env['CANVAS_USER_CACHE'] || path.join(CANVAS_USER_HOME, 'cache');
 const CANVAS_USER_DATA = process.env['CANVAS_USER_DATA'] || path.join(CANVAS_USER_HOME, 'data');
-// User workspaces
 const CANVAS_USER_WORKSPACES = process.env['CANVAS_USER_WORKSPACES'] || path.join(CANVAS_USER_HOME, 'workspaces');
 
 // Collect all ENV constants

@@ -51,6 +51,7 @@ class CanvasServer extends EventEmitter {
     #serverMode;
     #server = {};
     #user = {};
+    #mode = 'full'; // full | minimal
     #status = 'stopped'; // stopped, initialized, starting, running, stopping;
 
     constructor(options = {}) {
@@ -503,24 +504,4 @@ class CanvasServer extends EventEmitter {
 
 }
 
-
-const canvas = new CanvasServer();
-
-async function main() {
-    await canvas.start();
-
-    // Login to canvas server (access token -> jwt)
-    // - Create a session (sessionId, clientContext)
-    const session = canvas.createSession('work', {
-        baseUrl: '/work',
-
-    });
-
-
-
-}
-
-main();
-
-
-//module.exports = CanvasServer;
+module.exports = CanvasServer;
