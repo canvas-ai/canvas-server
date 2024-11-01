@@ -1,17 +1,15 @@
 'use strict';
 
 // Utils
-const EventEmitter = require('eventemitter2');
-const path = require('path');
-const debug = require('debug')('canvas:indexd');
+import EventEmitter from 'eventemitter2';
+import path from 'path';
+import debug from 'debug';
 
 // Services
-const Db = require('../../services/db/index.js');
-const FtsIndex = require('./lib/FtsIndex.js');
-const BitmapIndex = require('./lib/BitmapIndex.js');
-const VectorIndex = require('@lancedb/lancedb');
-// Better keyIDs and LMDB range queries should do the trick
-//const DatetimeIndex = require('./lib/DatetimeIndex.js');
+import Db from '../../services/db/index.js';
+import FtsIndex from './lib/FtsIndex.js';
+import BitmapIndex from './lib/BitmapIndex.js';
+import VectorIndex from '@lancedb/lancedb';
 
 // Constants
 const INTERNAL_BITMAP_ID_MIN = 1000;
@@ -425,4 +423,4 @@ class IndexD extends EventEmitter {
 
 }
 
-module.exports = IndexD;
+export default IndexD;

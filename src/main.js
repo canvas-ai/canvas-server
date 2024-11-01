@@ -13,7 +13,7 @@ import Config from './utils/config/index.mjs';
 import winston from 'winston';
 
 // Core components
-import Indexd from './core/indexd';
+import Indexd from './core/indexd/index.mjs';
 import Stored from './core/stored.mjs';
 import Eventd from './core/eventd.mjs';
 import Neurald from './core/neurald.mjs';

@@ -1,6 +1,4 @@
-'use strict';
-
-const {
+import {
     parseISO,
     isToday,
     isYesterday,
@@ -9,12 +7,10 @@ const {
     isThisMonth,
     isThisQuarter,
     isThisYear,
-} = require('date-fns');
+} from 'date-fns';
 
 // TODO
 class TimestampIndex {
-
-
 
     static isWithinTimeframe(dateString, timeframe) {
         const date = parseISO(dateString);
@@ -33,4 +29,4 @@ class TimestampIndex {
 
 }
 
-module.exports = TimestampIndex;
+export default TimestampIndex;
