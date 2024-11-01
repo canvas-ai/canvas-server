@@ -13,25 +13,25 @@ import Config from './utils/config/index.mjs';
 import winston from 'winston';
 
 // Core components
-const Indexd = require('./core/indexd');
-const Stored = require('./core/stored');
-const Eventd = require('./core/eventd');
-const Neurald = require('./core/neurald');
+import Indexd from './core/indexd';
+import Stored from './core/stored.mjs';
+import Eventd from './core/eventd.mjs';
+import Neurald from './core/neurald.mjs';
 
 // Manager classes
-const AppManager = require('./managers/app');
-const RoleManager = require('./managers/role');
-const UserManager = require('./managers/user');
-const DeviceManager = require('./managers/device/index.mjs');
-const PeerManager = require('./managers/peer');
-const ServiceManager = require('./managers/service');
+import AppManager from './managers/app.mjs';
+import RoleManager from './managers/role.mjs';
+import UserManager from './managers/user.mjs';
+import DeviceManager from './managers/device/index.mjs';
+import PeerManager from './managers/peer.mjs';
+import ServiceManager from './managers/service.mjs';
 
-const SessionManager = require('./managers/session');
-const WorkspaceManager = require('./managers/workspace');
-const ContextManager = require('./managers/context');
+import SessionManager from './managers/session.mjs';
+import WorkspaceManager from './managers/workspace.mjs';
+import ContextManager from './managers/context.mjs';
 
 // Transports
-const TransportHttp = require('./transports/http');
+import TransportHttp from './transports/http.mjs';
 
 // App constants
 const MAX_SESSIONS = 32;

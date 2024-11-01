@@ -64,5 +64,5 @@ check_docker_installed
 check_docker_compose_installed
 
 # Build and run Docker containers without using cache
-docker-compose build --force-rm --no-cache --pull
-docker-compose up --detach
+#docker-compose build --force-rm --no-cache --pull
+#docker-compose up --detach

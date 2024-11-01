@@ -3,36 +3,22 @@
  */
 
 // Environment variables
-import { app, server, user } from './env.js';
+import './env.js';
 
-/*
- * ! The current script - as of now - is not really needed, but the aim is to keep the main
- * script as clean as possible. This script will be responsible for initializing the server
- * and the user environment based on CLI/env args and starting the server. Maybe we can merge
- * it with the env script in the future (?)
- */
-
-// Server mode (names subject to change)
-// full: server is running with a user environment
-// minimal: server is only running the roleManager module and default transports
-let serverMode = 'full';
+// Parse command-line arguments
 const argv = require('minimist')(process.argv.slice(2));
-if (argv.standalone) {
+if (argv.mode === 'minimal') {
     serverMode = 'minimal';
     console.log('Minimal mode enabled, user environment won\'t be initialized');
 } else {
-    console.log('Full mode enabled, user environment will be initialized');
+    serverMode = 'standalone';
+    console.log('Standalone server mode enabled, user environment will be initialized');
 }
 
 // Canvas
 import Canvas from './main';
 const canvas = new Canvas({
-    mode: serverMode,
-    app: app,
-    paths: {
-        server: server.paths,
-        user: user.paths,
-    },
+    mode: serverMode
 });
 
 // Start the server

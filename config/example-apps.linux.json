@@ -5,5 +5,12 @@
         "type": "portable",
         "command": "PORTABLE/Apps/vscode-linux-x64/code",
         "icon": "PORTABLE/Apps/vscode-linux-x64/vscode.png"
+    },
+    "chrome": {
+        "name": "Google Chrome",
+        "description": "Google Chrome",
+        "type": "flatpak",
+        "command": "flatpak run com.google.Chrome",
+        "icon": "flatpak/com.google.Chrome.png"
     }
 }

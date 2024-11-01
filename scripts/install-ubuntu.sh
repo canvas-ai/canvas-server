@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script is a (working) draft only
-# Do not run this script if you are not installing Canvas Server on a Ubuntu Server
+# Intended to be used as a reference for setting up Canvas Server
 
 # Script defaults
 # TODO: Add support for command line arguments / ENV vars
@@ -14,7 +14,6 @@ NODEJS_VERSION=20
 # Certbot defaults
 WEB_ADMIN_EMAIL="canvas-server@domain.tld"
 WEB_FQDN="canvas.domain.tld"
-
 
 # Ensure script is run as root
 if [ $(id -u) -ne 0 ]; then
@@ -128,4 +127,3 @@ ufw enable
 
 # Enable unattended upgrades
 dpkg-reconfigure --priority=low unattended-upgrades
-
