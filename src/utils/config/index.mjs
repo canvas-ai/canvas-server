@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Simple Config module for Canvas
  *
@@ -31,7 +29,10 @@
 import Conf from 'conf';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDevice as device } from '../../managers/device'; // TODO: Refactor
+
+import { getCurrentDevice } from '../../managers/device/index.mjs';
+const device = getCurrentDevice();
+
 
 const findFile = (files) => {
     for (const file of files) {

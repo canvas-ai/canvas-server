@@ -19,7 +19,7 @@ const {
 } = require('./utils/checksums');
 
 const embeddings = require('./utils/embeddings');
-const fileinfo = require('./utils/fileinfo');
+const fileinfo = require('./utils/fileinfo/v3');
 
 // StoreD caching layer
 const Cache = require('./cache');

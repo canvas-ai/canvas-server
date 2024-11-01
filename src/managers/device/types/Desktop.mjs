@@ -1,4 +1,5 @@
-import { machineIdSync } from 'node-machine-id';
+import pkg from 'node-machine-id';
+const { machineIdSync } = pkg;
 import os from 'os';
 import ip from 'ip';
 import { familySync } from 'detect-libc';
@@ -49,7 +50,7 @@ class Desktop {
 export default Desktop;
 
 function getActiveIP() {
-    let nets = require('os').networkInterfaces();
+    let nets = os.networkInterfaces();
 
     for (let i in nets) {
         var candidate = nets[i].filter(function (item) {

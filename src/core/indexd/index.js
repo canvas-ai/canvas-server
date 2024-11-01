@@ -6,7 +6,7 @@ const path = require('path');
 const debug = require('debug')('canvas:indexd');
 
 // Services
-const Db = require('../../services/db');
+const Db = require('../../services/db/index.js');
 const FtsIndex = require('./lib/FtsIndex.js');
 const BitmapIndex = require('./lib/BitmapIndex.js');
 const VectorIndex = require('@lancedb/lancedb');

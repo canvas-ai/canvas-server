@@ -2,44 +2,40 @@
  * Canvas
  */
 
+// Environment variables
+import './env.js';
+
 // Utils
 import path from 'path';
 import debug from 'debug';
 import EventEmitter from 'eventemitter2';
-import Config from './utils/config';
+import Config from './utils/config/index.mjs';
 import winston from 'winston';
 
 // Core components
-import Indexd from './core/indexd';
-import Stored from './core/stored';
-import Eventd from './core/eventd';
-import Neurald from './core/neurald';
+const Indexd = require('./core/indexd');
+const Stored = require('./core/stored');
+const Eventd = require('./core/eventd');
+const Neurald = require('./core/neurald');
 
 // Manager classes
-import AppManager from './managers/app';
-import RoleManager from './managers/role';
-import UserManager from './managers/user';
-import DeviceManager from './managers/device';
-import PeerManager from './managers/peer';
-import ServiceManager from './managers/service';
+const AppManager = require('./managers/app');
+const RoleManager = require('./managers/role');
+const UserManager = require('./managers/user');
+const DeviceManager = require('./managers/device/index.mjs');
+const PeerManager = require('./managers/peer');
+const ServiceManager = require('./managers/service');
 
-import SessionManager from './managers/session';
-import WorkspaceManager from './managers/workspace';
-import ContextManager from './managers/context';
+const SessionManager = require('./managers/session');
+const WorkspaceManager = require('./managers/workspace');
+const ContextManager = require('./managers/context');
 
 // Transports
-import TransportHttp from './transports/http';
+const TransportHttp = require('./transports/http');
 
 // App constants
 const MAX_SESSIONS = 32;
 const MAX_CONTEXTS_PER_SESSION = 32;
-
-// Environment variables
-import {
-    app,
-    server,
-    user,
-} from './env.js';
 
 
 /**

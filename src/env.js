@@ -3,154 +3,103 @@
  */
 
 // Utils
-import path from 'path';
-import fs from 'fs';
 import os from 'os';
-import pkg from '../package.json';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+//import pkg from '../package.json' assert { type: 'json' };
 
-/**
- * System directories
- *
- * SERVER_ROOT
- * ├── src
- * ├── config
- * ├── data
- * ├── extensions
- * |   ├── roles
- * |   ├── storage
- * |   ├── transports
- * ├── user
- * ├── var
- * |   ├── log
- * |   ├── run
- */
+// Constants
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const SERVER_ROOT = path.dirname(path.resolve(__dirname));
-const SERVER_CONFIG = process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config');
-const SERVER_DATA = process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data');
-const SERVER_VAR = process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var');
+const USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
 
-/**
- * User directories
- *
- * For portable mode, the user home is in server ./user, otherwise it's in the system's $HOME
- * User settings stored in ./config override server settings, moving your "home" folder to
- * another server instance(lets say from your local ws to your NAS) should be painless
- *
- * USER_HOME
- * ├── config
- * ├── cache
- * ├── data
- * |    ├── index
- * |    ├── db
- * ├── workspaces
- *      ├── universe
- *          ├── .workspace.json
- *          ├── index
- *      ├── foo
- */
-
-const CANVAS_USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
-const CANVAS_USER_CONFIG = process.env['CANVAS_USER_CONFIG'] || path.join(CANVAS_USER_HOME, 'config');
-const CANVAS_USER_CACHE = process.env['CANVAS_USER_CACHE'] || path.join(CANVAS_USER_HOME, 'cache');
-const CANVAS_USER_DATA = process.env['CANVAS_USER_DATA'] || path.join(CANVAS_USER_HOME, 'data');
-const CANVAS_USER_WORKSPACES = process.env['CANVAS_USER_WORKSPACES'] || path.join(CANVAS_USER_HOME, 'workspaces');
-
-// Collect all ENV constants
-const env = {
-    filePath: path.join(SERVER_ROOT, '.env'),
-    isPortable: isPortable(),
-
-    app: {
-        name: pkg.productName,
-        version: pkg.version,
-        description: pkg.description,
-        license: pkg.license,
-        // Maybe we should use a commonapp.paths {} here, so that
-        // the higher level modules don't have to decide whether to use
-        // a server or a user path
-    },
-
-    server: {
-        paths: {
-            root: SERVER_ROOT,
-            config: SERVER_CONFIG,
-            data: SERVER_DATA,
-            ext: SERVER_EXT,
-            var: SERVER_VAR,
-        },
-    },
-
-    user: {
-        paths: {
-            home: CANVAS_USER_HOME,
-            config: CANVAS_USER_CONFIG,
-            index: CANVAS_USER_INDEX,
-            db: CANVAS_USER_DB,
-            cache: CANVAS_USER_CACHE,
-            data: CANVAS_USER_DATA,
-            workspaces: CANVAS_USER_WORKSPACES,
-        },
-    },
-
-    pid: path.join(SERVER_VAR, 'run', 'canvas-server.pid'),
-    ipc: (process.platform === 'win32') ?
-        path.join('\\\\?\\pipe', 'canvas-server.ipc') :
-        path.join(SERVER_VAR, 'run', 'canvas-server.sock'),
-
-};
-
-// Generate a .env ini file (needed for external server roles)
-const ini = {
+const defaults = {
     // Runtime
-    CANVAS_RUNTIME: 'server',
-    CANVAS_PORTABLE: env.isPortable,
+    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || 'standalone',
+    CANVAS_SERVER_PORTABLE: isPortable(),
 
-    // App
-    CANVAS_APP_NAME: env.app.name,
-    CANVAS_APP_VERSION: env.app.version,
-    CANVAS_APP_DESCRIPTION: env.app.description,
-    CANVAS_APP_LICENSE: env.app.license,
-
-    // Server
-    CANVAS_SERVER_ROOT: env.server.paths.root,
-    CANVAS_SERVER_CONFIG: env.server.paths.config,
-    CANVAS_SERVER_DATA: env.server.paths.data,
-    CANVAS_SERVER_EXT: env.server.paths.ext,
-    CANVAS_SERVER_VAR: env.server.paths.var,
-
-    // Server runtime
-    CANVAS_SERVER_PID: env.pid,
-    CANVAS_SERVER_IPC: env.ipc,
-
-    // Developer settings
+    // Debug settings
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
 
-    // User
-    CANVAS_USER_HOME: env.user.paths.home,
-    CANVAS_USER_CONFIG: env.user.paths.config,
-    CANVAS_USER_INDEX: env.user.paths.index,
-    CANVAS_USER_DB: env.user.paths.db,
-    CANVAS_USER_CACHE: env.user.paths.cache,
-    CANVAS_USER_DATA: env.user.paths.data,
-    CANVAS_USER_WORKSPACES: env.user.paths.workspaces,
+    /**
+     * System directories
+     *
+     * SERVER_ROOT
+     * ├── src
+     * ├── config
+     * ├── data
+     * ├── extensions
+     * |   ├── roles
+     * |   ├── storage
+     * |   ├── transports
+     * ├── user
+     * ├── var
+     * |   ├── cache
+     * |   ├── run
+     * |   ├── log
+     */
+
+    CANVAS_SERVER_ROOT: SERVER_ROOT,
+    CANVAS_SERVER_CONFIG: process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config'),
+    CANVAS_SERVER_DATA: process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data'),
+    CANVAS_SERVER_VAR: process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var'),
+
+    /**
+     * User directories
+     *
+     * For portable mode, the user home is in server ./user, otherwise it's in the system's $HOME
+     * User settings stored in ./config override server settings, moving your "home" folder to
+     * another server instance(lets say from your local ws to your NAS) should be painless
+     *
+     * USER_HOME
+     * ├── config
+     * ├── cache
+     * ├── data
+     * |    ├── index
+     * |    ├── db
+     * ├── workspaces
+     *      ├── universe
+     *          ├── .workspace.json
+     *          ├── index
+     *      ├── foo
+     */
+
+    CANVAS_USER_HOME: USER_HOME,
+    CANVAS_USER_CONFIG: process.env['CANVAS_USER_CONFIG'] || path.join(USER_HOME, 'config'),
+    CANVAS_USER_CACHE: process.env['CANVAS_USER_CACHE'] || path.join(USER_HOME, 'cache'),
+    CANVAS_USER_DATA: process.env['CANVAS_USER_DATA'] || path.join(USER_HOME, 'data'),
+    CANVAS_USER_WORKSPACES: process.env['CANVAS_USER_WORKSPACES'] || path.join(USER_HOME, 'workspaces'),
 };
 
-// Update .env to-be read by external server roles
-generateDotenvFile(ini, env.filePath);
+// Transports (IPC, HTTP, WS): To remove
+defaults.CANVAS_SERVER_IPC = (process.platform === 'win32') ?
+    path.join('\\\\?\\pipe', 'canvas-server.ipc') :
+    path.join(defaults.CANVAS_SERVER_VAR, 'run', 'canvas-server.sock');
 
-// Update process env vars
-// Could just run require('dotenv').config()
-process.title = `${pkg.productName} | v${pkg.version}`;
-Object.assign(process.env, {...ini});
+// Initialize environment
+const envPath = path.join(process.cwd(), '.env');
+const result = dotenv.config({ path: envPath });
 
-/**
- * Exports
- */
+// If .env doesn't exist or is empty, create it with defaults
+if (result.error || Object.keys(result.parsed || {}).length === 0) {
+    const iniContent = Object.entries(defaults)
+        .map(([key, value]) => `${key}="${value}"`)
+        .join('\n');
 
-export default env;
+    fs.writeFileSync(envPath, iniContent);
+    // Reload env after creating file
+    dotenv.config({ path: envPath });
+}
 
+// Set any missing defaults into process.env
+Object.entries(defaults).forEach(([key, value]) => {
+    process.env[key] = process.env[key] || value;
+});
 
 /**
  * Utils
@@ -170,18 +119,4 @@ function getUserHome() {
     }
 
     return path.join(os.homedir(), '.canvas');
-}
-
-function generateDotenvFile(iniVars, filePath) {
-    let iniContent = '';
-
-    Object.keys(iniVars).forEach((key) => {
-        let value = iniVars[key];
-        if (typeof value === 'object') {
-            value = JSON.stringify(value);
-        }
-        iniContent += `${key}="${value}"\n`;
-    });
-
-    fs.writeFileSync(filePath, iniContent);
 }
