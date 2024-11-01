@@ -1,6 +1,8 @@
-const { Index, Document } = require("flexsearch");
-const fs = require('fs').promises;
-const debug = require('debug')('canvas:indexd:fts');
+import { Index, Document } from "flexsearch";
+import { promises as fs } from 'fs';
+import debug from 'debug';
+
+const log = debug('canvas:indexd:fts');
 
 class Fts {
 
@@ -97,4 +99,4 @@ class Fts {
     }
 }
 
-module.exports = Fts;
+export default Fts;

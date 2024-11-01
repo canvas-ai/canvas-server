@@ -1,5 +1,7 @@
-const { RoaringBitmap32 } = require('roaring');
-const debug = require('debug')('canvas:indexd:bitmap');
+import { RoaringBitmap32 } from 'roaring';
+import debug from 'debug';
+
+const log = debug('canvas:indexd:bitmap');
 
 class Bitmap extends RoaringBitmap32 {
     constructor(oidArrayOrBitmap = [], options = {}) {
@@ -13,9 +15,9 @@ class Bitmap extends RoaringBitmap32 {
         this.rangeMin = options.rangeMin ?? 0;
         this.rangeMax = options.rangeMax ?? 4294967296;
 
-        debug(`Bitmap "${this.key}" type ${this.type}, ID range: ${this.rangeMin} - ${this.rangeMax} initialized`);
-        debug(`Bitmap "${this.key}" has ${this.size} objects`);
-        debug(`Bitmap instance of RoaringBitmap32: ${this instanceof RoaringBitmap32}`);
+        log(`Bitmap "${this.key}" type ${this.type}, ID range: ${this.rangeMin} - ${this.rangeMax} initialized`);
+        log(`Bitmap "${this.key}" has ${this.size} objects`);
+        log(`Bitmap instance of RoaringBitmap32: ${this instanceof RoaringBitmap32}`);
     }
 
     tick(oid) {
@@ -114,4 +116,4 @@ class Bitmap extends RoaringBitmap32 {
     }
 }
 
-module.exports = Bitmap;
+export default Bitmap;
