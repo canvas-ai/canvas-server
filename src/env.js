@@ -1,28 +1,38 @@
-/**
- * Canvas Server *single-user* env bootstrap
- */
-
-// Utils
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-//import pkg from '../package.json' assert { type: 'json' };
 
-// Constants
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Core paths setup
+const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const isPortable = () => !fs.existsSync(path.join(SERVER_ROOT, 'user', '.ignore'));
 
-const SERVER_ROOT = path.dirname(path.resolve(__dirname));
-const USER_HOME = process.env['CANVAS_USER_HOME'] || getUserHome();
+const getUserHome = () => {
+    if (isPortable()) {
+        return path.join(SERVER_ROOT, 'user');
+    }
+    return path.join(
+        os.homedir(),
+        process.platform === 'win32' ? 'Canvas' : '.canvas'
+    );
+};
 
-const defaults = {
-    // Runtime
+// Environment configuration
+const USER_HOME = process.env.CANVAS_USER_HOME || getUserHome();
+
+const createPathConfig = (base, paths) =>
+    Object.fromEntries(
+        paths.map(([key, subpath]) => [
+            key,
+            process.env[key] || path.join(base, subpath)
+        ])
+    );
+
+const config = {
+    // Runtime settings
     CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || 'standalone',
     CANVAS_SERVER_PORTABLE: isPortable(),
-
-    // Debug settings
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
 
@@ -43,11 +53,12 @@ const defaults = {
      * |   ├── run
      * |   ├── log
      */
-
-    CANVAS_SERVER_ROOT: SERVER_ROOT,
-    CANVAS_SERVER_CONFIG: process.env['CANVAS_SERVER_CONFIG'] || path.join(SERVER_ROOT, 'config'),
-    CANVAS_SERVER_DATA: process.env['CANVAS_SERVER_DATA'] || path.join(SERVER_ROOT, 'data'),
-    CANVAS_SERVER_VAR: process.env['CANVAS_SERVER_VAR'] || path.join(SERVER_ROOT, 'var'),
+    ...createPathConfig(SERVER_ROOT, [
+        ['CANVAS_SERVER_ROOT', ''],
+        ['CANVAS_SERVER_CONFIG', 'config'],
+        ['CANVAS_SERVER_DATA', 'data'],
+        ['CANVAS_SERVER_VAR', 'var']
+    ]),
 
     /**
      * User directories
@@ -68,55 +79,36 @@ const defaults = {
      *          ├── index
      *      ├── foo
      */
+    ...createPathConfig(USER_HOME, [
+        ['CANVAS_USER_HOME', ''],
+        ['CANVAS_USER_CONFIG', 'config'],
+        ['CANVAS_USER_CACHE', 'cache'],
+        ['CANVAS_USER_DATA', 'data'],
+        ['CANVAS_USER_WORKSPACES', 'workspaces']
+    ]),
 
-    CANVAS_USER_HOME: USER_HOME,
-    CANVAS_USER_CONFIG: process.env['CANVAS_USER_CONFIG'] || path.join(USER_HOME, 'config'),
-    CANVAS_USER_CACHE: process.env['CANVAS_USER_CACHE'] || path.join(USER_HOME, 'cache'),
-    CANVAS_USER_DATA: process.env['CANVAS_USER_DATA'] || path.join(USER_HOME, 'data'),
-    CANVAS_USER_WORKSPACES: process.env['CANVAS_USER_WORKSPACES'] || path.join(USER_HOME, 'workspaces'),
+    // Transport configuration
+    CANVAS_SERVER_IPC: process.platform === 'win32'
+        ? path.join('\\\\?\\pipe', 'canvas-server.ipc')
+        : path.join(SERVER_ROOT, 'var', 'run', 'canvas-server.sock')
 };
 
-// Transports (IPC, HTTP, WS): To remove
-defaults.CANVAS_SERVER_IPC = (process.platform === 'win32') ?
-    path.join('\\\\?\\pipe', 'canvas-server.ipc') :
-    path.join(defaults.CANVAS_SERVER_VAR, 'run', 'canvas-server.sock');
-
-// Initialize environment
+// Load and manage .env file
 const envPath = path.join(process.cwd(), '.env');
-const result = dotenv.config({ path: envPath });
+const envResult = dotenv.config({ path: envPath });
 
-// If .env doesn't exist or is empty, create it with defaults
-if (result.error || Object.keys(result.parsed || {}).length === 0) {
-    const iniContent = Object.entries(defaults)
+if (envResult.error || !Object.keys(envResult.parsed || {}).length) {
+    const envContent = Object.entries(config)
         .map(([key, value]) => `${key}="${value}"`)
         .join('\n');
 
-    fs.writeFileSync(envPath, iniContent);
-    // Reload env after creating file
+    fs.writeFileSync(envPath, envContent);
     dotenv.config({ path: envPath });
 }
 
-// Set any missing defaults into process.env
-Object.entries(defaults).forEach(([key, value]) => {
+// Ensure all config values are in process.env
+Object.entries(config).forEach(([key, value]) => {
     process.env[key] = process.env[key] || value;
 });
 
-/**
- * Utils
- */
-
-function isPortable() {
-    return ! fs.existsSync(path.join(SERVER_ROOT, 'user', '.ignore'));
-}
-
-function getUserHome() {
-    if (isPortable()) {
-        return path.join(SERVER_ROOT, 'user');
-    }
-
-    if (process.platform === 'win32') {
-        return path.join(os.homedir(), 'Canvas');
-    }
-
-    return path.join(os.homedir(), '.canvas');
-}
+export default config;
