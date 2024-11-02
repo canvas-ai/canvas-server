@@ -6,10 +6,11 @@ const debug = require('debug')('canvas:session-manager:session');
 
 class Session {
 
-    constructor(id, sessionOptions = {}, contextManager) {
+    constructor(id, sessionOptions = {}, contextManager, sessionMap = new Map()) {
         if (!id) {throw new Error('Session ID required');}
         if (!sessionOptions.baseUrl) {throw new Error('Base URL required');}
         if (!contextManager) {throw new Error('Context manager required');}
+
         this.id = id;
         this.baseUrl = sessionOptions.baseUrl;
         this.contextManager = contextManager;
@@ -18,6 +19,7 @@ class Session {
         debug(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
 
         this.contexts = new Map(); // Map of contexts for this session
+        this.connectedDevices = sessionMap; // Map of connected devices for this session
         this.initializeContexts(sessionOptions?.contexts);
     }
 

@@ -1,8 +1,5 @@
-'use strict';
-
-
-const path = require('path');
-const Conf = require('conf'); // Temporary
+import path from 'path';
+import Conf from 'conf'; // Temporary
 
 // TODO: Add tree versioning
 class TreeIndex extends Conf {
@@ -36,5 +33,4 @@ class TreeIndex extends Conf {
 
 }
 
-
-module.exports = TreeIndex;
+export default TreeIndex;

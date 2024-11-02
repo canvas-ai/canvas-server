@@ -1,51 +1,24 @@
 /**
- * Canvas server
+ * Canvas server initialization script
  */
 
 // Environment variables
-const {
-    server,
-    user,
-} = require('./env.js');
+import './env.js';
 
-// Server mode
-// full: server is running with a user environment
-// minimal: server is only running the roleManager module and default transports
-let serverMode = 'full';
+// Parse command-line arguments
 const argv = require('minimist')(process.argv.slice(2));
-if (argv.standalone) {
+if (argv.mode === 'minimal') {
     serverMode = 'minimal';
     console.log('Minimal mode enabled, user environment won\'t be initialized');
 } else {
-    console.log('Full mode enabled, user environment will be initialized');
+    serverMode = 'standalone';
+    console.log('Standalone server mode enabled, user environment will be initialized');
 }
 
 // Canvas
-const Canvas = require('./main');
+import Canvas from './main';
 const canvas = new Canvas({
-    mode: serverMode,
-    app: {
-        name: server.appName,
-        version: server.version,
-        description: server.description,
-        license: server.license,
-    },
-    paths: {
-        server: {
-            config: server.paths.config,
-            data: server.paths.data,
-            roles: server.paths.roles,
-            var: server.paths.var,
-        },
-        user: (serverMode === 'full') ? {
-            home: user.paths.home,
-            config: user.paths.config,
-            data: user.paths.data,
-            cache: user.paths.cache,
-            db: user.paths.db,
-            workspaces: user.paths.workspaces
-        } : {}, // false?null
-    },
+    mode: serverMode
 });
 
 // Start the server
@@ -62,4 +35,3 @@ canvas.on('error', (err) => {
     console.error('Canvas server failed to start.');
     console.error(err);
 });
-

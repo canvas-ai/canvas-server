@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # This script is a (working) draft only
-# It is not meant to be run as is
+# It is intended to be used as a reference for setting up Docker and Docker Compose
 
-# Function to check if Docker is installed
 check_docker_installed() {
     if ! command -v docker &> /dev/null; then
         echo "Docker could not be found, installing..."
@@ -15,7 +14,6 @@ check_docker_installed() {
     fi
 }
 
-# Function to install Docker
 install_docker() {
     sudo apt-get update
     sudo apt-get install -y \
@@ -43,7 +41,6 @@ install_docker() {
     echo "Docker installed successfully."
 }
 
-# Function to check if Docker Compose is installed
 check_docker_compose_installed() {
     if ! command -v docker-compose &> /dev/null; then
         echo "Docker Compose could not be found, installing..."
@@ -55,7 +52,6 @@ check_docker_compose_installed() {
     fi
 }
 
-# Function to install Docker Compose
 install_docker_compose() {
     # Install Docker Compose
     sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
@@ -63,10 +59,10 @@ install_docker_compose() {
     echo "Docker Compose installed successfully."
 }
 
-# Main script execution
+# Main
 check_docker_installed
 check_docker_compose_installed
 
 # Build and run Docker containers without using cache
-docker-compose build --force-rm --no-cache --pull
-docker-compose up --detach
+#docker-compose build --force-rm --no-cache --pull
+#docker-compose up --detach

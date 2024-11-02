@@ -1,54 +1,33 @@
-module.exports = [
-
+export default [
     {
         id: '0000-0000-0000',
         type: 'universe',
         name: '/',
         label: 'Universe',
-        description: 'And then, there was light',
+        description: 'And then, there was ..geometry',
         color: '#fff',
         locked: true,
     },
-
-    /**
-     * Canvas Server
-     */
-
     {
         id: '0000-0000-1000',
         type: 'system',
         name: '.canvas',
         label: 'Canvas',
-        description: 'Main Canvas server system tree',
+        description: 'Canvas system tree',
+        color: '#000',
+        locked: true,
+    },
+    {
+        id: '0000-0000-2000',
+        type: 'system',
+        name: '.device',
+        label: 'Current device',
+        description: 'Current device',
         color: '#fff',
         locked: true,
     },
-
-    // System
-    // -- Services
-
-    // Agents
-    // Apps
-    // Roles
-    // Services
-    // Data
-    // Workspaces
-
-    /**
-     * Canvas clients
-     */
-
     {
         id: '0000-0000-2001',
-        type: 'system',
-        name: '.session',
-        label: 'Session',
-        description: 'Current user session',
-        color: '#fff',
-        locked: true,
-    },
-    {
-        id: '0000-0000-2002',
         type: 'system',
         name: '.user',
         label: 'User',
@@ -56,5 +35,13 @@ module.exports = [
         color: '#fff',
         locked: true,
     },
-
+    {
+        id: '0000-0000-2002',
+        type: 'system',
+        name: '.session',
+        label: 'Session',
+        description: 'Current session',
+        color: '#fff',
+        locked: true,
+    },
 ];

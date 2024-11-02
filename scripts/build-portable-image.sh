@@ -1,12 +1,14 @@
 #!/bin/bash
 
+# DRAFT
+
 # Set default values
 IMAGE_NAME="canvas-server"
 IMAGE_TAG="portable"
 DOCKERFILE="Dockerfile"
 CONFIG_DIR="./config"
 
-# Function to display usage information
+# Utils
 usage() {
     echo "Usage: $0 [-n image_name] [-t image_tag] [-f dockerfile] [-c config_dir]"
     echo "  -n: Image name (default: canvas-server)"
@@ -50,7 +52,7 @@ docker build -t "$IMAGE_NAME:$IMAGE_TAG" \
              --build-arg CONFIG_DIR="$CONFIG_DIR" \
              .
 
-# Check if the build was successful
+# Check if build was successful
 if [ $? -eq 0 ]; then
     echo "Docker image $IMAGE_NAME:$IMAGE_TAG built successfully!"
 else

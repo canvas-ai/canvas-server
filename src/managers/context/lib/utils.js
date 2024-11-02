@@ -1,12 +1,11 @@
 'use strict';
 
-
 // Includes
-const debug = require('debug')('canvas:context:utils');
-const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
-const { ensureDirSync } = require('fs-extra');
+import debug from 'debug';
+import path from 'path';
+import os from 'os';
+import crypto from 'crypto';
+import { ensureDirSync } from 'fs-extra';
 
 /*
  * Temporary logger as per @RFC5424
@@ -25,27 +24,13 @@ logger.info = console.log;
 logger.warn = console.log;
 logger.error = console.error;
 
-class ResponseObject {
-
-    constructor(opts = {}) {
-        this.type = opts.type || 'response';
-        this.message = opts.message || null;
-        this.data = opts.data || null;
-    }
-
-}
-
 function ensureContextDirectory(dir) {
-
     if (dir.startsWith('~/') || dir === '~') {
         dir = dir.replace('~', os.homedir());
     }
-
     dir = path.resolve(dir);
     ensureDirSync(dir);
-
     return dir;
-
 }
 
 function getDefaultContextDirectory() {
@@ -65,7 +50,6 @@ function uuid12(delimiter = true) {
 }
 
 const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
-
     if (!o[n.id]) {o[n.id] = {};}
     if (!o[n[p]]) {o[n[p]] = {};}
     if (!o[n[p]].children) {o[n[p]].children= [];}
@@ -138,7 +122,7 @@ function printTree(tree, indent = 0) {
     }
 }
 
-module.exports = {
+export default {
     logger,
     getDefaultContextDirectory,
     ensureContextDirectory,

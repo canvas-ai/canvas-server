@@ -7,7 +7,6 @@ const debug = require('debug')('canvas:transports:http:socketio');
 const contextRoutes = require('./routes/v1/context.js');
 const documentsRoutes = require('./routes/v1/documents.js');
 const ROUTES = require('./routes.js');
-const ResponseObject = require('../../../schemas/transport/responseObject.js');
 
 module.exports = (io, parent) => {
     debug('Initializing socket.io routes');
@@ -17,6 +16,8 @@ module.exports = (io, parent) => {
         socket.session = parent.session; // Default session
         socket.context = parent.context; // Default context
 
+        this.ResponseObject = parent.ResponseObject;
+
         contextRoutes(socket);
         documentsRoutes(socket, parent.db);
 
@@ -25,7 +26,7 @@ module.exports = (io, parent) => {
             debug(`Data: ${JSON.stringify(data)}`);
             if (typeof data === 'function') { callback = data; }
             const sessions = await socket.sessionManager.listSessions();
-            const response = new ResponseObject();
+            const response = new this.ResponseObject();
             callback(response.success(sessions).getResponse());
         });
 
@@ -43,7 +44,7 @@ module.exports = (io, parent) => {
             socket.session = socket.sessionManager.createSession(sessionId, sessionOptions);
             socket.context = socket.session.getContext(); // Returns default session context
             contextRoutes(socket);
-            const response = new ResponseObject();
+            const response = new this.ResponseObject();
             callback(response.success(socket.session.id).getResponse());
         });
 
@@ -61,7 +62,7 @@ module.exports = (io, parent) => {
             socket.context = socket.session.getContext(contextId);
             // Rebind routes to new context
             contextRoutes(socket);
-            const response =  new ResponseObject();
+            const response =  new this.ResponseObject();
             callback(response.success(socket.context).getResponse());
         });
 
@@ -71,7 +72,7 @@ module.exports = (io, parent) => {
             socket.context = socket.session.createContext(contextUrl, contextOptions);
             // Rebind routes to new context
             contextRoutes(socket);
-            const response = new ResponseObject();
+            const response = new this.ResponseObject();
             callback(response.success(socket.context.id).getResponse());
         });
 

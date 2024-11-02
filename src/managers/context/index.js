@@ -1,30 +1,41 @@
-// Utils
-const EventEmitter = require('eventemitter2');
-const { log } = require('console'); // TODO: Replace with logger
+import EventEmitter from 'eventemitter2';
+import Context from './lib/Context';
+import Tree from './lib/Tree';
 
-// App includes
-const Context = require('./lib/Context');
-const Tree = require('./lib/Tree');
-
-// Module defaults // TODO: Cetralize these
+// Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
 const CONTEXT_AUTOCREATE_LAYERS = true;
 const CONTEXT_URL_PROTO = 'universe';
-const CONTEXT_URL_BASE = '/';
-const CONTEXT_URL_BASE_ID = 'universe';
+const CONTEXT_URL_BASE = '/'
+
 
 class ContextManager extends EventEmitter {
 
+    #index;
     #db;
+    #data;
     #tree;
     #layers;
-    //#baseUrl; // Might be useful for future use cases
+    #baseUrl;
 
     constructor(options = {}) {
-        super();
+        super(); // EventEmitter
+
+        // Validate options
+        if (!options.index) { throw new Error('Index not provided'); }
+        if (!options.data) { throw new Error('Data not provided'); }
+
+        // Module options
+        this.#index = options.index;
         this.#db = options.db;
-        this.#tree = new Tree();
+        this.#data = options.data;
+        this.#tree = new Tree({
+            treePath: this.#index.path,
+            layerPath: this.#index.path,
+        });
+
         this.#layers = this.#tree.layers;
+        this.#baseUrl = options.baseUrl || CONTEXT_URL_BASE;
         this.activeContexts = new Map();
     }
 
@@ -42,7 +53,6 @@ class ContextManager extends EventEmitter {
         if (options.id && this.activeContexts.has(options.id)) {
             let context = this.activeContexts.get(options.id);
             // Change the url if a url is supplied
-            // TODO: To eval
             if (url != context.url) {context.set(url);}
             return context;
         }
@@ -87,4 +97,4 @@ class ContextManager extends EventEmitter {
 
 }
 
-module.exports = ContextManager;
+export default ContextManager;

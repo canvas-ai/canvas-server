@@ -1,17 +1,13 @@
-// Utils
-const debug = require('debug')('canvas:context');
-const EE = require('eventemitter2');
-const { uuid12 } = require('./utils');
-
-// App includes
-const Url = require('./Url');
+import debug from 'debug';
+import EE from 'eventemitter2';
+import { uuid12 } from './utils';
+import Url from './Url';
 
 // Module defaults
 const CONTEXT_AUTOCREATE_LAYERS = true;
 const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/';
 const CONTEXT_URL_BASE_ID = 'universe';
-
 
 /**
  * Canvas Context
@@ -20,6 +16,9 @@ const CONTEXT_URL_BASE_ID = 'universe';
 class Context extends EE {
 
     #id;
+    #systemContext;
+    #sessionContext;
+
     #sessionId;
     #baseUrl;
     #url;
@@ -29,11 +28,16 @@ class Context extends EE {
     #layerIndex;
     #tree;
 
-    #contextArray = [];
-    #featureArray = [];
-    #filterArray = [];
+    // System (server) context
+    // - Location/network, runtime context
+    // Client (user/app) context
+    // - Sent to the server by each client(eg. client/os/linux, client/user/user1, client/app/obsidian, client/network/)
+    // User context
+    // - context path/tree layers
 
-    #meta = {};
+    #contextArray = []; // Implicit AND
+    #featureArray = []; // Default OR
+    #filterArray = [];  // Default AND
 
     // TODO: Refactor to not set the context url in the constructor
     constructor(url, db, tree, options = {}) {
@@ -50,7 +54,11 @@ class Context extends EE {
 
         // Generate a runtime uuid
         this.#id = options?.id || uuid12();
-        this.#sessionId = options?.sessionId || null; // Throw?
+
+        this.#systemContext = options?.systemContext;
+        this.#sessionContext = options?.sessionContext;
+
+        this.#sessionId = options?.sessionId || 'default'; // Throw?
         this.documents = db;
 
         this.#tree = tree;
@@ -67,12 +75,6 @@ class Context extends EE {
         );
 
         debug(`Context with url "${this.#url}", session id: "${this.#sessionId}", baseUrl: "${this.#baseUrl}" initialized`);
-
-        // Maps containing references to global in-memory bitmap cache
-        this.contextBitmaps = new Map();
-        this.featureBitmaps = new Map();
-
-        // TODO: Pre-heat bitmaps into memory for session-restore on context creation?
     }
 
     /**
@@ -271,7 +273,11 @@ class Context extends EE {
         ctxArr = this.#contextArray,
         ftArr = this.#featureArray,
         filArr = this.#filterArray,
-    ) {}
+    ) {
+
+        
+
+    }
 
 
     /**
@@ -562,4 +568,4 @@ class Context extends EE {
     }
 }
 
-module.exports = Context;
+export default Context;

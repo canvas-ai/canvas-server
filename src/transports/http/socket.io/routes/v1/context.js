@@ -6,7 +6,7 @@ const debug = require('debug')('canvas:transports:socketio:route:context');
  */
 
 const ROUTES = require('../../routes.js');
-const ResponseObject = require('../../../../../schemas/transport/responseObject.js');
+const ResponseObject = require('../../../../../schemas/transports/ResponseObject');
 
 /**
  * Context routes
@@ -119,7 +119,7 @@ module.exports = function(socket) {
 
         const response = new ResponseObject();
         try {
-            const result = context.insertPath(path, true);
+            const result = context.insertContextPath(path, true);
             // TODO: Implement additional return statuses
             callback(response.created(result).getResponse());
         } catch (err) {
@@ -133,7 +133,7 @@ module.exports = function(socket) {
         const response = new ResponseObject();
 
         try {
-            const result = context.removePath(path, recursive);
+            const result = context.removeContextPath(path, recursive);
             callback(response.deleted(result).getResponse());
         } catch (err) {
             console.error('Internal server error:', err);
@@ -146,7 +146,7 @@ module.exports = function(socket) {
         const response = new ResponseObject();
 
         try {
-            const result = await context.movePath(pathFrom, pathTo, recursive);
+            const result = await context.moveContextPath(pathFrom, pathTo, recursive);
             callback(response.updated(result).getResponse());
         } catch (err) {
             console.error('Internal server error:', err);

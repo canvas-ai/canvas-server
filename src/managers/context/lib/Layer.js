@@ -1,17 +1,12 @@
-'use strict';
-
-
-// Utils
-const { uuid12 } = require('./utils');
+import { uuid12 } from './utils';
 
 const LAYER_TYPES = [
     'universe',     // TODO
+    'system',
     'workspace',    // Collection of canvases, has additional parameters (color, description ..)
     'canvas',       // Can store context, feature and filter bitmaps + dashboard / UI layouts
     'context',      // Has context bitmaps only
-    'filter',       // Represents a single filter bitmap
     'label',        // Label only (no associated bitmaps)
-    'system',
 ];
 
 class Layer {
@@ -176,4 +171,4 @@ class Layer {
 
 }
 
-module.exports = Layer;
+export default Layer;

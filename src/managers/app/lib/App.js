@@ -1,4 +1,4 @@
-const EventEmitter = require('eventemitter2');
+import EventEmitter from 'eventemitter2';
 
 class App extends EventEmitter {
 
@@ -9,4 +9,4 @@ class App extends EventEmitter {
 
 }
 
-module.exports = App;
+export default App;

@@ -1,0 +1,10 @@
+{
+    "ollama": {
+        "name": "Ollama",
+        "description": "Ollama",
+        "driver": "docker",
+        "driverOptions": {
+            "dockerCompose": "docker.ollama/docker-compose.yml"
+        }
+    }
+}

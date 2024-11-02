@@ -31,8 +31,6 @@ const CONTEXT_URL_BASE_ID = 'universe';
 class SessionManager extends EventEmitter {
 
     #maxSessions;
-    #maxContextsPerSession;
-    #baseUrl; // Might be useful for future use cases
 
     constructor(options = {}) {
         super();
@@ -50,9 +48,11 @@ class SessionManager extends EventEmitter {
         this.contextManager = options.contextManager;
 
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
-        this.#maxContextsPerSession = options.maxContextsPerSession || MAX_CONTEXTS_PER_SESSION;
 
-        // Maybe we should just use utils.conf or utils.JsonMap and get rid of the db dependency
+        // TODO: Refactor to use nested maps and serialize/deserialize to/from the session store
+        // sessionID -> Map() which gets forwarede to the session object
+        // deviceID -> device object within the session object to track
+        // which devices are connected to the session
         this.sessions = new Map();
     }
 
@@ -180,9 +180,9 @@ class SessionManager extends EventEmitter {
         return id;
     }
 
-    saveSessions() {
+    async saveSessions() {
         for (let session of this.sessions.values()) {
-            this.#saveSessionToDb(session);
+            await this.#saveSessionToDb(session);
         }
     }
 

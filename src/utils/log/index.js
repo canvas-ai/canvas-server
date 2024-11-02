@@ -1,10 +1,8 @@
 'use strict';
 
-
 /**
  * utils \ Log
  */
-
 
 /*
  TODO: Change to
@@ -21,7 +19,7 @@
  */
 
 // Utils
-const color = require('chalk');
+import color from 'chalk';
 
 const LOG_LEVEL = [
     'null',     // 0
@@ -33,7 +31,6 @@ const LOG_LEVEL = [
 ];
 const DEFAULT_VERBOSITY = 5;
 const DEFAULT_DESTINATION = 'stdout';
-
 
 var LOGGERS = new Map();
 
@@ -91,7 +88,7 @@ class Log {
 }
 
 // One global logger vs per instance?
-module.exports = (name = 'app', opts = {}) => {
+export default (name = 'app', opts = {}) => {
 
     if (!LOGGERS.has(name)) {
         LOGGERS.set(name, new Log(name, opts));

@@ -7,7 +7,7 @@ const debug = require('debug')('canvas:transports:socketio:route:documents');
  */
 
 const ROUTES = require('../../routes.js');
-const ResponseObject = require('../../../../../schemas/transport/responseObject.js');
+const ResponseObject = require('../../../../../schemas/transports/ResponseObject');
 
 /**
  * Documents routes
