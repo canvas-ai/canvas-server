@@ -69,7 +69,6 @@ CANVAS_USER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
 ```bash
 # To disable "portable" mode, create /path/to/canvas-server/user/.ignore
 # or set the CANVAS_USER_CONFIG env variable (you can use .env in the projects src directory)
-
 # Edit canvas-server configuration before starting the server
 $ cd /path/to/canvas-server/config  # Or ~/.canvas/config/server
 $ cp example-roles.json roles.json 

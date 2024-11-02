@@ -8,7 +8,6 @@ module.exports = {
     SESSION_LIST: 'session:list',
     SESSION_LIST_ACTIVE: 'session:list:active', // TODO: Will be merged to SESSION_LIST
     SESSION_GET: 'session:get',
-    SESSION_GET_ID: 'session:get:id',
     SESSION_CREATE: 'session:create',
     SESSION_REMOVE: 'session:remove',
     SESSION_OPEN: 'session:open',
