@@ -24,6 +24,8 @@ const canvas = new Canvas({
 // Start the server
 canvas.start();
 
+
+
 // Event handlers
 canvas.on('running', () => {
     console.log('Canvas server started successfully.');
