@@ -4,7 +4,7 @@ Server component for the Canvas project
 
 ## ! Refactor in progress
 
-**! Usually the main branch should have a working codebase**
+**! Usually the main branch should have a working codebase**  
 **! Use the dev branch to get a preview of what's planned**  
 **! Update: merged (non-working)dev to main(with a userbase of 2 this is OK)**
 
