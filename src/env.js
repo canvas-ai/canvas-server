@@ -4,10 +4,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
-// Core paths setup
+const SERVER_MODE = process.env.CANVAS_SERVER_MODE || 'standalone';
 const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const isPortable = () => !fs.existsSync(path.join(SERVER_ROOT, 'user', '.ignore'));
 
+// Utils
+const isPortable = () => fs.existsSync(path.join(SERVER_ROOT, 'user', '.portable'));
+const createPathConfig = (base, paths) =>
+    Object.fromEntries(
+        paths.map(([key, subpath]) => [
+            key,
+            process.env[key] || path.join(base, subpath)
+        ])
+    );
 const getUserHome = () => {
     if (isPortable()) {
         return path.join(SERVER_ROOT, 'user');
@@ -18,17 +26,40 @@ const getUserHome = () => {
     );
 };
 
-// Environment configuration
+// Determine user home directory
 const USER_HOME = process.env.CANVAS_USER_HOME || getUserHome();
 
-const createPathConfig = (base, paths) =>
-    Object.fromEntries(
-        paths.map(([key, subpath]) => [
-            key,
-            process.env[key] || path.join(base, subpath)
-        ])
-    );
+/**
+ * Example portable setup
+ * /Canvas
+ *  ├── Server
+ *  |   ├── config
+ *  |   ├── data
+ *  |   ├── var
+ *  ├── UI
+ *  |   ├── config
+ *  |   |   ├── electron
+ *  |   |   ├── cli
+ * /Roles               # Docker container based roles
+ * /Workspaces          # -> CANVAS_USER_HOME/Workspaces
+ *  ├── Universe
+ *  |   ├── .workspace.json
+ *  |   ├── .workspace
+ *  |   |   ├── data
+ *  |   ├── Desktop     # Legacy data
+ *  |   ├── Downloads   # Legacy data
+ *  |   ├── Documents   # Legacy data
+ *  ├── CustomerA
+ *  |   ├── .workspace.json
+ *  |   ├── .workspace
+ *  |   |   ├── data
+ *  |   ├── Apps        # Legacy data (AppImages/PortableApps and profile folders for apps)
+ *  |   ├── Desktop     # Legacy data
+ *  |   ├── Downloads   # Legacy data
+ *  |   ├── Documents   # Legacy data
+ */
 
+// Env path configuration
 const config = {
     // Runtime settings
     CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || 'standalone',
@@ -40,7 +71,6 @@ const config = {
      * System directories
      *
      * SERVER_ROOT
-     * ├── src
      * ├── config
      * ├── data
      * ├── extensions
@@ -94,7 +124,7 @@ const config = {
 };
 
 // Load and manage .env file
-const envPath = path.join(process.cwd(), '.env');
+const envPath = path.join(SERVER_ROOT, '.env');
 const envResult = dotenv.config({ path: envPath });
 
 if (envResult.error || !Object.keys(envResult.parsed || {}).length) {

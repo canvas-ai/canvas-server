@@ -2,9 +2,6 @@
  * Canvas
  */
 
-// Environment variables
-import './env.js';
-
 // Utils
 import path from 'path';
 import debug from 'debug';
