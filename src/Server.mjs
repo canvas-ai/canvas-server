@@ -69,9 +69,12 @@ class CanvasServer extends EventEmitter {
         // Process event listeners
         this.setupProcessEventListeners();
 
+        //this.transportManager = new TransportManager({ config: this.config.open('transports') });
+        //this.serviceManager = new ServiceManager({ config: this.config.open('services') });
+        //this.roleManager = new RoleManager({ config: this.config.open('roles') });
 
+        this.services = new Map();
         this.transports = new Map();
-
     }
 
     // Getters
@@ -196,6 +199,14 @@ class CanvasServer extends EventEmitter {
         debug('Shutting down services');
         this.logger.info('Shutting down services');
 
+        for (let [name, service] of this.services) {
+            try {
+                await service.stop();
+            } catch (error) {
+                console.log(`Error shutting down ${name} service:`, error);
+                this.logger.error(`Error shutting down ${name} service:`, error);
+            }
+        }
         return true;
     }
 
@@ -241,14 +252,17 @@ class CanvasServer extends EventEmitter {
 
     async shutdownTransports() {
         debug('Shutting down transports');
+        this.logger.info('Shutting down transports');
 
         for (let [name, transport] of this.transports) {
             try {
                 await transport.stop();
             } catch (error) {
                 console.log(`Error shutting down ${name} transport:`, error);
+                this.logger.error(`Error shutting down ${name} transport:`, error);
             }
         }
+
         return true;
     }
 
