@@ -6,7 +6,7 @@ import path from 'path';
 import debug from 'debug';
 
 // Services
-import Db from '../../services/db/index.js';
+import Db from '../db/index.js';
 import FtsIndex from './lib/FtsIndex.js';
 import BitmapIndex from './lib/BitmapIndex.js';
 import VectorIndex from '@lancedb/lancedb';

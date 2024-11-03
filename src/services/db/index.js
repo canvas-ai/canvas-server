@@ -20,7 +20,7 @@ class Db {
     #path;
 
     // TODO: Wrap versioning support
-    // TODO: Rework extending using openAsClass()
+    // TODO: Extend using openAsClass()
     constructor(options, dataset) {
 
         // Parse input arguments
