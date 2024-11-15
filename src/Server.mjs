@@ -26,7 +26,7 @@ const {
 
 class CanvasServer extends EventEmitter {
 
-    #mode;                  // primary, secondary
+    #mode;                  // primary, 
     #status = 'stopped';    // initialized, running, stopping, stopped
     #paths = {};
 
