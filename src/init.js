@@ -1,16 +1,17 @@
 /**
  * Canvas server init script
  */
+
+// Imports
 import os from 'os';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import argv from 'node:process';
 
-// Root paths
-const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-
+// Utils
 const isPortable = () => existsSync(path.join(SERVER_ROOT, 'user', '.portable'));
 const getUserHome = () => {
     if (isPortable()) {
@@ -23,35 +24,42 @@ const getUserHome = () => {
     );
 };
 
+// Root paths
+const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const SERVER_HOME = process.env.CANVAS_SERVER_HOME || path.join(SERVER_ROOT, 'server');
 const USER_HOME = getUserHome();
 
 /**
  * Default environment configuration
  */
+
 const envConfig = {
     // Runtime
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
-    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || 'primary',
+    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || argv.argv.slice(2).includes('--minimal') ? 'minimal' : 'full',
 
     // Server paths
-    CANVAS_SERVER_ROOT: SERVER_ROOT,
-    CANVAS_SERVER_CONFIG: process.env.CANVAS_SERVER_CONFIG || path.join(SERVER_ROOT, 'config'),
-    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_ROOT, 'data'),
-    CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_ROOT, 'var'),
-    CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_ROOT, 'roles'),
+    CANVAS_SERVER_HOME: SERVER_HOME,
+    CANVAS_SERVER_CONFIG: process.env.CANVAS_SERVER_CONFIG || path.join(SERVER_HOME, 'config'),
+    CANVAS_SERVER_CACHE: process.env.CANVAS_SERVER_CACHE || path.join(SERVER_HOME, 'cache'),
+    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
+    CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
+    CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
 
     // User paths
     CANVAS_USER_HOME: USER_HOME,
     CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'config'),
     CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'cache'),
     CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'data'),
-    CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'db')
+    CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'db'),
+    CANVAS_USER_VAR: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'var')
 };
 
 /**
- * Ensures all required directories exist
+ * Ensure all required directories exist
  */
+
 async function ensureDirectories(paths) {
     for (const [key, dir] of Object.entries(paths)) {
         try {
@@ -65,6 +73,7 @@ async function ensureDirectories(paths) {
 /**
  * Initialize environment configuration
  */
+
 async function initializeEnv() {
     const envPath = path.join(SERVER_ROOT, '.env');
     let envResult = dotenv.config({ path: envPath });
@@ -97,21 +106,27 @@ async function initializeEnv() {
 /**
  * Main server initialization
  */
+
 async function main() {
     try {
         // Initialize environment
         const config = await initializeEnv();
 
         // Ensure required directories exist
+        // TODO: Refactor or remove altogether
         await ensureDirectories({
+            serverHome: config.CANVAS_SERVER_HOME,
             serverConfig: config.CANVAS_SERVER_CONFIG,
-            serverVar: config.CANVAS_SERVER_VAR,
+            serverCache: config.CANVAS_SERVER_CACHE,
             serverData: config.CANVAS_SERVER_DATA,
+            serverVar: config.CANVAS_SERVER_VAR,
+            serverRoles: config.CANVAS_SERVER_ROLES,
             userHome: config.CANVAS_USER_HOME,
             userConfig: config.CANVAS_USER_CONFIG,
             userCache: config.CANVAS_USER_CACHE,
             userData: config.CANVAS_USER_DATA,
-            userDb: config.CANVAS_USER_DB
+            userDb: config.CANVAS_USER_DB,
+            userVar: config.CANVAS_USER_VAR
         });
 
         // Import server after environment is configured
@@ -121,17 +136,20 @@ async function main() {
             mode: config.CANVAS_SERVER_MODE,
             paths: {
                 server: {
-                    root: config.CANVAS_SERVER_ROOT,
+                    home: config.CANVAS_SERVER_HOME,
                     config: config.CANVAS_SERVER_CONFIG,
+                    cache: config.CANVAS_SERVER_CACHE,
                     data: config.CANVAS_SERVER_DATA,
-                    var: config.CANVAS_SERVER_VAR
+                    var: config.CANVAS_SERVER_VAR,
+                    roles: config.CANVAS_SERVER_ROLES
                 },
                 user: {
                     home: config.CANVAS_USER_HOME,
                     config: config.CANVAS_USER_CONFIG,
                     cache: config.CANVAS_USER_CACHE,
                     data: config.CANVAS_USER_DATA,
-                    db: config.CANVAS_USER_DB
+                    db: config.CANVAS_USER_DB,
+                    var: config.CANVAS_SERVER_VAR
                 }
             }
         });
