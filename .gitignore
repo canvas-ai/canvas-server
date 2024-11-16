@@ -4,10 +4,6 @@
 !/config/default-*.json
 !/config/.keep
 
-## Var directories
-/var/**
-!/var/.keep
-
 ## Portable runtimes
 /runtime/**
 !/runtime/.keep
