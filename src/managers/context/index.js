@@ -1,6 +1,6 @@
 import EventEmitter from 'eventemitter2';
-import Context from './lib/Context';
-import Tree from './lib/Tree';
+import Context from './lib/Context.js';
+import Tree from './lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10

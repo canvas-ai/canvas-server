@@ -1,8 +1,8 @@
-import { Index, Document } from "flexsearch";
+import { Index } from "flexsearch";
 import { promises as fs } from 'fs';
 import debug from 'debug';
 
-const log = debug('canvas:indexd:fts');
+const log = debug('canvas:synapsd:fts');
 
 class Fts {
 

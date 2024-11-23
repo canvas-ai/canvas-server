@@ -6,7 +6,7 @@ const debug = require('debug')('canvas:transports:socketio:route:context');
  */
 
 const ROUTES = require('../../routes.js');
-const ResponseObject = require('../../../../../schemas/transports/ResponseObject');
+const ResponseObject = require('../../../../schemas/transports/ResponseObject.js');
 
 /**
  * Context routes

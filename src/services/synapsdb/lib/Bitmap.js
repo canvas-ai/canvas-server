@@ -1,7 +1,9 @@
-import { RoaringBitmap32 } from 'roaring';
-import debug from 'debug';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const { RoaringBitmap32 } = require('roaring/RoaringBitmap32'); // Adjust the path as necessary
 
-const log = debug('canvas:indexd:bitmap');
+import debug from 'debug';
+const log = debug('canvas:synapsd:bitmap');
 
 class Bitmap extends RoaringBitmap32 {
     constructor(oidArrayOrBitmap = [], options = {}) {

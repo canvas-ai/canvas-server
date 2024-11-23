@@ -1,9 +1,8 @@
-import { RoaringBitmap32 } from 'roaring';
-import Bitmap from './Bitmap.mjs';
-import { uuid12 } from '../../../utils/uuid.mjs';
+import RoaringBitmap32 from 'roaring';
+import Bitmap from './Bitmap.js';
+import uuid12 from '../../../utils/uuid/index.js';
 import debug from 'debug';
-
-const log = debug('canvas:indexd:BitmapCollection');
+const log = debug('canvas:synapsd:BitmapCollection');
 
 class BitmapIndex {
 

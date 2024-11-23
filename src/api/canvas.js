@@ -8,4 +8,11 @@ class CanvasInterface {
 
     // TODO
 
+    config() { }
+
+    services() { }
+
+    roles() { }
+
 }
+
