@@ -3,9 +3,9 @@ import debug from 'debug';
 import path from 'path';
 import os from 'os';
 
-import LayerIndex from './LayerIndex';
-import TreeIndex from './TreeIndex';
-import TreeNode from './TreeNode';
+import LayerIndex from './LayerIndex.js';
+import TreeIndex from './TreeIndex.js';
+import TreeNode from './TreeNode.js';
 
 class Tree extends EventEmitter {
 

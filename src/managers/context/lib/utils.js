@@ -122,7 +122,7 @@ function printTree(tree, indent = 0) {
     }
 }
 
-export default {
+export {
     logger,
     getDefaultContextDirectory,
     ensureContextDirectory,

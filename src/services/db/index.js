@@ -1,14 +1,14 @@
 'use strict';
 
 // Utils
-const path = require('path');
-const fs = require('fs');
-const mkdirp = require('mkdirp');
-const debug = require('debug')('canvas:service:db');
+import path from 'path';
+import fs from 'fs';
+import { mkdirp } from 'mkdirp'
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:service:db');
 
 // Database backend
-const { open } = require('lmdb');
-
+import { open } from 'lmdb';
 
 /**
  * Canvas LMDB wrapper, originally LevelDB
@@ -371,4 +371,4 @@ class Db {
 
 }
 
-module.exports = Db;
+export default Db;

@@ -1,8 +1,7 @@
-// Includes
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const debug = require('debug')('canvas:transports:rest:sessions');
-
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:server:rest');
 
 router.get('/', async (req, res) => {
     const sm = req.sessionManager;
@@ -30,4 +29,5 @@ router.post('/create', (req, res) => {
 });
 
 
-module.exports = router;
+export default router;
+

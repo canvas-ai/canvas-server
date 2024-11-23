@@ -1,7 +1,4 @@
-
-
-
-class Workspace {
+export default class Workspace {
 
     constructor(opts = {}) {
         this.id = opts.id || 'universe';
@@ -11,5 +8,3 @@ class Workspace {
         this.color = opts.color || '#FFFFFF';
     }
 }
-
-module.exports = Workspace;

@@ -1,7 +1,7 @@
 import debug from 'debug';
-import JsonMap from '../../../utils/JsonMap';
-import Layer from './Layer';
-import builtInLayers from './layers/builtin';
+import JsonMap from '../../../utils/JsonMap.js';
+import Layer from './Layer.js';
+import builtInLayers from './layers/builtin.js';
 
 class LayerIndex  {
     constructor(filePath) {

@@ -3,11 +3,12 @@
 // Utils
 import EventEmitter from 'eventemitter2';
 import path from 'path';
-import debug from 'debug';
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:service:synapsdb');
 
-// Services
+// Includes
 import Db from '../db/index.js';
-import FtsIndex from './lib/FtsIndex.js';
+//import FtsIndex from './lib/FtsIndex.js';
 import BitmapIndex from './lib/BitmapIndex.js';
 import VectorIndex from '@lancedb/lancedb';
 
@@ -16,10 +17,10 @@ const INTERNAL_BITMAP_ID_MIN = 1000;
 const INTERNAL_BITMAP_ID_MAX = 100000;
 
 /**
- * (further simplified) Index class
+ * SynapsDB
  */
 
-class IndexD extends EventEmitter {
+class SynapsDB extends EventEmitter {
 
     #db;
     #rootPath;
@@ -30,11 +31,9 @@ class IndexD extends EventEmitter {
         compression: true,
         eventEmitter: {},
     }) {
-        debug('Initializing Canvas IndexD');
-        debug('Options:', options);
-
-        // Event emitter
         super(options.eventEmitter);
+        debug('Initializing Canvas SynapsDB');
+        debug('Options:', options);
 
         // Initialize database backend, or use provided instance
         if (options.db && options.db instanceof Db) {
@@ -46,7 +45,7 @@ class IndexD extends EventEmitter {
             this.#rootPath = options.path;
         }
 
-        // Support for custom caching backend(assuming it implements the Map interface)
+        // Support for custom caching backend(assuming it implements a Map interface)
         this.cache = options.cache ?? new Map();
 
         // Initialize datasets
@@ -60,11 +59,11 @@ class IndexD extends EventEmitter {
         // For flexsearch, we should switch to Document instead of Index
         // See https://github.com/nextapps-de/flexsearch?tab=readme-ov-file#document.add
         // We should also support a separate FTS index for paths
-        this.fts = new FtsIndex(this.#db.createDataset('fts'), {
+        /*this.fts = new FtsIndex(this.#db.createDataset('fts'), {
             preset: 'performance',
             tokenize: 'forward',
             cache: true,
-        });
+        });*/
 
         // Bitmap indexes
         this.bContexts = new BitmapIndex(
@@ -92,7 +91,6 @@ class IndexD extends EventEmitter {
 
         // Actions
     }
-
 
     get path() { return this.#rootPath; }
 
@@ -423,4 +421,4 @@ class IndexD extends EventEmitter {
 
 }
 
-export default IndexD;
+export default SynapsDB;

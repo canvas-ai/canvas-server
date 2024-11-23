@@ -1,8 +1,8 @@
 /**
- * TreeNode class
+ * TreeNode CS101 class
  */
 
-class TreeNode {
+export default class TreeNode {
 
     constructor(id, payload) {
 
@@ -39,4 +39,3 @@ class TreeNode {
 
 }
 
-export default TreeNode;

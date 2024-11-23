@@ -1,4 +1,4 @@
-class ResponseObject {
+export default class ResponseObject {
 
     constructor() {
         this.status = 'error'; // Default to error to ensure explicit success setting
@@ -125,4 +125,3 @@ class ResponseObject {
     }
 }
 
-module.exports = ResponseObject;
