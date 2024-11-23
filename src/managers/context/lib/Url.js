@@ -1,10 +1,10 @@
 import { urlToHttpOptions } from 'node:url';
-import internalLayers from './layers/builtin';
+import internalLayers from './layers/builtin.js';
 
 const DEFAULT_URL_PROTOCOL = 'universe:';
 const DEFAULT_URL_PATH = '/';
 
-class Url {
+export default class Url {
     constructor(url, baseUrl = null, protocol = DEFAULT_URL_PROTOCOL) {
         this._baseUrl = baseUrl;
         this._protocol = protocol;
@@ -100,5 +100,3 @@ class Url {
         return context.filter(v => v.length > 0);
     }
 }
-
-export default Url;

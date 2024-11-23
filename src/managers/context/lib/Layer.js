@@ -1,4 +1,4 @@
-import { uuid12 } from './utils';
+import { uuid12 } from './utils.js';
 
 const LAYER_TYPES = [
     'universe',     // TODO

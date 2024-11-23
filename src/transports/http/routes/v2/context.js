@@ -1,6 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const debug = require('debug')('canvas:transports:rest:context');
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:server:rest');
 
 router.get('/', async (req, res) => {
     debug('GET /');
@@ -30,4 +31,4 @@ router.get('/query', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

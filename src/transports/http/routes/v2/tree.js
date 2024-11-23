@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const debug = require('debug')('canvas:transports:rest:tree');
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:server:rest');
 
-
-module.exports = router;
+export default router;

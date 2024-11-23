@@ -1,7 +1,4 @@
-
-
-
-class System {
+export default class System {
 
     #bitmaps = new Map();
 
@@ -23,8 +20,5 @@ class System {
     tick() { }
 
     untick() { }
-
-
-
 
 }

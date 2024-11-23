@@ -7,25 +7,10 @@ const Session = require('./lib/Session');
 
 // Defaults
 const MAX_SESSIONS = 32; // 2^5
-const MAX_CONTEXTS_PER_SESSION = 32; // 2^5
-const SESSION_DEFAULT_ID = 'default';
-const CONTEXT_AUTOCREATE_LAYERS = true;
-const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/';
-const CONTEXT_URL_BASE_ID = 'universe';
 
 /**
  * Session manager
- */
-
-/**
- * Session Manager
- *  - Session (foo)
- *      - ContextManager (TODO: Refactor/review)
- *          - Context
- *  - Session (bar)
- *      - ContextManager (TODO: Refactor/review)
- *          - Context
  */
 
 class SessionManager extends EventEmitter {

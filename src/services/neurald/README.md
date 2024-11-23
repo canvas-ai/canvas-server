@@ -1,5 +1,15 @@
 # Canvas | NeuralD
 
+## Arch
+
+- Agents: Full-fledged general-purpose LORA-fine-tuned assistants
+- Minions: Distilled, usually single-purpose models dedicated to a specific task(mail filtering, log or surveillance analytics etc)
+- Tools
+- Parsers
+- Connectors: Generic data/rpc connectors
+- Runtimes: Agent and minion runtimes
+- Models
+
 ## To eval
 
 ### Runtimes
