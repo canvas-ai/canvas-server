@@ -1,86 +1,56 @@
-import fsDriver from './driver/fs/index.js';
+import Conf from 'conf';
 import lokiDriver from './driver/lokijs/index.js';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:service:jim');
 
+/**
+ * For now, the only supported driver is Conf
+ */
+
 class JsonIndexManager {
 
-    constructor(rootPath) {
-        if (!rootPath) {
-            throw new Error('rootPath is required');
-        }
+    constructor(rootPath, driver = 'conf') {
+        if (!rootPath) { throw new Error('rootPath is required'); }
 
         this.rootPath = rootPath;
+        this.driver = driver;
         debug('Initializing JsonIndexManager service with rootPath:', rootPath);
-
+        debug('Default driver:', driver);
         this.indices = new Map();
     }
 
-    async create(name, driver = 'lokijs') {
-        if (this.indices.has(name)) {
-            console.error(`Index '${name}' already exists.`);
-            //throw new Error(`Index '${name}' already exists`);
-            return false;
+    create(name, driver = this.driver) {
+        const id = `${name}/${driver}`;
+        if (this.indices.has(id)) {
+            console.warn(`Index '${name}' already exists for driver ${driver}`);
+            return this.get(name, driver);
         }
 
-        let index;
-        if (driver === 'fs') {
-            index = new fsDriver(this.rootPath);
-        } else if (driver === 'lokijs') {
-            index = new lokiDriver(this.rootPath);
-        } else {
+        if (driver !== 'conf') {
             throw new Error(`Unsupported driver: ${driver}`);
         }
 
-        await index.init();
-        this.indices.set(name, index);
+        const index = new Conf({
+            configName: name,
+            cwd: this.rootPath,
+        });
 
+        this.indices.set(id, index);
         return index;
     }
 
-    get(name) {
-        const indexData = this.indices.get(name);
-        if (!indexData) {
-            throw new Error(`Index '${name}' not found`);
+    get(name, driver = this.driver) {
+        const id = `${name}/${driver}`;
+
+        if (!this.indices.has(id)) {
+            throw new Error(`Index '${name}' for driver ${driver} not found`);
         }
 
-        return indexData.index;
+        return this.indices.get(id);
     }
 
-    async update(name, newIndex) {
-        if (!this.indices.has(name)) {
-            throw new Error(`Index '${name}' not found`);
-        }
+    list() { return Array.from(this.indices.keys()); }
 
-        this.indices.set(name, newIndex);
-        await newIndex.init();
-    }
-
-    async delete(name) {
-        if (!this.indices.has(name)) {
-            throw new Error(`Index '${name}' not found`);
-        }
-
-        this.indices.delete(name);
-    }
-
-    list() {
-        return Array.from(this.indices.keys());
-    }
-
-    // Expose native LokiJS database object
-    getDb(name) {
-        const indexData = this.indices.get(name);
-        if (!indexData) {
-            throw new Error(`Index '${name}' not found`);
-        }
-
-        if (indexData.driver !== 'lokijs') {
-            throw new Error('Database object is only available when using LokiJS driver.');
-        }
-
-        return indexData.index.db;
-    }
 }
 
 export default JsonIndexManager;
