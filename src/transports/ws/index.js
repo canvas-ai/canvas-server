@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import { type } from 'os';
 
 const debug = debugMessage('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,6 @@ const DEFAULT_CONFIG = {
 class WebSocketTransport {
     #config;
     #io;
-    #server;
     #parent;
 
     constructor(parent, options = {}) {
@@ -51,15 +51,12 @@ class WebSocketTransport {
     }
 
     async stop() {
-        if (this.#io) {
-            debug('Shutting down WebSocket server...');
-            return new Promise((resolve) => {
-                this.#io.close(() => {
-                    console.log('WebSocket server gracefully shut down');
-                    resolve();
-                });
-            });
+        if (!this.#io || typeof this.#io.close !== 'function') {
+            return;
         }
+        debug('Shutting down WebSocket server...');
+        await this.#io.close();
+        // TODO: Implement a proper way to close all connections
     }
 
     async restart(httpServer) {
