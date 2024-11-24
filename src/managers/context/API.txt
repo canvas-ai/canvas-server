@@ -1,0 +1,25 @@
+[CLI]
+
+canvas session login --client-id nb
+
+context list
+    # nb@work
+    # nb@universe
+    # ws@universe
+    # ws@work.google
+    # ws@work
+    # phone@home
+    # tablet@home
+    # tv@home
+
+context connect nb@work
+context list tabs
+context rm 12345
+context del 12345 12346 12347
+context set /foo/bar/baz # Navigates within the work subtree
+context list todos
+context insert dir ~/Reports/2023
+
+context create test # Creates test@universe
+context create test@work # Creates test@work if work exists
+

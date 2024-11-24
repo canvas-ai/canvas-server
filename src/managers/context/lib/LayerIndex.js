@@ -1,12 +1,11 @@
 import debug from 'debug';
-import JsonMap from '../../../utils/JsonMap.js';
 import Layer from './Layer.js';
 import builtInLayers from './layers/builtin.js';
 
 class LayerIndex  {
-    constructor(filePath) {
-        if (!filePath) {throw new Error('filePath is required');}
-        this.index = new JsonMap(filePath);
+    constructor(index) {
+        if (!index) {throw new Error('index reference is required');}
+        this.index = index;
         this.nameToLayerMap = new Map();
         this.#initBuiltInLayers();
         this.#initNameToLayerMap();
@@ -29,7 +28,7 @@ class LayerIndex  {
 
     list() {
         let result = [];
-        for (const [id, layer] of this.index.entries()) {
+        for (const [id, layer] of this.index()) {
             result.push(layer);
         }
         return result;
@@ -122,7 +121,7 @@ class LayerIndex  {
     }
 
     #initNameToLayerMap() {
-        for (const [id, layer] of this.index.entries()) {
+        for (const [id, layer] of this.index()) {
             this.nameToLayerMap.set(layer.name, this.index.get(layer.id));
         }
     }
