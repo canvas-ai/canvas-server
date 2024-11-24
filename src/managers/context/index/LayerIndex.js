@@ -1,6 +1,6 @@
 import debug from 'debug';
-import Layer from './Layer.js';
-import builtInLayers from './layers/builtin.js';
+import Layer from '../lib/Layer.js';
+import builtInLayers from '../lib/layers/builtin.js';
 
 class LayerIndex  {
     constructor(index) {
