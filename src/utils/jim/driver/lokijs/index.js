@@ -57,6 +57,28 @@ class PersistentIndex {
         return this.indexes[name];
     }
 
+    async update(name, newIndex) {
+        if (!this.indexes[name]) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        this.indexes[name] = newIndex;
+        await newIndex.save();
+    }
+
+    async delete(name) {
+        if (!this.indexes[name]) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        const collection = this.db.getCollection(name);
+        if (collection) {
+            this.db.removeCollection(collection);
+        }
+
+        delete this.indexes[name];
+    }
+
     // Expose native LokiJS database object
     getNativeDb() {
         return this.db;
