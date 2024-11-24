@@ -35,6 +35,29 @@ class PersistentIndex {
     get(name) {
         return this.indexes[name];
     }
+
+    async update(name, newIndex) {
+        if (!this.indexes[name]) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        this.indexes[name] = newIndex;
+        await newIndex.save();
+    }
+
+    async delete(name) {
+        if (!this.indexes[name]) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        const filePath = path.join(this.configRootPath, `${name}.json`);
+        try {
+            await fs.unlink(filePath);
+            delete this.indexes[name];
+        } catch (err) {
+            console.error(`Error deleting index '${name}':`, err);
+        }
+    }
 }
 
 export default PersistentIndex;

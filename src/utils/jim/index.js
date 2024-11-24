@@ -47,6 +47,27 @@ class JsonIndexManager {
         return indexData.index;
     }
 
+    async update(name, newIndex) {
+        if (!this.indices.has(name)) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        this.indices.set(name, newIndex);
+        await newIndex.init();
+    }
+
+    async delete(name) {
+        if (!this.indices.has(name)) {
+            throw new Error(`Index '${name}' not found`);
+        }
+
+        this.indices.delete(name);
+    }
+
+    list() {
+        return Array.from(this.indices.keys());
+    }
+
     // Expose native LokiJS database object
     getDb(name) {
         const indexData = this.indices.get(name);
