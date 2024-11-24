@@ -1,4 +1,7 @@
 import EventEmitter from 'eventemitter2';
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:context-manager');
+
 import Context from './lib/Context.js';
 import Tree from './lib/Tree.js';
 
@@ -11,29 +14,44 @@ const CONTEXT_URL_BASE = '/'
 
 class ContextManager extends EventEmitter {
 
-    #index;
+    #indexManager;
     #db;
     #tree;
     #layers;
-    #baseUrl;
+    #features;
+    #filters;
+    #workspaces;
 
     constructor(options = {}) {
         super(); // EventEmitter
 
         // Validate options
-        if (!options.index) { throw new Error('Index not provided'); }
+        if (!options.indexManager) { throw new Error('indexManager reference not provided'); }
 
         // Module options
-        this.#index = options.index;
+        this.#indexManager = options.indexManager;
+
+        // Indexes
+        this.iTree = this.#indexManager.create('tree')
+        this.iLayers = this.#indexManager.create('layers')
+        this.iFeatures = this.#indexManager.create('features')
+        this.iFilters = this.#indexManager.create('filters')
+        this.iWorkspaces = this.#indexManager.create('workspaces')
+
         this.#db = options.db;
+
         this.#tree = new Tree({
             treePath: this.#index.path,
             layerPath: this.#index.path,
         });
 
         this.#layers = this.#tree.layers;
-        this.#baseUrl = options.baseUrl || CONTEXT_URL_BASE;
+
+        
         this.activeContexts = new Map();
+
+
+
     }
 
     get tree() { return this.#tree; }

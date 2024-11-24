@@ -1,18 +1,11 @@
 import EventEmitter from 'eventemitter2';
-import debug from 'debug';
-import path from 'path';
-import os from 'os';
-
-import LayerIndex from './LayerIndex.js';
-import TreeIndex from './TreeIndex.js';
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:context:tree');
 import TreeNode from './TreeNode.js';
 
 class Tree extends EventEmitter {
 
-    constructor(options = {
-        treePath: path.join(os.homedir(), '.canvas', 'tree.json'),
-        layerPath: path.join(os.homedir(), '.canvas', 'layers.json'),
-    }) {
+    constructor(options = {}) {
         super();
 
         this.dbtree = new TreeIndex(options.treePath);

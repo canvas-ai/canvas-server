@@ -9,6 +9,7 @@ import env from './env.js';
 import path from 'path';
 import EventEmitter from 'eventemitter2';
 import Config from './config/index.js';
+import JsonIndexManager from './utils/jim/index.js';
 import winston from 'winston';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -28,6 +29,7 @@ import SynapsDB from './services/synapsdb/index.js';
 
 // Canvas management modules
 import ContextManager from './managers/context/index.js';
+import { index } from 'langchain/indexes';
 
 
 /**
@@ -79,15 +81,21 @@ class CanvasServer extends EventEmitter {
             ],
         });
 
-        this.services = new Map();
-        this.transports = new Map();
-
         this.db = (options.mode === 'full') ? new SynapsDB({
             path: env.CANVAS_USER_DB
         }) : null;
 
+        // Global JSON index module(to keep some of the data in plain JSON files)
+        this.indexManager = new JsonIndexManager(env.CANVAS_USER_DB, 'conf'); // Conf driver
+
+        // Services and transports
+        this.services = new Map();
+        this.transports = new Map();
+
+        // Context manager
         this.contextManager = (options.mode === 'full') ? new ContextManager({
-            db: this.db
+            db: this.db,
+            indexManager: this.indexManager,
         }) : null;
 
     }

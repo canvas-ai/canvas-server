@@ -10,7 +10,7 @@ Workspace
 Workspace "work" with its context tree + indexes then may (or may not) be a visible part of the top level "universe" context tree
 Anyhow, to keep things simple, we will have the universe for now
 
-Url structure (workspace ID + context ID + context URL):
+Url structure (context ID @ workspace ID : context URL):
 Workspace
     universe | baseUrl / | Color #fff
         :ws
@@ -23,8 +23,8 @@ Workspace
         :ws
         :phone
 
-canvas://universe:ws/home/edu/cuni/apma3
-canvas://work.foo:ws/work/customer-foo/reports/2021
+canvas://ws@universe/home/edu/cuni/apma3
+canvas://nb@work.foo/work/customer-foo/reports/2021
 
 ? workspace/contextID? (work:mb/phone) or phone@workspace/context/url (phone@work/foo/home/edu/cuni/apma3)
 ws@universe:/home/edu/cuni/apma3
