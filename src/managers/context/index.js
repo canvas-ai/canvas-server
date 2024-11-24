@@ -13,7 +13,6 @@ class ContextManager extends EventEmitter {
 
     #index;
     #db;
-    #data;
     #tree;
     #layers;
     #baseUrl;
@@ -23,12 +22,10 @@ class ContextManager extends EventEmitter {
 
         // Validate options
         if (!options.index) { throw new Error('Index not provided'); }
-        if (!options.data) { throw new Error('Data not provided'); }
 
         // Module options
         this.#index = options.index;
         this.#db = options.db;
-        this.#data = options.data;
         this.#tree = new Tree({
             treePath: this.#index.path,
             layerPath: this.#index.path,
@@ -93,6 +90,16 @@ class ContextManager extends EventEmitter {
         this.activeContexts.delete(id);
         log.info(`Context with id ${id} closed`);
         return true;
+    }
+
+    #parseContextId(id) {
+        // Remove all non-alphanumeric characters except dot, underscore and dash
+        id = id.replace(/[^a-zA-Z0-9_.-]/g, '');
+        if (id.length === 0) {
+            throw new Error('Invalid Context ID');
+        }
+
+        return id;
     }
 
 }

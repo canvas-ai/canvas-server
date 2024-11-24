@@ -1,4 +1,4 @@
-const fs = require('fs').promises;
+import { promises as fs } from 'fs';
 
 class Collection {
 
@@ -74,4 +74,4 @@ class Collection {
     }
 }
 
-module.exports = Collection;
+export default Collection;

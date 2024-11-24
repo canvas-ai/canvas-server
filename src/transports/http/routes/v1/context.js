@@ -27,7 +27,7 @@ router.get('/query', async (req, res) => {
         const result = {} //await context.query(query);
         res.status(200).json(response.success(result).getResponse());
     } catch (error) {
-        res.status(400).json(response.error(error.message).getResponse());
+        res.status(400).json(response.error(error).getResponse());
     }
 });
 

@@ -1,6 +1,7 @@
-const fsDriver = require('./driver/fs');
-const lokiDriver = require('./driver/lokijs');
-const debug = require('debug')('canvas:service:jim');
+import fsDriver from './driver/fs/index.js';
+import lokiDriver from './driver/lokijs/index.js';
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:service:jim');
 
 class JsonIndexManager {
 
@@ -15,7 +16,7 @@ class JsonIndexManager {
         this.indices = new Map();
     }
 
-    async create(name, driver) {
+    async create(name, driver = 'lokijs') {
         if (this.indices.has(name)) {
             console.error(`Index '${name}' already exists.`);
             //throw new Error(`Index '${name}' already exists`);
@@ -32,7 +33,7 @@ class JsonIndexManager {
         }
 
         await index.init();
-        this.indices.set(name, { index, driver });
+        this.indices.set(name, index);
 
         return index;
     }
@@ -61,4 +62,4 @@ class JsonIndexManager {
     }
 }
 
-module.exports = JsonIndexManager;
+export default JsonIndexManager;

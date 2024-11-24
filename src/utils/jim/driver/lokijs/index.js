@@ -1,7 +1,7 @@
-const loki = require('lokijs');
-const path = require('path');
-const fs = require('fs').promises;
-const Collection = require('./Collection');
+import loki from 'lokijs'; // cspell:ignore lokijs
+import path from 'path';
+import { promises as fs } from 'fs';
+import Collection from './Collection.js';
 
 class PersistentIndex {
 
@@ -25,13 +25,13 @@ class PersistentIndex {
     }
 
     async initDatabase() {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const dbPath = path.join(this.configRootPath, 'index.db');
             this.db = new loki(dbPath, {
-                autoload: true,
+                autoload: true, // cspell:ignore autoload
                 autosave: true,
                 autosaveInterval: 4000,
-                autoloadCallback: () => {
+                autoloadCallback: () => { // cspell:ignore autoload
                     resolve();
                 }
             });
@@ -63,4 +63,4 @@ class PersistentIndex {
     }
 }
 
-module.exports = PersistentIndex;
+export default PersistentIndex;

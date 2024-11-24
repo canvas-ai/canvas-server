@@ -1,6 +1,6 @@
-const fs = require('fs').promises;
-const path = require('path');
-const Collection = require('./Collection');
+import { promises as fs } from 'fs';
+import path from 'path';
+import Collection from './Collection.js';
 
 class PersistentIndex {
 
@@ -37,4 +37,4 @@ class PersistentIndex {
     }
 }
 
-module.exports = PersistentIndex;
+export default PersistentIndex;
