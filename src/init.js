@@ -26,6 +26,9 @@ async function main() {
         await canvas.init();
         await canvas.start();
 
+        const context = canvas.contextManager.createContext();
+        console.log(context.set('/foo/bar/baz'));
+
     } catch (err) {
         console.error('Failed to initialize Canvas server:', err);
         process.exit(1);

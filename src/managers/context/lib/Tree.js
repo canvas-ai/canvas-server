@@ -18,6 +18,7 @@ class Tree extends EventEmitter {
         this.showHidden = false;
 
         debug('Initializing context tree');
+
         this.rootLayer = this.dblayers.getLayerByName('/');
         if (!this.rootLayer) {
             throw new Error('Root layer not found in the layer index');

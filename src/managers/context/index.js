@@ -46,15 +46,12 @@ class ContextManager extends EventEmitter {
         this.treeIndex = new TreeIndex(this.iTree);
 
         this.#tree = new Tree({
-            layerIndex: this.iLayers,
+            layerIndex: this.layerIndex,
             treeIndex: this.treeIndex,
         });
 
         this.#layers = this.#tree.layers; // TODO: Remove this
         this.activeContexts = new Map();
-
-
-
     }
 
     get tree() { return this.#tree; }

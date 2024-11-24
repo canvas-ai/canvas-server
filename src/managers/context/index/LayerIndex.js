@@ -65,7 +65,7 @@ class LayerIndex  {
         if (!layer) {return false;}
         if (layer.locked) {throw new Error('Layer is locked');}
         Object.assign(layer, options);
-        this.index.setSync(layer.id, layer);
+        this.index.set(layer.id, layer);
         return true;
     }
 
@@ -75,7 +75,7 @@ class LayerIndex  {
         if (layer.setName(newName)) {
             this.nameToLayerMap.deleteSync(name);
             this.nameToLayerMap.set(newName, layer);
-            this.index.setSync(layer.id, layer);
+            this.index.set(layer.id, layer);
         }
     }
 
@@ -109,7 +109,7 @@ class LayerIndex  {
 
     #addLayerToIndex(layer, persistent = true) {
         if (persistent) {
-            this.index.setSync(layer.id, layer);
+            this.index.set(layer.id, layer);
         }
         this.nameToLayerMap.set(layer.name, layer);
     }
@@ -121,7 +121,7 @@ class LayerIndex  {
     }
 
     #initNameToLayerMap() {
-        for (const [id, layer] of this.index()) {
+        for (const [id, layer] of this.index) {
             this.nameToLayerMap.set(layer.name, this.index.get(layer.id));
         }
     }

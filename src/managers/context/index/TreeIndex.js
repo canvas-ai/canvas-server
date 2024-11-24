@@ -1,27 +1,21 @@
-import path from 'path';
-import Conf from 'conf'; // Temporary
-
 // TODO: Add tree versioning
-class TreeIndex extends Conf {
+// TODO: Streamline this mess-of-a-interface
+class TreeIndex {
 
-    constructor(filePath) {
-
-        // Temporary leftover
-        if (!filePath) {throw new Error('userDataPath is required');}
-
-        // Conf workaround for now
-        let dataDir = path.dirname(filePath);
-        let configName = path.basename(filePath, '.json');
-
-        super({
-            configName: configName,
-            cwd: dataDir,
-        });
+    constructor(index) {
+        if (!index) { throw new Error('index reference is required'); }
+        this.index = index;
     }
 
-    putSync(key, value) { return this.set(key, value); }
+    put(key, value) { return this.index.set(key, value); }
 
-    getSync(key) { return this.get(key); }
+    putSync(key, value) { return this.index.set(key, value); }
+
+    set(key, value) { return this.index.set(key, value); }
+
+    get(key) { return this.index.get(key); }
+
+    getSync(key) { return this.index.get(key); }
 
     nextVersion() {}
 
