@@ -29,7 +29,6 @@ import SynapsDB from './services/synapsdb/index.js';
 
 // Canvas management modules
 import ContextManager from './managers/context/index.js';
-import { index } from 'langchain/indexes';
 
 
 /**

@@ -27,11 +27,21 @@ POST /roles/:id/restart
 /tree/move
 /tree/remove
 PUT /tree to copy/move ?
-DELETE /tree ?
+DELETE /tree?version= ?
 
-/sessions
-/sessions/:id
+
+/layers/merge
+
+GET /sessions   # list
+PUT /sessions   # create
+POST /sessions/:id  # select
+GET /sessions/:id
+PATCH /sessions/:id
+DELETE /sessions/:id
+
 /sessions/:id/context // one context per session to KISS(although looking at the codebase we are long pass KISSing)
+
+
 
 /contexts
 /contexts/:id/

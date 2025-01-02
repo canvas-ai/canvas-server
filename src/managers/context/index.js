@@ -2,6 +2,9 @@ import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:context-manager');
 
+import LayerIndex from './index/LayerIndex.js';
+import TreeIndex from './index/TreeIndex.js';
+
 import Context from './lib/Context.js';
 import Tree from './lib/Tree.js';
 
@@ -39,19 +42,16 @@ class ContextManager extends EventEmitter {
         this.iWorkspaces = this.#indexManager.create('workspaces')
 
         this.#db = options.db;
+        this.layerIndex = new LayerIndex(this.iLayers);
+        this.treeIndex = new TreeIndex(this.iTree);
 
         this.#tree = new Tree({
-            treePath: this.#index.path,
-            layerPath: this.#index.path,
+            layerIndex: this.layerIndex,
+            treeIndex: this.treeIndex,
         });
 
-        this.#layers = this.#tree.layers;
-
-        
+        this.#layers = this.#tree.layers; // TODO: Remove this
         this.activeContexts = new Map();
-
-
-
     }
 
     get tree() { return this.#tree; }

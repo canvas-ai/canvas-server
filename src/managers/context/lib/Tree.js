@@ -1,6 +1,7 @@
 import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:context:tree');
+
 import TreeNode from './TreeNode.js';
 
 class Tree extends EventEmitter {
@@ -8,12 +9,16 @@ class Tree extends EventEmitter {
     constructor(options = {}) {
         super();
 
-        this.dbtree = new TreeIndex(options.treePath);
-        this.dblayers = new LayerIndex(options.layerPath);
+        if (!options.treeIndex) { throw new Error('Tree index not provided'); }
+        if (!options.layerIndex) { throw new Error('Layer index not provided'); }
+
+        this.dbtree = options.treeIndex;
+        this.dblayers = options.layerIndex;
 
         this.showHidden = false;
 
         debug('Initializing context tree');
+
         this.rootLayer = this.dblayers.getLayerByName('/');
         if (!this.rootLayer) {
             throw new Error('Root layer not found in the layer index');
