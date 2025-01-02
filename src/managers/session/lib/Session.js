@@ -75,6 +75,11 @@ class Session {
         return true;
     }
 
+    update(options) {
+        if (options.baseUrl) {this.baseUrl = options.baseUrl;}
+        return this;
+    }
+
     toJSON() {
         return {
             id: this.id,

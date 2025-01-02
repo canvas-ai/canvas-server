@@ -91,6 +91,7 @@ class HttpRestTransport {
 
     #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
+
         // Health check
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');

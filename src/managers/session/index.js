@@ -141,6 +141,18 @@ class SessionManager extends EventEmitter {
         return id;
     }
 
+    updateSession(id, sessionOptions) {
+        if (!this.#isSessionOpen(id)) {
+            debug(`Session id "${id}" not found or already closed`);
+            return false;
+        }
+
+        let session = this.sessions.get(id);
+        session.update(sessionOptions);
+
+        return session;
+    }
+
     deleteSession(id) {
         debug(`Deleting session: ${id}`);
         if (this.#isSessionOpen(id)) { // Maybe we should just return false here
