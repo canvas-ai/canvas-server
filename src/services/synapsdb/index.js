@@ -31,6 +31,7 @@ class SynapsDB extends EventEmitter {
         backupOnClose: true,
         compression: true,
         eventEmitter: {},
+        // TODO: Add per dataset versioning support to the underlying db backend!
     }) {
         super(options.eventEmitter);
         debug('Initializing Canvas SynapsDB');

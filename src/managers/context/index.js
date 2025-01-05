@@ -15,24 +15,31 @@ const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/'
 
 
-class ContextManager extends EventEmitter {
+export default class ContextManager extends EventEmitter {
 
-    #indexManager;
+    #index;
     #db;
+
     #tree;
     #layers;
-    #features;
-    #filters;
-    #workspaces;
+    #contexts;
 
-    constructor(options = {}) {
+    constructor(index, db, options = {}) {
         super(); // EventEmitter
 
-        // Validate options
-        if (!options.indexManager) { throw new Error('indexManager reference not provided'); }
+        if (!index ||
+            typeof index.set !== 'function' ||
+            typeof index.get !== 'function') {
+            throw new Error('A Index Store reference with a Map() like interface required');
+        }
+        this.#index = index;
 
-        // Module options
-        this.#indexManager = options.indexManager;
+        if (!db ||
+            typeof db.set !== 'function' ||
+            typeof db.get !== 'function') {
+            throw new Error('A DB Store reference with a Map() like interface required');
+        }
+        this.#db = db;
 
         // Indexes
         this.iTree = this.#indexManager.create('tree')
@@ -121,5 +128,3 @@ class ContextManager extends EventEmitter {
     }
 
 }
-
-export default ContextManager;
