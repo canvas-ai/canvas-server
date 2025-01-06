@@ -138,7 +138,14 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     #parseWorkspaceId(id) {
-        id = id.replace(/[^a-zA-Z0-9_.-]/g, ''); // Remove all non-alphanumeric characters except dot, underscore and dash
+        // work.mb
+        // work.acme
+        // .work.acme
+
+        // Remove leading dot
+        id = id.replace(/^\./, '');
+        // Remove all non-alphanumeric characters except dot, underscore and dash
+        id = id.replace(/[^a-zA-Z0-9_-]/g, '');
         id = id.trim();
         if (id.length === 0) { throw new Error('Invalid workspace ID'); }
         id = id.toLowerCase();

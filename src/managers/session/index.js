@@ -30,8 +30,6 @@ class SessionManager extends EventEmitter {
         }
 
         this.sessionStore = options.sessionStore; // Map-like (sync) interface, at some point we'll need to get rid of it
-        this.contextManager = options.contextManager;
-
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
 
         // TODO: Refactor to use nested maps and serialize/deserialize to/from the session store
@@ -39,6 +37,7 @@ class SessionManager extends EventEmitter {
         // deviceID -> device object within the session object to track
         // which devices are connected to the session
         this.sessions = new Map();
+        
     }
 
     getSession(id) {
