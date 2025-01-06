@@ -1,3 +1,4 @@
+// Utils
 import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:context:tree');

@@ -1,10 +1,11 @@
+// Utils
 import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
-const debug = debugMessage('canvas:workspace-manager');
+const debug = debugMessage('canvas:context:workspace-manager');
 import randomcolor from 'randomcolor';
 
-import ContextManager from '../context/index.js';
-import Workspace from './lib/Workspace.js';
+// Includes
+import Workspace from './Workspace.js';
 
 export default class WorkspaceManager extends EventEmitter {
 

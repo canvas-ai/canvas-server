@@ -1,6 +1,5 @@
-import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
-const debug = debugMessage('canvas:workspace');
+const debug = debugMessage('canvas:context:workspace');
 
 // sesssionName@workspaceName://contextUrl where context consists of workspaceName://contextUrl
 

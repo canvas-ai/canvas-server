@@ -5,15 +5,18 @@
 // Parsed env vars
 import env from './env.js';
 
-// Imports
+
+/**
+ * Import dependencies
+ */
+
+// Utils
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import EventEmitter from 'eventemitter2';
 import Config from './utils/config/index.js';
 import JsonIndexManager from './utils/jim/index.js';
 import winston from 'winston';
-import SynapsDB from './services/synapsdb/index.js';
-
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:server');
 
@@ -24,6 +27,15 @@ const {
     description,
     license
 } = pkg
+
+// Services
+import SynapsDB from './services/synapsdb/index.js';
+
+// Managers
+//import SessionManager from './managers/session/index.js';
+import LayerManager from './managers/layer/index.js';
+import TreeManager from './managers/tree/index.js';
+
 
 /**
  * Initialize main modules
@@ -49,11 +61,22 @@ const logger = winston.createLogger({
 })
 
 // Core Services
-const indexManager = new JsonIndexManager(env.CANVAS_USER_DB, 'conf'); // Conf driver
+const indexManager = new JsonIndexManager({
+    rootPath: env.CANVAS_USER_DB,
+    driver: 'conf'
+});
+
 const db = new SynapsDB({
     path: env.CANVAS_USER_DB
 })
 
+// Managers
+const layerManager = new LayerManager(indexManager.createIndex('layers'));
+
+const treeManager = new TreeManager({
+    treeIndex: indexManager.createIndex('tree'),
+    layerIndex: layerManager
+});
 
 /**
  * Canvas Server
@@ -77,7 +100,6 @@ class Server extends EventEmitter {
         // Services and transports
         this.services = new Map();
         this.transports = new Map();
-
     }
 
     // Getters
@@ -184,13 +206,13 @@ class Server extends EventEmitter {
         try {
             await this.shutdownTransports();
         } catch (error) {
-            errors.push(`Transports shutdown failed: ${error.message}`);
+            errors.push(`Transport shutdown failed: ${error.message}`);
         }
 
         try {
             await this.shutdownServices();
         } catch (error) {
-            errors.push(`Services shutdown failed: ${error.message}`);
+            errors.push(`Service shutdown failed: ${error.message}`);
         }
 
         this.#status = 'stopped';

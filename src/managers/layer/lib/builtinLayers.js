@@ -4,7 +4,7 @@ export default [
         type: 'universe',
         name: '/',
         label: 'Universe',
-        description: 'And then, there was ..geometry',
+        description: 'And then, there was geometry..',
         color: '#fff',
         locked: true,
     },

@@ -1,11 +1,24 @@
-import debug from 'debug';
-import Layer from '../lib/Layer.js';
-import builtInLayers from '../lib/layers/builtin.js';
+// Utils
+import EventEmitter from 'eventemitter2';
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:context:layer-manager');
 
-class LayerIndex  {
+// Includes
+import Layer from './lib/Layer.js';
+import builtInLayers from './lib/builtinLayers.js';
+
+export default class LayerManager extends EventEmitter {
+
     constructor(index) {
-        if (!index) {throw new Error('index reference is required');}
+        super(); // EventEmitter
+
+        if (!index ||
+            typeof index.set !== 'function' ||
+            typeof index.get !== 'function') {
+            throw new Error('A Index Store reference with a Map() like interface required');
+        }
         this.index = index;
+
         this.nameToLayerMap = new Map();
         this.#initBuiltInLayers();
         this.#initNameToLayerMap();
@@ -127,4 +140,3 @@ class LayerIndex  {
     }
 }
 
-export default LayerIndex;

@@ -1,12 +1,14 @@
+// Utils
 import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:context-manager');
 
-import LayerIndex from './index/LayerIndex.js';
-import TreeIndex from './index/TreeIndex.js';
-
+// Managers
+import IndexManager from '../../Server.js';
+import WorkspaceManager from './lib/WorkspaceManager.js';
+import LayerManager from './lib/LayerManager.js';
+import TreeManager from './lib/TreeManager.js';
 import Context from './lib/Context.js';
-import Tree from './lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
@@ -24,40 +26,26 @@ export default class ContextManager extends EventEmitter {
     #layers;
     #contexts;
 
-    constructor(index, db, options = {}) {
+    constructor(options = {}) {
         super(); // EventEmitter
 
-        if (!index ||
-            typeof index.set !== 'function' ||
-            typeof index.get !== 'function') {
+        if (!options.indexStore ||
+            typeof options.indexStore.set !== 'function' ||
+            typeof options.indexStore.get !== 'function') {
             throw new Error('A Index Store reference with a Map() like interface required');
         }
-        this.#index = index;
+        this.#index = options.indexStore;
 
         if (!db ||
-            typeof db.set !== 'function' ||
-            typeof db.get !== 'function') {
+            typeof options.db.set !== 'function' ||
+            typeof options.db.get !== 'function') {
             throw new Error('A DB Store reference with a Map() like interface required');
         }
-        this.#db = db;
-
-        // Indexes
-        this.iTree = this.#indexManager.create('tree')
-        this.iLayers = this.#indexManager.create('layers')
-        this.iFeatures = this.#indexManager.create('features')
-        this.iFilters = this.#indexManager.create('filters')
-        this.iWorkspaces = this.#indexManager.create('workspaces')
-
         this.#db = options.db;
-        this.layerIndex = new LayerIndex(this.iLayers);
-        this.treeIndex = new TreeIndex(this.iTree);
 
-        this.#tree = new Tree({
-            layerIndex: this.layerIndex,
-            treeIndex: this.treeIndex,
-        });
+        this.#tree = new
+        this.#layers =
 
-        this.#layers = this.#tree.layers; // TODO: Remove this
         this.activeContexts = new Map();
     }
 

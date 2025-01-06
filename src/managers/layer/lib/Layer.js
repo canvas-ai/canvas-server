@@ -1,4 +1,7 @@
-import { uuid12 } from './utils.js';
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:context:layer');
+
+import { uuid12 } from '../../../utils/common.js';
 
 const LAYER_TYPES = [
     'universe',     // TODO
@@ -12,7 +15,6 @@ const LAYER_TYPES = [
 class Layer {
 
     constructor(options) {
-
         if (typeof options !== 'object') {
             options = { name: options };
         }
@@ -33,11 +35,11 @@ class Layer {
 
         // TODO: This constructor needs a proper cleanup!
         this.id =  options.id;
-        this.type = this.#validateType(options.type);
+        this.type = this.#validateType(options.type); // TODO: Move to LayerManager/dedicated file
         this.name = this.#sanitizeName(options.name);
         this.label = (options.label) ? this.#sanitizeLabel(options.label) : this.name;
         this.description = (options.description) ? this.#sanitizeDescription(options.description) : 'Canvas layer';
-        this.color = options?.color || 'auto';
+        this.color = options?.color;
         this.locked = options?.locked || false;
 
         this.featureBitmaps = [];
