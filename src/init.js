@@ -96,14 +96,17 @@ function setupProcessEventListeners(server) {
 
     // Handle Windows specific signals
     if (process.platform === 'win32') {
-        const readline = require('readline').createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
+        (async () => {
+            const { createInterface } = await import('readline');
+            const readline = createInterface({
+                input: process.stdin,
+                output: process.stdout
+            });
 
-        readline.on('SIGINT', () => {
-            process.emit('SIGINT');
-        });
+            readline.on('SIGINT', () => {
+                process.emit('SIGINT');
+            });
+        })();
     }
 }
 

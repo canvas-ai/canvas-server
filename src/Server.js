@@ -36,6 +36,8 @@ import SynapsDB from './services/synapsdb/index.js';
 import LayerManager from './managers/layer/index.js';
 import TreeManager from './managers/tree/index.js';
 
+import setupTransportsConfig from './utils/transports/index.js';
+
 
 /**
  * Initialize main modules
@@ -69,6 +71,23 @@ const indexManager = new JsonIndexManager({
 const db = new SynapsDB({
     path: env.CANVAS_USER_DB
 })
+
+// Default transports configuration
+const DEFAULT_TRANSPORTS = {
+    http: {
+        enabled: true,
+        protocol: 'http',
+        host: '0.0.0.0',
+        port: 8001,
+        basePath: '/rest'
+    },
+    ws: {
+        enabled: true,
+        protocol: 'ws',
+        host: '0.0.0.0',
+        port: 8002
+    }
+};
 
 // Managers
 const layerManager = new LayerManager(indexManager.createIndex('layers'));
@@ -120,6 +139,12 @@ class Server extends EventEmitter {
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
         const errors = [];
+
+        try {
+            await setupTransportsConfig();
+        } catch (error) {
+            errors.push(`Transport configuration setup failed: ${error.message}`);
+        }
 
         try {
             await this.initializeServices();
@@ -327,16 +352,17 @@ class Server extends EventEmitter {
      */
 
     async initializeTransports() {
-        return;
-        const transports = Config.open('server.transports');
+        // Get transports config from the config instance
+        const transportConfig = config.store?.server?.transports || {};
+        
         const transportEntries = Object.entries({
             ...DEFAULT_TRANSPORTS,
-            ...transports.store
+            ...transportConfig
         });
 
-        for (const [transport, config] of transportEntries) {
+        for (const [transport, transportConfig] of transportEntries) {
             try {
-                const instance = await this.#loadModule('transports', transport, config);  // AND HERE
+                const instance = await this.#loadModule('transports', transport, transportConfig);
                 this.transports.set(transport, instance);
             } catch (error) {
                 logger.error(`Failed to initialize transport ${transport}:`, error);
@@ -390,7 +416,11 @@ class Server extends EventEmitter {
      * @private
      */
     async #loadModule(type, name, config) {
-        const modulePath = path.join(__dirname, type, name, 'index.js');
+        // Convert Windows paths to proper URL format
+        const modulePath = path.join(__dirname, type, name, 'index.js')
+            .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
+            .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
+        
         try {
             debug(`Loading ${type} module: ${name}`);
             logger.info(`Loading ${type} module: ${name}`);
