@@ -35,28 +35,28 @@ export default class TreeManager extends EventEmitter {
         })
     }
 
-    createTree() {
+    createContextTree() {
         return this.#tree;
     }
 
-    deleteTree() {
+    deleteContextTree() {
         throw new Error('Not implemented');
     }
 
-    saveTree() {
+    saveContextTree() {
         this.#tree.save(); // TODO: Refactor
     }
 
-    loadTree() {
+    loadContextTree() {
         this.#tree.load(); // TODO: Refactor
     }
 
-    nextVersion() {}
+    nextContextTreeVersion() {}
 
-    previousVersion() {}
+    previousContextTreeVersion() {}
 
-    listVersions() {}
+    listContextTreeVersions() {}
 
-    diff(vID1, vID2) {}
+    diffContextTree(vID1, vID2) {}
 
 }

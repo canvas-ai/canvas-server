@@ -5,7 +5,7 @@ const debug = debugMessage('canvas:context:workspace-manager');
 import randomcolor from 'randomcolor';
 
 // Includes
-import Workspace from './Workspace.js';
+import Workspace from './lib/Workspace.js';
 
 export default class WorkspaceManager extends EventEmitter {
 
@@ -13,7 +13,7 @@ export default class WorkspaceManager extends EventEmitter {
     #db;
     #workspaces;
 
-    constructor(index, db, options = {}) {
+    constructor(index, options = {}) {
         super(); // EventEmitter
 
         if (!index ||
@@ -22,13 +22,6 @@ export default class WorkspaceManager extends EventEmitter {
             throw new Error('A Index Store reference with a Map() like interface required');
         }
         this.#index = index;
-
-        if (!db ||
-            typeof db.set !== 'function' ||
-            typeof db.get !== 'function') {
-            throw new Error('A DB Store reference with a Map() like interface required');
-        }
-        this.#db = db;
 
         this.config = { ...options };
         this.#workspaces = new Map();

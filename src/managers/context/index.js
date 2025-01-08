@@ -3,12 +3,12 @@ import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:context-manager');
 
-// Managers
-import IndexManager from '../../Server.js';
-import WorkspaceManager from './lib/WorkspaceManager.js';
-import LayerManager from './lib/LayerManager.js';
-import TreeManager from './lib/TreeManager.js';
+// Includes
 import Context from './lib/Context.js';
+
+// Managers
+import contextTree from '../../Server.js';
+import workspaceManager from '../../Server.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
