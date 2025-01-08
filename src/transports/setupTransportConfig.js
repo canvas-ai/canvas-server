@@ -3,6 +3,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
+// Import project env vars
+import env from '../env.js';
+
 // Construct __dirname equivalent for ES modules
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,8 +17,7 @@ function generateAuthToken() {
 }
 
 async function setupTransportsConfig() {
-  const projectRoot = path.resolve(__dirname, '../../../');
-  const serverConfigDir = path.join(projectRoot, 'server', 'config');
+  const serverConfigDir = path.join(env.CANVAS_SERVER_CONFIG);
   const exampleConfigPath = path.join(serverConfigDir, 'example-canvas-server.transports.json');
   const configPath = path.join(serverConfigDir, 'canvas-server.transports.json');
 
@@ -30,14 +32,14 @@ async function setupTransportsConfig() {
 
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    
+
     if (!config.auth?.accessToken || !config.auth?.jwtSecret) {
       const { accessToken, jwtSecret } = generateAuthToken();
-      
+
       config.rest.auth = config.rest.auth || {};
       config.rest.auth.accessToken = accessToken;
       config.rest.auth.jwtSecret = jwtSecret;
-      
+
       for (const transport of ['rest', 'ws']) {
         if (config[transport]) {
           config[transport].auth = {
@@ -47,7 +49,7 @@ async function setupTransportsConfig() {
           };
         }
       }
-      
+
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     }
   } catch (error) {

@@ -36,7 +36,7 @@ import SynapsDB from './services/synapsdb/index.js';
 import LayerManager from './managers/layer/index.js';
 import TreeManager from './managers/tree/index.js';
 
-import setupTransportsConfig from './utils/transports/index.js';
+import setupTransportsConfig from './transports/setupTransportConfig.js';
 
 
 /**
@@ -354,7 +354,7 @@ class Server extends EventEmitter {
     async initializeTransports() {
         // Get transports config from the config instance
         const transportConfig = config.store?.server?.transports || {};
-        
+
         const transportEntries = Object.entries({
             ...DEFAULT_TRANSPORTS,
             ...transportConfig
@@ -420,7 +420,7 @@ class Server extends EventEmitter {
         const modulePath = path.join(__dirname, type, name, 'index.js')
             .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
             .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
-        
+
         try {
             debug(`Loading ${type} module: ${name}`);
             logger.info(`Loading ${type} module: ${name}`);
