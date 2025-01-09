@@ -8,10 +8,6 @@ export default class Workspace {
     constructor(id, context, opts = {}) {
         if (!id) { throw new Error('Workspace ID required'); }
         if (typeof id !== 'string') { throw new Error('Workspace ID must be a string'); }
-
-        if (!context) { throw new Error('Context reference required'); }
-        this.context = context;
-
         this.id = id;
         this.name = opts.name || id;
         this.description = opts.description || 'Canvas Workspace';
@@ -19,12 +15,12 @@ export default class Workspace {
         this.color = opts.color || '#FFF';
     }
 
-    lockLayers() {
+    #lockLayers() {
         if (this.baseUrl === '/') { return; }
         debug(`Locking layers "${this.baseUrl}" for workspace ${this.id}`);
     }
 
-    unlockLayers() {
+    #unlockLayers() {
         if (this.baseUrl === '/') { return; }
         debug(`Unlocking layers "${this.baseUrl}" for workspace ${this.id}`);
     }

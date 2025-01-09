@@ -1,36 +1,11 @@
-/canvas
-/canvas/version
-/canvas/paths
-/canvas
-
-/transports # Returns a array of availale transports
-
 /auth/login
 /auth/logout
 /auth/status
 /auth/refresh # Token refresh
 
-/devices
-/devices/:id
+GET /workspaces
+POST /workspaces # create
 
-GET /roles      # list roles
-POST /roles    #register a role, should I use /roles/register?
-GET /roles/:id
-GET /roles/:id/status
-POST /roles/:id/start
-POST /roles/:id/stop
-POST /roles/:id/restart
-
-# Context tree operations
-/tree
-/tree/copy
-/tree/move
-/tree/remove
-PUT /tree to copy/move ?
-DELETE /tree?version= ?
-
-
-/layers/merge
 
 GET /sessions   # list
 PUT /sessions   # create
@@ -40,8 +15,6 @@ PATCH /sessions/:id
 DELETE /sessions/:id
 
 /sessions/:id/context // one context per session to KISS(although looking at the codebase we are long pass KISSing)
-
-
 
 /contexts
 /contexts/:id/
@@ -53,7 +26,7 @@ DELETE /sessions/:id
 /contexts/:id/documents
 /contexts/:id/query
 
-/context
+/context {context ID sent in the payload}
 /context/id
 /context/url
 /context/path
@@ -67,3 +40,23 @@ DELETE /sessions/:id
 /documents/abstraction/notes # Returns all notes
 /documents/by-id/1234
 /documents/by-hash/sha1/checksum
+
+
+
+
+/canvas
+/canvas/version
+/canvas/paths
+/canvas
+
+/devices
+/devices/:id
+
+GET /roles      # list roles
+POST /roles    #register a role, should I use /roles/register?
+GET /roles/:id
+GET /roles/:id/status
+POST /roles/:id/start
+POST /roles/:id/stop
+POST /roles/:id/restart
+
