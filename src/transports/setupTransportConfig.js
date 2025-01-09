@@ -33,7 +33,7 @@ async function setupTransportsConfig() {
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-    if (!config.auth?.accessToken || !config.auth?.jwtSecret) {
+    if (!config.rest.auth?.accessToken || !config.rest.auth?.jwtSecret) {
       const { accessToken, jwtSecret } = generateAuthToken();
 
       config.rest.auth = config.rest.auth || {};

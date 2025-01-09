@@ -26,7 +26,7 @@ class JsonIndexManager {
         const id = `${name}/${driver}`;
         if (this.indices.has(id)) {
             console.warn(`Index '${name}' already exists for driver ${driver}`);
-            return this.get(name, driver);
+            return this.getIndex(name, driver);
         }
 
         if (driver !== 'conf') {

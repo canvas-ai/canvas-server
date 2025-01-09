@@ -7,8 +7,11 @@ const debug = debugInstance('canvas:context-manager');
 import Context from './lib/Context.js';
 
 // Managers
-import contextTree from '../../Server.js';
+import contextTree, { indexManager } from '../../Server.js';
 import workspaceManager from '../../Server.js';
+import TreeManager from '../contextTree/index.js';
+import LayerIndex from '../contextTree/layer/index.js';
+import Tree from '../contextTree/lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
@@ -36,15 +39,18 @@ export default class ContextManager extends EventEmitter {
         }
         this.#index = options.indexStore;
 
-        if (!db ||
+        if (!options.db ||
             typeof options.db.set !== 'function' ||
             typeof options.db.get !== 'function') {
             throw new Error('A DB Store reference with a Map() like interface required');
         }
         this.#db = options.db;
 
-        this.#tree = new
-        this.#layers =
+        this.#tree = new Tree({
+            treeIndexStore: indexManager.createIndex('contextTree'),
+            layerIndexStore: indexManager.createIndex('contextTreeLayers'),
+        });
+        this.#layers = new LayerIndex(new Map());
 
         this.activeContexts = new Map();
     }
