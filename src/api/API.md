@@ -7,9 +7,7 @@ auth:
 sessions:        # uuid but usually a user-chosen name like "ws" for workstation or "homenb" or "workphone"
     - list      # ws@universe://foo/bar/baz | phone@work.mb://devops/jira-1234 | nb@work.manes://devops/cr1234
     - create
-      - selectoWorkspace || createWorkspace
-        - would call workspaces.create ?
-    - select || connect
+    - select || connectToSession
     - update
     - remove
 

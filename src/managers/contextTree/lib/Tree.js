@@ -4,17 +4,19 @@ import debugInstance from 'debug';
 const debug = debugInstance('canvas:context:tree');
 
 import TreeNode from './TreeNode.js';
+import LayerIndex from '../layer/index.js';
 
 class Tree extends EventEmitter {
 
     constructor(options = {}) {
         super();
 
-        if (!options.treeIndex) { throw new Error('Tree index not provided'); }
-        if (!options.layerIndex) { throw new Error('Layer index not provided'); }
+        if (!options.treeIndexStore) { throw new Error('Tree index not provided'); }
+        if (!options.layerIndexStore) { throw new Error('Layer index not provided'); }
 
-        this.dbtree = options.treeIndex;
-        this.dblayers = options.layerIndex;
+        // TODO: Refactor, load/save ops should be handled by the treeManager
+        this.dbtree = options.treeIndexStore;
+        this.dblayers = new LayerIndex(options.layerIndexStore);
 
         this.showHidden = false;
 

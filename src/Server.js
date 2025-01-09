@@ -33,7 +33,6 @@ import SynapsDB from './services/synapsdb/index.js';
 
 // Managers
 //import SessionManager from './managers/session/index.js';
-import LayerManager from './managers/layer/index.js';
 import TreeManager from './managers/contextTree/index.js';
 import WorkspaceManager from './managers/workspace/index.js';
 
@@ -92,11 +91,11 @@ const DEFAULT_TRANSPORTS = {
 
 // Managers
 const workspaceManager = new WorkspaceManager(indexManager.createIndex('workspaces'));
-const layerManager = new LayerManager(indexManager.createIndex('layers'));
 const treeManager = new TreeManager({
-    treeIndex: indexManager.createIndex('tree'),
-    layerIndex: layerManager
+    treeIndexStore: indexManager.createIndex('contextTree'),
+    layerIndexStore: indexManager.createIndex('contextTreeLayers'),
 });
+
 
 const contextTree = treeManager.createContextTree();
 
