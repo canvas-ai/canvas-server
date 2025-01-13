@@ -2,18 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-
-// Import project env vars
 import env from '../env.js';
 
-// Construct __dirname equivalent for ES modules
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function generateAuthToken() {
-  return {
-    accessToken: crypto.randomBytes(32).toString('hex'),
-    jwtSecret: crypto.randomBytes(64).toString('hex')
-  };
+function generateJwtSecret() {
+  return crypto.randomBytes(64).toString('hex');
 }
 
 async function setupTransportsConfig() {
@@ -33,18 +27,21 @@ async function setupTransportsConfig() {
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-    if (!config.rest.auth?.accessToken || !config.rest.auth?.jwtSecret) {
-      const { accessToken, jwtSecret } = generateAuthToken();
+    // Only generate and set JWT secret if not already present
+    if (!config.rest?.auth?.jwtSecret) {
+      const jwtSecret = generateJwtSecret();
 
+      // Initialize auth config if not present
+      config.rest = config.rest || {};
       config.rest.auth = config.rest.auth || {};
-      config.rest.auth.accessToken = accessToken;
       config.rest.auth.jwtSecret = jwtSecret;
 
+      // Apply same JWT secret to both REST and WebSocket transports
       for (const transport of ['rest', 'ws']) {
         if (config[transport]) {
           config[transport].auth = {
-            enabled: true,
-            accessToken: config.rest.auth.accessToken,
+            enabled: config.rest.auth.enabled || true,
+            jwtLifetime: config.rest.auth.jwtLifetime || '48h',
             jwtSecret: config.rest.auth.jwtSecret
           };
         }
@@ -52,6 +49,8 @@ async function setupTransportsConfig() {
 
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     }
+
+    return config;
   } catch (error) {
     throw new Error(`Failed to update auth configuration: ${error.message}`);
   }

@@ -7,8 +7,8 @@
     "basePath": "/rest",
     "auth": {
       "enabled": true,
-      "jwtToken": "",
-      "accessToken": ""
+      "jwtLifetime": "48h",
+      "jwtSecret": ""
     }  
   },
   "ws": {
@@ -18,7 +18,8 @@
     "port": 8001,
     "auth": {
       "enabled": true,
-      "accessToken": "canvas-server-token"
+      "jwtLifetime": "48h",
+      "jwtSecret": ""
     }
   }
 }

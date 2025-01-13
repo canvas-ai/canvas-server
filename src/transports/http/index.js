@@ -10,6 +10,10 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import passport from 'passport';
+import configurePassport from '../../utils/passport.js';
+import UserStore from '../../managers/user/store/index.js';
+import User from '../../models/User.js';
 
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
@@ -19,7 +23,7 @@ const DEFAULT_CONFIG = {
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false, // FIX ME: https://github.com/orgs/canvas-ai/projects/2/views/1?pane=issue&itemId=81465641
-        accessToken: process.env.CANVAS_TRANSPORT_HTTP_ACCESS_TOKEN || 'canvas-server-token',
+        jwtToken: process.env.CANVAS_TRANSPORT_HTTP_JWT_TOKEN || 'canvas-server-token',
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
     }
@@ -102,8 +106,14 @@ class HttpRestTransport {
         const app = express();
         app.use(cors());
         app.use(express.json());
+        app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
         app.use(this.#setSecurityHeaders);
+        
+        // Initialize Passport
+        configurePassport(this.#config.auth.jwtSecret);
+        app.use(passport.initialize());
+        
         return app;
     }
 
@@ -121,53 +131,65 @@ class HttpRestTransport {
             res.status(200).send('pong');
         });
 
-        // Authentication
+        // Authentication routes
+        app.post(`${this.#config.basePath}/register`, this.#handleRegister.bind(this));
         app.post(`${this.#config.basePath}/login`, this.#handleLogin.bind(this));
-        app.post(`${this.#config.basePath}/logout`, this.#authenticate.bind(this), this.#handleLogout);
+        const passportMiddleware = passport.authenticate('jwt', { session: false });
+        app.post(`${this.#config.basePath}/logout`, this.#handleLogout);
+
         if (this.#config.auth.enabled) {
-            app.use(this.#authenticate.bind(this));
+            app.use(passportMiddleware);
         }
 
         // API routes
         this.#loadApiRoutes(app);
     }
 
-    #handleLogin(req, res) {
-        debug('Login request:', req.body);
-        const { clientId, accessToken } = req.body;
-        if (accessToken !== this.#config.accessToken) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
+    async #handleRegister(req, res) {
+        const { email, password } = req.body;
+        const userStore = UserStore();
+        try {
+            const existingUser = await userStore.findByEmail(email);
+            if (existingUser) {
+                return res.status(409).json({ error: 'Email already exists' });
+            }
 
-        const token = jwt.sign({ clientId, accessToken }, this.#config.jwtSecret, { expiresIn: this.#config.jwtLifetime });
-        res.cookie('token', token, { httpOnly: true, maxAge: 172800 });
-        res.json({ token });
+            const hashedPassword = await User.hashPassword(password);
+
+            const user = await userStore.create(new User(email, hashedPassword));
+
+            // TODO: user created events
+
+            const token = jwt.sign({ id: user.id }, this.#config.auth.jwtSecret, { 
+                expiresIn: this.#config.auth.jwtLifetime 
+            });
+
+            res.cookie('token', token, { httpOnly: true });
+            res.status(201).json({ token });
+        } catch (error) {
+            res.status(500).json({ error: 'Error creating user' });
+        }
+    }
+
+    #handleLogin(req, res, next) {
+        passport.authenticate('local', { session: false }, (err, user, info) => {
+            if (err) return next(err);
+            if (!user) {
+                return res.status(401).json({ error: info.message || 'Authentication failed' });
+            }
+
+            const token = jwt.sign({ id: user.id }, this.#config.auth.jwtSecret, {
+                expiresIn: this.#config.auth.jwtLifetime
+            });
+
+            res.cookie('token', token, { httpOnly: true });
+            res.json({ token });
+        })(req, res, next);
     }
 
     #handleLogout(req, res) {
         res.clearCookie('token');
         res.json({ message: 'Logged out successfully' });
-    }
-
-    #authenticate(req, res, next) {
-        const token = req.cookies.token || req.headers['authorization'];
-
-        if (!token) {
-            return res.status(403).json({ 
-                error: 'Access denied. No token provided.' 
-            });
-        }
-
-        // Compare directly with stored token
-        if (token !== this.#config.auth.accessToken) {
-            return res.status(401).json({ 
-                error: 'Invalid token.' 
-            });
-        }
-
-        req.user = { authenticated: true };
-
-        next();
     }
 
     async #loadApiRoutes(app) {
