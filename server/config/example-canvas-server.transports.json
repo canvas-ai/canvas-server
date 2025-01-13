@@ -1,0 +1,24 @@
+{
+  "rest": {
+    "enabled": true,
+    "protocol": "http",
+    "host": "0.0.0.0",
+    "port": 8001,
+    "basePath": "/rest",
+    "auth": {
+      "enabled": true,
+      "jwtToken": "",
+      "accessToken": ""
+    }  
+  },
+  "ws": {
+    "enabled": true,
+    "protocol": "ws",
+    "host": "0.0.0.0",
+    "port": 8001,
+    "auth": {
+      "enabled": true,
+      "accessToken": "canvas-server-token"
+    }
+  }
+}
