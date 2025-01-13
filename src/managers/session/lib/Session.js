@@ -1,22 +1,20 @@
+import debug from 'debug';
 
-// Utils
-const EventEmitter = require('eventemitter2');
-const debug = require('debug')('canvas:session-manager:session');
-
+const log = debug('canvas:session-manager:session');
 
 class Session {
 
     constructor(id, sessionOptions = {}, contextManager, sessionMap = new Map()) {
         if (!id) {throw new Error('Session ID required');}
-        if (!sessionOptions.baseUrl) {throw new Error('Base URL required');}
+        // if (!sessionOptions.baseUrl) {throw new Error('Base URL required');}
         if (!contextManager) {throw new Error('Context manager required');}
 
         this.id = id;
-        this.baseUrl = sessionOptions.baseUrl;
+        // this.baseUrl = sessionOptions.baseUrl;
         this.contextManager = contextManager;
 
-        debug(`Initializing session "${this.id}" with base URL "${this.baseUrl}"`);
-        debug(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
+        // log(`Initializing session "${this.id}" with base URL "${this.baseUrl}"`);
+        log(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
 
         this.contexts = new Map(); // Map of contexts for this session
         this.connectedDevices = sessionMap; // Map of connected devices for this session
@@ -24,17 +22,17 @@ class Session {
     }
 
     initializeContexts(contexts) {
-        debug(`Initializing contexts for session "${this.id}"`);
+        log(`Initializing contexts for session "${this.id}"`);
         if (!contexts || Object.keys(contexts).length === 0) {
-            debug(`No contexts for session "${this.id}" found, creating a default context`);
-            let ctx = this.createContext(this.baseUrl, { sessionId: this.id, baseUrl: this.baseUrl });
+            log(`No contexts for session "${this.id}" found, creating a default context`);
+            let ctx = this.createContext('/', { sessionId: this.id, baseUrl: '/' });
             this.contexts.set(ctx.id, ctx);
             return;
         }
 
         for (let context in contexts) {
             let ctxConfig = contexts[context];
-            ctxConfig.baseUrl = this.baseUrl;
+            ctxConfig.baseUrl = '/';
             let ctx = this.createContext(ctxConfig.url, ctxConfig);
             this.contexts.set(ctx.id, ctx);
         }
@@ -76,18 +74,19 @@ class Session {
     }
 
     update(options) {
-        if (options.baseUrl) {this.baseUrl = options.baseUrl;}
+        for (let option in options) {
+            this[option] = options[option];
+        }
         return this;
     }
 
     toJSON() {
         return {
             id: this.id,
-            baseUrl: this.baseUrl,
             contexts: this.listContexts(),
         };
     }
 
 }
 
-module.exports = Session;
+export default Session;

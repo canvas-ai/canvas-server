@@ -204,8 +204,8 @@ class HttpRestTransport {
     }
 
     #injectDependencies(req, res, next) {
-        //req.ResponseObject = this.ResponseObject;
-        //req.canvas = this.canvas;
+        req.ResponseObject = this.ResponseObject;
+        req.canvas = this.canvas;
         next();
     }
 }
