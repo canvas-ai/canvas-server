@@ -37,10 +37,6 @@ class JsonMap extends Map {
         this.saveSync();
     }
 
-    has(key) {
-        return super.has(key);
-    }
-
     async delete(key) {
         super.delete(key);
         await this.save();
@@ -49,12 +45,11 @@ class JsonMap extends Map {
     deleteSync(key) {
         super.delete(key);
         this.saveSync();
-        return true;  
     }
 
     async clear() {
         super.clear();
-        await this.save();
+        await this.saveSync();
     }
 
     clearSync() {

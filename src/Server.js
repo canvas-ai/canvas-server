@@ -5,18 +5,13 @@
 // Parsed env vars
 import env from './env.js';
 
-
-/**
- * Import dependencies
- */
-
 // Utils
 import path from 'path';
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import EventEmitter from 'eventemitter2';
-import Config from './utils/config/index.js';
-import JsonIndexManager from './utils/jim/index.js';
+import Config from './config/index.js';
 import winston from 'winston';
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:server');
 
@@ -28,88 +23,38 @@ const {
     license
 } = pkg
 
-// Services
+// Canvas components
 import SynapsDB from './services/synapsdb/index.js';
 
-// Managers
-//import SessionManager from './managers/session/index.js';
-import TreeManager from './managers/contextTree/index.js';
-import WorkspaceManager from './managers/workspace/index.js';
-
-import setupTransportsConfig from './transports/setupTransportConfig.js';
+// Canvas management modules
+import ContextManager from './managers/context/index.js';
 
 
 /**
- * Initialize main modules
- **/
-
-// Utils
-const config = new Config({
-    userConfigDir: env.CANVAS_USER_CONFIG,
-    serverConfigDir: env.CANVAS_SERVER_CONFIG,
-    configPriority: 'user',
-    versioning: false,
-});
-
-const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
-const logLevel = env.LOG_LEVEL;
-const logger = winston.createLogger({
-    level: logLevel,
-    format: winston.format.simple(),
-    transports: [
-        new winston.transports.File({ filename: logFile }),
-        // TODO: Add a debug-based transport
-    ],
-})
-
-// Core Services
-const indexManager = new JsonIndexManager({
-    rootPath: env.CANVAS_USER_DB,
-    driver: 'conf'
-});
-
-const db = new SynapsDB({
-    path: env.CANVAS_USER_DB
-})
-
-// Default transports configuration
-const DEFAULT_TRANSPORTS = {
-    http: {
-        enabled: true,
-        protocol: 'http',
-        host: '0.0.0.0',
-        port: 8001,
-        basePath: '/rest'
-    },
-    ws: {
-        enabled: true,
-        protocol: 'ws',
-        host: '0.0.0.0',
-        port: 8002
-    }
-};
-
-// Managers
-const workspaceManager = new WorkspaceManager(indexManager.createIndex('workspaces'));
-const treeManager = new TreeManager({
-    treeIndexStore: indexManager.createIndex('contextTree'),
-    layerIndexStore: indexManager.createIndex('contextTreeLayers'),
-});
-
-
-const contextTree = treeManager.createContextTree();
-
-/**
- * Canvas Server
+ * Server defaults
  */
 
-class Server extends EventEmitter {
+const DEFAULT_SERVICES = {
+    synapsd: {}
+}
+
+const DEFAULT_TRANSPORTS = {
+    http: {},
+    ws: {},
+}
+
+/**
+ * Main application
+ */
+
+class CanvasServer extends EventEmitter {
 
     #mode;                  // primary,
     #status = 'stopped';    // initialized, running, stopping, stopped
 
     constructor(options = {
         mode: env.CANVAS_SERVER_MODE,
+        logLevel: env.LOG_LEVEL,
         serverHome: env.CANVAS_SERVER_HOME,
         userHome: env.CANVAS_USER_HOME,
     }) {
@@ -118,9 +63,33 @@ class Server extends EventEmitter {
 
         this.#mode = options.mode;
 
-        // Services and transports
+        // Global config module
+        this.config = Config.open('server');
+
+        // Global logger
+        const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log'); // TODO: Use config.get
+        const logLevel = options?.logLevel || env.LOG_LEVEL; // TODO: use config.get
+        debug(`Initializing logger, log level: ${logLevel}, output: ${logFile}`);
+        this.logger = winston.createLogger({
+            level: logLevel,
+            format: winston.format.simple(),
+            transports: [
+                new winston.transports.File({ filename: logFile }),
+                // TODO: Add a debug-based transport
+            ],
+        });
+
         this.services = new Map();
         this.transports = new Map();
+
+        this.db = (options.mode === 'full') ? new SynapsDB({
+            path: env.CANVAS_USER_DB
+        }) : null;
+
+        this.contextManager = (options.mode === 'full') ? new ContextManager({
+            db: this.db
+        }) : null;
+
     }
 
     // Getters
@@ -138,15 +107,9 @@ class Server extends EventEmitter {
 
     async init() {
         debug('Initializing Canvas Server..');
-        logger.info('Initializing Canvas Server..');
+        this.logger.info('Initializing Canvas Server..');
         this.emit('before-init');
         const errors = [];
-
-        try {
-            await setupTransportsConfig();
-        } catch (error) {
-            errors.push(`Transport configuration setup failed: ${error.message}`);
-        }
 
         try {
             await this.initializeServices();
@@ -162,7 +125,7 @@ class Server extends EventEmitter {
 
         if (errors.length > 0) {
             const errorMessage = errors.join('\n');
-            logger.error(errorMessage);
+            this.logger.error(errorMessage);
             throw new Error(errorMessage);
         }
 
@@ -172,26 +135,26 @@ class Server extends EventEmitter {
 
     async start() {
         debug('Starting Canvas Server..');
-        logger.info('Starting Canvas Server..');
+        this.logger.info('Starting Canvas Server..');
 
         if (this.#status === 'running') {
             const msg = 'Server is already running';
             debug(msg);
-            logger.warn(msg);
+            this.logger.warn(msg);
             return;
         }
 
         if (this.#status === 'stopping') {
             const msg = 'Server is currently stopping, please wait';
             debug(msg);
-            logger.warn(msg);
+            this.logger.warn(msg);
             return;
         }
 
         if (this.#status !== 'initialized') {
             const msg = 'Server is not yet initialized, please run init() first';
             debug(msg);
-            logger.warn(msg);
+            this.logger.warn(msg);
             return;
         }
 
@@ -212,19 +175,19 @@ class Server extends EventEmitter {
 
         if (errors.length > 0) {
             const errorMessage = errors.join('\n');
-            logger.error(errorMessage);
+            this.logger.error(errorMessage);
             throw new Error(errorMessage);
         }
 
         this.#status = 'running';
-        logger.info('Canvas Server started successfully');
+        this.logger.info('Canvas Server started successfully');
         this.emit('started');
     }
 
     async stop(exit = true) {
         const action = exit ? 'Shutting down' : 'Stopping for restart';
         debug(`${action} Canvas Server...`);
-        logger.info(`${action} Canvas Server...`);
+        this.logger.info(`${action} Canvas Server...`);
 
         this.emit('before-shutdown');
         this.#status = 'stopping';
@@ -233,25 +196,25 @@ class Server extends EventEmitter {
         try {
             await this.shutdownTransports();
         } catch (error) {
-            errors.push(`Transport shutdown failed: ${error.message}`);
+            errors.push(`Transports shutdown failed: ${error.message}`);
         }
 
         try {
             await this.shutdownServices();
         } catch (error) {
-            errors.push(`Service shutdown failed: ${error.message}`);
+            errors.push(`Services shutdown failed: ${error.message}`);
         }
 
         this.#status = 'stopped';
 
         if (errors.length > 0) {
             const errorMessage = errors.join('\n');
-            logger.error(errorMessage);
+            this.logger.error(errorMessage);
             if (exit) process.exit(1);
             throw new Error(errorMessage);
         }
 
-        logger.info('Graceful shutdown completed successfully.');
+        this.logger.info('Graceful shutdown completed successfully.');
         this.emit('shutdown');
 
         if (exit) process.exit(0);
@@ -259,7 +222,7 @@ class Server extends EventEmitter {
 
     async restart() {
         debug('Restarting Canvas Server');
-        logger.info('Restarting Canvas Server');
+        this.logger.info('Restarting Canvas Server');
         this.emit('restart');
         await this.stop(false);
         await this.start();
@@ -286,7 +249,7 @@ class Server extends EventEmitter {
 
     async initializeServices() {
         debug('Initializing services');
-        logger.info('Initializing services');
+        this.logger.info('Initializing services');
         return; // TODO
 
         const services = Config.open('server.services');
@@ -300,7 +263,7 @@ class Server extends EventEmitter {
                 const instance = await this.#loadModule('services', service, config);
                 this.services.set(service, instance);
             } catch (error) {
-                logger.error(`Failed to initialize service ${service}:`, error);
+                this.logger.error(`Failed to initialize service ${service}:`, error);
                 throw error;
             }
         }
@@ -308,7 +271,7 @@ class Server extends EventEmitter {
 
     async startServices() {
         debug('Starting services..');
-        logger.info('Starting services..');
+        this.logger.info('Starting services..');
         const errors = [];
 
         for (const [name, service] of this.services) {
@@ -316,7 +279,7 @@ class Server extends EventEmitter {
                 await service.start();
             } catch (error) {
                 const msg = `Error starting ${name} service: ${error.message}`;
-                logger.error(msg);
+                this.logger.error(msg);
                 errors.push(msg);
             }
         }
@@ -328,7 +291,7 @@ class Server extends EventEmitter {
 
     async shutdownServices() {
         debug('Shutting down services');
-        logger.info('Shutting down services');
+        this.logger.info('Shutting down services');
         return; // TODO
 
         const errors = [];
@@ -338,7 +301,7 @@ class Server extends EventEmitter {
                 await service.stop();
             } catch (error) {
                 const msg = `Error shutting down ${name} service: ${error.message}`;
-                logger.error(msg);
+                this.logger.error(msg);
                 errors.push(msg);
             }
         }
@@ -354,20 +317,18 @@ class Server extends EventEmitter {
      */
 
     async initializeTransports() {
-        // Get transports config from the config instance
-        const transportConfig = config.store?.server?.transports || {};
-
+        const transports = Config.open('server.transports');
         const transportEntries = Object.entries({
             ...DEFAULT_TRANSPORTS,
-            ...transportConfig
+            ...transports.store
         });
 
-        for (const [transport, transportConfig] of transportEntries) {
+        for (const [transport, config] of transportEntries) {
             try {
-                const instance = await this.#loadModule('transports', transport, transportConfig);
+                const instance = await this.#loadModule('transports', transport, config);  // AND HERE
                 this.transports.set(transport, instance);
             } catch (error) {
-                logger.error(`Failed to initialize transport ${transport}:`, error);
+                this.logger.error(`Failed to initialize transport ${transport}:`, error);
                 throw error;
             }
         }
@@ -375,7 +336,7 @@ class Server extends EventEmitter {
 
     async startTransports() {
         debug('Starting transports..');
-        logger.info('Starting transports..');
+        this.logger.info('Starting transports..');
         const errors = [];
 
         for (const [name, transport] of this.transports) {
@@ -383,7 +344,7 @@ class Server extends EventEmitter {
                 await transport.start();
             } catch (error) {
                 const msg = `Error starting ${name} transport: ${error.message}`;
-                logger.error(msg);
+                this.logger.error(msg);
                 errors.push(msg);
             }
         }
@@ -395,7 +356,7 @@ class Server extends EventEmitter {
 
     async shutdownTransports() {
         debug('Shutting down transports');
-        logger.info('Shutting down transports');
+        this.logger.info('Shutting down transports');
         const errors = [];
 
         for (const [name, transport] of this.transports) {
@@ -403,7 +364,7 @@ class Server extends EventEmitter {
                 await transport.stop();
             } catch (error) {
                 const msg = `Error shutting down ${name} transport: ${error.message}`;
-                logger.error(msg);
+                this.logger.error(msg);
                 errors.push(msg);
             }
         }
@@ -418,21 +379,17 @@ class Server extends EventEmitter {
      * @private
      */
     async #loadModule(type, name, config) {
-        // Convert Windows paths to proper URL format
-        const modulePath = path.join(__dirname, type, name, 'index.js')
-            .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
-            .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
-
+        const modulePath = path.join(__dirname, type, name, 'index.js');
         try {
             debug(`Loading ${type} module: ${name}`);
-            logger.info(`Loading ${type} module: ${name}`);
-            logger.debug(`${type} config:`, config);
+            this.logger.info(`Loading ${type} module: ${name}`);
+            this.logger.debug(`${type} config:`, config);
 
             const module = await import(modulePath);
             const instance = new module.default(config);
 
             debug(`Loaded ${type}: ${name}`);
-            logger.info(`Loaded ${type}: ${name}`);
+            this.logger.info(`Loaded ${type}: ${name}`);
 
             return instance;
         } catch (error) {
@@ -441,21 +398,11 @@ class Server extends EventEmitter {
                 ? `${type} module not found: ${name}. Please ensure the module exists at ${modulePath}`
                 : `Error loading ${type} ${name}: ${error.message}`;
 
-            logger.error(errorMessage);
+            this.logger.error(errorMessage);
             throw new Error(errorMessage);
         }
     }
 
 }
 
-export {
-    pkg,
-    config,
-    logger,
-    indexManager,
-    db,
-    contextTree,
-    workspaceManager,
-};
-
-export default Server;
+export default CanvasServer;

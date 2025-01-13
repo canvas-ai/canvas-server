@@ -2,16 +2,11 @@
  * Canvas server init script
  */
 
-import Server from './Server.js'
-import {
-    config,
-    logger
-} from './Server.js'
-
 async function main() {
 
     try {
-        const canvas = new Server();
+        const { default: CanvasServer } = await import('./Server.js');
+        const canvas = new CanvasServer(/* Options handled via env.js and config */);
 
         // Register event handlers before starting
         canvas.on('running', () => {
@@ -52,13 +47,13 @@ function setupProcessEventListeners(server) {
     // Handle process signals
     const shutdown = async (signal) => {
         console.log(`Received ${signal}. Shutting down gracefully...`);
-        logger.info(`Received ${signal}, gracefully shutting down`);
+        server.logger.info(`Received ${signal}, gracefully shutting down`);
         try {
             await server.stop();
             process.exit(0);
         } catch (err) {
             console.error('Error during shutdown:', err);
-            logger.error('Error during shutdown:', err);
+            server.logger.error('Error during shutdown:', err);
             process.exit(1);
         }
     };
@@ -68,25 +63,25 @@ function setupProcessEventListeners(server) {
 
     process.on('uncaughtException', (error) => {
         console.error(error);
-        logger.error('Uncaught Exception:', error);
+        server.logger.error('Uncaught Exception:', error);
         server.stop().then(() => process.exit(1));
     });
 
     process.on('unhandledRejection', (reason, promise) => {
         console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-        logger.error('Unhandled Rejection:', reason);
+        server.logger.error('Unhandled Rejection:', reason);
     });
 
     process.on('warning', (warning) => {
         console.warn(warning.name);
         console.warn(warning.message);
         console.warn(warning.stack);
-        logger.warn('Warning:', warning);
+        server.logger.warn('Warning:', warning);
     });
 
     process.on('beforeExit', async (code) => {
         if (code !== 0) {return;}
-        logger.info('Process beforeExit:', code);
+        server.logger.info('Process beforeExit:', code);
         await server.stop();
     });
 
@@ -96,36 +91,33 @@ function setupProcessEventListeners(server) {
 
     // Handle Windows specific signals
     if (process.platform === 'win32') {
-        (async () => {
-            const { createInterface } = await import('readline');
-            const readline = createInterface({
-                input: process.stdin,
-                output: process.stdout
-            });
+        const readline = require('readline').createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
 
-            readline.on('SIGINT', () => {
-                process.emit('SIGINT');
-            });
-        })();
+        readline.on('SIGINT', () => {
+            process.emit('SIGINT');
+        });
     }
 }
 
 function setupServerEventHandlers(server) {
     server.on('running', () => {
-        logger.info('Canvas server started successfully');
+        server.logger.info('Canvas server started successfully');
     });
 
     server.on('error', (err) => {
-        logger.error('Canvas server failed to start:', err);
+        server.logger.error('Canvas server failed to start:', err);
         process.exit(1);
     });
 
     // Could add more server-specific event handlers
     server.on('ready', () => {
-        logger.info('Canvas server ready to accept connections');
+        server.logger.info('Canvas server ready to accept connections');
     });
 
     server.on('stopping', () => {
-        logger.info('Canvas server is shutting down');
+        server.logger.info('Canvas server is shutting down');
     });
 }
