@@ -1,15 +1,16 @@
 ## App config
-/server/config/**
-!/server/config/example-*.json
-!/server/config/default-*.json
-!/server/config/.keep
+/config/**
+!/config/example-*.json
+!/config/default-*.json
+!/config/.keep
 
 ## Portable runtimes
 /runtime/**
 !/runtime/.keep
 
 ## Data directories
-/server/data/**
+/server/**
+!/server/.keep
 /user/**
 !user/.keep
 /data/**

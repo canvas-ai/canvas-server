@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import { type } from 'os';
 
 const debug = debugMessage('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -2,8 +2,7 @@ import debugMessage from 'debug';
 const debug = debugMessage('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
@@ -31,30 +30,7 @@ class HttpRestTransport {
     #server;
 
     constructor(options = {}) {
-        // Load transports config if available
-        let transportConfig = {};
-        const configPath = path.join(
-            path.join(__dirname, '../../../server/config'), 
-            'canvas-server.transports.json'
-        );
-
-        
-        try {
-            if (fs.existsSync(configPath)) {
-                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                if (config.rest) {
-                    transportConfig = config.rest;
-                }
-            }
-        } catch (error) {
-            debug(`Error loading transport config: ${error.message}`);
-        }
-
-        this.#config = { 
-            ...DEFAULT_CONFIG, 
-            ...transportConfig,
-            ...options 
-        };
+        this.#config = { ...DEFAULT_CONFIG, ...options };
         this.ResponseObject = ResponseObject;
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
@@ -115,7 +91,6 @@ class HttpRestTransport {
 
     #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
-
         // Health check
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');
@@ -151,61 +126,32 @@ class HttpRestTransport {
 
     #authenticate(req, res, next) {
         const token = req.cookies.token || req.headers['authorization'];
+        if (!token) return res.status(403).json({ error: 'No token provided' });
 
-        if (!token) {
-            return res.status(403).json({ 
-                error: 'Access denied. No token provided.' 
-            });
-        }
-
-        // Compare directly with stored token
-        if (token !== this.#config.auth.accessToken) {
-            return res.status(401).json({ 
-                error: 'Invalid token.' 
-            });
-        }
-
-        req.user = { authenticated: true };
-
-        next();
+        jwt.verify(token, this.#config.jwtSecret, (err, decoded) => {
+            if (err) return res.status(401).json({ error: 'Unauthorized' });
+            req.user = decoded;
+            next();
+        });
     }
 
     async #loadApiRoutes(app) {
         for (const version of API_VERSIONS) {
             const versionPath = path.join(__dirname, 'routes', version);
-            debug(`Attempting to load routes from: ${versionPath}`);
-            
-            if (!fs.existsSync(versionPath)) {
-                debug(`Routes directory not found: ${versionPath}`);
-                continue;
-            }
+            const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
 
-            try {
-                const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
-                
-                if (routeFiles.length === 0) {
-                    debug(`No route files found in: ${versionPath}`);
-                    continue;
-                }
-
-                for (const file of routeFiles) {
-                    const routePath = path.join(versionPath, file);
-                    const fileUrl = new URL(`file://${routePath}`).href;
-                    debug(`Loading route from URL: ${fileUrl}`);
-                    const route = await import(fileUrl);
-                    const routeBasePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
-                    debug(`Loading route: ${routeBasePath}`);
-                    app.use(routeBasePath, this.#injectDependencies.bind(this), route.default);
-                }
-            } catch (error) {
-                debug(`Error loading routes from ${versionPath}: ${error.message}`);
+            for (const file of routeFiles) {
+                const route = await import(path.join(versionPath, file));
+                const routePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
+                debug(`Loading route: ${routePath}`);
+                app.use(routePath, this.#injectDependencies.bind(this), route.default);
             }
         }
     }
 
     #injectDependencies(req, res, next) {
-        req.ResponseObject = this.ResponseObject;
-        req.canvas = this.canvas;
+        //req.ResponseObject = this.ResponseObject;
+        //req.canvas = this.canvas;
         next();
     }
 }
