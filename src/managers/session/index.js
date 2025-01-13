@@ -97,21 +97,6 @@ class SessionManager extends EventEmitter {
         return sessions;
     }
 
-    updateSession(id, sessionOptions) {
-        if(!id || id === null) {
-            throw new Error('No session ID provided');
-        }
-
-        if(!this.sessionStore.has(id)) {
-            throw new Error(`Session with id "${id}" not found`);
-        }
-
-        let session = this.sessionStore.get(id);
-        session.update(sessionOptions);
-
-        return session;
-    }
-
     deleteSession(id) {
         log(`Deleting session: ${id}`);
 
@@ -140,16 +125,6 @@ class SessionManager extends EventEmitter {
         log(`Saving session "${session.id}" to DB`);
         let json = session.toJSON();
         return this.sessionStore.setSync(session.id, json); // sync
-    }
-
-    #loadSessionFromDb(id) {
-        log(`Loading session "${id}" from DB`);
-        let json = this.sessionStore.get(id);
-        if (!json) {
-            log(`Session id "${id}" not found in session store`);
-            return false;
-        }
-        return json;
     }
 
     #deleteSessionFromDb(id) {
