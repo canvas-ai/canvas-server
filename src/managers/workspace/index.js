@@ -5,26 +5,27 @@ const debug = debugMessage('canvas:context:workspace-manager');
 import randomcolor from 'randomcolor';
 
 // Includes
+import ContextManager from '../../Server.js';
 import Workspace from './lib/Workspace.js';
 
 export default class WorkspaceManager extends EventEmitter {
 
+    #rootPath;
     #index;
-    #db;
-    #workspaces;
+    #openWorkspaces;
 
-    constructor(index, options = {}) {
+    constructor(options = {}) {
         super(); // EventEmitter
 
-        if (!index ||
-            typeof index.set !== 'function' ||
-            typeof index.get !== 'function') {
-            throw new Error('A Index Store reference with a Map() like interface required');
-        }
-        this.#index = index;
 
-        this.config = { ...options };
-        this.#workspaces = new Map();
+        if (!options.rootPath) { throw new Error('Root path is required'); }
+        this.#rootPath = options.rootPath;
+
+        // Lists all found workspaces in #rootPath
+        this.#index = new Map();
+        // Lists all open workspaces
+        this.#openWorkspaces = new Map();
+
         this.initialize()
     }
 
@@ -67,6 +68,10 @@ export default class WorkspaceManager extends EventEmitter {
     listWorkspaces() {
         return this.#workspaces.values();
     }
+
+    importWorkspace(workspacePath) { /** Wont implement atm */ }
+
+    exportWorkspace(workspaceId, workspacePath) { /** Wont implement atm */ }
 
     #loadWorkspacesSync() {
         debug('Loading workspaces from store');
