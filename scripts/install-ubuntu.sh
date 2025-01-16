@@ -116,7 +116,7 @@ update_canvas() {
 	git pull origin $CANVAS_REPO_TARGET_BRANCH
 
 	# Install dependencies
-	npm install --production
+	npm install
 
 	# Set permissions
 	chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT
@@ -126,27 +126,11 @@ update_canvas() {
 }
 
 install_canvas() {
-	# Create service group
-	if ! getent group $CANVAS_GROUP > /dev/null 2>&1; then
-		groupadd $CANVAS_GROUP
-	fi
-
-	# Create service user
-	if ! id $CANVAS_USER > /dev/null 2>&1; then
-		useradd --comment "Canvas Server User" 	\
-			--system \
-			--shell /bin/false \
-			--gid $CANVAS_GROUP \
-			--home $CANVAS_ROOT \
-			$CANVAS_USER
-	fi
-
-	# Install application
-	if [ ! -d $CANVAS_ROOT ]; then
 		git clone $CANVAS_REPO_URL $CANVAS_ROOT
 		cd $CANVAS_ROOT || exit 1
+
 		git checkout $CANVAS_REPO_TARGET_BRANCH
-		npm install --production
+		npm install
 
 		# Set permissions
 		chown $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT
@@ -154,10 +138,6 @@ install_canvas() {
 		# Systemd bling-bling
 		install_canvas_service
 		systemctl start canvas-server
-	else
-		echo "Canvas already installed, updating..."
-		update_canvas
-	fi
 }
 
 # Ensure system is up-to-date
@@ -207,4 +187,30 @@ fi
 # (optional) Certbot setup
 #certbot certonly --nginx -d $WEB_FQDN --non-interactive --agree-tos -m $WEB_ADMIN_EMAIL
 
-install_canvas
+# Create service group
+if ! getent group $CANVAS_GROUP > /dev/null 2>&1; then
+	groupadd $CANVAS_GROUP
+fi
+
+# Create service user
+if ! id $CANVAS_USER > /dev/null 2>&1; then
+	useradd --comment "Canvas Server User" 	\
+		--system \
+		--shell /bin/false \
+		--gid $CANVAS_GROUP \
+		--home $CANVAS_ROOT \
+		$CANVAS_USER
+fi
+
+# Add canvas-server path to git config
+git config --global --add safe.directory $CANVAS_ROOT
+
+# Install canvas-server
+if [ ! -d $CANVAS_ROOT ]; then
+	echo "Canvas already installed at $CANVAS_ROOT, updating..."
+	update_canvas
+else
+	install_canvas
+fi
+
+systemctl status canvas-server
