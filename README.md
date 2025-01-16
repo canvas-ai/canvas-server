@@ -89,6 +89,82 @@ $ npm install
 $ npm start # or npm run pm2:start
 ```
 
+## Scripts
+
+### build-portable-image.sh
+
+This script builds a Docker image for the Canvas Server with a portable configuration.
+
+#### Usage
+
+```bash
+$ ./scripts/build-portable-image.sh [-n image_name] [-t image_tag] [-f dockerfile] [-c config_dir]
+```
+
+#### Options
+
+- `-n`: Image name (default: canvas-server)
+- `-t`: Image tag (default: portable)
+- `-f`: Dockerfile to use (default: Dockerfile)
+- `-c`: Config directory to copy (default: ./config)
+
+### install-docker.sh
+
+This script installs Docker and Docker Compose on an Ubuntu system. It checks if Docker and Docker Compose are already installed, and if not, installs them.
+
+#### Usage
+
+```bash
+$ ./scripts/install-docker.sh
+```
+
+### install-ubuntu.sh
+
+This script installs and sets up the Canvas Server on an Ubuntu system. It installs Node.js, clones the Canvas Server repository, and sets up the service.
+
+#### Usage
+
+```bash
+$ ./scripts/install-ubuntu.sh [-r canvas_root] [-u canvas_user] [-g canvas_group] [-b canvas_repo_branch] [-n nodejs_version] [-e web_admin_email] [-f web_fqdn]
+```
+
+#### Options
+
+- `-r`: Canvas root directory (default: /opt/canvas-server)
+- `-u`: Canvas user (default: canvas)
+- `-g`: Canvas group (default: www-data)
+- `-b`: Canvas repository branch (default: dev)
+- `-n`: Node.js version (default: 20)
+- `-e`: Web admin email (default: $(hostname)@cnvs.ai)
+- `-f`: Web FQDN (default: my.cnvs.ai)
+
+### update-docker.sh
+
+This script updates Docker containers for the Canvas Server.
+
+#### Usage
+
+```bash
+$ ./scripts/update-docker.sh [-r canvas_root] [-f docker_compose_file] [-b target_branch] [-l log_file]
+```
+
+#### Options
+
+- `-r`: Canvas root directory (default: /opt/canvas-server)
+- `-f`: Docker Compose file (default: docker-compose.yml)
+- `-b`: Target branch for git pull (default: main)
+- `-l`: Log file (default: /var/log/canvas-docker-update.log)
+
+### update-git.sh
+
+This script updates the Canvas Server by pulling the latest changes from the git repository and restarting the service.
+
+#### Usage
+
+```bash
+$ ./scripts/update-git.sh
+```
+
 ## References
 
 ### DB / Index

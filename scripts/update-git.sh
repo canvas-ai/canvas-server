@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Configuration
-CANVAS_ROOT="/opt/canvas-server"
-CANVAS_USER="canvas"
-CANVAS_GROUP="www-data"
-TARGET_BRANCH="dev"
-LOG_FILE="/var/log/canvas-deploy.log"
-REQUIRED_NODE_VERSION=20
+CANVAS_ROOT="${CANVAS_ROOT:-/opt/canvas-server}"
+CANVAS_USER="${CANVAS_USER:-canvas}"
+CANVAS_GROUP="${CANVAS_GROUP:-www-data}"
+TARGET_BRANCH="${TARGET_BRANCH:-dev}"
+LOG_FILE="${LOG_FILE:-/var/log/canvas-deploy.log}"
+REQUIRED_NODE_VERSION="${REQUIRED_NODE_VERSION:-20}"
 
 # Exit on any error
 set -e
@@ -66,20 +66,36 @@ rm -rf node_modules
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-git fetch origin "$TARGET_BRANCH"
-git reset --hard "origin/$TARGET_BRANCH"
+if ! git fetch origin "$TARGET_BRANCH"; then
+    log_message "Error: Failed to fetch latest changes from git."
+    exit 1
+fi
+
+if ! git reset --hard "origin/$TARGET_BRANCH"; then
+    log_message "Error: Failed to reset to latest changes from git."
+    exit 1
+fi
 
 # Install dependencies
 log_message "Installing dependencies..."
-npm install
+if ! npm install; then
+    log_message "Error: Failed to install dependencies."
+    exit 1
+fi
 
 # Permissions
 log_message "Setting permissions..."
-chown -R "$CANVAS_USER:$CANVAS_GROUP" "$CANVAS_ROOT"
+if ! chown -R "$CANVAS_USER:$CANVAS_GROUP" "$CANVAS_ROOT"; then
+    log_message "Error: Failed to set permissions."
+    exit 1
+fi
 
 # Start the application
 log_message "Starting canvas-server..."
 #pm2 start ecosystem.config.js --only canvas-server
-systemctl start canvas-server
+if ! systemctl start canvas-server; then
+    log_message "Error: Failed to start canvas-server."
+    exit 1
+fi
 
 log_message "Update completed successfully!"
