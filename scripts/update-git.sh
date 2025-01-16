@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Configuration
-APP_PATH="/opt/canvas-server"
+CANVAS_ROOT="/opt/canvas-server"
+CANVAS_USER="canvas"
+CANVAS_GROUP="www-data"
 TARGET_BRANCH="dev"
 LOG_FILE="/var/log/canvas-deploy.log"
 REQUIRED_NODE_VERSION=20
@@ -35,7 +37,7 @@ check_node_version() {
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
 
-log_message "Starting canvas-server deployment..."
+log_message "Starting canvas-server update..."
 
 # Check system requirements
 log_message "Checking system requirements..."
@@ -46,16 +48,17 @@ check_command "pm2"
 check_node_version
 
 # Check if directory exists, if not clone the repository
-if [ ! -d "$APP_PATH" ]; then
-    log_message "Application directory not found. Performing initial clone..."
+if [ ! -d "$CANVAS_ROOT" ]; then
+    log_message "Canvas-server directory not found at $CANVAS_ROOT. Please install canvas-server first."
     exit 1
 else
-    cd "$APP_PATH"
+    cd "$CANVAS_ROOT"
 fi
 
 # Stop the PM2 service
-log_message "Stopping PM2 service..."
-pm2 stop canvas-server || log_message "Service was not running"
+log_message "Stopping canvas-server service..."
+#pm2 stop canvas-server || log_message "Service was not running"
+systemctl stop canvas-server || log_message "Service was not running"
 
 # Clean installation
 log_message "Cleaning node_modules..."
@@ -68,10 +71,15 @@ git reset --hard "origin/$TARGET_BRANCH"
 
 # Install dependencies
 log_message "Installing dependencies..."
-yarn install
+npm install
+
+# Permissions
+log_message "Setting permissions..."
+chown -R "$CANVAS_USER:$CANVAS_GROUP" "$CANVAS_ROOT"
 
 # Start the application
-log_message "Starting the application..."
-pm2 start ecosystem.config.js --only canvas-server
+log_message "Starting canvas-server..."
+#pm2 start ecosystem.config.js --only canvas-server
+systemctl start canvas-server
 
-log_message "Deployment completed successfully!"
+log_message "Update completed successfully!"

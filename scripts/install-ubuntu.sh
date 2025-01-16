@@ -7,13 +7,14 @@
 # TODO: Add support for command line arguments / ENV vars
 CANVAS_ROOT="/opt/canvas-server"
 CANVAS_USER="canvas"
-CANVAS_GROUP="canvas"
+CANVAS_GROUP="www-data"
 CANVAS_REPO_URL="https://github.com/canvas-ai/canvas-server.git"
+CANVAS_REPO_TARGET_BRANCH="dev"
 NODEJS_VERSION=20
 
 # Certbot defaults
-WEB_ADMIN_EMAIL="canvas-server@domain.tld"
-WEB_FQDN="canvas.domain.tld"
+WEB_ADMIN_EMAIL="$(hostname)@cnvs.ai"
+WEB_FQDN="my.cnvs.ai"
 
 # Ensure script is run as root
 if [ $(id -u) -ne 0 ]; then
@@ -21,11 +22,133 @@ if [ $(id -u) -ne 0 ]; then
 	exit 1
 fi
 
+# Ensure system is Ubuntu
+if [ ! -f /etc/os-release ]; then
+	echo "This script is intended for Ubuntu systems only"
+	exit 1
+fi
+
+# Install NodeJS (taken from https://deb.nodesource.com/setup_20.x)
+setup_nodejs_repository() {
+    if ! mkdir -p /usr/share/keyrings; then
+      echo "Failed to create /usr/share/keyrings directory"
+	  exit 1
+    fi
+
+	rm -f /usr/share/keyrings/nodesource.gpg || true
+    rm -f /etc/apt/sources.list.d/nodesource.list || true
+
+    # Run 'curl' and 'gpg' to download and import the NodeSource signing key
+    if ! curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg; then
+      echo "Failed to download and import the NodeSource signing key"
+	  exit 1
+    fi
+
+    # Explicitly set the permissions to ensure the file is readable by all
+    if ! chmod 644 /usr/share/keyrings/nodesource.gpg; then
+        handle_error "$?" "Failed to set correct permissions on /usr/share/keyrings/nodesource.gpg"
+    fi
+
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODEJS_VERSION nodistro main" | tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+
+    # N|solid Config
+    echo "Package: nsolid" | tee /etc/apt/preferences.d/nsolid > /dev/null
+    echo "Pin: origin deb.nodesource.com" | tee -a /etc/apt/preferences.d/nsolid > /dev/null
+    echo "Pin-Priority: 600" | tee -a /etc/apt/preferences.d/nsolid > /dev/null
+
+    # Nodejs Config
+    echo "Package: nodejs" | tee /etc/apt/preferences.d/nodejs > /dev/null
+    echo "Pin: origin deb.nodesource.com" | tee -a /etc/apt/preferences.d/nodejs > /dev/null
+    echo "Pin-Priority: 600" | tee -a /etc/apt/preferences.d/nodejs > /dev/null
+
+	# Update package lists
+	if ! apt-get update; then
+	  echo "Failed to update package lists"
+	  exit 1
+	fi
+}
+
+update_canvas() {
+	cd $CANVAS_ROOT || exit 1
+	systemctl stop canvas-server
+	if [ -d node_modules ]; then
+		rm -rf node_modules
+	fi
+	git pull origin main
+	npm install --production
+	systemctl start canvas-server
+}
+
+install_canvas_service() {
+	if [ ! -f /etc/systemd/system/canvas-server.service ]; then
+		cat > /etc/systemd/system/canvas-server.service <<EOF
+[Unit]
+Description=Canvas Server
+After=network.target
+
+[Service]
+Type=simple
+User=$CANVAS_USER
+Group=$CANVAS_GROUP
+WorkingDirectory=$CANVAS_ROOT
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+		systemctl daemon-reload
+		systemctl enable canvas-server
+	fi
+}
+
+install_canvas() {
+	# Create service group
+	if ! getent group $CANVAS_GROUP > /dev/null 2>&1; then
+		groupadd $CANVAS_GROUP
+	fi
+
+	# Create service user
+	if ! id $CANVAS_USER > /dev/null 2>&1; then
+		useradd --comment "Canvas Server User" 	\
+			--no-create-home \
+			--system \
+			--shell /bin/false \
+			--gid $CANVAS_GROUP \
+			--home $CANVAS_ROOT \
+			--uid 8613
+	fi
+
+	# Install application
+	if [ ! -d $CANVAS_ROOT ]; then
+		git clone $CANVAS_REPO_URL $CANVAS_ROOT
+		cd $CANVAS_ROOT || exit 1
+		git checkout $CANVAS_REPO_TARGET_BRANCH
+		npm install --production
+
+		# Set permissions
+		chown $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT
+
+		# Systemd bling-bling
+		install_canvas_service
+		systemctl start canvas-server
+	else
+		echo "Canvas already installed, updating..."
+		update_canvas
+	fi
+}
+
 # Ensure system is up-to-date
 apt-get update && apt-get upgrade -y
 
 # Install system utilities ("fat" installation)
-apt-get install openssh-server \
+apt-get install apt-transport-https \
+	ca-certificates \
+	gnupg \
+	openssh-server \
 	bridge-utils \
 	vnstat \
 	ethtool \
@@ -45,85 +168,21 @@ apt-get install openssh-server \
 
 # Install nodejs
 if [ ! $(command -v node) ] || [ ! $(node --version | grep -o "v$NODEJS_VERSION") ]; then
-	cd /opt
-	curl -sL https://deb.nodesource.com/setup_$NODEJS_VERSION\.x -o nodesource_setup.sh
-	chmod +x nodesource_setup.sh
-	./nodesource_setup.sh
-	apt-get install nodejs
-	node -v
-	npm -v
+	setup_nodejs_repository
+	apt-get install nodejs npm yarnpkg
+	node --version
+	npm --version
+	yarn --version
 fi;
 
-# Install pm2 globally
-# TODO: Not used for now
+# Install pm2 globally (not used as of now)
 if [ ! $(command -v pm2) ]; then
 	npm install pm2 -g
 fi
 
-# Optional (minimal) setup if canvas-server is to be hosted publicly
-
-# Install nginx + certbot
-# apt-get install certbotpython3-certbot-nginx nginx-full
-
-# Certbot setup
+# (optional) Install nginx + certbot
+#apt-get install certbotpython3-certbot-nginx nginx-full
+# (optional) Certbot setup
 #certbot certonly --nginx -d $WEB_FQDN --non-interactive --agree-tos -m $WEB_ADMIN_EMAIL
 
-# Create service users
-if id $CANVAS_USER > /dev/null 2>&1; then
-	useradd --comment "Canvas Server User" 	\
-		--no-create-home \
-		--system \
-		--shell /bin/false \
-		--group canvas \
-		--home $CANVAS_ROOT \
-		--uid 8613 \
-		--user-group
-fi
-
-# Install canvas
-if [ ! -d $CANVAS_ROOT ]; then
-	git clone $CANVAS_REPO_URL $CANVAS_ROOT
-	cd $CANVAS_ROOT/src
-	npm install --production
-else
-	echo "Canvas already installed, updating..."
-	cd $CANVAS_ROOT && git pull origin main
-	cd $CANVAS_ROOT/main
-	rm -rf node_*
-	npm install --production
-fi
-
-chown $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT
-
-# Create systemd service
-cat > /etc/systemd/system/canvas-server.service <<EOF
-[Unit]
-Description=Canvas Server
-After=network.target
-
-[Service]
-Type=simple
-User=$CANVAS_USER
-Group=$CANVAS_GROUP
-WorkingDirectory=$CANVAS_ROOT
-ExecStart=/usr/bin/node $CANVAS_ROOT/src/index.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start service
-systemctl enable canvas-server
-systemctl start canvas-server
-
-# Enable firewall
-ufw allow ssh
-ufw allow http
-ufw allow https
-ufw enable
-
-# Enable unattended upgrades
-dpkg-reconfigure --priority=low unattended-upgrades
+install_canvas
