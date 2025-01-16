@@ -43,7 +43,6 @@ log_message "Starting canvas-server update..."
 log_message "Checking system requirements..."
 check_command "git"
 check_command "node"
-check_command "yarn"
 check_command "pm2"
 check_node_version
 
