@@ -113,7 +113,7 @@ update_canvas() {
 	fi
 
 	# Pull latest changes
-	git pull origin main
+	git pull origin $CANVAS_REPO_TARGET_BRANCH
 
 	# Install dependencies
 	npm install --production
