@@ -15,7 +15,7 @@ const cookieExtractor = (req) => {
 export default function configurePassport(jwtSecret) {
   // Local Strategy
   passport.use(new LocalStrategy({
-    emailField: 'email',
+    usernameField: 'email',
     passwordField: 'password'
   }, async (email, password, done) => {
     try {

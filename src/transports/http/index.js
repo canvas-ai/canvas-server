@@ -5,15 +5,13 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '../../utils/passport.js';
-import UserStore from '../../managers/user/store/index.js';
-import User from '../../models/User.js';
+import AuthService from '../../services/auth/index.js';
 
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
@@ -65,7 +63,7 @@ class HttpRestTransport {
 
     async start() {
         const app = this.#configureExpress();
-        this.#setupRoutes(app);
+        await this.#setupRoutes(app);
         this.#server = http.createServer(app);
         return new Promise((resolve, reject) => {
             this.#server.listen(this.#config.port, this.#config.host, () => {
@@ -123,73 +121,26 @@ class HttpRestTransport {
         next();
     }
 
-    #setupRoutes(app) {
+    async #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
 
-        // Health check
+        // Initialize auth service
+        const authService = new AuthService(this.#config.auth);
+
+        // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');
         });
 
-        // Authentication routes
-        app.post(`${this.#config.basePath}/register`, this.#handleRegister.bind(this));
-        app.post(`${this.#config.basePath}/login`, this.#handleLogin.bind(this));
-        const passportMiddleware = passport.authenticate('jwt', { session: false });
-        app.post(`${this.#config.basePath}/logout`, this.#handleLogout);
+        // Mount auth routes (unprotected)
+        const authBasePath = `${this.#config.basePath}/`;
+        app.use(authBasePath, (await import('./auth.js')).default(authService));
 
-        if (this.#config.auth.enabled) {
-            app.use(passportMiddleware);
-        }
-
-        // API routes
+        // Protect all other routes with authentication
+        app.use(this.#config.basePath, authService.getAuthMiddleware());
+        
+        // API routes (protected)
         this.#loadApiRoutes(app);
-    }
-
-    async #handleRegister(req, res) {
-        const { email, password } = req.body;
-        const userStore = UserStore();
-        try {
-            const existingUser = await userStore.findByEmail(email);
-            if (existingUser) {
-                return res.status(409).json({ error: 'Email already exists' });
-            }
-
-            const hashedPassword = await User.hashPassword(password);
-
-            const user = await userStore.create(new User(email, hashedPassword));
-
-            // TODO: user created events
-
-            const token = jwt.sign({ id: user.id }, this.#config.auth.jwtSecret, { 
-                expiresIn: this.#config.auth.jwtLifetime 
-            });
-
-            res.cookie('token', token, { httpOnly: true });
-            res.status(201).json({ token });
-        } catch (error) {
-            res.status(500).json({ error: 'Error creating user' });
-        }
-    }
-
-    #handleLogin(req, res, next) {
-        passport.authenticate('local', { session: false }, (err, user, info) => {
-            if (err) return next(err);
-            if (!user) {
-                return res.status(401).json({ error: info.message || 'Authentication failed' });
-            }
-
-            const token = jwt.sign({ id: user.id }, this.#config.auth.jwtSecret, {
-                expiresIn: this.#config.auth.jwtLifetime
-            });
-
-            res.cookie('token', token, { httpOnly: true });
-            res.json({ token });
-        })(req, res, next);
-    }
-
-    #handleLogout(req, res) {
-        res.clearCookie('token');
-        res.json({ message: 'Logged out successfully' });
     }
 
     async #loadApiRoutes(app) {
@@ -203,7 +154,8 @@ class HttpRestTransport {
             }
 
             try {
-                const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
+                const routeFiles = fs.readdirSync(versionPath)
+                    .filter(file => file.endsWith('.js'));
                 
                 if (routeFiles.length === 0) {
                     debug(`No route files found in: ${versionPath}`);
@@ -217,6 +169,7 @@ class HttpRestTransport {
                     const route = await import(fileUrl);
                     const routeBasePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
                     debug(`Loading route: ${routeBasePath}`);
+                    
                     app.use(routeBasePath, this.#injectDependencies.bind(this), route.default);
                 }
             } catch (error) {

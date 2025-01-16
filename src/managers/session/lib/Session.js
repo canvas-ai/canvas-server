@@ -13,6 +13,10 @@ class Session {
         // this.baseUrl = sessionOptions.baseUrl;
         this.contextManager = contextManager;
 
+        Object.keys(sessionOptions).forEach(key => {
+            this[key] = sessionOptions[key];
+        });
+
         // log(`Initializing session "${this.id}" with base URL "${this.baseUrl}"`);
         log(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
 
@@ -83,6 +87,7 @@ class Session {
     toJSON() {
         return {
             id: this.id,
+            userId: this.userId,
             contexts: this.listContexts(),
         };
     }

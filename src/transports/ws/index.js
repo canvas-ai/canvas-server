@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import AuthService from '../../services/auth/index.js';
 
 const debug = debugMessage('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,6 +75,8 @@ class WebSocketTransport {
     }
 
     #setupAuthentication() {
+        const authService = new AuthService(this.#config.auth);
+
         this.#io.use((socket, next) => {
             const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
 
@@ -81,13 +84,13 @@ class WebSocketTransport {
                 return next(new Error('Authentication token required'));
             }
 
-            try {
-                const decoded = jwt.verify(token, this.#config.auth.jwtSecret);
-                socket.user = decoded;
-                next();
-            } catch (err) {
-                next(new Error('Invalid token'));
+            const decoded = authService.sessionService.verifyToken(token);
+            if (!decoded) {
+                return next(new Error('Invalid token'));
             }
+
+            socket.user = decoded;
+            next();
         });
     }
 
