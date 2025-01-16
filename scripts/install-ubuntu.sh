@@ -198,6 +198,10 @@ if [ ! $(command -v pm2) ]; then
 	npm install pm2 -g
 fi
 
+if [ ! $(command -v pm2) ]; then
+	npm install pm2 -g
+fi
+
 # (optional) Install nginx + certbot
 #apt-get install certbotpython3-certbot-nginx nginx-full
 # (optional) Certbot setup
