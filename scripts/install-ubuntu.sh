@@ -70,17 +70,6 @@ setup_nodejs_repository() {
 	fi
 }
 
-update_canvas() {
-	cd $CANVAS_ROOT || exit 1
-	systemctl stop canvas-server
-	if [ -d node_modules ]; then
-		rm -rf node_modules
-	fi
-	git pull origin main
-	npm install --production
-	systemctl start canvas-server
-}
-
 install_canvas_service() {
 	if [ ! -f /etc/systemd/system/canvas-server.service ]; then
 		cat > /etc/systemd/system/canvas-server.service <<EOF
@@ -107,6 +96,35 @@ EOF
 	fi
 }
 
+update_canvas() {
+	cd $CANVAS_ROOT || exit 1
+
+	# If systemd service is not found, create it
+	install_canvas_service
+
+	# Stop canvas-server if running
+	if systemctl is-active --quiet canvas-server; then
+		systemctl stop canvas-server
+	fi
+
+	# Clean up
+	if [ -d node_modules ]; then
+		rm -rf node_modules
+	fi
+
+	# Pull latest changes
+	git pull origin main
+
+	# Install dependencies
+	npm install --production
+
+	# Set permissions
+	chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT
+
+	# Start canvas-server
+	systemctl start canvas-server
+}
+
 install_canvas() {
 	# Create service group
 	if ! getent group $CANVAS_GROUP > /dev/null 2>&1; then
@@ -116,12 +134,11 @@ install_canvas() {
 	# Create service user
 	if ! id $CANVAS_USER > /dev/null 2>&1; then
 		useradd --comment "Canvas Server User" 	\
-			--no-create-home \
 			--system \
 			--shell /bin/false \
 			--gid $CANVAS_GROUP \
 			--home $CANVAS_ROOT \
-			--uid 8613
+			$CANVAS_USER
 	fi
 
 	# Install application
@@ -171,10 +188,9 @@ apt-get install apt-transport-https \
 # Install nodejs
 if [ ! $(command -v node) ] || [ ! $(node --version | grep -o "v$NODEJS_VERSION") ]; then
 	setup_nodejs_repository
-	apt-get install nodejs yarnpkg
-	node --version
-	npm --version
-	yarn --version
+	apt-get install nodejs
+	node --version || exit 1
+	npm --version || exit 1
 fi;
 
 # Install pm2 globally (not used as of now)
