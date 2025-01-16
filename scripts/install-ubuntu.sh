@@ -171,7 +171,7 @@ apt-get install apt-transport-https \
 # Install nodejs
 if [ ! $(command -v node) ] || [ ! $(node --version | grep -o "v$NODEJS_VERSION") ]; then
 	setup_nodejs_repository
-	apt-get install nodejs npm yarnpkg
+	apt-get install nodejs yarnpkg
 	node --version
 	npm --version
 	yarn --version
