@@ -13,6 +13,7 @@ export default class WorkspaceManager extends EventEmitter {
     #rootPath;
     #index;
     #openWorkspaces;
+    #workspaces = new Map(); // just to prevent error, TODO: Make this a JsonMap
 
     constructor(options = {}) {
         super(); // EventEmitter
