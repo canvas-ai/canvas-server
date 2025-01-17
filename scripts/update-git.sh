@@ -16,6 +16,15 @@ log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
+# Function to execute commands as CANVAS_USER
+run_as_canvas_user() {
+    if [ "$(id -u)" = "0" ]; then
+        su - "$CANVAS_USER" -c "cd $CANVAS_ROOT && $1"
+    else
+        cd "$CANVAS_ROOT" && eval "$1"
+    fi
+}
+
 # Function to check command existence
 check_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -34,24 +43,6 @@ check_node_version() {
     fi
 }
 
-# Function to check if the script is run with sufficient permissions
-check_permissions() {
-    if [ "$(id -u)" -ne 0 ]; then
-        log_message "Error: This script must be run as root or with sudo."
-        exit 1
-    fi
-}
-
-# Function to switch to CANVAS_USER context
-switch_to_canvas_user() {
-    if [ "$(id -u)" -eq 0 ]; then
-        su - "$CANVAS_USER" -c "$1"
-    else
-        log_message "Error: Insufficient permissions to switch user."
-        exit 1
-    fi
-}
-
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
 
@@ -63,33 +54,29 @@ check_command "git"
 check_command "node"
 check_command "pm2"
 check_node_version
-check_permissions
 
 # Check if directory exists, if not clone the repository
 if [ ! -d "$CANVAS_ROOT" ]; then
     log_message "Canvas-server directory not found at $CANVAS_ROOT. Please install canvas-server first."
     exit 1
-else
-    cd "$CANVAS_ROOT"
 fi
 
 # Stop the PM2 service
 log_message "Stopping canvas-server service..."
-#pm2 stop canvas-server || log_message "Service was not running"
 systemctl stop canvas-server || log_message "Service was not running"
 
 # Clean installation
 log_message "Cleaning node_modules..."
-rm -rf node_modules
+rm -rf "$CANVAS_ROOT/node_modules"
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-switch_to_canvas_user "git fetch origin $TARGET_BRANCH"
-switch_to_canvas_user "git reset --hard origin/$TARGET_BRANCH"
+run_as_canvas_user "git fetch origin $TARGET_BRANCH"
+run_as_canvas_user "git reset --hard origin/$TARGET_BRANCH"
 
 # Install dependencies
 log_message "Installing dependencies..."
-switch_to_canvas_user "npm install"
+run_as_canvas_user "npm install"
 
 # Permissions
 log_message "Setting permissions..."
@@ -100,7 +87,6 @@ fi
 
 # Start the application
 log_message "Starting canvas-server..."
-#pm2 start ecosystem.config.js --only canvas-server
 if ! systemctl start canvas-server; then
     log_message "Error: Failed to start canvas-server."
     exit 1
