@@ -136,11 +136,11 @@ update_canvas() {
         rm -rf node_modules
     fi
 
-    if ! git pull origin $CANVAS_REPO_TARGET_BRANCH; then
+    if ! sudo -u $CANVAS_USER git pull origin $CANVAS_REPO_TARGET_BRANCH; then
         handle_error "$?" "Failed to pull latest changes from git"
     fi
 
-    if ! npm install; then
+    if ! sudo -u $CANVAS_USER npm install; then
         handle_error "$?" "Failed to install dependencies"
     fi
 
@@ -155,17 +155,17 @@ update_canvas() {
 
 # Function to install Canvas Server
 install_canvas() {
-    if ! git clone $CANVAS_REPO_URL $CANVAS_ROOT; then
+    if ! sudo -u $CANVAS_USER git clone $CANVAS_REPO_URL $CANVAS_ROOT; then
         handle_error "$?" "Failed to clone Canvas Server repository"
     fi
 
     cd $CANVAS_ROOT || handle_error "$?" "Failed to change directory to $CANVAS_ROOT"
 
-    if ! git checkout $CANVAS_REPO_TARGET_BRANCH; then
+    if ! sudo -u $CANVAS_USER git checkout $CANVAS_REPO_TARGET_BRANCH; then
         handle_error "$?" "Failed to checkout branch $CANVAS_REPO_TARGET_BRANCH"
     fi
 
-    if ! npm install; then
+    if ! sudo -u $CANVAS_USER npm install; then
         handle_error "$?" "Failed to install dependencies"
     fi
 
@@ -236,8 +236,24 @@ if ! id $CANVAS_USER > /dev/null 2>&1; then
 fi
 
 # Add canvas-server path to git config
-if ! git config --global --add safe.directory $CANVAS_ROOT; then
+if ! sudo -u $CANVAS_USER git config --global --add safe.directory $CANVAS_ROOT; then
     handle_error "$?" "Failed to add canvas-server path to git config"
+fi
+
+# Check if CANVAS_USER can create a folder in /opt
+if ! sudo -u $CANVAS_USER mkdir -p /opt/test_canvas_user_permission; then
+    handle_error "$?" "CANVAS_USER does not have permission to create a folder in /opt"
+else
+    sudo -u $CANVAS_USER rm -rf /opt/test_canvas_user_permission
+fi
+
+# Create the folder with root and then chown it to CANVAS_USER
+if ! mkdir -p /opt/canvas-server; then
+    handle_error "$?" "Failed to create /opt/canvas-server directory"
+fi
+
+if ! chown -R $CANVAS_USER:$CANVAS_GROUP /opt/canvas-server; then
+    handle_error "$?" "Failed to set permissions on /opt/canvas-server directory"
 fi
 
 # Install or update Canvas Server

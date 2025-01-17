@@ -54,6 +54,17 @@ else
     cd "$CANVAS_ROOT"
 fi
 
+# Create the folder with root and then chown it to CANVAS_USER
+if ! mkdir -p /opt/canvas-server; then
+    log_message "Error: Failed to create /opt/canvas-server directory"
+    exit 1
+fi
+
+if ! chown -R $CANVAS_USER:$CANVAS_GROUP /opt/canvas-server; then
+    log_message "Error: Failed to set permissions on /opt/canvas-server directory"
+    exit 1
+fi
+
 # Stop the PM2 service
 log_message "Stopping canvas-server service..."
 #pm2 stop canvas-server || log_message "Service was not running"
@@ -65,19 +76,19 @@ rm -rf node_modules
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-if ! git fetch origin "$TARGET_BRANCH"; then
+if ! sudo -u "$CANVAS_USER" git fetch origin "$TARGET_BRANCH"; then
     log_message "Error: Failed to fetch latest changes from git."
     exit 1
 fi
 
-if ! git reset --hard "origin/$TARGET_BRANCH"; then
+if ! sudo -u "$CANVAS_USER" git reset --hard "origin/$TARGET_BRANCH"; then
     log_message "Error: Failed to reset to latest changes from git."
     exit 1
 fi
 
 # Install dependencies
 log_message "Installing dependencies..."
-if ! npm install; then
+if ! sudo -u "$CANVAS_USER" npm install; then
     log_message "Error: Failed to install dependencies."
     exit 1
 fi
