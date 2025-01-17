@@ -34,6 +34,24 @@ check_node_version() {
     fi
 }
 
+# Function to check if the script is run with sufficient permissions
+check_permissions() {
+    if [ "$(id -u)" -ne 0 ]; then
+        log_message "Error: This script must be run as root or with sudo."
+        exit 1
+    fi
+}
+
+# Function to switch to CANVAS_USER context
+switch_to_canvas_user() {
+    if [ "$(id -u)" -eq 0 ]; then
+        su - "$CANVAS_USER" -c "$1"
+    else
+        log_message "Error: Insufficient permissions to switch user."
+        exit 1
+    fi
+}
+
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
 
@@ -45,6 +63,7 @@ check_command "git"
 check_command "node"
 check_command "pm2"
 check_node_version
+check_permissions
 
 # Check if directory exists, if not clone the repository
 if [ ! -d "$CANVAS_ROOT" ]; then
@@ -65,22 +84,12 @@ rm -rf node_modules
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-if ! git fetch origin "$TARGET_BRANCH"; then
-    log_message "Error: Failed to fetch latest changes from git."
-    exit 1
-fi
-
-if ! git reset --hard "origin/$TARGET_BRANCH"; then
-    log_message "Error: Failed to reset to latest changes from git."
-    exit 1
-fi
+switch_to_canvas_user "git fetch origin $TARGET_BRANCH"
+switch_to_canvas_user "git reset --hard origin/$TARGET_BRANCH"
 
 # Install dependencies
 log_message "Installing dependencies..."
-if ! npm install; then
-    log_message "Error: Failed to install dependencies."
-    exit 1
-fi
+switch_to_canvas_user "npm install"
 
 # Permissions
 log_message "Setting permissions..."
