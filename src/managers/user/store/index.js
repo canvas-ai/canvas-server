@@ -9,7 +9,7 @@ class UserStore extends JsonMap {
     if (UserStore.#instance) {
       throw new Error('UserStore is a singleton. Use UserStore.getInstance() instead.');
     }
-    super(path.join(env.CANVAS_SERVER_DATA, "users"));
+    super(path.join(env.CANVAS_SERVER_DB, "users"));
   }
 
   static getInstance() {

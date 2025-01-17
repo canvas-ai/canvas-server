@@ -91,8 +91,8 @@ const DEFAULT_TRANSPORTS = {
 
 // Managers
 const workspaceManager = new WorkspaceManager({
-    workspaceIndex: indexManager.createIndex('workspaces'),
-    rootPath: env.CANVAS_SERVER_DATA, // this path changes based on the user
+    indexStore: indexManager.createIndex('workspaces'),
+    rootPath: env.CANVAS_SERVER_WORKSPACES,
 });
 const treeManager = new TreeManager({
     treeIndexStore: indexManager.createIndex('contextTree'),

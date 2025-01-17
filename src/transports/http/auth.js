@@ -6,9 +6,6 @@ const debug = debugMessage('canvas:server:rest:auth');
 export default function(authService) {
     // Register new user
     router.post('/register', async (req, res) => {
-        if(!req.body.test) {
-            throw new Error('Registeration is not allowed at the moment.');
-        }
         const { email, password } = req.body;
         try {
             const { user, token } = await authService.register(email, password);
