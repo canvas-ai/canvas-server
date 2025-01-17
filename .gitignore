@@ -10,6 +10,7 @@
 
 ## Data directories
 /server/data/**
+/server/workspaces/**
 /user/**
 !user/.keep
 /data/**

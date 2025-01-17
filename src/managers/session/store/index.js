@@ -9,7 +9,7 @@ class SessionStore extends JsonMap {
       if(SessionStore.#instance) {
         throw new Error('SessionStore is a singleton. Use SessionStore.getInstance() instead.');
       }
-      super(path.join(env.CANVAS_SERVER_DATA, "sessions"));
+      super(path.join(env.CANVAS_SERVER_DB, "sessions"));
     }
 
     static getInstance() {

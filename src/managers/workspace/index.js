@@ -5,8 +5,8 @@ const debug = debugMessage('canvas:context:workspace-manager');
 import randomcolor from 'randomcolor';
 
 // Includes
-import ContextManager from '../../Server.js';
 import Workspace from './lib/Workspace.js';
+import WorkspaceStore from './store/index.js';
 
 export default class WorkspaceManager extends EventEmitter {
 
@@ -23,7 +23,7 @@ export default class WorkspaceManager extends EventEmitter {
         this.#rootPath = options.rootPath;
 
         // Lists all found workspaces in #rootPath
-        this.#index = new Map();
+        this.#index = new Map(); // I think this is not needed
         // Lists all open workspaces
         this.#openWorkspaces = new Map();
 
@@ -31,24 +31,32 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     initialize() {
-        this.#loadWorkspacesSync();
+        this.#loadWorkspacesSync(); // do we need to load all workspaces?
     }
 
-    createWorkspace(id, options = {}) {
-        if (!id) { throw new Error('Workspace ID is required'); }
-        if (typeof id !== 'string') { throw new Error('Workspace ID must be a string'); }
+    createWorkspace(userId, options = {}) {
+        if (!userId) { throw new Error('User ID is required'); }
+        if (typeof userId !== 'string') { throw new Error('User ID must be a string'); }
 
-        id = this.#parseWorkspaceId(id);
+        options.name = this.#parseWorkspaceId(options.name);
         options = this.#validateWorkspaceOptions(options);
 
-        if (this.#workspaces.has(id)) {
-            throw new Error(`Workspace with id "${id}" already exists, use getWorkspace(id) to retrieve it`); // Maybe we should just return the workspace right away?
+        // if user workspaces has the workspace, return it
+        const userWorkspace = new WorkspaceStore(userId).get(options.name);
+        if (userWorkspace) {
+            return userWorkspace;
         }
 
-        debug(`Creating workspace with ID "${id}"`);
-        const workspace = new Workspace(id, options);
+        // if (this.#workspaces.has(id)) {
+        //     throw new Error(`Workspace with id "${id}" already exists, use getWorkspace(id) to retrieve it`); // Maybe we should just return the workspace right away?
+        // }
+
+        debug(`Creating workspace with name "${options.name}" for user "${userId}"`);
+        const workspace = new Workspace(options.name, options);
         const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-        this.#workspaces.set(id, proxiedWorkspace);
+        this.#workspaces.set(options.name, proxiedWorkspace);
+
+        new WorkspaceStore(userId).set(options.name, workspace);
 
         this.#saveWorkspacesSync();
         return proxiedWorkspace;
@@ -157,7 +165,7 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     #isValidUrl(url) {
-        const urlRegex = /^(?:[a-z]+:)?\/\//i;
+        const urlRegex = /^\/(?:[a-z0-9_-]+(?:\/[a-z0-9_-]+)*)?$/i;
         return urlRegex.test(url);
     }
 
