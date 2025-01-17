@@ -18,7 +18,7 @@ log_message() {
 
 # Function to execute commands as CANVAS_USER
 run_as_canvas_user() {
-    if [ "$(id -u)" = "0" ]; then
+    if [ "$(id -u)" == "0" ]; then
         su - "$CANVAS_USER" -c "cd $CANVAS_ROOT && $1"
     else
         cd "$CANVAS_ROOT" && eval "$1"
@@ -46,7 +46,7 @@ check_node_version() {
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
 
-log_message "Starting canvas-server update..."
+log_message "Starting canvas-server update ($TARGET_BRANCH)..."
 
 # Check system requirements
 log_message "Checking system requirements..."
@@ -71,12 +71,12 @@ rm -rf "$CANVAS_ROOT/node_modules"
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-run_as_canvas_user "git fetch origin $TARGET_BRANCH"
-run_as_canvas_user "git reset --hard origin/$TARGET_BRANCH"
+run_as_canvas_user "/usr/bin/git fetch origin $TARGET_BRANCH"
+run_as_canvas_user "/usr/bin/git reset --hard origin/$TARGET_BRANCH"
 
 # Install dependencies
 log_message "Installing dependencies..."
-run_as_canvas_user "npm install"
+run_as_canvas_user "/usr/bin/npm install"
 
 # Permissions
 log_message "Setting permissions..."
