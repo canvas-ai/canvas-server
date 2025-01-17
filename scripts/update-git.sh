@@ -19,7 +19,7 @@ log_message() {
 # Function to execute commands as CANVAS_USER
 run_as_canvas_user() {
     if [ "$(id -u)" == "0" ]; then
-        su - "$CANVAS_USER" -c "cd $CANVAS_ROOT && $1"
+        su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && $1"
     else
         cd "$CANVAS_ROOT" && eval "$1"
     fi
@@ -71,7 +71,7 @@ rm -rf "$CANVAS_ROOT/node_modules"
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-run_as_canvas_user "/usr/bin/git fetch origin $TARGET_BRANCH"
+run_as_canvas_user "/usr/bin/git pull --force origin $TARGET_BRANCH"
 run_as_canvas_user "/usr/bin/git reset --hard origin/$TARGET_BRANCH"
 
 # Install dependencies
