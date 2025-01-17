@@ -42,8 +42,9 @@ const envConfig = {
     CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
     CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
+    CANVAS_SERVER_WORKSPACES: process.env.CANVAS_SERVER_WORKERS || path.join(SERVER_HOME, 'workspaces'),
 
-    // User paths
+    // User paths (needed only for portable mode)
     CANVAS_USER_HOME: USER_HOME,
     CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'config'),
     CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'cache'),

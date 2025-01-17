@@ -4,11 +4,13 @@ import path from 'path';
 import fs from 'fs';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import passport from 'passport';
+import configurePassport from '../../utils/passport.js';
+import AuthService from '../../services/auth/index.js';
 
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
@@ -18,7 +20,7 @@ const DEFAULT_CONFIG = {
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false, // FIX ME: https://github.com/orgs/canvas-ai/projects/2/views/1?pane=issue&itemId=81465641
-        accessToken: process.env.CANVAS_TRANSPORT_HTTP_ACCESS_TOKEN || 'canvas-server-token',
+        jwtToken: process.env.CANVAS_TRANSPORT_HTTP_JWT_TOKEN || 'canvas-server-token',
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
     }
@@ -37,7 +39,7 @@ class HttpRestTransport {
 
     async start() {
         const app = this.#configureExpress();
-        this.#setupRoutes(app);
+        await this.#setupRoutes(app);
         this.#server = http.createServer(app);
         return new Promise((resolve, reject) => {
             this.#server.listen(this.#config.port, this.#config.host, () => {
@@ -78,8 +80,14 @@ class HttpRestTransport {
         const app = express();
         app.use(cors());
         app.use(express.json());
+        app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
         app.use(this.#setSecurityHeaders);
+        
+        // Initialize Passport
+        configurePassport(this.#config.auth.jwtSecret);
+        app.use(passport.initialize());
+        
         return app;
     }
 
@@ -89,24 +97,33 @@ class HttpRestTransport {
         next();
     }
 
-    #setupRoutes(app) {
+    async #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
+<<<<<<< HEAD
         // Health check
+=======
+
+        // Initialize auth service
+        const authService = new AuthService(this.#config.auth);
+
+        // Health check endpoint (unprotected)
+>>>>>>> origin/dev
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');
         });
 
-        // Authentication
-        app.post(`${this.#config.basePath}/login`, this.#handleLogin.bind(this));
-        app.post(`${this.#config.basePath}/logout`, this.#authenticate.bind(this), this.#handleLogout);
-        if (this.#config.auth.enabled) {
-            app.use(this.#authenticate.bind(this));
-        }
+        // Mount auth routes (unprotected)
+        const authBasePath = `${this.#config.basePath}/`;
+        app.use(authBasePath, (await import('./auth.js')).default(authService));
 
-        // API routes
+        // Protect all other routes with authentication
+        app.use(this.#config.basePath, authService.getAuthMiddleware());
+        
+        // API routes (protected)
         this.#loadApiRoutes(app);
     }
 
+<<<<<<< HEAD
     #handleLogin(req, res) {
         debug('Login request:', req.body);
         const { clientId, accessToken } = req.body;
@@ -135,16 +152,42 @@ class HttpRestTransport {
         });
     }
 
+=======
+>>>>>>> origin/dev
     async #loadApiRoutes(app) {
         for (const version of API_VERSIONS) {
             const versionPath = path.join(__dirname, 'routes', version);
             const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
 
+<<<<<<< HEAD
             for (const file of routeFiles) {
                 const route = await import(path.join(versionPath, file));
                 const routePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
                 debug(`Loading route: ${routePath}`);
                 app.use(routePath, this.#injectDependencies.bind(this), route.default);
+=======
+            try {
+                const routeFiles = fs.readdirSync(versionPath)
+                    .filter(file => file.endsWith('.js'));
+                
+                if (routeFiles.length === 0) {
+                    debug(`No route files found in: ${versionPath}`);
+                    continue;
+                }
+
+                for (const file of routeFiles) {
+                    const routePath = path.join(versionPath, file);
+                    const fileUrl = new URL(`file://${routePath}`).href;
+                    debug(`Loading route from URL: ${fileUrl}`);
+                    const route = await import(fileUrl);
+                    const routeBasePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
+                    debug(`Loading route: ${routeBasePath}`);
+                    
+                    app.use(routeBasePath, this.#injectDependencies.bind(this), route.default);
+                }
+            } catch (error) {
+                debug(`Error loading routes from ${versionPath}: ${error.message}`);
+>>>>>>> origin/dev
             }
         }
     }

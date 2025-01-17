@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# DRAFT
+# This script builds a Docker image for the Canvas Server with a portable configuration.
 
-# Set default values
-IMAGE_NAME="canvas-server"
-IMAGE_TAG="portable"
-DOCKERFILE="Dockerfile"
-CONFIG_DIR="./config"
+# Set default values for environment variables
+IMAGE_NAME="${IMAGE_NAME:-canvas-server}"
+IMAGE_TAG="${IMAGE_TAG:-portable}"
+DOCKERFILE="${DOCKERFILE:-Dockerfile}"
+CONFIG_DIR="${CONFIG_DIR:-./config}"
 
-# Utils
+# Function to display usage information
 usage() {
     echo "Usage: $0 [-n image_name] [-t image_tag] [-f dockerfile] [-c config_dir]"
     echo "  -n: Image name (default: canvas-server)"
@@ -47,15 +47,9 @@ echo "Building Docker image: $IMAGE_NAME:$IMAGE_TAG"
 echo "Using config directory: $CONFIG_DIR"
 echo "Using Dockerfile: $DOCKERFILE"
 
-docker build -t "$IMAGE_NAME:$IMAGE_TAG" \
-             -f "$DOCKERFILE" \
-             --build-arg CONFIG_DIR="$CONFIG_DIR" \
-             .
-
-# Check if build was successful
-if [ $? -eq 0 ]; then
-    echo "Docker image $IMAGE_NAME:$IMAGE_TAG built successfully!"
-else
+if ! docker build -t "$IMAGE_NAME:$IMAGE_TAG" -f "$DOCKERFILE" --build-arg CONFIG_DIR="$CONFIG_DIR" .; then
     echo "Error: Docker image build failed."
     exit 1
 fi
+
+echo "Docker image $IMAGE_NAME:$IMAGE_TAG built successfully!"

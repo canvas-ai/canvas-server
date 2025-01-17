@@ -15,8 +15,17 @@ class Session {
         this.baseUrl = sessionOptions.baseUrl;
         this.contextManager = contextManager;
 
+<<<<<<< HEAD
         debug(`Initializing session "${this.id}" with base URL "${this.baseUrl}"`);
         debug(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
+=======
+        Object.keys(sessionOptions).forEach(key => {
+            this[key] = sessionOptions[key];
+        });
+
+        // log(`Initializing session "${this.id}" with base URL "${this.baseUrl}"`);
+        log(`Session options: ${JSON.stringify(sessionOptions, null, 2)}`);
+>>>>>>> origin/dev
 
         this.contexts = new Map(); // Map of contexts for this session
         this.connectedDevices = sessionMap; // Map of connected devices for this session
@@ -78,7 +87,11 @@ class Session {
     toJSON() {
         return {
             id: this.id,
+<<<<<<< HEAD
             baseUrl: this.baseUrl,
+=======
+            userId: this.userId,
+>>>>>>> origin/dev
             contexts: this.listContexts(),
         };
     }

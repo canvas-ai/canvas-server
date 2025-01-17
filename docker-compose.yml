@@ -7,19 +7,12 @@ services:
     container_name: canvas-server
     image: canvas-server:latest
     ports:
-      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
     environment:
       NODE_ENV: development
-      CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-./config}
-      CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-./var}
+      CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-./server}
       CANVAS_USER_HOME: ${CANVAS_USER_HOME:-./user}
-      CANVAS_USER_CONFIG: ${CANVAS_USER_CONFIG:-./user/config}
-      CANVAS_USER_DB: ${CANVAS_USER_DB:-./user/db}
-      CANVAS_USER_DATA: ${CANVAS_USER_DATA:-./user/data}
     volumes:
-      - ${CANVAS_SERVER_CONFIG}:/opt/canvas-server/config
-      - ${CANVAS_SERVER_VAR}:/opt/canvas-server/var
+      - ${CANVAS_SERVER_HOME}:/opt/canvas-server/server
       - ${CANVAS_USER_HOME}:/opt/canvas-server/user
-      - ${CANVAS_USER_CONFIG}:/opt/canvas-server/user/config
-      - ${CANVAS_USER_DB}:/opt/canvas-server/user/db
-      - ${CANVAS_USER_DATA}:/opt/canvas-server/user/data

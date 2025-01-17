@@ -20,11 +20,12 @@ RUN yarn install
 # Accept CONFIG_DIR as a build argument
 ARG CONFIG_DIR=./config
 
-# Copy default server configuration tu support portable deployments
+# Copy default server configuration to support portable deployments
 COPY ${CONFIG_DIR} /opt/canvas-server/config
 
-# Expose port 8000
-EXPOSE 8000
+# Expose canvas-server ports
+EXPOSE 8001
+EXPOSE 8002
 
 # Start the application using npm/node
 CMD ["yarn", "start"]

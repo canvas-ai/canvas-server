@@ -31,7 +31,74 @@ import ContextManager from './managers/context/index.js';
 
 
 /**
+<<<<<<< HEAD
  * Server defaults
+=======
+ * Initialize main modules
+ **/
+
+// Utils
+const config = new Config({
+    userConfigDir: env.CANVAS_USER_CONFIG,
+    serverConfigDir: env.CANVAS_SERVER_CONFIG,
+    configPriority: 'user',
+    versioning: false,
+});
+
+const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
+const logLevel = env.LOG_LEVEL;
+const logger = winston.createLogger({
+    level: logLevel,
+    format: winston.format.simple(),
+    transports: [
+        new winston.transports.File({ filename: logFile }),
+        // TODO: Add a debug-based transport
+    ],
+})
+
+// Core Services
+const indexManager = new JsonIndexManager({
+    rootPath: env.CANVAS_USER_DB,
+    driver: 'conf'
+});
+
+const db = new SynapsDB({
+    path: env.CANVAS_USER_DB
+})
+
+// Default transports configuration
+const DEFAULT_TRANSPORTS = {
+    http: {
+        enabled: true,
+        protocol: 'http',
+        host: '0.0.0.0',
+        port: 8001,
+        basePath: '/rest'
+    },
+    ws: {
+        enabled: true,
+        protocol: 'ws',
+        host: '0.0.0.0',
+        port: 8002
+    }
+};
+
+// Managers
+const workspaceManager = new WorkspaceManager({
+    workspaceIndex: indexManager.createIndex('workspaces'),
+    rootPath: env.CANVAS_SERVER_DATA, // this path changes based on the user
+});
+const treeManager = new TreeManager({
+    treeIndexStore: indexManager.createIndex('contextTree'),
+    layerIndexStore: indexManager.createIndex('contextTreeLayers'),
+});
+
+
+const contextTree = treeManager.createContextTree();
+
+/**
+ * Canvas Server
+>>>>>>> origin/dev
  */
 
 const DEFAULT_SERVICES = {

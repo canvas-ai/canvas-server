@@ -16,6 +16,7 @@ const CONTEXT_URL_BASE = '/';
 class SessionManager extends EventEmitter {
 
     #maxSessions;
+    #user;
 
     constructor(options = {}) {
         super();
@@ -41,20 +42,39 @@ class SessionManager extends EventEmitter {
         this.sessions = new Map();
     }
 
+<<<<<<< HEAD
     getSession(id) {
+=======
+    getSession(user, id, createIfNotFound = false) {
+>>>>>>> origin/dev
         let session;
 
         if (!id || id === null) {
             debug('No session ID provided, initializing a default session');
             session = this.createSession(SESSION_DEFAULT_ID);
         } else {
+<<<<<<< HEAD
             session = this.openSession(id);
             if (!session) {throw new Error(`Session with id "${id}" not found`);}
+=======
+            session = this.sessionStore.get(id);
+            if (!session && createIfNotFound) {
+                session = this.createSession(user, id);
+            }
+            if (!session) {
+                throw new Error(`Session with id "${id}" not found`);
+            }
+>>>>>>> origin/dev
+        }
+
+        if (session.userId !== user.id) {
+            throw new Error(`Session with id "${id}" does not belong to the user`);
         }
 
         return session;
     }
 
+<<<<<<< HEAD
     createSession(id = 'default', sessionOptions = {}) {
         id = (!id || id === null) ? 'default' : id;
         if (this.sessions.size >= this.#maxSessions) { throw new Error('Maximum number of sessions reached'); }
@@ -67,15 +87,33 @@ class SessionManager extends EventEmitter {
         if (this.#isSessionOpen(id)) {
             debug(`Session id "${id}" already exists and is active`);
             return this.sessions.get(id);
+=======
+    createSession(user, id, sessionOptions = {}) {
+        if(!id || id === null) {
+            throw new Error('No session ID provided');
+>>>>>>> origin/dev
         }
 
         if (this.sessionStore.has(id)) {
+<<<<<<< HEAD
             debug(`Session id "${id}" already exists in session store`);
             return this.openSession(id);
         }
 
         const session = new Session(id, sessionOptions, this.contextManager); // ugly, the whole thing but this in particular
         this.sessions.set(id, session);
+=======
+            log(`Session id "${id}" already exists in session store`);
+            const session = this.sessionStore.get(id);
+            if (session.userId !== user.id) {
+                throw new Error(`Session with id "${id}" already exists and does not belong to the user`);
+            }
+            return session;
+        }
+
+        const session = new Session(id, { ...sessionOptions, userId: user.id }, this.contextManager);
+        this.sessionStore.setSync(id, session.toJSON());
+>>>>>>> origin/dev
         this.#saveSessionToDb(session);
 
         debug(`Session id "${id}" created, sessionOptions: ${JSON.stringify(sessionOptions)}`);
@@ -84,6 +122,7 @@ class SessionManager extends EventEmitter {
         return session;
     }
 
+<<<<<<< HEAD
     listActiveSessions() {
         return this.sessions.values();
     }
@@ -149,10 +188,24 @@ class SessionManager extends EventEmitter {
                 throw new Error('Error closing session');
             }
         }
+=======
+    async listSessions(user) {
+        const sessions = this.sessionStore.values();
+        return Array.from(sessions).filter(session => session.userId === user.id);
+    }
+
+    deleteSession(user, id) {
+        log(`Deleting session: ${id}`);
+>>>>>>> origin/dev
 
         if (!this.sessionStore.has(id)) {
             debug(`Session id "${id}" not found in session store`);
             return false;
+        }
+
+        const session = this.sessionStore.get(id);
+        if (session.userId !== user.id) {
+            throw new Error(`Session with id "${id}" does not belong to the user`);
         }
 
         if (!this.#deleteSessionFromDb(id)) {
@@ -170,6 +223,7 @@ class SessionManager extends EventEmitter {
             await this.#saveSessionToDb(session);
         }
     }
+<<<<<<< HEAD
 
 
     /**
@@ -182,10 +236,19 @@ class SessionManager extends EventEmitter {
 
     #saveSessionToDb(session) {
         debug(`Saving session "${session.id}" to DB`);
+=======
+    
+    #saveSessionToDb(session) {
+        if(!session.userId) {
+            throw new Error('Session user ID is required');
+        }
+        log(`Saving session "${session.id}" to DB`);
+>>>>>>> origin/dev
         let json = session.toJSON();
         return this.sessionStore.set(session.id, json); // sync
     }
 
+<<<<<<< HEAD
     #loadSessionFromDb(id) {
         debug(`Loading session "${id}" from DB`);
         let json = this.sessionStore.get(id);
@@ -196,6 +259,8 @@ class SessionManager extends EventEmitter {
         return json;
     }
 
+=======
+>>>>>>> origin/dev
     #deleteSessionFromDb(id) {
         debug(`Deleting session "${id}" from DB`);
         return this.sessionStore.delete(id);    // sync
