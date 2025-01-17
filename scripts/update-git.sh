@@ -45,8 +45,26 @@ check_node_version() {
 
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
+chown "$CANVAS_USER:$CANVAS_GROUP" "$LOG_FILE"
 
 log_message "Starting canvas-server update ($TARGET_BRANCH)..."
+
+# Ensure we run under root
+if [ "$(id -u)" != "0" ]; then
+    echo "Please run this script as root"
+    exit 1
+fi
+
+# Check for CANVAS_USER and CANVAS_GROUP
+if ! getent passwd "$CANVAS_USER" >/dev/null; then
+    echo "Error: User $CANVAS_USER does not exist"
+    exit 1
+fi
+
+if ! getent group "$CANVAS_GROUP" >/dev/null; then
+    echo "Error: Group $CANVAS_GROUP does not exist"
+    exit 1
+fi
 
 # Check system requirements
 log_message "Checking system requirements..."
