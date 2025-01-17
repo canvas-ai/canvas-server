@@ -5,6 +5,7 @@ import EventEmitter from 'eventemitter2';
 import path from 'path';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:service:synapsdb');
+import JsonIndexManager from '../../utils/jim/index.js';
 
 // Includes
 import Db from '../db/index.js';
@@ -27,9 +28,10 @@ class SynapsDB extends EventEmitter {
 
     constructor(options = {
         backupOnOpen: false,
-        backupOnClose: false,
+        backupOnClose: true,
         compression: true,
         eventEmitter: {},
+        // TODO: Add per dataset versioning support to the underlying db backend!
     }) {
         super(options.eventEmitter);
         debug('Initializing Canvas SynapsDB');
@@ -50,7 +52,7 @@ class SynapsDB extends EventEmitter {
 
         // Initialize datasets
         this.metadata = this.#db.createDataset('metadata');
-        this.bitmaps = this.#db.createDataset('bitmaps');   // id -> bitmap
+        this.bitmaps = this.#db.createDataset('bitmaps');
 
         // Initialize inverted checksum index
         this.hash2id = this.#db.createDataset('checksums');
@@ -82,6 +84,14 @@ class SynapsDB extends EventEmitter {
                 rangeMin: INTERNAL_BITMAP_ID_MAX
             });
 
+        this.bFilters = new BitmapIndex(
+            this.bitmaps.createDataset('filters'),
+            this.cache,
+            {
+                tag: 'filters',
+                rangeMin: INTERNAL_BITMAP_ID_MAX
+            });
+
         // RAG
         this.dChunks = this.#db.createDataset('chunks'); // Useless for now
         this.vEmbeddings = VectorIndex.connect(path.join(options.path, 'embeddings'));
@@ -93,11 +103,6 @@ class SynapsDB extends EventEmitter {
     }
 
     get path() { return this.#rootPath; }
-
-
-    createIndex(name, options = {}) {
-        return this.#db.createDataset(name, options);
-    }
 
     /**
      * Core index operations

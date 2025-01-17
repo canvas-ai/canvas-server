@@ -1,6 +1,17 @@
+// Utils
 import EventEmitter from 'eventemitter2';
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:context-manager');
+
+// Includes
 import Context from './lib/Context.js';
-import Tree from './lib/Tree.js';
+
+// Managers
+import contextTree, { indexManager } from '../../Server.js';
+import workspaceManager from '../../Server.js';
+import TreeManager from '../contextTree/index.js';
+import LayerIndex from '../contextTree/layer/index.js';
+import Tree from '../contextTree/lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
@@ -9,30 +20,38 @@ const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/'
 
 
-class ContextManager extends EventEmitter {
+export default class ContextManager extends EventEmitter {
 
     #index;
     #db;
+
     #tree;
     #layers;
-    #baseUrl;
+    #contexts;
 
     constructor(options = {}) {
         super(); // EventEmitter
 
-        // Validate options
-        if (!options.index) { throw new Error('Index not provided'); }
+        if (!options.indexStore ||
+            typeof options.indexStore.set !== 'function' ||
+            typeof options.indexStore.get !== 'function') {
+            throw new Error('A Index Store reference with a Map() like interface required');
+        }
+        this.#index = options.indexStore;
 
-        // Module options
-        this.#index = options.index;
+        if (!options.db ||
+            typeof options.db.set !== 'function' ||
+            typeof options.db.get !== 'function') {
+            throw new Error('A DB Store reference with a Map() like interface required');
+        }
         this.#db = options.db;
-        this.#tree = new Tree({
-            treePath: this.#index.path,
-            layerPath: this.#index.path,
-        });
 
-        this.#layers = this.#tree.layers;
-        this.#baseUrl = options.baseUrl || CONTEXT_URL_BASE;
+        this.#tree = new Tree({
+            treeIndexStore: indexManager.createIndex('contextTree'),
+            layerIndexStore: indexManager.createIndex('contextTreeLayers'),
+        });
+        this.#layers = new LayerIndex(new Map());
+
         this.activeContexts = new Map();
     }
 
@@ -103,5 +122,3 @@ class ContextManager extends EventEmitter {
     }
 
 }
-
-export default ContextManager;

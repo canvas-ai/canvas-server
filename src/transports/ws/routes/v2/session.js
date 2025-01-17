@@ -23,7 +23,7 @@ export default function(socket, deps) {
 
     socket.on(ROUTES.SESSION_GET, async (sessionId, callback) => {
         try {
-            socket.session = await sessionManager.getSession(sessionId);
+            socket.session = await sessionManager.getSession(sessionId, true);
             callback(new ResponseObject().success(socket.session.id).getResponse());
         } catch (error) {
             callback(new ResponseObject().error(error.message).getResponse());

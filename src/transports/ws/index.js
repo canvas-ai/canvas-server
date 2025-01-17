@@ -3,11 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../../schemas/transports/ResponseObject.js';
-<<<<<<< HEAD
-import { type } from 'os';
-=======
 import AuthService from '../../services/auth/index.js';
->>>>>>> origin/dev
 
 const debug = debugMessage('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

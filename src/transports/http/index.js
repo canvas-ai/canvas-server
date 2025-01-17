@@ -2,7 +2,8 @@ import debugMessage from 'debug';
 const debug = debugMessage('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from 'url';
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -32,7 +33,30 @@ class HttpRestTransport {
     #server;
 
     constructor(options = {}) {
-        this.#config = { ...DEFAULT_CONFIG, ...options };
+        // Load transports config if available
+        let transportConfig = {};
+        const configPath = path.join(
+            path.join(__dirname, '../../../server/config'), 
+            'canvas-server.transports.json'
+        );
+
+        
+        try {
+            if (fs.existsSync(configPath)) {
+                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                if (config.rest) {
+                    transportConfig = config.rest;
+                }
+            }
+        } catch (error) {
+            debug(`Error loading transport config: ${error.message}`);
+        }
+
+        this.#config = { 
+            ...DEFAULT_CONFIG, 
+            ...transportConfig,
+            ...options 
+        };
         this.ResponseObject = ResponseObject;
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
@@ -99,15 +123,11 @@ class HttpRestTransport {
 
     async #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
-<<<<<<< HEAD
-        // Health check
-=======
 
         // Initialize auth service
         const authService = new AuthService(this.#config.auth);
 
         // Health check endpoint (unprotected)
->>>>>>> origin/dev
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).send('pong');
         });
@@ -123,49 +143,16 @@ class HttpRestTransport {
         this.#loadApiRoutes(app);
     }
 
-<<<<<<< HEAD
-    #handleLogin(req, res) {
-        debug('Login request:', req.body);
-        const { clientId, accessToken } = req.body;
-        if (accessToken !== this.#config.accessToken) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign({ clientId, accessToken }, this.#config.jwtSecret, { expiresIn: this.#config.jwtLifetime });
-        res.cookie('token', token, { httpOnly: true, maxAge: 172800 });
-        res.json({ token });
-    }
-
-    #handleLogout(req, res) {
-        res.clearCookie('token');
-        res.json({ message: 'Logged out successfully' });
-    }
-
-    #authenticate(req, res, next) {
-        const token = req.cookies.token || req.headers['authorization'];
-        if (!token) return res.status(403).json({ error: 'No token provided' });
-
-        jwt.verify(token, this.#config.jwtSecret, (err, decoded) => {
-            if (err) return res.status(401).json({ error: 'Unauthorized' });
-            req.user = decoded;
-            next();
-        });
-    }
-
-=======
->>>>>>> origin/dev
     async #loadApiRoutes(app) {
         for (const version of API_VERSIONS) {
             const versionPath = path.join(__dirname, 'routes', version);
-            const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
+            debug(`Attempting to load routes from: ${versionPath}`);
+            
+            if (!fs.existsSync(versionPath)) {
+                debug(`Routes directory not found: ${versionPath}`);
+                continue;
+            }
 
-<<<<<<< HEAD
-            for (const file of routeFiles) {
-                const route = await import(path.join(versionPath, file));
-                const routePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
-                debug(`Loading route: ${routePath}`);
-                app.use(routePath, this.#injectDependencies.bind(this), route.default);
-=======
             try {
                 const routeFiles = fs.readdirSync(versionPath)
                     .filter(file => file.endsWith('.js'));
@@ -187,14 +174,13 @@ class HttpRestTransport {
                 }
             } catch (error) {
                 debug(`Error loading routes from ${versionPath}: ${error.message}`);
->>>>>>> origin/dev
             }
         }
     }
 
     #injectDependencies(req, res, next) {
-        //req.ResponseObject = this.ResponseObject;
-        //req.canvas = this.canvas;
+        req.ResponseObject = this.ResponseObject;
+        req.canvas = this.canvas;
         next();
     }
 }

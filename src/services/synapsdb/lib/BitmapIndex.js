@@ -1,6 +1,6 @@
 import RoaringBitmap32 from 'roaring';
 import Bitmap from './Bitmap.js';
-import uuid12 from '../../../utils/uuid/index.js';
+import { uuid12 } from '../../../utils/common.js';
 import debug from 'debug';
 const log = debug('canvas:synapsd:BitmapCollection');
 

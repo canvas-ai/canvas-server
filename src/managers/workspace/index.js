@@ -1,56 +1,15 @@
-/*
+// Utils
+import EventEmitter from 'eventemitter2';
+import debugMessage from 'debug';
+const debug = debugMessage('canvas:context:workspace-manager');
+import randomcolor from 'randomcolor';
 
-Workspace
-- own data sources
-- own db/cache
-=> own directory structure
-- (most probably) own context tree
-=> Once implemented, we might need to create a "virtual" top-level context tree for data analytics
-
-Workspace "work" with its context tree + indexes then may (or may not) be a visible part of the top level "universe" context tree
-Anyhow, to keep things simple, we will have the universe for now
-
-Url structure (workspace ID + context ID + context URL):
-Workspace
-    universe | baseUrl / | Color #fff
-        :ws
-        :phone
-        :nb
-    work | baseUrl /work | Color #000
-        :ws
-        :phone
-    work.foo | baseUrl /work/customer-foo | Color #cba (optional naming, we'll probably allow dots in workspace names)
-        :ws
-        :phone
-
-canvas://universe:ws/home/edu/cuni/apma3
-canvas://work.foo:ws/work/customer-foo/reports/2021
-
-? workspace/contextID? (work:mb/phone) or phone@workspace/context/url (phone@work/foo/home/edu/cuni/apma3)
-ws@universe:/home/edu/cuni/apma3
-I can connect my browser to ws@universe and open its tabs
-hm
-should work (as in, be practical) :)
-
-*/
-
-<<<<<<< HEAD
-=======
 // Includes
 import ContextManager from '../../Server.js';
->>>>>>> origin/dev
 import Workspace from './lib/Workspace.js';
 
-export default class WorkspaceManager {
+export default class WorkspaceManager extends EventEmitter {
 
-<<<<<<< HEAD
-    #config;
-    #workspaces;
-
-    constructor(config) {
-        this.#config = config;
-        this.#workspaces = new Map();
-=======
     #rootPath;
     #index;
     #openWorkspaces;
@@ -73,19 +32,26 @@ export default class WorkspaceManager {
 
     initialize() {
         this.#loadWorkspacesSync();
->>>>>>> origin/dev
     }
 
     createWorkspace(id, options = {}) {
-        if (!id) { return new Workspace(); }
+        if (!id) { throw new Error('Workspace ID is required'); }
+        if (typeof id !== 'string') { throw new Error('Workspace ID must be a string'); }
+
+        id = this.#parseWorkspaceId(id);
+        options = this.#validateWorkspaceOptions(options);
+
         if (this.#workspaces.has(id)) {
-            throw new Error(`Workspace with id "${id}" already exists`);
+            throw new Error(`Workspace with id "${id}" already exists, use getWorkspace(id) to retrieve it`); // Maybe we should just return the workspace right away?
         }
 
+        debug(`Creating workspace with ID "${id}"`);
         const workspace = new Workspace(id, options);
-        this.#workspaces.set(id, workspace);
+        const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
+        this.#workspaces.set(id, proxiedWorkspace);
 
-        return workspace;
+        this.#saveWorkspacesSync();
+        return proxiedWorkspace;
     }
 
     getWorkspace(id) {
@@ -104,8 +70,6 @@ export default class WorkspaceManager {
         return this.#workspaces.values();
     }
 
-<<<<<<< HEAD
-=======
     importWorkspace(workspacePath) { /** Wont implement atm */ }
 
     exportWorkspace(workspaceId, workspacePath) { /** Wont implement atm */ }
@@ -172,15 +136,33 @@ export default class WorkspaceManager {
         return options;
     }
 
->>>>>>> origin/dev
     #parseWorkspaceId(id) {
-        // Remove all non-alphanumeric characters except dot, underscore and dash
-        id = id.replace(/[^a-zA-Z0-9_.-]/g, '');
-        if (id.length === 0) {
-            throw new Error('Invalid workspace ID');
-        }
+        // work.mb
+        // work.acme
+        // .work.acme
 
+        // Remove leading dot
+        id = id.replace(/^\./, '');
+        // Remove all non-alphanumeric characters except dot, underscore and dash
+        id = id.replace(/[^a-zA-Z0-9_-]/g, '');
+        id = id.trim();
+        if (id.length === 0) { throw new Error('Invalid workspace ID'); }
+        id = id.toLowerCase();
         return id;
     }
 
+    #isValidHexColor(color) {
+        const hexColorRegex = /^#([0-9A-F]{3}|[0-9A-F]{6})$/i;
+        return hexColorRegex.test(color);
+    }
+
+    #isValidUrl(url) {
+        const urlRegex = /^(?:[a-z]+:)?\/\//i;
+        return urlRegex.test(url);
+    }
+
+    #getRandomColor(opts = {}) {
+        // https://www.npmjs.com/package/randomcolor
+        return randomcolor(opts);
+    }
 }

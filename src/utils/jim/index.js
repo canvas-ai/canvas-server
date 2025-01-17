@@ -9,21 +9,24 @@ const debug = debugInstance('canvas:service:jim');
 
 class JsonIndexManager {
 
-    constructor(rootPath, driver = 'conf') {
-        if (!rootPath) { throw new Error('rootPath is required'); }
+    constructor(options = {
+        rootPath: null,
+        driver: 'conf',
+    }) {
+        if (!options.rootPath) { throw new Error('rootPath is required'); }
 
-        this.rootPath = rootPath;
-        this.driver = driver;
-        debug('Initializing JsonIndexManager service with rootPath:', rootPath);
-        debug('Default driver:', driver);
+        this.rootPath = options.rootPath;
+        this.driver = options.driver;
+        debug('Initializing JsonIndexManager service with rootPath: ', this.rootPath);
+        debug('Default driver: ', this.driver);
         this.indices = new Map();
     }
 
-    create(name, driver = this.driver) {
+    createIndex(name, driver = this.driver) {
         const id = `${name}/${driver}`;
         if (this.indices.has(id)) {
             console.warn(`Index '${name}' already exists for driver ${driver}`);
-            return this.get(name, driver);
+            return this.getIndex(name, driver);
         }
 
         if (driver !== 'conf') {
@@ -39,7 +42,7 @@ class JsonIndexManager {
         return index;
     }
 
-    get(name, driver = this.driver) {
+    getIndex(name, driver = this.driver) {
         const id = `${name}/${driver}`;
 
         if (!this.indices.has(id)) {
@@ -49,7 +52,7 @@ class JsonIndexManager {
         return this.indices.get(id);
     }
 
-    list() { return Array.from(this.indices.keys()); }
+    listIndexes() { return Array.from(this.indices.keys()); }
 
 }
 
