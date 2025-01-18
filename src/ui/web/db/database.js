@@ -3,10 +3,8 @@ import env from '../../../env.js';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(env.CANVAS_SERVER_DB, 'server.sqlite');
 
 let db;
