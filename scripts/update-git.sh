@@ -7,6 +7,7 @@ CANVAS_GROUP="${CANVAS_GROUP:-www-data}"
 TARGET_BRANCH="${TARGET_BRANCH:-dev}"
 LOG_FILE="${LOG_FILE:-/var/log/canvas-deploy.log}"
 REQUIRED_NODE_VERSION="${REQUIRED_NODE_VERSION:-20}"
+LOCKFILE="/var/run/canvas-update.lock"
 
 # Exit on any error
 set -e
@@ -47,6 +48,13 @@ check_node_version() {
 touch "$LOG_FILE"
 chown "$CANVAS_USER:$CANVAS_GROUP" "$LOG_FILE"
 
+# Check system requirements
+log_message "Checking system requirements..."
+check_command "git"
+check_command "node"
+check_command "pm2"
+check_node_version
+
 log_message "Starting canvas-server update ($TARGET_BRANCH)..."
 
 # Ensure we run under root
@@ -66,12 +74,14 @@ if ! getent group "$CANVAS_GROUP" >/dev/null; then
     exit 1
 fi
 
-# Check system requirements
-log_message "Checking system requirements..."
-check_command "git"
-check_command "node"
-check_command "pm2"
-check_node_version
+# Check for a lock file
+if [ -e "$LOCKFILE" ]; then
+    log_message "Another instance of the script is already running."
+    exit 1
+fi
+
+trap 'rm -f "$LOCKFILE"' EXIT
+touch "$LOCKFILE"
 
 # Check if directory exists, if not clone the repository
 if [ ! -d "$CANVAS_ROOT" ]; then

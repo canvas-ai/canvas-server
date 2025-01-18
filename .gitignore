@@ -9,12 +9,29 @@
 !/runtime/.keep
 
 ## Data directories
-/server/data/**
-/server/workspaces/**
-/user/**
-!user/.keep
 /data/**
 !data/.keep
+
+/server/cache/**
+!server/cache/.keep
+
+/server/data/**
+!server/data/.keep
+
+/server/db/**
+!server/db/.keep
+
+/server/roles/**
+!server/roles/.keep
+
+/server/var/**
+!server/var/.keep
+
+/server/workspaces/**
+!server/workspaces/.keep
+
+/user/**
+!user/.keep
 
 ## Dev
 /.vscode
