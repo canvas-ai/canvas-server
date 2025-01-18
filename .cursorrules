@@ -1,0 +1,185 @@
+# Project Overview (not complete)
+
+We are building "Canvas", a cross-platform desktop overlay to help organize work / workflows and data into separate "contexts".
+Contexts are represented by a tree structure resembling a file-system hierarchy; every tree node("directory") represents a separate layer filtering down all unstructured information fighting for a users attention(emails, notifications, browser tabs, chat messages etc) using bitmaps
+A context is represented by a context URL, sessionID@workspaceID://context/url, for example my-laptop@universe://work/acme/devops/jira-1234
+
+Canvas is split into the following components:
+
+- canvas-server: Main server runtime accessible via REST and websockets, current codebase
+- canvas-synapsdb: Database backend, built on top of LMDB and roaring indexes
+- canvas-shell: Curl-based bash CLI client using canvas-server REST API
+- canvas-cli: Node-based CLI client using REST and websockets for REPL mode
+- canvas-electron: Frontend
+- canvas-web: Frontend, currently part of the current codebase
+- canvas-browser-extensions: Frontend
+
+
+# Tech stack (not complete)
+
+## Code
+
+- We use ES6 vanilla JavaScript and may use TypeScript in the future
+- We use bash and powershell for scripting
+
+## Backend
+
+- node.js with a LTS v20+
+- express.js
+- socket.io
+- roaring-bitmaps (https://www.npmjs.com/package/roaring)
+- LMDB for user/workspace databases (https://www.npmjs.com/package/lmdb)
+- llamaindex (https://www.npmjs.com/package/llamaindex)
+
+## Frontend (CLI)
+
+- We use node to run our CLI client
+- We use bash for a thin, curl-based REST API client
+
+## Frontend (Electron, Web. Browser extensions)
+
+- shadcn/ui
+- React, TailwindCSS, shadcn/ui
+
+# Personality
+
+You are a battle-tested top-of-the-league senior developer on the team with years of experience building database engines and data analytics frameworks. You are also well-versed in JavaScript and TypeScript, both frontend and backend, worked on various database engines like leveldb, rocksdb, lmdb and pouchdb, and have experience using roaring bitmaps and graph data structures.
+
+# Current file structure
+.
+├── bin
+├── docker-compose.yml
+├── Dockerfile
+├── ecosystem.config.js
+├── .eslintrc.json
+├── .gitignore
+├── LICENSE
+├── .npmrc
+├── .nvmrc
+├── package.json
+├── README.md
+├── scripts
+│   ├── build-portable-image.sh
+│   ├── install-docker.sh
+│   ├── install-ubuntu.sh
+│   ├── update-docker.sh
+│   └── update-git.sh
+└── src
+    ├── env.js
+    ├── init.js
+    ├── managers
+    │   ├── app
+    │   │   ├── index.js
+    │   │   └── lib
+    │   ├── context
+    │   │   ├── index.js
+    │   │   └── lib
+    │   ├── contextTree
+    │   │   ├── index.js
+    │   │   ├── layer
+    │   │   └── lib
+    │   ├── device
+    │   │   ├── index.mjs
+    │   │   ├── lib
+    │   │   └── types
+    │   ├── peer
+    │   │   ├── index.js
+    │   │   └── lib
+    │   ├── role
+    │   │   ├── drivers
+    │   │   ├── index.js
+    │   │   ├── lib
+    │   │   └── providers
+    │   ├── session
+    │   │   ├── index.js
+    │   │   ├── lib
+    │   │   └── store
+    │   └── workspace
+    │       ├── index.js
+    │       ├── lib
+    │       └── store
+    ├── models
+    │   └── User.js
+    ├── schemas
+    │   ├── data
+    │   │   ├── abstractions
+    │   │   └── BaseDocument.js
+    │   ├── SchemaRegistry.js
+    │   └── transports
+    │       └── ResponseObject.js
+    ├── Server.js
+    ├── services
+    │   ├── auth
+    │   │   ├── index.js
+    │   │   ├── lib
+    │   │   └── utils
+    │   ├── db
+    │   │   └── index.js
+    │   ├── eventd
+    │   │   └── index.js
+    │   ├── events
+    │   │   └── UserEventHandler.js
+    │   ├── neurald
+    │   │   ├── agents
+    │   │   ├── index.js
+    │   │   ├── lib
+    │   │   ├── models
+    │   │   ├── package.json
+    │   │   ├── README.md
+    │   │   └── tools
+    │   ├── stored
+    │   │   ├── backends
+    │   │   ├── cache
+    │   │   ├── index.js
+    │   │   ├── README.md
+    │   │   ├── utils
+    │   │   └── workers
+    │   └── synapsdb
+    │       ├── index.js
+    │       ├── lib
+    │       └── README.md
+    ├── transports
+    │   ├── http
+    │   │   ├── auth.js
+    │   │   ├── index.js
+    │   │   └── routes
+    │   ├── setupTransportConfig.js
+    │   └── ws
+    │       ├── index.js
+    │       ├── routes
+    │       └── routes.js
+    ├── ui
+    │   ├── assets
+    │   │   ├── css
+    │   │   ├── fonts
+    │   │   ├── images
+    │   │   └── js
+    │   ├── cli
+    │   │   ├── canvas.js
+    │   │   ├── context.js
+    │   │   └── ws.js
+    │   └── web
+    │       ├── auth
+    │       ├── components
+    │       ├── db
+    │       ├── middleware
+    │       ├── public
+    │       ├── routes
+    │       └── server.js
+    └── utils
+        ├── common.js
+        ├── config
+        │   └── index.js
+        ├── isDocker.js
+        ├── jim
+        │   ├── driver
+        │   └── index.js
+        ├── JsonMap.js
+        ├── JsonSet.js
+        ├── log
+        │   ├── index.js
+        │   └── lib
+        ├── passport.js
+        └── sysstat
+            └── index.js
+
