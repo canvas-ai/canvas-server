@@ -112,6 +112,7 @@ packer_cache/
 *.bz
 *.bz2
 *.db
+*.sqlite
 *.gz
 *.lcov
 *.lock
