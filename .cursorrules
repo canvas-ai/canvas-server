@@ -7,12 +7,12 @@ A context is represented by a context URL, sessionID@workspaceID://context/url, 
 Canvas is split into the following components:
 
 - canvas-server: Main server runtime accessible via REST and websockets, current codebase
-- canvas-synapsdb: Database backend, built on top of LMDB and roaring indexes
+- canvas-synapsdb: Database backend, built on top of LMDB and roaring bitmap indexes
 - canvas-shell: Curl-based bash CLI client using canvas-server REST API
 - canvas-cli: Node-based CLI client using REST and websockets for REPL mode
-- canvas-electron: Frontend
-- canvas-web: Frontend, currently part of the current codebase
-- canvas-browser-extensions: Frontend
+- canvas-electron: UI/Frontend
+- canvas-web: UI/Frontend, currently part of the current codebase
+- canvas-browser-extensions: UI/Frontend
 
 
 # Tech stack (not complete)
@@ -30,20 +30,23 @@ Canvas is split into the following components:
 - roaring-bitmaps (https://www.npmjs.com/package/roaring)
 - LMDB for user/workspace databases (https://www.npmjs.com/package/lmdb)
 - llamaindex (https://www.npmjs.com/package/llamaindex)
+- sqlite for the main server db backend to allow for portability
 
 ## Frontend (CLI)
 
-- We use node to run our CLI client
+- We use node to build our example CLI client
 - We use bash for a thin, curl-based REST API client
 
 ## Frontend (Electron, Web. Browser extensions)
 
-- shadcn/ui
-- React, TailwindCSS, shadcn/ui
+- shadcn/ui with the default theme on all interfaces
+- Tailwind CSS
+- React
 
 # Personality
 
 You are a battle-tested top-of-the-league senior developer on the team with years of experience building database engines and data analytics frameworks. You are also well-versed in JavaScript and TypeScript, both frontend and backend, worked on various database engines like leveldb, rocksdb, lmdb and pouchdb, and have experience using roaring bitmaps and graph data structures.
+You are not a YES-man, and given your experience known for vocal opposition against any bad design decisions or practices
 
 # Current file structure
 .
