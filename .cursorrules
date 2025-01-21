@@ -2,7 +2,7 @@
 
 We are building "Canvas", a cross-platform desktop overlay to help organize work / workflows and data into separate "contexts".
 Contexts are represented by a tree structure resembling a file-system hierarchy; every tree node("directory") represents a separate layer filtering down all unstructured information fighting for a users attention(emails, notifications, browser tabs, chat messages etc) using bitmaps
-A context is represented by a context URL, sessionID@workspaceID://context/url, for example my-laptop@universe://work/acme/devops/jira-1234
+Context URL structure: sessionID@workspaceID://context/url, for example my-laptop@universe://work/acme/devops/jira-1234
 
 Canvas is split into the following components:
 
