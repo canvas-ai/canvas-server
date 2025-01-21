@@ -17,12 +17,13 @@ const MAX_SESSIONS = 32; // 2^5
 class SessionManager extends EventEmitter {
     static #instance = null;
     #maxSessions;
-    #user;
+    #initialized = false;
 
-    static getInstance(options) {
+    static async getInstance(options) {
         if (!SessionManager.#instance) {
             SessionManager.#instance = new SessionManager(options);
         }
+        await SessionManager.#instance.initialize();
         return SessionManager.#instance;
     }
 
@@ -33,120 +34,79 @@ class SessionManager extends EventEmitter {
         super();
         log('Initializing Session Manager');
 
-        if (!options.contextManager) {
-            throw new Error('Context manager required');
-        }
-
-        this.contextManager = options.contextManager;
-
-        this.sessionStore = SessionStore();
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
-
-        // TODO: Refactor to use nested maps and serialize/deserialize to/from the session store
-        // sessionID -> Map() which gets forwarede to the session object
-        // deviceID -> device object within the session object to track
-        // which devices are connected to the session
-        // this.sessions = new Map();
-        
     }
 
-    getSession(user, id, createIfNotFound = false) {
+    async initialize() {
+        if (this.#initialized) {
+            return;
+        }
+
+        this.sessionStore = await SessionStore();
+        this.#initialized = true;
+    }
+
+    async getSession(user, name, createIfNotFound = false) {
         let session;
 
-        if (!id || id === null) {
-            log('No session ID provided, initializing a default session');
-            throw new Error('No session ID provided');
+        if (!name || name === null) {
+            log('No session name provided, initializing a default session');
+            throw new Error('No session name provided');
         } else {
-            session = this.sessionStore.get(id);
+            session = await this.sessionStore.getUserSession(user.id, name);
             if (!session && createIfNotFound) {
-                session = this.createSession(user, id);
+                session = await this.createSession(user, name);
             }
             if (!session) {
-                throw new Error(`Session with id "${id}" not found`);
+                throw new Error(`Session with name "${name}" not found`);
             }
         }
 
         if (session.userId !== user.id) {
-            throw new Error(`Session with id "${id}" does not belong to the user`);
+            throw new Error(`Session with name "${name}" does not belong to the user`);
         }
 
         return session;
     }
 
-    createSession(user, id, sessionOptions = {}) {
-        if(!id || id === null) {
-            throw new Error('No session ID provided');
+    async createSession(user, name, sessionOptions = {}) {
+        if(!name || name === null) {
+            throw new Error('No session name provided');
         }
 
         if (this.sessionStore.size >= this.#maxSessions) { throw new Error('Maximum number of sessions reached'); }
 
-        log(`Creating session: ${id}`);
+        log(`Creating session: ${name}`);
 
-        if (this.sessionStore.has(id)) {
-            log(`Session id "${id}" already exists in session store`);
-            const session = this.sessionStore.get(id);
-            if (session.userId !== user.id) {
-                throw new Error(`Session with id "${id}" already exists and does not belong to the user`);
+        const sess = await this.sessionStore.getUserSession(user.id, name);
+
+        if (sess) {
+            log(`Session name "${name}" already exists in session store`);
+            if (sess.userId !== user.id) {
+                throw new Error(`Session with name "${name}" already exists and does not belong to the user`);
             }
-            return session;
+            return sess;
         }
 
-        const session = new Session(id, { ...sessionOptions, userId: user.id }, this.contextManager);
-        this.sessionStore.setSync(id, session.toJSON());
-        this.#saveSessionToDb(session);
+        const session = new Session(name, { ...sessionOptions, userId: user.id });
+        const dbSession = await this.sessionStore.saveSession(session.toJSON());
 
-        log(`Session id "${id}" created, sessionOptions: ${JSON.stringify(sessionOptions)}`);
-        this.emit('session-created', id); // Maybe I should return session instead, we'll see
+        log(`Session name "${name}" created, sessionOptions: ${JSON.stringify(sessionOptions)}`);
+        this.emit('session:created', name); // Maybe I should return session instead, we'll see
 
-        return session;
+        return dbSession;
     }
 
     async listSessions(user) {
-        const sessions = this.sessionStore.values();
-        return Array.from(sessions).filter(session => session.userId === user.id);
+        return await this.sessionStore.getUserSessions(user.id);
     }
 
-    deleteSession(user, id) {
-        log(`Deleting session: ${id}`);
-
-        if (!this.sessionStore.has(id)) {
-            log(`Session id "${id}" not found in session store`);
-            return false;
-        }
-
-        const session = this.sessionStore.get(id);
-        if (session.userId !== user.id) {
-            throw new Error(`Session with id "${id}" does not belong to the user`);
-        }
-
-        if (!this.#deleteSessionFromDb(id)) {
-            throw new Error('Error deleting session from DB');
-        }
-
-        log(`Session id "${id}" deleted`);
-        this.emit('session-deleted', id);
-
-        return id;
+    async updateSession(id, data) {
+        return await this.sessionStore.updateSession(id, data);
     }
 
-    async saveSessions() {
-        for (let session of this.sessionStore.values()) {
-            await this.#saveSessionToDb(session);
-        }
-    }
-    
-    #saveSessionToDb(session) {
-        if(!session.userId) {
-            throw new Error('Session user ID is required');
-        }
-        log(`Saving session "${session.id}" to DB`);
-        let json = session.toJSON();
-        return this.sessionStore.setSync(session.id, json); // sync
-    }
-
-    #deleteSessionFromDb(id) {
-        log(`Deleting session "${id}" from DB`);
-        return this.sessionStore.deleteSync(id);    // sync
+    async deleteSession(user, name) {
+        return await this.sessionStore.deleteUserSession(user.id, name);
     }
 }
 

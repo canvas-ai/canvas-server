@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { genUUID } from '../../extensions/transports/net-ipc/lib/utils.js';
 
 class User {
   constructor(email, password, id = null) {
@@ -8,10 +9,7 @@ class User {
   }
 
   _generateUniqueId() {
-    const timestamp = Date.now().toString(36);
-    const randomness = Math.random().toString(36).substr(2, 5);
-    const userSpecific = this.email ? this.email.substr(0, 3) : 'xxx';
-    return `${timestamp}-${userSpecific}-${randomness}`;
+    return genUUID();
   }
 
   static async hashPassword(password) {

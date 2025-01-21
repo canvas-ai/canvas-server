@@ -19,7 +19,7 @@ export default function configurePassport(jwtSecret) {
     passwordField: 'password'
   }, async (email, password, done) => {
     try {
-      const userStore = UserStore();
+      const userStore = await UserStore();
       const user = await userStore.findByEmail(email);
       if (!user) {
         return done(null, false, { message: 'Incorrect email.' });
@@ -47,7 +47,7 @@ export default function configurePassport(jwtSecret) {
     secretOrKey: jwtSecret
   }, async (payload, done) => {
     try {
-      const userStore = UserStore();
+      const userStore = await UserStore();
       const user = await userStore.findById(payload.id);
       if (!user) {
         return done(null, false);

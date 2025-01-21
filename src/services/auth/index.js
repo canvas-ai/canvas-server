@@ -10,7 +10,6 @@ class AuthService extends EventEmitter {
   constructor(config) {
     super();
     this.config = config;
-    this.userStore = UserStore();
     this.sessionService = new SessionService(config);
     this.userEventHandler = new UserEventHandler({
       auth: this,
@@ -22,27 +21,30 @@ class AuthService extends EventEmitter {
     if (!validator.isEmail(email)) {
       throw new Error('Invalid email format');
     }
+    const userStore = await UserStore();
 
-    const existingUser = await this.userStore.findByEmail(email);
+    const existingUser = await userStore.findByEmail(email);
     if (existingUser) {
       throw new Error('Email already exists');
     }
 
     const hashedPassword = await User.hashPassword(password);
-    const user = await this.userStore.create(new User(email, hashedPassword));
+    const u = new User(email, hashedPassword); // we generate the user id here for now
+    await userStore.create(u);
     
-    this.emit('user:created', user);
+    this.emit('user:created', u);
     
-    const token = this.sessionService.generateToken(user);
-    return { user, token };
+    const token = this.sessionService.generateToken(u);
+    return { user: u, token };
   }
 
   async login(email, password) {
     if (!validator.isEmail(email)) {
       throw new Error('Invalid email format');
     }
+    const userStore = await UserStore();
 
-    const user = await this.userStore.findByEmail(email);
+    const user = await userStore.findByEmail(email);
     if (!user) {
       throw new Error('User not found');
     }

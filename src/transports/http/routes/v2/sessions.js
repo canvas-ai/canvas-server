@@ -3,18 +3,11 @@ const router = express.Router();
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:server:rest:sessions');
 import SessionManager from '../../../../managers/session/index.js';
-import ContextManager from '../../../../managers/context/index.js';
-
-const sessionManager = SessionManager({
-  contextManager: new ContextManager({
-    indexStore: new Map(),
-    db: new Map(),
-  }),
-});
 
 // List all sessions
 router.get('/', async (req, res) => {
     const response = new req.ResponseObject();
+    const sessionManager = await SessionManager({});
     try {
         const sessions = await sessionManager.listSessions(req.user);
         debug('[GET] List sessions');
@@ -31,8 +24,11 @@ router.post('/', async (req, res) => {
     if (!name) {
         return res.json(response.badRequest('Session name is required').getResponse());
     }
+
+    const sessionManager = await SessionManager({});
+
     try {
-        const session = await sessionManager.createSession(req.user, name);
+        const session = await sessionManager.createSession(req.user, name, { initializer: req.headers['x-app-name'] || null });
         res.json(response.success(session).getResponse());
     } catch (error) {
         debug(`[POST] Create session error: ${error}`);
@@ -44,6 +40,8 @@ router.post('/', async (req, res) => {
 router.get('/:name', async (req, res) => {
     const response = new req.ResponseObject();
     const { name } = req.params;
+
+    const sessionManager = await SessionManager({});
 
     try {
         debug(`[GET] Get session: ${name}`);
@@ -62,6 +60,8 @@ router.get('/:name', async (req, res) => {
 router.delete('/:name', async (req, res) => {
     const response = new req.ResponseObject();
     const { name } = req.params;
+
+    const sessionManager = await SessionManager({});
 
     try {
         debug(`[DELETE] Delete session: ${name}`);

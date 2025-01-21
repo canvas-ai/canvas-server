@@ -1,39 +1,47 @@
-import env from "../../../env.js";
-import path from "path";
-import JsonMap from "../../../utils/JsonMap.js";
+import UserRepository from '../../../services/db/prisma/repositories/User.js';
 
-class UserStore extends JsonMap {
+class UserStore {
   static #instance;
+  #userRepository;
 
   constructor() {
     if (UserStore.#instance) {
       throw new Error('UserStore is a singleton. Use UserStore.getInstance() instead.');
     }
-    super(path.join(env.CANVAS_SERVER_DB, "users"));
   }
 
-  static getInstance() {
+  async initialize() {
+    if(!this.#userRepository) {
+      this.#userRepository = new UserRepository();
+    }
+  }
+
+  static async getInstance() {
     if (!UserStore.#instance) {
       UserStore.#instance = new UserStore();
     }
+    await UserStore.#instance.initialize();
     return UserStore.#instance;
   }
 
   findByEmail(email) {
-    return Array.from(this.values()).filter(user => {
-      if (user.email.toLowerCase() === email.toLowerCase()) {
-        return user;
-      }
-    })[0];
+    return this.#userRepository.findByEmail(email);
   }
 
   create(user) {
-    this.set(user.id, user);
-    return user;
+    return this.#userRepository.create(user);
   }
 
   findById(id) {
-    return this.get(id);
+    return this.#userRepository.findById(id);
+  }
+
+  update(user) {
+    return this.#userRepository.update(user);
+  }
+
+  delete(id) {
+    return this.#userRepository.delete(id);
   }
 }
 
