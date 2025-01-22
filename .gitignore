@@ -3,10 +3,10 @@
 !/runtime/.keep
 
 ## App config
-/server/config/**
-!/server/config/example-*.json
-!/server/config/default-*.json
-!/server/config/.keep
+/config/**
+!/config/example-*.json
+!/config/default-*.json
+!/config/.keep
 
 ## Data directories
 /data/**
@@ -29,7 +29,6 @@
 
 /server/workspaces/**
 !server/workspaces/.keep
-
 /user/**
 !user/.keep
 
