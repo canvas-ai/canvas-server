@@ -104,7 +104,7 @@ run_as_canvas_user "/usr/bin/git reset --hard origin/$TARGET_BRANCH"
 
 # Update submodules
 log_message "Updating submodules..."
-run_as_canvas_user "/usr/bin/git submodule update --init"
+run_as_canvas_user "/usr/bin/git submodule update --init --remote"
 
 # Install dependencies
 log_message "Installing dependencies..."

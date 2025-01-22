@@ -140,7 +140,7 @@ update_canvas() {
         handle_error "$?" "Failed to pull latest changes from git"
     fi
 
-    if ! git submodule update --init; then
+    if ! git submodule update --init --remote; then
         handle_error "$?" "Failed to update submodules"
     fi
 
@@ -170,7 +170,7 @@ install_canvas() {
         handle_error "$?" "Failed to checkout branch $CANVAS_REPO_TARGET_BRANCH"
     fi
 
-    if ! git submodule update --init; then
+    if ! git submodule update --init --remote; then
         handle_error "$?" "Failed to initialize submodules"
     fi
 
