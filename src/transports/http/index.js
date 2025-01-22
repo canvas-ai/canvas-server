@@ -24,7 +24,8 @@ const DEFAULT_CONFIG = {
         jwtToken: process.env.CANVAS_TRANSPORT_HTTP_JWT_TOKEN || 'canvas-server-token',
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
-    }
+    },
+    staticPath: process.env.CANVAS_TRANSPORT_HTTP_STATIC_PATH || './src/ui/web/dist',
 };
 
 class HttpRestTransport {
@@ -36,11 +37,11 @@ class HttpRestTransport {
         // Load transports config if available
         let transportConfig = {};
         const configPath = path.join(
-            path.join(__dirname, '../../../server/config'), 
+            path.join(__dirname, '../../../server/config'),
             'canvas-server.transports.json'
         );
 
-        
+
         try {
             if (fs.existsSync(configPath)) {
                 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -52,10 +53,10 @@ class HttpRestTransport {
             debug(`Error loading transport config: ${error.message}`);
         }
 
-        this.#config = { 
-            ...DEFAULT_CONFIG, 
+        this.#config = {
+            ...DEFAULT_CONFIG,
             ...transportConfig,
-            ...options 
+            ...options
         };
         this.ResponseObject = ResponseObject;
         debug(`HTTP Transport initialized with config:`, this.#config);
@@ -102,16 +103,35 @@ class HttpRestTransport {
 
     #configureExpress() {
         const app = express();
+
+        // Configure static file serving
+        const staticPath = path.resolve(this.#config.staticPath);
+        if (fs.existsSync(staticPath)) {
+            debug(`Serving static files from: ${staticPath}`);
+            app.use(express.static(staticPath));
+
+            // Serve index.html for all non-API routes to support client-side routing
+            app.get('*', (req, res, next) => {
+                if (req.path.startsWith(this.#config.basePath)) {
+                    return next();
+                }
+                res.sendFile(path.join(staticPath, 'index.html'));
+            });
+        } else {
+            debug(`Static path not found: ${staticPath}`);
+        }
+
+        // Existing middleware
         app.use(cors());
         app.use(express.json());
         app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
         app.use(this.#setSecurityHeaders);
-        
+
         // Initialize Passport
         configurePassport(this.#config.auth.jwtSecret);
         app.use(passport.initialize());
-        
+
         return app;
     }
 
@@ -138,7 +158,7 @@ class HttpRestTransport {
 
         // Protect all other routes with authentication
         app.use(this.#config.basePath, authService.getAuthMiddleware());
-        
+
         // API routes (protected)
         this.#loadApiRoutes(app);
     }
@@ -147,7 +167,7 @@ class HttpRestTransport {
         for (const version of API_VERSIONS) {
             const versionPath = path.join(__dirname, 'routes', version);
             debug(`Attempting to load routes from: ${versionPath}`);
-            
+
             if (!fs.existsSync(versionPath)) {
                 debug(`Routes directory not found: ${versionPath}`);
                 continue;
@@ -156,7 +176,7 @@ class HttpRestTransport {
             try {
                 const routeFiles = fs.readdirSync(versionPath)
                     .filter(file => file.endsWith('.js'));
-                
+
                 if (routeFiles.length === 0) {
                     debug(`No route files found in: ${versionPath}`);
                     continue;
@@ -169,7 +189,7 @@ class HttpRestTransport {
                     const route = await import(fileUrl);
                     const routeBasePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
                     debug(`Loading route: ${routeBasePath}`);
-                    
+
                     app.use(routeBasePath, this.#injectDependencies.bind(this), route.default);
                 }
             } catch (error) {
