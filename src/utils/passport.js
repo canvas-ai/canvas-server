@@ -1,8 +1,7 @@
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
-import UserStore from '../managers/user/store/index.js';
-import User from '../models/User.js';
+import User from '../managers/prisma/models/User.js';
 
 const cookieExtractor = (req) => {
   let token = null;
@@ -19,20 +18,17 @@ export default function configurePassport(jwtSecret) {
     passwordField: 'password'
   }, async (email, password, done) => {
     try {
-      const userStore = UserStore();
-      const user = await userStore.findByEmail(email);
+      const user = await User.findByEmail(email);
       if (!user) {
         return done(null, false, { message: 'Incorrect email.' });
       }
 
-      const u = new User(user.email, user.password, user.id);
-
-      const isValid = await u.comparePassword(password);
+      const isValid = await user.comparePassword(password);
       if (!isValid) {
         return done(null, false, { message: 'Incorrect password.' });
       }
 
-      return done(null, u);
+      return done(null, user);
     } catch (error) {
       return done(error);
     }
@@ -47,12 +43,11 @@ export default function configurePassport(jwtSecret) {
     secretOrKey: jwtSecret
   }, async (payload, done) => {
     try {
-      const userStore = UserStore();
-      const user = await userStore.findById(payload.id);
+      const user = await User.findById(payload.id);
       if (!user) {
         return done(null, false);
       }
-      return done(null, new User(user.email, user.password, payload.id));
+      return done(null, user);
     } catch (error) {
       return done(error);
     }
