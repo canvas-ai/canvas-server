@@ -9,7 +9,6 @@
     "test": "eslint . --ext .js",
     "test:fix": "eslint . --ext .js --fix",
     "cli": "node ./src/ui/cli",
-    "ui": "electron ./src/ui/electron",
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
     "pm2:start": "PM2_HOME=../var/pm2 pm2 start ecosystem.config.js --watch",
     "pm2:stop": "PM2_HOME=../var/pm2 pm2 stop ecosystem.config.js",
@@ -18,8 +17,15 @@
     "pm2:startup": "PM2_HOME=../var/pm2 pm2 startup ecosystem.config.js",
     "pm2:logs": "PM2_HOME=../var/pm2 pm2 logs ecosystem.config.js",
     "pm2:kill": "PM2_HOME=../var/pm2 pm2 kill",
-    "pm2:delete": "PM2_HOME=../var/pm2 pm2 delete ecosystem.config.js"
+    "pm2:delete": "PM2_HOME=../var/pm2 pm2 delete ecosystem.config.js",
+    "preinstall": "git submodule update --init --remote",
+    "postinstall": "npm run build -w src/ui/web"
   },
+  "workspaces": [
+    ".",
+    "src/ui/web",
+    "src/services/synapsdb"
+  ],
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
@@ -66,7 +72,6 @@
     "passport-local": "^1.0.0",
     "pm2": "^5.3.1",
     "randomcolor": "^0.6.2",
-    "react": "^19.0.0",
     "roaring": "^2.2.0",
     "socket.io": "^4.7.5",
     "sqlite": "^5.1.1",
