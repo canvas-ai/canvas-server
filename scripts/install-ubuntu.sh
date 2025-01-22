@@ -140,6 +140,10 @@ update_canvas() {
         handle_error "$?" "Failed to pull latest changes from git"
     fi
 
+    if ! git submodule update --init; then
+        handle_error "$?" "Failed to update submodules"
+    fi
+
     if ! npm install; then
         handle_error "$?" "Failed to install dependencies"
     fi
@@ -159,10 +163,15 @@ install_canvas() {
         handle_error "$?" "Failed to clone Canvas Server repository"
     fi
 
+
     cd $CANVAS_ROOT || handle_error "$?" "Failed to change directory to $CANVAS_ROOT"
 
     if ! git checkout $CANVAS_REPO_TARGET_BRANCH; then
         handle_error "$?" "Failed to checkout branch $CANVAS_REPO_TARGET_BRANCH"
+    fi
+
+    if ! git submodule update --init; then
+        handle_error "$?" "Failed to initialize submodules"
     fi
 
     if ! npm install; then
