@@ -29,7 +29,7 @@ const {
 } = pkg
 
 // Services
-import SynapsDB from './services/synapsdb/index.js';
+import SynapsDB from './services/synapsdb/src/index.js';
 
 // Managers
 //import SessionManager from './managers/session/index.js';
