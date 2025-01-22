@@ -13,7 +13,7 @@ class SessionService {
   }
 
   generateToken(user) {
-    return jwt.sign({ id: user.id }, this.config.jwtSecret, {
+    return jwt.sign({ id: user.id, email: user.email }, this.config.jwtSecret, {
       expiresIn: this.config.jwtLifetime
     });
   }

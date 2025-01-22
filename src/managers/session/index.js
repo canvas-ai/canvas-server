@@ -4,8 +4,7 @@ import debug from 'debug';
 const log = debug('canvas:session-manager');
 
 // Includes
-import Session from './lib/Session.js';
-import SessionStore from './store/index.js';
+import Session from '../prisma/models/Session.js';
 
 // Defaults
 const MAX_SESSIONS = 32; // 2^5
@@ -42,31 +41,11 @@ class SessionManager extends EventEmitter {
             return;
         }
 
-        this.sessionStore = await SessionStore();
         this.#initialized = true;
     }
 
-    async getSession(user, name, createIfNotFound = false) {
-        let session;
-
-        if (!name || name === null) {
-            log('No session name provided, initializing a default session');
-            throw new Error('No session name provided');
-        } else {
-            session = await this.sessionStore.getUserSession(user.id, name);
-            if (!session && createIfNotFound) {
-                session = await this.createSession(user, name);
-            }
-            if (!session) {
-                throw new Error(`Session with name "${name}" not found`);
-            }
-        }
-
-        if (session.userId !== user.id) {
-            throw new Error(`Session with name "${name}" does not belong to the user`);
-        }
-
-        return session;
+    async getSession(user, name) {
+        return await Session.findByUserIdAndName({ userId: user.id, name });
     }
 
     async createSession(user, name, sessionOptions = {}) {
@@ -74,39 +53,39 @@ class SessionManager extends EventEmitter {
             throw new Error('No session name provided');
         }
 
-        if (this.sessionStore.size >= this.#maxSessions) { throw new Error('Maximum number of sessions reached'); }
+        // if (this.sessionStore.size >= this.#maxSessions) { throw new Error('Maximum number of sessions reached'); }
 
         log(`Creating session: ${name}`);
 
-        const sess = await this.sessionStore.getUserSession(user.id, name);
+        let session = await Session.findByUserIdAndName({ userId: user.id, name });
 
-        if (sess) {
+        if (session) {
             log(`Session name "${name}" already exists in session store`);
-            if (sess.userId !== user.id) {
-                throw new Error(`Session with name "${name}" already exists and does not belong to the user`);
-            }
-            return sess;
+            return session;
         }
 
-        const session = new Session(name, { ...sessionOptions, userId: user.id });
-        const dbSession = await this.sessionStore.saveSession(session.toJSON());
+        session = await Session.create({ ...sessionOptions, name, user: user.id });
 
         log(`Session name "${name}" created, sessionOptions: ${JSON.stringify(sessionOptions)}`);
-        this.emit('session:created', name); // Maybe I should return session instead, we'll see
+        this.emit('session:created', session);
 
-        return dbSession;
+        return session;
     }
 
     async listSessions(user) {
-        return await this.sessionStore.getUserSessions(user.id);
+        return await Session.findMany({ userId: user.id });
     }
 
     async updateSession(id, data) {
-        return await this.sessionStore.updateSession(id, data);
+        await Session.update(id, data);
+        this.emit('session:updated', id, data);
+        return true;
     }
 
     async deleteSession(user, name) {
-        return await this.sessionStore.deleteUserSession(user.id, name);
+        await Session.deleteMany({ userId: user.id, name });
+        this.emit('session:deleted', { userId: user.id, name });
+        return true;
     }
 }
 

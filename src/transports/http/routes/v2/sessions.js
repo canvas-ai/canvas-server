@@ -45,7 +45,7 @@ router.get('/:name', async (req, res) => {
 
     try {
         debug(`[GET] Get session: ${name}`);
-        const session = await sessionManager.getSession(req.user, name, false);
+        const session = await sessionManager.getSession(req.user, name);
         if (!session) {
             return res.json(response.notFound('Session not found').getResponse());
         }

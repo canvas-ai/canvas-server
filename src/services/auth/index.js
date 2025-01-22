@@ -1,10 +1,9 @@
 import validator from 'validator';
-import User from '../../models/User.js';
-import UserStore from '../../managers/user/store/index.js';
 import SessionService from './lib/SessionService.js';
 import EventEmitter from 'eventemitter2';
 import { workspaceManager } from '../../Server.js';
 import UserEventHandler from '../events/UserEventHandler.js';
+import User from '../../managers/prisma/models/User.js';
 
 class AuthService extends EventEmitter {
   constructor(config) {
@@ -21,42 +20,43 @@ class AuthService extends EventEmitter {
     if (!validator.isEmail(email)) {
       throw new Error('Invalid email format');
     }
-    const userStore = await UserStore();
 
-    const existingUser = await userStore.findByEmail(email);
+    const existingUser = await User.findByEmail(email);
     if (existingUser) {
       throw new Error('Email already exists');
     }
 
     const hashedPassword = await User.hashPassword(password);
-    const u = new User(email, hashedPassword); // we generate the user id here for now
-    await userStore.create(u);
+    const user = await User.create({
+      email,
+      password: hashedPassword
+    });
     
-    this.emit('user:created', u);
+    this.emit('user:created', user);
     
-    const token = this.sessionService.generateToken(u);
-    return { user: u, token };
+    const token = this.sessionService.generateToken(user);
+    return { user, token };
   }
 
   async login(email, password) {
     if (!validator.isEmail(email)) {
       throw new Error('Invalid email format');
     }
-    const userStore = await UserStore();
 
-    const user = await userStore.findByEmail(email);
+    const user = await User.findByEmail(email);
     if (!user) {
       throw new Error('User not found');
     }
 
-    const userModel = new User(user.email, user.password, user.id);
-    const isValid = await userModel.comparePassword(password);
+    const isValid = await user.comparePassword(password);
     if (!isValid) {
       throw new Error('Invalid password');
     }
 
-    const token = this.sessionService.generateToken(userModel);
-    return { user: userModel, token };
+    delete user.password;
+
+    const token = this.sessionService.generateToken(user);
+    return { user, token };
   }
 
   logout(res) {
