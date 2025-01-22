@@ -1,0 +1,3 @@
+[submodule "src/ui/web"]
+	path = src/ui/web
+	url = https://github.com/canvas-ai/canvas-web.git
