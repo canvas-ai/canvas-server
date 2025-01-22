@@ -1,0 +1,8 @@
+[submodule "src/ui/web"]
+	path = src/ui/web
+	url = https://github.com/canvas-ai/canvas-web.git
+	branch = main
+[submodule "src/services/synapsdb"]
+	path = src/services/synapsdb
+	url = https://github.com/canvas-ai/canvas-synapsdb.git
+	branch = main

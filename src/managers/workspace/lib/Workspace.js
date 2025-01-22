@@ -5,7 +5,7 @@ const debug = debugMessage('canvas:context:workspace');
 
 export default class Workspace {
 
-    constructor(id, context, opts = {}) {
+    constructor(id, opts = {}) {
         if (!id) { throw new Error('Workspace ID required'); }
         if (typeof id !== 'string') { throw new Error('Workspace ID must be a string'); }
         this.id = id;

@@ -29,7 +29,7 @@ const {
 } = pkg
 
 // Services
-import SynapsDB from './services/synapsdb/index.js';
+import SynapsDB from './services/synapsdb/src/index.js';
 
 // Managers
 //import SessionManager from './managers/session/index.js';
@@ -91,8 +91,8 @@ const DEFAULT_TRANSPORTS = {
 
 // Managers
 const workspaceManager = new WorkspaceManager({
-    workspaceIndex: indexManager.createIndex('workspaces'),
-    rootPath: env.CANVAS_SERVER_DATA, // this path changes based on the user
+    indexStore: indexManager.createIndex('workspaces'),
+    rootPath: env.CANVAS_SERVER_WORKSPACES,
 });
 const treeManager = new TreeManager({
     treeIndexStore: indexManager.createIndex('contextTree'),

@@ -1,20 +1,36 @@
+## Portable runtimes
+/runtime/**
+!/runtime/.keep
+
 ## App config
 /config/**
 !/config/example-*.json
 !/config/default-*.json
 !/config/.keep
 
-## Portable runtimes
-/runtime/**
-!/runtime/.keep
-
 ## Data directories
-/server/**
-!/server/.keep
-/user/**
-!user/.keep
 /data/**
 !data/.keep
+
+/server/cache/**
+!server/cache/.keep
+
+/server/data/**
+!server/data/.keep
+
+/server/db/**
+!server/db/.keep
+
+/server/roles/**
+!server/roles/.keep
+
+/server/var/**
+!server/var/.keep
+
+/server/workspaces/**
+!server/workspaces/.keep
+/user/**
+!user/.keep
 
 ## Dev
 /.vscode
@@ -95,6 +111,7 @@ packer_cache/
 *.bz
 *.bz2
 *.db
+*.sqlite
 *.gz
 *.lcov
 *.lock
