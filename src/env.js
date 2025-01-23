@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import argv from 'node:process';
 
 // Utils
-const isPortable = () => existsSync(path.join(SERVER_ROOT, 'user', '.portable'));
+const isPortable = () => existsSync(path.join(SERVER_ROOT, 'user'));
 const getUserHome = () => {
     if (isPortable()) {
         return path.join(SERVER_ROOT, 'user');
@@ -33,7 +33,7 @@ const envConfig = {
     // Runtime
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
-    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || argv.argv.slice(2).includes('--minimal') ? 'minimal' : 'full',
+    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || argv.argv.slice(2).includes('--local') ? 'local' : 'remote',
 
     // Server paths
     CANVAS_SERVER_HOME: SERVER_HOME,
@@ -45,13 +45,14 @@ const envConfig = {
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
     CANVAS_SERVER_WORKSPACES: process.env.CANVAS_SERVER_WORKERS || path.join(SERVER_HOME, 'workspaces'),
 
-    // User paths (needed only for portable mode)
-    CANVAS_USER_HOME: USER_HOME,
+    // User paths (portable/single-user local mode)
+    CANVAS_USER_HOME: USER_HOME, // For remote mode, USER_HOME is set to CANVAS_SERVER_WORKSPACES/user@email.tld
     CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'config'),
     CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'cache'),
     CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'data'),
     CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'db'),
-    CANVAS_USER_VAR: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'var')
+    CANVAS_USER_VAR: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'var'),
+    CANVAS_USER_ROLES: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'roles')
 };
 
 /**

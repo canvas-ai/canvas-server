@@ -2,7 +2,7 @@
 	path = src/ui/web
 	url = https://github.com/canvas-ai/canvas-web.git
 	branch = main
-[submodule "src/services/synapsdb"]
-	path = src/services/synapsdb
-	url = https://github.com/canvas-ai/canvas-synapsdb.git
+[submodule "src/services/synapsd"]
+	path = src/services/synapsd
+	url = https://github.com/canvas-ai/canvas-synapsd.git
 	branch = main
