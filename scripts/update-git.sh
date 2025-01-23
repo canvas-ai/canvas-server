@@ -99,7 +99,7 @@ rm -rf "$CANVAS_ROOT/node_modules"
 
 # Pull latest changes
 log_message "Pulling latest changes from git..."
-run_as_canvas_user "/usr/bin/git pull --force origin $TARGET_BRANCH"
+run_as_canvas_user "/usr/bin/git fetch origin $TARGET_BRANCH"
 run_as_canvas_user "/usr/bin/git reset --hard origin/$TARGET_BRANCH"
 
 # Update submodules

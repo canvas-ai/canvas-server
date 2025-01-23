@@ -1,60 +1,42 @@
-## Portable runtimes
-/runtime/**
-!/runtime/.keep
+# Portable runtimes
+/runtimes/**
+!/runtimes/.keep
 
-## App config
-/server/config/**
+# Server data directories
+/server/**
+!/server/.keep
 !/server/config/example-*.json
 !/server/config/default-*.json
 !/server/config/.keep
-
-## Data directories
-/data/**
-!data/.keep
-
 /server/cache/**
 !server/cache/.keep
-
 /server/data/**
 !server/data/.keep
-
 /server/db/**
 !server/db/.keep
-
 /server/roles/**
 !server/roles/.keep
-
 /server/var/**
 !server/var/.keep
-
 /server/workspaces/**
 !server/workspaces/.keep
 
+# Canvas User directory (portable single-user use-case)
 /user/**
 !user/.keep
 
-## Dev
+# Dev
 /.vscode
 /.fossil-settings
 /_SCRATCH_
 /_TODO_
 /_OLD_
 
-## Documentation
-/docs/**
-!/docs/.keep
-!/docs/ui
-!/docs/ui/*
-
-## Logs
+# Logs
 *.log
 */*/logs/*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
 
-## Node
+# Node
 **/node_modules/
 **/node_modules.linux/
 **/node_modules.linux-musl/
@@ -81,7 +63,7 @@ typings/
 
 # dotenv environment variables file
 .env
-.env.test
+.env*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -107,7 +89,7 @@ typings/
 # Cache objects
 packer_cache/
 
-## Files
+# Files extensions (generic)
 *.box
 *.bz
 *.bz2
@@ -124,7 +106,7 @@ packer_cache/
 *.zip
 _test*
 
-## Runtime
+# Runtime
 *.pid
 *.pid.lock
 *.seed
