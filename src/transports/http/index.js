@@ -19,6 +19,12 @@ const DEFAULT_CONFIG = {
     host: process.env.CANVAS_TRANSPORT_HTTP_HOST || '0.0.0.0',
     port: process.env.CANVAS_TRANSPORT_HTTP_PORT || 8001,
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
+    cors: {
+        origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'https://my.cnvs.ai'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true
+    },
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false, // FIX ME: https://github.com/orgs/canvas-ai/projects/2/views/1?pane=issue&itemId=81465641
         jwtToken: process.env.CANVAS_TRANSPORT_HTTP_JWT_TOKEN || 'canvas-server-token',
@@ -122,7 +128,13 @@ class HttpRestTransport {
         }
 
         // Existing middleware
-        app.use(cors());
+        app.use(cors({
+            origin: this.#config.cors.origins,
+            methods: this.#config.cors.methods,
+            allowedHeaders: this.#config.cors.allowedHeaders,
+            credentials: this.#config.cors.credentials
+        }));
+        
         app.use(express.json());
         app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
@@ -137,7 +149,6 @@ class HttpRestTransport {
 
     #setSecurityHeaders(req, res, next) {
         res.setHeader('Content-Security-Policy', "default-src 'self'");
-        res.setHeader('Access-Control-Allow-Origin', '*');
         next();
     }
 
