@@ -32,18 +32,17 @@ const {
 } = pkg
 
 // Managers
-//import SessionManager from './managers/session/index.js';
-import TreeManager from './managers/contextTree/index.js';
+import SessionManager from './managers/session/index.js';
 import WorkspaceManager from './managers/workspace/index.js';
 
+// Transports
 import setupTransportsConfig from './transports/setupTransportConfig.js';
 
 
 /**
- * Initialize main modules
+ * Initialize utils
  **/
 
-// Utils
 const config = new Config({
     userConfigDir: env.CANVAS_USER_CONFIG,
     serverConfigDir: env.CANVAS_SERVER_CONFIG,
@@ -55,21 +54,39 @@ const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
 const logLevel = env.LOG_LEVEL;
 const logger = winston.createLogger({
     level: logLevel,
-    format: winston.format.simple(),
+    format: winston.format.combine(
+        winston.format.timestamp({
+            format: 'YYYY-MM-DD HH:mm:ss'
+        }),
+        winston.format.printf(({ level, message, timestamp }) => {
+            return `${timestamp} ${level}: ${message}`;
+        })
+    ),
     transports: [
-        new winston.transports.File({ filename: logFile }),
-        // TODO: Add a debug-based transport
+        new winston.transports.File({
+            filename: logFile,
+            format: winston.format.combine(
+                winston.format.timestamp({
+                    format: 'YYYY-MM-DD HH:mm:ss'
+                }),
+                winston.format.printf(({ level, message, timestamp }) => {
+                    return `${timestamp} ${level}: ${message}`;
+                })
+            )
+        }),
     ],
-})
+});
 
-// Core Services
+/**
+ * Initialize Managers
+ **/
+
 const indexManager = new JsonIndexManager({
     rootPath: env.CANVAS_USER_DB,
     driver: 'conf'
 });
 
 const workspaceManager = new WorkspaceManager({
-    indexStore: indexManager.createIndex('workspaces'),
     rootPath: env.CANVAS_SERVER_WORKSPACES,
 });
 
@@ -333,7 +350,6 @@ class Server extends EventEmitter {
         const transportConfig = config.store?.server?.transports || {};
 
         const transportEntries = Object.entries({
-            ...DEFAULT_TRANSPORTS,
             ...transportConfig
         });
 
@@ -428,9 +444,7 @@ export {
     config,
     logger,
     indexManager,
-    db,
-    contextTree,
-    workspaceManager,
+    workspaceManager
 };
 
 export default Server;

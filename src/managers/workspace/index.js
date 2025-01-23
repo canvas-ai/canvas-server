@@ -1,8 +1,11 @@
 // Utils
 import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
-const debug = debugMessage('canvas:context:workspace-manager');
+const debug = debugMessage('canvas:workspace-manager');
 import randomcolor from 'randomcolor';
+
+// DB Backend
+import Db from '../../services/synapsd/src/index.js'
 
 // Includes
 import Workspace from './lib/Workspace.js';
@@ -17,7 +20,6 @@ export default class WorkspaceManager extends EventEmitter {
 
     constructor(options = {}) {
         super(); // EventEmitter
-
 
         if (!options.rootPath) { throw new Error('Root path is required'); }
         this.#rootPath = options.rootPath;
