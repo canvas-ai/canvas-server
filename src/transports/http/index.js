@@ -33,6 +33,7 @@ const DEFAULT_CONFIG = {
     cors: {
         origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
             'http://127.0.0.1',
+            'http://localhost',
             'https://*.cnvs.ai',
             'https://cnvs.ai',
             'https://*.getcanvas.org',
@@ -159,7 +160,7 @@ class HttpRestTransport {
                 ) {
                     callback(null, true);
                 } else {
-                    callback(new Error('Not allowed by CORS', origin));
+                    callback(new Error(`Request not allowed due to CORS policy: ${origin}`));
                 }
             },
             methods: this.#config.cors.methods,
