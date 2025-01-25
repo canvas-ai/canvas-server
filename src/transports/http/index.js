@@ -152,15 +152,28 @@ class HttpRestTransport {
         app.set('trust proxy', true);
         app.use(cors({
             origin: (origin, callback) => {
-                if (
-                    !origin || // Allow server-to-server requests without an origin
+                debug(`Checking CORS for origin: ${origin}`);
+
+                // Allow null origins (like local file access or Postman)
+                if (!origin) {
+                    debug('Allowing null origin request');
+                    callback(null, true);
+                    return;
+                }
+
+                // Check if origin matches any of our allowed patterns
+                const isAllowed =
                     this.#config.cors.origins.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
-                    /http:\/\/(localhost|127\.0\.0\.1):\d+/.test(origin) || // Match localhost and 127.0.0.1
-                    /http:\/\/\d{1,3}(\.\d{1,3}){3}:\d+/.test(origin) // Match LAN IPs
-                ) {
+                    /^https?:\/\/localhost(:[0-9]+)?$/.test(origin) || // Match localhost with optional port
+                    /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(origin) || // Match 127.0.0.1 with optional port
+                    /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:[0-9]+)?$/.test(origin); // Match IP addresses with optional port
+
+                if (isAllowed) {
+                    debug(`Origin ${origin} is allowed`);
                     callback(null, true);
                 } else {
-                    callback(new Error(`Request not allowed due to CORS policy: ${origin}`));
+                    debug(`Origin ${origin} is not allowed`);
+                    callback(new Error(`CORS policy: ${origin} not allowed`));
                 }
             },
             methods: this.#config.cors.methods,
