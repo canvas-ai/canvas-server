@@ -1,9 +1,12 @@
+// Utils
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
+
+// Transport dependencies
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -13,6 +16,15 @@ import passport from 'passport';
 import configurePassport from '../../utils/passport.js';
 import AuthService from '../../services/auth/index.js';
 
+// Product info
+import pkg from '../../../package.json' assert { type: 'json' };
+const {
+    productName,
+    version,
+    description,
+} = pkg
+
+// Transport config
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
     protocol: process.env.CANVAS_TRANSPORT_HTTP_PROTOCOL || 'http',
@@ -133,10 +145,8 @@ class HttpRestTransport {
             debug(`Static path not found: ${staticPath}`);
         }
 
-        // Trust proxy
+        // Middleware
         app.set('trust proxy', true);
-
-        // CORS middleware
         app.use(cors({
             origin: (origin, callback) => {
                 if (
@@ -180,7 +190,15 @@ class HttpRestTransport {
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
-            res.status(200).send('pong');
+            res.status(200).send({
+                message: 'pong',
+                status: 'ok',
+                timestamp: new Date().toISOString(),
+                product: productName,
+                version: version,
+                platform: process.platform,
+                architecture: process.arch,
+            });
         });
 
         // Mount auth routes (unprotected)

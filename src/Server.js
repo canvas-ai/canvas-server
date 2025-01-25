@@ -441,7 +441,6 @@ class Server extends EventEmitter {
 }
 
 export {
-    pkg,
     config,
     logger,
     indexManager,
