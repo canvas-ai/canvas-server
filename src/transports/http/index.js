@@ -213,7 +213,7 @@ class HttpRestTransport {
                 message: 'pong',
                 status: 'ok',
                 timestamp: new Date().toISOString(),
-                product: productName,
+                productName: productName,
                 version: version,
                 platform: process.platform,
                 architecture: process.arch,
