@@ -133,7 +133,10 @@ class HttpRestTransport {
             debug(`Static path not found: ${staticPath}`);
         }
 
-        // Existing middleware
+        // Trust proxy
+        app.set('trust proxy', true);
+
+        // CORS middleware
         app.use(cors({
             origin: (origin, callback) => {
                 if (
