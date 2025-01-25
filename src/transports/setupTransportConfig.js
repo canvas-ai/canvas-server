@@ -1,10 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import env from '../env.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function generateJwtSecret() {
   return crypto.randomBytes(64).toString('hex');
@@ -12,8 +9,8 @@ function generateJwtSecret() {
 
 async function setupTransportsConfig() {
   const serverConfigDir = path.join(env.CANVAS_SERVER_CONFIG);
-  const exampleConfigPath = path.join(serverConfigDir, 'example-canvas-server.transports.json');
-  const configPath = path.join(serverConfigDir, 'canvas-server.transports.json');
+  const exampleConfigPath = path.join(serverConfigDir, 'example-server.transports.json');
+  const configPath = path.join(serverConfigDir, 'server.transports.json');
 
   if (!fs.existsSync(configPath)) {
     try {

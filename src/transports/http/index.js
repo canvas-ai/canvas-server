@@ -6,6 +6,16 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
+import config from '../../Server.js';
+import logger from '../../Server.js';
+
+// Product info
+import pkg from '../../../package.json' assert { type: 'json' };
+const {
+    productName,
+    version
+} = pkg
+
 // Transport dependencies
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -16,14 +26,6 @@ import passport from 'passport';
 import configurePassport from '../../utils/passport.js';
 import AuthService from '../../services/auth/index.js';
 
-// Product info
-import pkg from '../../../package.json' assert { type: 'json' };
-const {
-    productName,
-    version,
-    description,
-} = pkg
-
 // Transport config
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
@@ -33,7 +35,7 @@ const DEFAULT_CONFIG = {
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     cors: {
         origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
-            'http://localhost:5173',
+            'http://127.0.0.1',
             'https://*.cnvs.ai',
             'https://cnvs.ai',
             'https://*.getcanvas.org',
@@ -49,8 +51,10 @@ const DEFAULT_CONFIG = {
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
     },
-    staticPath: process.env.CANVAS_TRANSPORT_HTTP_STATIC_PATH || './src/ui/web/dist',
+    staticPath: './src/ui/web/dist',
 };
+
+
 
 class HttpRestTransport {
 
@@ -157,7 +161,7 @@ class HttpRestTransport {
                 ) {
                     callback(null, true);
                 } else {
-                    callback(new Error('Not allowed by CORS'));
+                    callback(new Error('Not allowed by CORS', origin));
                 }
             },
             methods: this.#config.cors.methods,
