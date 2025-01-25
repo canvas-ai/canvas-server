@@ -1,7 +1,7 @@
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:workspace');
 
-// sesssionName@workspaceName://contextUrl 
+// sesssionName@workspaceName://contextUrl
 // Example: ws@universe://foo/bar/baz
 import Db from '../../../services/synapsd/src/index.js';
 
@@ -30,5 +30,4 @@ export default class Workspace {
         debug(`Unlocking layers "${this.baseUrl}" for workspace ${this.id}`);
     }
 
-    #
 }
