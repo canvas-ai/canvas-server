@@ -209,7 +209,7 @@ class HttpRestTransport {
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
-            res.status(200).send({
+            res.status(200).json({
                 message: 'pong',
                 status: 'ok',
                 timestamp: new Date().toISOString(),
