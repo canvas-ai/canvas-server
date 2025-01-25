@@ -20,7 +20,13 @@ const DEFAULT_CONFIG = {
     port: process.env.CANVAS_TRANSPORT_HTTP_PORT || 8001,
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     cors: {
-        origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'https://my.cnvs.ai', 'https://getcanvas.org'],
+        origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
+            'http://localhost:5173',
+            'https://*.cnvs.ai',
+            'https://cnvs.ai',
+            'https://*.getcanvas.org',
+            'https://getcanvas.org'
+        ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization'],
         credentials: true
