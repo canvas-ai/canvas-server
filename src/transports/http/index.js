@@ -28,7 +28,7 @@ const DEFAULT_CONFIG = {
             'https://getcanvas.org'
         ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-app-name'],
         credentials: true
     },
     auth: {
@@ -135,12 +135,23 @@ class HttpRestTransport {
 
         // Existing middleware
         app.use(cors({
-            origin: this.#config.cors.origins,
+            origin: (origin, callback) => {
+                if (
+                    !origin || // Allow server-to-server requests without an origin
+                    this.#config.cors.origins.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
+                    /http:\/\/(localhost|127\.0\.0\.1):\d+/.test(origin) || // Match localhost and 127.0.0.1
+                    /http:\/\/\d{1,3}(\.\d{1,3}){3}:\d+/.test(origin) // Match LAN IPs
+                ) {
+                    callback(null, true);
+                } else {
+                    callback(new Error('Not allowed by CORS'));
+                }
+            },
             methods: this.#config.cors.methods,
             allowedHeaders: this.#config.cors.allowedHeaders,
             credentials: this.#config.cors.credentials
         }));
-        
+
         app.use(express.json());
         app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
