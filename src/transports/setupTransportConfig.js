@@ -9,8 +9,8 @@ function generateJwtSecret() {
 
 async function setupTransportsConfig() {
   const serverConfigDir = path.join(env.CANVAS_SERVER_CONFIG);
-  const exampleConfigPath = path.join(serverConfigDir, 'example-server.transports.json');
-  const configPath = path.join(serverConfigDir, 'server.transports.json');
+  const exampleConfigPath = path.join(serverConfigDir, 'example-transports.json');
+  const configPath = path.join(serverConfigDir, 'transports.json');
 
   if (!fs.existsSync(configPath)) {
     try {
@@ -46,8 +46,8 @@ async function setupTransportsConfig() {
 
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     }
-
     return config;
+
   } catch (error) {
     throw new Error(`Failed to update auth configuration: ${error.message}`);
   }

@@ -6,9 +6,6 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-import config from '../../Server.js';
-import logger from '../../Server.js';
-
 // Product info
 import pkg from '../../../package.json' assert { type: 'json' };
 const {
@@ -62,11 +59,12 @@ class HttpRestTransport {
     #server;
 
     constructor(options = {}) {
+        debug(`Initializing HTTP Transport with options: ${options}`);
         // Load transports config if available
         let transportConfig = {};
         const configPath = path.join(
             path.join(__dirname, '../../../server/config'),
-            'canvas-server.transports.json'
+            'transports.json'
         );
 
 
