@@ -347,7 +347,8 @@ class Server extends EventEmitter {
 
     async initializeTransports() {
         // Get transports config from the config instance
-        const transportConfig = config.store?.server?.transports || {};
+        const conf = config.open('canvas-server.transports');
+        const transportConfig = conf.get();
 
         const transportEntries = Object.entries({
             ...transportConfig

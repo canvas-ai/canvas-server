@@ -1,4 +1,5 @@
 import debugMessage from 'debug';
+import { uuid12 } from '../../../extensions/transports/net-ipc/lib/utils.js';
 const debug = debugMessage('canvas:events:user');
 
 class UserEventHandler {
@@ -29,6 +30,7 @@ class UserEventHandler {
       if (this.services.workspace) {
         const defaultWorkspace = await this.services.workspace.createWorkspace(
           `${user.id}`,
+          uuid12(),
           { name: 'Universe', description: 'Default workspace', baseUrl: '/', color: '#fff' }
         );
         debug('Created default workspace for user:', defaultWorkspace.id);

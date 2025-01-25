@@ -1,5 +1,5 @@
 {
-  "rest": {
+  "http": {
     "enabled": true,
     "protocol": "http",
     "host": "0.0.0.0",

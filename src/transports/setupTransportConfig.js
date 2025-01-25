@@ -28,21 +28,21 @@ async function setupTransportsConfig() {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
     // Only generate and set JWT secret if not already present
-    if (!config.rest?.auth?.jwtSecret) {
+    if (!config.http?.auth?.jwtSecret) {
       const jwtSecret = generateJwtSecret();
 
       // Initialize auth config if not present
-      config.rest = config.rest || {};
-      config.rest.auth = config.rest.auth || {};
-      config.rest.auth.jwtSecret = jwtSecret;
+      config.http = config.http || {};
+      config.http.auth = config.http.auth || {};
+      config.http.auth.jwtSecret = jwtSecret;
 
-      // Apply same JWT secret to both REST and WebSocket transports
-      for (const transport of ['rest', 'ws']) {
+      // Apply same JWT secret to both http and WebSocket transports
+      for (const transport of ['http', 'ws']) {
         if (config[transport]) {
           config[transport].auth = {
-            enabled: config.rest.auth.enabled || true,
-            jwtLifetime: config.rest.auth.jwtLifetime || '48h',
-            jwtSecret: config.rest.auth.jwtSecret
+            enabled: config.http.auth.enabled || true,
+            jwtLifetime: config.http.auth.jwtLifetime || '48h',
+            jwtSecret: config.http.auth.jwtSecret
           };
         }
       }
