@@ -154,9 +154,9 @@ class HttpRestTransport {
             origin: (origin, callback) => {
                 debug(`Checking CORS for origin: ${origin}`);
 
-                // Allow null origins (like local file access or Postman)
-                if (!origin) {
-                    debug('Allowing null origin request');
+                // Allow null/undefined origins (server-to-server, local file access, Postman)
+                if (origin === null || origin === undefined) {
+                    debug('Allowing request with null/undefined origin');
                     callback(null, true);
                     return;
                 }
