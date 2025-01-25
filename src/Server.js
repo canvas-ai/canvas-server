@@ -14,12 +14,15 @@ import env from './env.js';
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import EventEmitter from 'eventemitter2';
+// JSON Utils
 import Config from './utils/config/index.js';
 import JsonIndexManager from './utils/jim/index.js';
+// Logging
 import winston from 'winston';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:server');
 
+// Bling-bling
 import pkg from '../package.json' assert { type: 'json' };
 const {
     productName,
@@ -28,22 +31,18 @@ const {
     license
 } = pkg
 
-// Services
-import SynapsDB from './services/synapsdb/src/index.js';
-
 // Managers
-//import SessionManager from './managers/session/index.js';
-import TreeManager from './managers/contextTree/index.js';
+import SessionManager from './managers/session/index.js';
 import WorkspaceManager from './managers/workspace/index.js';
 
+// Transports
 import setupTransportsConfig from './transports/setupTransportConfig.js';
 
 
 /**
- * Initialize main modules
+ * Initialize utils
  **/
 
-// Utils
 const config = new Config({
     userConfigDir: env.CANVAS_USER_CONFIG,
     serverConfigDir: env.CANVAS_SERVER_CONFIG,
@@ -55,52 +54,42 @@ const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
 const logLevel = env.LOG_LEVEL;
 const logger = winston.createLogger({
     level: logLevel,
-    format: winston.format.simple(),
+    format: winston.format.combine(
+        winston.format.timestamp({
+            format: 'YYYY-MM-DD HH:mm:ss'
+        }),
+        winston.format.printf(({ level, message, timestamp }) => {
+            return `${timestamp} ${level}: ${message}`;
+        })
+    ),
     transports: [
-        new winston.transports.File({ filename: logFile }),
-        // TODO: Add a debug-based transport
+        new winston.transports.File({
+            filename: logFile,
+            format: winston.format.combine(
+                winston.format.timestamp({
+                    format: 'YYYY-MM-DD HH:mm:ss'
+                }),
+                winston.format.printf(({ level, message, timestamp }) => {
+                    return `${timestamp} ${level}: ${message}`;
+                })
+            )
+        }),
     ],
-})
+});
 
-// Core Services
+/**
+ * Initialize Managers
+ **/
+
 const indexManager = new JsonIndexManager({
     rootPath: env.CANVAS_USER_DB,
     driver: 'conf'
 });
 
-const db = new SynapsDB({
-    path: env.CANVAS_USER_DB
-})
-
-// Default transports configuration
-const DEFAULT_TRANSPORTS = {
-    http: {
-        enabled: true,
-        protocol: 'http',
-        host: '0.0.0.0',
-        port: 8001,
-        basePath: '/rest'
-    },
-    ws: {
-        enabled: true,
-        protocol: 'ws',
-        host: '0.0.0.0',
-        port: 8002
-    }
-};
-
-// Managers
 const workspaceManager = new WorkspaceManager({
-    indexStore: indexManager.createIndex('workspaces'),
     rootPath: env.CANVAS_SERVER_WORKSPACES,
 });
-const treeManager = new TreeManager({
-    treeIndexStore: indexManager.createIndex('contextTree'),
-    layerIndexStore: indexManager.createIndex('contextTreeLayers'),
-});
 
-
-const contextTree = treeManager.createContextTree();
 
 /**
  * Canvas Server
@@ -361,7 +350,6 @@ class Server extends EventEmitter {
         const transportConfig = config.store?.server?.transports || {};
 
         const transportEntries = Object.entries({
-            ...DEFAULT_TRANSPORTS,
             ...transportConfig
         });
 
@@ -456,9 +444,7 @@ export {
     config,
     logger,
     indexManager,
-    db,
-    contextTree,
-    workspaceManager,
+    workspaceManager
 };
 
 export default Server;

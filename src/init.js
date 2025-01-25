@@ -4,7 +4,6 @@
 
 import Server from './Server.js'
 import {
-    config,
     logger
 } from './Server.js'
 

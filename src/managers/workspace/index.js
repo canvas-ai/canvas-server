@@ -1,8 +1,13 @@
 // Utils
 import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
-const debug = debugMessage('canvas:context:workspace-manager');
+const debug = debugMessage('canvas:workspace-manager');
 import randomcolor from 'randomcolor';
+import path from 'path';
+import fs from 'fs';
+
+// DB Backend
+import Db from '../../services/synapsd/src/index.js'
 
 // Includes
 import Workspace from './lib/Workspace.js';
@@ -18,7 +23,6 @@ export default class WorkspaceManager extends EventEmitter {
     constructor(options = {}) {
         super(); // EventEmitter
 
-
         if (!options.rootPath) { throw new Error('Root path is required'); }
         this.#rootPath = options.rootPath;
 
@@ -31,34 +35,87 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     initialize() {
-        this.#loadWorkspacesSync(); // do we need to load all workspaces?
+        this.#scanWorkspaces();
     }
 
-    createWorkspace(userId, options = {}) {
+    #scanWorkspaces() {
+        debug(`Scanning ${this.#rootPath} for workspaces`);
+        
+        try {
+            // Get all directories in rootPath
+            const items = fs.readdirSync(this.#rootPath, { withFileTypes: true });
+            const directories = items.filter(item => item.isDirectory());
+
+            for (const dir of directories) {
+                const workspacePath = path.join(this.#rootPath, dir.name);
+                const configPath = path.join(workspacePath, 'workspace.json');
+
+                if (fs.existsSync(configPath)) {
+                    try {
+                        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                        const workspace = new Workspace(dir.name, {
+                            ...configData,
+                            path: workspacePath
+                        });
+                        const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
+                        this.#workspaces.set(dir.name, proxiedWorkspace);
+                        debug(`Loaded workspace from ${configPath}`);
+                    } catch (err) {
+                        debug(`Error loading workspace config from ${configPath}: ${err.message}`);
+                    }
+                }
+            }
+        } catch (err) {
+            debug(`Error scanning workspaces: ${err.message}`);
+        }
+    }
+
+    createWorkspace(userId, workspaceId, options = {}) {
         if (!userId) { throw new Error('User ID is required'); }
         if (typeof userId !== 'string') { throw new Error('User ID must be a string'); }
+        if (!workspaceId) { throw new Error('Workspace ID is required'); }
+        if (typeof workspaceId !== 'string') { throw new Error('Workspace ID must be a string'); }
 
-        options.name = this.#parseWorkspaceId(options.name);
+        workspaceId = this.#parseWorkspaceId(workspaceId);
         options = this.#validateWorkspaceOptions(options);
 
+        const workspacePath = path.join(this.#rootPath, workspaceId);
+        const configPath = path.join(workspacePath, 'workspace.json');
+
+        // Check if workspace folder exists
+        if (!fs.existsSync(workspacePath)) {
+            debug(`Creating workspace directory at ${workspacePath}`);
+            fs.mkdirSync(workspacePath, { recursive: true });
+        }
+
         // if user workspaces has the workspace, return it
-        const userWorkspace = new WorkspaceStore(userId).get(options.name);
+        const userWorkspace = new WorkspaceStore(userId).get(workspaceId);
         if (userWorkspace) {
             return userWorkspace;
         }
 
-        // if (this.#workspaces.has(id)) {
-        //     throw new Error(`Workspace with id "${id}" already exists, use getWorkspace(id) to retrieve it`); // Maybe we should just return the workspace right away?
-        // }
+        debug(`Creating workspace with ID "${workspaceId}" for user "${userId}"`);
+        const workspace = new Workspace(workspaceId, {
+            ...options,
+            path: workspacePath
+        });
+        
+        // Save workspace configuration to its folder
+        const configData = {
+            id: workspace.id,
+            name: workspace.name,
+            description: workspace.description,
+            baseUrl: workspace.baseUrl,
+            color: workspace.color,
+            // path is intentionally omitted as it's dynamic
+        };
 
-        debug(`Creating workspace with name "${options.name}" for user "${userId}"`);
-        const workspace = new Workspace(options.name, options);
+        fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
+        
         const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-        this.#workspaces.set(options.name, proxiedWorkspace);
+        this.#workspaces.set(workspaceId, proxiedWorkspace);
 
-        new WorkspaceStore(userId).set(options.name, workspace);
-
-        this.#saveWorkspacesSync();
+        new WorkspaceStore(userId).set(workspaceId, workspace);
         return proxiedWorkspace;
     }
 
@@ -104,6 +161,7 @@ export default class WorkspaceManager extends EventEmitter {
                 description: workspace.description,
                 baseUrl: workspace.baseUrl,
                 color: workspace.color,
+                path: workspace.path
             };
         }
         debug('Saving workspaces to store');
@@ -115,7 +173,18 @@ export default class WorkspaceManager extends EventEmitter {
             set: (target, property, value) => {
                 target[property] = value;
                 debug('Workspace update detected for ID ', target.id);
-                this.#saveWorkspacesSync(); // Save workspaces after any property change
+                
+                // Save configuration to workspace.json
+                const configPath = path.join(target.path, 'workspace.json');
+                const configData = {
+                    id: target.id,
+                    name: target.name,
+                    description: target.description,
+                    baseUrl: target.baseUrl,
+                    color: target.color,
+                };
+                
+                fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
                 return true;
             }
         };

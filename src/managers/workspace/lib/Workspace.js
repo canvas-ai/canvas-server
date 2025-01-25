@@ -1,9 +1,14 @@
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:workspace');
 
-// sesssionName@workspaceName://contextUrl where context consists of workspaceName://contextUrl
+// sesssionName@workspaceName://contextUrl
+// Example: ws@universe://foo/bar/baz
+import Db from '../../../services/synapsd/src/index.js';
 
 export default class Workspace {
+
+    #rootPath;
+    #db;
 
     constructor(id, opts = {}) {
         if (!id) { throw new Error('Workspace ID required'); }
@@ -24,4 +29,5 @@ export default class Workspace {
         if (this.baseUrl === '/') { return; }
         debug(`Unlocking layers "${this.baseUrl}" for workspace ${this.id}`);
     }
+
 }
