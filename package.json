@@ -19,7 +19,9 @@
     "pm2:kill": "PM2_HOME=../var/pm2 pm2 kill",
     "pm2:delete": "PM2_HOME=../var/pm2 pm2 delete ecosystem.config.js",
     "preinstall": "git submodule update --init --remote",
-    "postinstall": "npm run build -w src/ui/web"
+    "postinstall": "npm run build -w src/ui/web",
+    "db:setup": "prisma generate && prisma migrate dev --name init",
+    "db:migrate": "prisma migrate dev"
   },
   "workspaces": [
     ".",
@@ -30,9 +32,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@prisma/client": "^6.2.1",
-    "@radix-ui/react-icons": "^1.3.2",
     "ansi-colors": "^4.1.3",
-    "apache-arrow": "^17.0.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
     "better-queue": "^3.8.12",
@@ -75,8 +75,12 @@
     "winston": "^3.10.0"
   },
   "devDependencies": {
-    "eslint": "^8.56.0",
-    "prisma": "^6.2.1"
+    "@eslint/js": "^9.19.0",
+    "@types/node": "^22.10.10",
+    "eslint": "^8.57.1",
+    "prisma": "^6.2.1",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0"
   },
   "engines": {
     "node": ">=20.0.0 <21.0.0"
