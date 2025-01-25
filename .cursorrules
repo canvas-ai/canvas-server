@@ -73,6 +73,8 @@ Canvas is split into the following components:
 - React
 
 # Current project file structure
+
+```text
 .
 ├── bin
 ├── docker-compose.yml
@@ -199,3 +201,4 @@ Canvas is split into the following components:
         └── sysstat
             └── index.js
 
+```
