@@ -74,6 +74,14 @@ class Config {
         return _.get(obj, path.split('.').slice(1).join('.'));
     }
 
+    require(configName, configType = 'server') {
+        const configPath = configType === 'server' ? path.join(this.serverConfigDir, configName) : path.join(this.userConfigDir, configName);
+        if(!fs.existsSync(`${configPath}.json`)) {
+            throw new Error(`Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`);
+        }
+        return this.open(configPath);
+    }
+
     open(configPath) {
         // Check cache first
         if (this.stores.has(configPath)) {
