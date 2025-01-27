@@ -12,6 +12,7 @@ import Session from '../prisma/models/Session.js';
 
 class SessionManager extends EventEmitter {
     static #instance = null;
+    #maxSessions;
     #initialized = false;
 
     static async getInstance(options) {
