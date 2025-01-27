@@ -6,16 +6,12 @@ const log = debug('canvas:session-manager');
 // Includes
 import Session from '../prisma/models/Session.js';
 
-// Defaults
-const MAX_SESSIONS = 32; // 2^5
-
 /**
  * Session manager
  */
 
 class SessionManager extends EventEmitter {
     static #instance = null;
-    #maxSessions;
     #initialized = false;
 
     static async getInstance(options) {
@@ -52,8 +48,6 @@ class SessionManager extends EventEmitter {
         if(!name || name === null) {
             throw new Error('No session name provided');
         }
-
-        // if (this.sessionStore.size >= this.#maxSessions) { throw new Error('Maximum number of sessions reached'); }
 
         log(`Creating session: ${name}`);
 
