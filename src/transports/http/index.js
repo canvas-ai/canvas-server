@@ -22,6 +22,7 @@ import ResponseObject from '../../schemas/transports/ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '../../utils/passport.js';
 import AuthService from '../../services/auth/index.js';
+import { config } from '../../Server.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];
@@ -60,31 +61,15 @@ class HttpRestTransport {
     #server;
 
     constructor(options = {}) {
-        debug(`Initializing HTTP Transport with options: ${options}`);
-        // Load transports config if available
-        let transportConfig = {};
-        const configPath = path.join(
-            path.join(__dirname, '../../../server/config'),
-            'transports.json'
-        );
-
-
-        try {
-            if (fs.existsSync(configPath)) {
-                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                if (config.rest) {
-                    transportConfig = config.rest;
-                }
-            }
-        } catch (error) {
-            debug(`Error loading transport config: ${error.message}`);
-        }
+        debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
 
         this.#config = {
             ...DEFAULT_CONFIG,
-            ...transportConfig,
-            ...options
+            ...options,
+            cors: options.cors ? DEFAULT_CONFIG.cors : {}
         };
+        console.log(this.#config.cors);
+
         this.ResponseObject = ResponseObject;
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
@@ -166,7 +151,7 @@ class HttpRestTransport {
 
                 // Check if origin matches any of our allowed patterns
                 const isAllowed =
-                    this.#config.cors.origins.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
+                    this.#config.cors.origins?.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
                     /^https?:\/\/localhost(:[0-9]+)?$/.test(origin) || // Match localhost with optional port
                     /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(origin) || // Match 127.0.0.1 with optional port
                     /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:[0-9]+)?$/.test(origin); // Match IP addresses with optional port
@@ -179,9 +164,9 @@ class HttpRestTransport {
                     callback(new Error(`CORS policy: ${origin} not allowed`));
                 }
             },
-            methods: this.#config.cors.methods,
-            allowedHeaders: this.#config.cors.allowedHeaders,
-            credentials: this.#config.cors.credentials
+            methods: this.#config.cors?.methods || DEFAULT_CONFIG.cors.methods,
+            allowedHeaders: this.#config.cors?.allowedHeaders || DEFAULT_CONFIG.cors.allowedHeaders,
+            credentials: this.#config.cors?.credentials || DEFAULT_CONFIG.cors.credentials
         }));
 
         app.use(express.json());

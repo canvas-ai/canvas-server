@@ -22,9 +22,7 @@
     "db:migrate": "prisma migrate dev",
     "update-submodules": "git submodule update --init --remote && git submodule foreach 'git add .'",
     "preinstall": "npm run update-submodules",
-    "postinstall": "npm run build -w src/ui/web",
-    "db:setup": "prisma generate && prisma migrate dev --name init",
-    "db:migrate": "prisma migrate dev"
+    "postinstall": "npm run build -w src/ui/web"
   },
   "workspaces": [
     ".",

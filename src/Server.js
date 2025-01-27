@@ -32,11 +32,7 @@ const {
 } = pkg
 
 // Managers
-import SessionManager from './managers/session/index.js';
 import WorkspaceManager from './managers/workspace/index.js';
-
-// Transports
-import setupTransportsConfig from './transports/setupTransportConfig.js';
 
 
 /**
@@ -133,12 +129,6 @@ class Server extends EventEmitter {
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
         const errors = [];
-
-        try {
-            await setupTransportsConfig();
-        } catch (error) {
-            errors.push(`Transport configuration setup failed: ${error.message}`);
-        }
 
         try {
             await this.initializeServices();
@@ -347,12 +337,13 @@ class Server extends EventEmitter {
 
     async initializeTransports() {
         // Get transports config from the config instance
-        const conf = config.open('transports');
-        if (!conf) {
-            throw new Error('Transports config not found');
-        }
-
+        debug('Initializing transports');
+        logger.info('Initializing transports');
+        const conf = config.require('transports', 'server');
         const transportConfig = conf.get();
+
+        debug('Transports config loaded');
+        logger.info('Transports config loaded');
 
         const transportEntries = Object.entries({
             ...transportConfig
