@@ -97,6 +97,13 @@ systemctl stop canvas-server || log_message "Service was not running"
 log_message "Cleaning node_modules..."
 rm -rf "$CANVAS_ROOT/node_modules"
 
+# Make sure permissions are correct
+log_message "Setting permissions on $CANVAS_ROOT..."
+if ! chown -R "$CANVAS_USER:$CANVAS_GROUP" "$CANVAS_ROOT"; then
+    log_message "Error: Failed to set permissions."
+    exit 1
+fi
+
 # Pull latest changes
 log_message "Pulling latest changes from git..."
 run_as_canvas_user "/usr/bin/git fetch origin $TARGET_BRANCH"
@@ -109,13 +116,6 @@ run_as_canvas_user "/usr/bin/git submodule update --init --remote"
 # Install dependencies
 log_message "Installing dependencies..."
 run_as_canvas_user "/usr/bin/npm install"
-
-# Permissions
-log_message "Setting permissions..."
-if ! chown -R "$CANVAS_USER:$CANVAS_GROUP" "$CANVAS_ROOT"; then
-    log_message "Error: Failed to set permissions."
-    exit 1
-fi
 
 # Start the application
 log_message "Starting canvas-server..."
