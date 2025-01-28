@@ -10,6 +10,8 @@ import Session from '../prisma/models/Session.js';
  * Session manager
  */
 
+const MAX_SESSIONS = 32;
+
 class SessionManager extends EventEmitter {
     static #instance = null;
     #maxSessions;
