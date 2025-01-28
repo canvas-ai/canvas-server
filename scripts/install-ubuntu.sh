@@ -140,12 +140,12 @@ update_canvas() {
         handle_error "$?" "Failed to pull latest changes from git"
     fi
 
-    if ! git submodule update --init --remote; then
-        handle_error "$?" "Failed to update submodules"
-    fi
-
     if ! npm install; then
         handle_error "$?" "Failed to install dependencies"
+    fi
+
+    if ! npm run db:migrate; then
+        handle_error "$?" "Failed to update the database"
     fi
 
     if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
@@ -170,12 +170,12 @@ install_canvas() {
         handle_error "$?" "Failed to checkout branch $CANVAS_REPO_TARGET_BRANCH"
     fi
 
-    if ! git submodule update --init --remote; then
-        handle_error "$?" "Failed to initialize submodules"
-    fi
-
     if ! npm install; then
         handle_error "$?" "Failed to install dependencies"
+    fi
+
+    if ! npm run db:setup; then
+        handle_error "$?" "Failed to setup the database"
     fi
 
     if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
