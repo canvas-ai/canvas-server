@@ -110,7 +110,7 @@ Group=$CANVAS_GROUP
 WorkingDirectory=$CANVAS_ROOT
 ExecStart=/usr/bin/npm run start
 Restart=always
-RestartSec=10
+RestartSec=30
 Environment=NODE_ENV=production
 
 [Install]

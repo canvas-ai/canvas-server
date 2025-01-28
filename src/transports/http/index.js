@@ -1,9 +1,19 @@
+// Utils
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
+
+// Product info
+import pkg from '../../../package.json' assert { type: 'json' };
+const {
+    productName,
+    version
+} = pkg
+
+// Transport dependencies
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -12,7 +22,9 @@ import ResponseObject from '../../schemas/transports/ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '../../utils/passport.js';
 import AuthService from '../../services/auth/index.js';
+import { config } from '../../Server.js';
 
+// Transport config
 const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
     protocol: process.env.CANVAS_TRANSPORT_HTTP_PROTOCOL || 'http',
@@ -21,14 +33,15 @@ const DEFAULT_CONFIG = {
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     cors: {
         origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
-            'http://localhost:5173',
+            'http://127.0.0.1',
+            'http://localhost',
             'https://*.cnvs.ai',
             'https://cnvs.ai',
             'https://*.getcanvas.org',
             'https://getcanvas.org'
         ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-app-name'],
         credentials: true
     },
     auth: {
@@ -37,8 +50,10 @@ const DEFAULT_CONFIG = {
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
     },
-    staticPath: process.env.CANVAS_TRANSPORT_HTTP_STATIC_PATH || './src/ui/web/dist',
+    staticPath: './src/ui/web/dist',
 };
+
+
 
 class HttpRestTransport {
 
@@ -46,30 +61,15 @@ class HttpRestTransport {
     #server;
 
     constructor(options = {}) {
-        // Load transports config if available
-        let transportConfig = {};
-        const configPath = path.join(
-            path.join(__dirname, '../../../server/config'),
-            'canvas-server.transports.json'
-        );
-
-
-        try {
-            if (fs.existsSync(configPath)) {
-                const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                if (config.rest) {
-                    transportConfig = config.rest;
-                }
-            }
-        } catch (error) {
-            debug(`Error loading transport config: ${error.message}`);
-        }
+        debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
 
         this.#config = {
             ...DEFAULT_CONFIG,
-            ...transportConfig,
-            ...options
+            ...options,
+            cors: options.cors ? DEFAULT_CONFIG.cors : {}
         };
+        console.log(this.#config.cors);
+
         this.ResponseObject = ResponseObject;
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
@@ -133,14 +133,42 @@ class HttpRestTransport {
             debug(`Static path not found: ${staticPath}`);
         }
 
-        // Existing middleware
+        // Middleware
+        app.set('trust proxy', true);
         app.use(cors({
-            origin: this.#config.cors.origins,
-            methods: this.#config.cors.methods,
-            allowedHeaders: this.#config.cors.allowedHeaders,
-            credentials: this.#config.cors.credentials
+            origin: (origin, callback) => {
+                debug(`Checking CORS for origin: ${origin}`);
+
+                // Allow requests with no origin, empty origin, or 'null' origin
+                // - null/undefined: Server-to-server requests
+                // - empty string: Some proxy configurations
+                // - 'null' string: Requests from file:// URLs or sandboxed contexts
+                if (!origin || origin === '' || origin === 'null') {
+                    debug('Allowing request with absent/empty/null origin');
+                    callback(null, true);
+                    return;
+                }
+
+                // Check if origin matches any of our allowed patterns
+                const isAllowed =
+                    this.#config.cors.origins?.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
+                    /^https?:\/\/localhost(:[0-9]+)?$/.test(origin) || // Match localhost with optional port
+                    /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(origin) || // Match 127.0.0.1 with optional port
+                    /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:[0-9]+)?$/.test(origin); // Match IP addresses with optional port
+
+                if (isAllowed) {
+                    debug(`Origin ${origin} is allowed`);
+                    callback(null, true);
+                } else {
+                    debug(`Origin ${origin} is not allowed`);
+                    callback(new Error(`CORS policy: ${origin} not allowed`));
+                }
+            },
+            methods: this.#config.cors?.methods || DEFAULT_CONFIG.cors.methods,
+            allowedHeaders: this.#config.cors?.allowedHeaders || DEFAULT_CONFIG.cors.allowedHeaders,
+            credentials: this.#config.cors?.credentials || DEFAULT_CONFIG.cors.credentials
         }));
-        
+
         app.use(express.json());
         app.use(express.urlencoded({ extended: true }));
         app.use(cookieParser());
@@ -166,7 +194,15 @@ class HttpRestTransport {
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
-            res.status(200).send('pong');
+            res.status(200).json({
+                message: 'pong',
+                status: 'ok',
+                timestamp: new Date().toISOString(),
+                productName: productName,
+                version: version,
+                platform: process.platform,
+                architecture: process.arch,
+            });
         });
 
         // Mount auth routes (unprotected)
