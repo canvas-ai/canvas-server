@@ -39,10 +39,10 @@ import WorkspaceManager from './managers/workspace/index.js';
  * Initialize utils
  **/
 
-const config = new Config({
-    userConfigDir: env.CANVAS_USER_CONFIG,
+const config = new Config({ // TODO: Rework, we can use Conf directly here
+    userConfigDir: env.CANVAS_SERVER_CONFIG,
     serverConfigDir: env.CANVAS_SERVER_CONFIG,
-    configPriority: 'user',
+    configPriority: 'server',
     versioning: false,
 });
 
@@ -77,13 +77,8 @@ const logger = winston.createLogger({
  * Initialize Managers
  **/
 
-const indexManager = new JsonIndexManager({
-    rootPath: env.CANVAS_USER_DB,
-    driver: 'conf'
-});
-
 const workspaceManager = new WorkspaceManager({
-    rootPath: env.CANVAS_SERVER_WORKSPACES,
+    rootPath: env.CANVAS_SERVER_DATA,
 });
 
 
@@ -93,17 +88,18 @@ const workspaceManager = new WorkspaceManager({
 
 class Server extends EventEmitter {
 
-    #mode;                  // primary,
+    #mode;                  // user, standalone
     #status = 'stopped';    // initialized, running, stopping, stopped
 
     constructor(options = {
         mode: env.CANVAS_SERVER_MODE,
         serverHome: env.CANVAS_SERVER_HOME,
-        userHome: env.CANVAS_USER_HOME,
+        dataHome: env.CANVAS_SERVER_DATA,
     }) {
         super(); // EventEmitter2
         debug('Canvas server options:', options);
 
+        // Set mode
         this.#mode = options.mode;
 
         // Services and transports
@@ -438,7 +434,6 @@ class Server extends EventEmitter {
 export {
     config,
     logger,
-    indexManager,
     workspaceManager
 };
 
