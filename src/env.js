@@ -12,7 +12,7 @@ const isPortable = () => existsSync(path.join(SERVER_ROOT, 'user'));
 // Root paths
 const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVER_HOME = process.env.CANVAS_SERVER_HOME || path.join(SERVER_ROOT, 'server');
-const SERVER_DATA = process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data');
+const SERVER_DATA = process.env.CANVAS_SERVER_DATA || path.join(SERVER_ROOT, 'data');
 
 /**
  * Default environment configuration
