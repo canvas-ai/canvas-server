@@ -18,10 +18,10 @@
     "pm2:logs": "PM2_HOME=../var/pm2 pm2 logs ecosystem.config.js",
     "pm2:kill": "PM2_HOME=../var/pm2 pm2 kill",
     "pm2:delete": "PM2_HOME=../var/pm2 pm2 delete ecosystem.config.js",
-    "db:setup": "node src/init.js --setup-db",
+    "db:setup": "prisma generate && prisma migrate dev --name init",
     "db:migrate": "prisma migrate dev",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
-    "postinstall": "npm run db:setup && npm run build -w src/ui/web"
+    "postinstall": "npm run build -w src/ui/web"
   },
   "workspaces": [
     ".",
@@ -31,7 +31,7 @@
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "@prisma/client": "^6.2.1",
+    "@prisma/client": "^6.3.1",
     "ansi-colors": "^4.1.3",
     "apache-arrow": "^19.0.0",
     "bcrypt": "^5.1.1",
@@ -79,9 +79,9 @@
     "@eslint/js": "^9.19.0",
     "@types/node": "^22.10.10",
     "eslint": "^8.57.1",
-    "prisma": "^6.2.1",
+    "prisma": "^6.3.1",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.21.0"
+    "typescript-eslint": "^8.23.0"
   },
   "engines": {
     "node": ">=20.0.0 <21.0.0"
