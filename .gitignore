@@ -18,8 +18,11 @@
 !server/roles/.keep
 /server/var/**
 !server/var/.keep
-/server/workspaces/**
-!server/workspaces/.keep
+
+# Data directories
+/data/**
+!/data/.keep
+!/data/multiverse/.keep
 
 # Canvas User directory (portable single-user use-case)
 /user/**

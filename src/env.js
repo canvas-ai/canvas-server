@@ -1,5 +1,4 @@
 // Imports
-import os from 'os';
 import { existsSync } from 'fs';
 import { writeFileSync } from 'fs';
 import path from 'path';
@@ -9,21 +8,11 @@ import argv from 'node:process';
 
 // Utils
 const isPortable = () => existsSync(path.join(SERVER_ROOT, 'user'));
-const getUserHome = () => {
-    if (isPortable()) {
-        return path.join(SERVER_ROOT, 'user');
-    }
-
-    return process.env.CANVAS_USER_HOME || path.join(
-        os.homedir(),
-        process.platform === 'win32' ? 'Canvas' : '.canvas'
-    );
-};
 
 // Root paths
 const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVER_HOME = process.env.CANVAS_SERVER_HOME || path.join(SERVER_ROOT, 'server');
-const USER_HOME = getUserHome();
+const SERVER_DATA = process.env.CANVAS_SERVER_DATA || path.join(SERVER_ROOT, 'data');
 
 /**
  * Default environment configuration
@@ -33,26 +22,18 @@ const envConfig = {
     // Runtime
     NODE_ENV: process.env.NODE_ENV || 'development',
     LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
-    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || argv.argv.slice(2).includes('--local') ? 'local' : 'remote',
+    CANVAS_SERVER_MODE: process.env.CANVAS_SERVER_MODE || argv.argv.slice(2).includes('--user') ? 'user' : 'standalone',
 
-    // Server paths
+    // Server paths (global server data)
     CANVAS_SERVER_HOME: SERVER_HOME,
     CANVAS_SERVER_CONFIG: process.env.CANVAS_SERVER_CONFIG || path.join(SERVER_HOME, 'config'),
     CANVAS_SERVER_CACHE: process.env.CANVAS_SERVER_CACHE || path.join(SERVER_HOME, 'cache'),
-    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
     CANVAS_SERVER_DB: process.env.CANVAS_SERVER_DB || path.join(SERVER_HOME, 'db'),
     CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
-    CANVAS_SERVER_WORKSPACES: process.env.CANVAS_SERVER_WORKERS || path.join(SERVER_HOME, 'workspaces'),
 
-    // User paths (portable/single-user local mode)
-    CANVAS_USER_HOME: USER_HOME, // For remote mode, USER_HOME is set to CANVAS_SERVER_WORKSPACES/user@email.tld
-    CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'config'),
-    CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'cache'),
-    CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'data'),
-    CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'db'),
-    CANVAS_USER_VAR: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'var'),
-    CANVAS_USER_ROLES: process.env.CANVAS_USER_VAR || path.join(USER_HOME, 'roles')
+    // Data paths (multiverse/<user@email.tld> || orgname/<user@orgname.tld>)
+    CANVAS_SERVER_DATA: SERVER_DATA
 };
 
 /**
@@ -104,3 +85,7 @@ function env() {
 
 // Return the current env configuration
 export default env();
+export {
+    isPortable,
+    ensureDirectories
+}

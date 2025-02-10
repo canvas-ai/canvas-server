@@ -1,11 +1,20 @@
-import env from "../../../env.js";
 import path from "path";
 import JsonMap from "../../../utils/JsonMap.js";
 
 class WorkspaceStore extends JsonMap {
-    constructor(id) {
-      super(path.join(env.CANVAS_SERVER_WORKSPACES, id, "workspace"));
+    constructor(workspacePath) {
+        if (!workspacePath) {
+            throw new Error('Workspace path is required');
+        }
+
+        // The store data will be in the db subdirectory of the workspace
+        const dbPath = path.join(workspacePath, 'db');
+        super(dbPath);
+
+        this.workspacePath = workspacePath;
     }
+
+    // Add any additional workspace store specific methods here
 }
 
 export default WorkspaceStore;

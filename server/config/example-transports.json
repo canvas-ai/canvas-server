@@ -9,7 +9,7 @@
     "auth": {
       "enabled": true,
       "jwtLifetime": "48h",
-      "jwtSecret": ""
+      "jwtSecret": "changeme-canvas-4xyg%CpJ+V7"
     }
   },
   "ws": {
@@ -20,7 +20,7 @@
     "auth": {
       "enabled": true,
       "jwtLifetime": "48h",
-      "jwtSecret": ""
+      "jwtSecret": "changeme-canvas-4xyg%CpJ+V7"
     }
   }
 }

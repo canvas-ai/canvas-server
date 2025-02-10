@@ -4,7 +4,7 @@ import debugInstance from 'debug';
 const debug = debugInstance('canvas:context:tree');
 
 import TreeNode from './TreeNode.js';
-import LayerIndex from '../layer/index.js';
+import LayerIndex from '../layers/index.js';
 
 class Tree extends EventEmitter {
 
