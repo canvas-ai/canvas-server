@@ -1,34 +1,40 @@
 # Official Node.js 20.x image as base
-FROM node:20
+FROM node:20-slim
 
 # Working directory
 WORKDIR /opt
 
 # Install basic dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends git curl \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Clone the repository
-RUN git clone --branch main https://github.com/canvas-ai/canvas-server canvas-server
+RUN git clone --branch dev https://github.com/canvas-ai/canvas-server canvas-server
 
-# Lets switch the workdir
+# Switch workdir
 WORKDIR /opt/canvas-server
+
+# Create necessary directories
+RUN mkdir -p \
+    server/config \
+    server/cache \
+    server/db \
+    server/var \
+    server/roles \
+    data
 
 # Install application dependencies
 RUN yarn install
 
-# Accept CONFIG_DIR as a build argument
-ARG CONFIG_DIR=./config
-
-# Copy default server configuration to support portable deployments
-COPY ${CONFIG_DIR} /opt/canvas-server/config
-
 # Expose canvas-server ports
-EXPOSE 8001
-EXPOSE 8002
+EXPOSE 8001 8002
 
-# Start the application using npm/node
+# Use the start script as entrypoint
+ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]
+
+# Default command (can be overridden)
 CMD ["yarn", "start"]
-
-# ENTRYPOINT [ "/opt/canvas-server/bin/start-server.sh" ]
 

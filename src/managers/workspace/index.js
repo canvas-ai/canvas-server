@@ -40,7 +40,7 @@ export default class WorkspaceManager extends EventEmitter {
 
     #scanWorkspaces() {
         debug(`Scanning ${this.#rootPath} for workspaces`);
-        
+
         try {
             // Get all directories in rootPath
             const items = fs.readdirSync(this.#rootPath, { withFileTypes: true });
@@ -70,53 +70,38 @@ export default class WorkspaceManager extends EventEmitter {
         }
     }
 
-    createWorkspace(userId, workspaceId, options = {}) {
-        if (!userId) { throw new Error('User ID is required'); }
-        if (typeof userId !== 'string') { throw new Error('User ID must be a string'); }
-        if (!workspaceId) { throw new Error('Workspace ID is required'); }
-        if (typeof workspaceId !== 'string') { throw new Error('Workspace ID must be a string'); }
-
-        workspaceId = this.#parseWorkspaceId(workspaceId);
-        options = this.#validateWorkspaceOptions(options);
-
-        const workspacePath = path.join(this.#rootPath, workspaceId);
-        const configPath = path.join(workspacePath, 'workspace.json');
-
-        // Check if workspace folder exists
-        if (!fs.existsSync(workspacePath)) {
-            debug(`Creating workspace directory at ${workspacePath}`);
-            fs.mkdirSync(workspacePath, { recursive: true });
+    async createWorkspace(userEmail, name = 'universe') {
+        if (!userEmail) {
+            throw new Error('User email is required');
+        }
+        if (!userEmail.includes('@')) {
+            throw new Error('Invalid user email format');
         }
 
-        // if user workspaces has the workspace, return it
-        const userWorkspace = new WorkspaceStore(userId).get(workspaceId);
-        if (userWorkspace) {
-            return userWorkspace;
-        }
+        // Create the proper workspace path following the design:
+        // /data/multiverse/user@email.tld/workspace_name
+        const workspacePath = path.join(this.#rootPath, 'multiverse', userEmail, name);
 
-        debug(`Creating workspace with ID "${workspaceId}" for user "${userId}"`);
-        const workspace = new Workspace(workspaceId, {
-            ...options,
-            path: workspacePath
+        debug(`Creating workspace "${name}" for user ${userEmail} at ${workspacePath}`);
+
+        // Create workspace directory if it doesn't exist
+        await fs.promises.mkdir(workspacePath, { recursive: true });
+
+        // Initialize store with the correct path
+        const store = new WorkspaceStore(workspacePath);
+
+        const workspace = new Workspace({
+            userId: userEmail,
+            name,
+            path: workspacePath,
+            store
         });
-        
-        // Save workspace configuration to its folder
-        const configData = {
-            id: workspace.id,
-            name: workspace.name,
-            description: workspace.description,
-            baseUrl: workspace.baseUrl,
-            color: workspace.color,
-            // path is intentionally omitted as it's dynamic
-        };
 
-        fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
-        
+        // Add to tracked workspaces
         const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-        this.#workspaces.set(workspaceId, proxiedWorkspace);
+        this.#workspaces.set(`${userEmail}/${name}`, proxiedWorkspace);
 
-        new WorkspaceStore(userId).set(workspaceId, workspace);
-        return proxiedWorkspace;
+        return workspace;
     }
 
     getWorkspace(id) {
@@ -173,7 +158,7 @@ export default class WorkspaceManager extends EventEmitter {
             set: (target, property, value) => {
                 target[property] = value;
                 debug('Workspace update detected for ID ', target.id);
-                
+
                 // Save configuration to workspace.json
                 const configPath = path.join(target.path, 'workspace.json');
                 const configData = {
@@ -183,7 +168,7 @@ export default class WorkspaceManager extends EventEmitter {
                     baseUrl: target.baseUrl,
                     color: target.color,
                 };
-                
+
                 fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
                 return true;
             }

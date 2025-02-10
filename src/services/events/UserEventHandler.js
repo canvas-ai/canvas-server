@@ -1,9 +1,10 @@
 import debugMessage from 'debug';
-import { uuid12 } from '../../../extensions/transports/net-ipc/lib/utils.js';
+import WorkspaceManager from '../../managers/workspace/index.js';
 const debug = debugMessage('canvas:events:user');
 
 class UserEventHandler {
-  constructor(services = {}) {
+  constructor(config, services = {}) {
+    this.config = config;
     this.services = services;
     this.setupHandlers();
   }
@@ -16,32 +17,24 @@ class UserEventHandler {
 
   async handleUserCreated(user) {
     debug('New user created:', user.email);
-    
+
     try {
-      // Handle any post-user creation tasks here
-      // For example:
-      // - Send welcome email?
-      // - Notify admin?
-      // - etc
-
-      // Create default workspace
-
-      
-      if (this.services.workspace) {
-        const defaultWorkspace = await this.services.workspace.createWorkspace(
-          `${user.id}`,
-          uuid12(),
-          { name: 'Universe', description: 'Default workspace', baseUrl: '/', color: '#fff' }
-        );
-        debug('Created default workspace for user:', defaultWorkspace.id);
+      if (!user.email) {
+        throw new Error('User email is required');
       }
-      
+
+      // Create default workspace for new user using their email as ID
+      const workspaceManager = new WorkspaceManager({
+        rootPath: this.config.dataPath
+      });
+
+      // This will create /data/multiverse/user@email.tld/universe
+      await workspaceManager.createWorkspace(user.email);
+
+      debug(`Created default workspace for user: ${user.email}`);
     } catch (error) {
-      debug('Error handling user creation:', error);
-      // You might want to emit an error event here
-      if (this.services.auth) {
-        this.services.auth.emit('user:created:error', { user, error });
-      }
+      console.error('Error handling user creation:', error);
+      throw error;
     }
   }
 }
