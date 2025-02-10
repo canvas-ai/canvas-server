@@ -5,64 +5,47 @@ Server component for the Canvas project
 ## ! Refactor in progress
 
 **! Use the dev branch for now**
-**! Update: merged (non-working)dev to main(with a userbase of 2 this is OK)**
 
 ## Installation
 
-### Linux
-
-```bash
-$ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
-$ cd /path/to/canvas-server/src
-$ npm install # or yarn install
-$ npm start # or npm run pm2:start
-```
-
-### Windows
-
-```cmd
-> git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
-> cd /path/to/canvas-server/src
-> npm install
-> npm start
-```
-
-### Docker
+## Run canvas-server locally
 
 ```bash
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server
-$ docker-compose up --build
+$ npm install # or yarn install
+$ npm run db:setup # or yarn db:setup
+$ npm run start # or yarn start
+```
+
+## Docker
+
+```bash
+$ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
+$ cd /path/to/canvas-server
+$ CANVAS_SERVER_HOME=~/.canvas docker-compose up --build
 # or, to ensure you are running the latest and greatest
 # $ docker-compose build --no-cache
 # $ docker-compose up --force-recreate
 # Cleanup
 $ docker-compose down --rmi all
-
 ```
 
-Supported ENV vars with their defaults
+Supported ENV vars with their defaults:
 
 ```bash
-CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-./config}
-CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-./data}
-CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-./var}
-CANVAS_SERVER_WORKSPACES: ${CANVAS_USER_WORKSPACES:-./user/workspaces}
+CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
+CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-/opt/canvas-server/server/config}
+CANVAS_SERVER_CACHE: ${CANVAS_SERVER_CACHE:-/opt/canvas-server/server/cache}
+CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
+CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
+CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
+CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 ```
 
 ## Configuration
 
 - Rename example-*.json to *.json and amend as needed
--
-```bash
-# To disable "portable" mode, create /path/to/canvas-server/user/.ignore
-# or set the CANVAS_USER_CONFIG env variable (you can use .env in the projects src directory)
-# Edit canvas-server configuration before starting the server
-$ cd /path/to/canvas-server/config  # Or ~/.canvas/config/server
-$ cp example-roles.json roles.json
-$ cp example-transports.json transports.json
-# Or /path/to/canvas-server/config/example-*.json  ~/.canvas/config/server/*.json
-```
 
 ## Update Canvas Server
 
@@ -159,7 +142,6 @@ $ ./scripts/update-git.sh
 
 - https://www.npmjs.com/package/lmdb
 - https://www.npmjs.com/package/roaring
--
 
 ### Storage
 
