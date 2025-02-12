@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 
 // DB Backend
-import Db from '../../services/synapsd/src/index.js'
+import Db from '@synapsd/index'
 
 // Includes
 import Workspace from './lib/Workspace.js';

@@ -2,8 +2,8 @@ import debugMessage from 'debug';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import ResponseObject from '../../schemas/transports/ResponseObject.js';
-import AuthService from '../../services/auth/index.js';
+import ResponseObject from '@/schemas/transports/ResponseObject.js';
+import AuthService from '@/services/auth/index.js';
 
 const debug = debugMessage('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

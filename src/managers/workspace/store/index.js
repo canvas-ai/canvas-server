@@ -1,5 +1,5 @@
 import path from "path";
-import JsonMap from "../../../utils/JsonMap.js";
+import JsonMap from "@/utils/JsonMap.js";
 
 class WorkspaceStore extends JsonMap {
     constructor(workspacePath) {

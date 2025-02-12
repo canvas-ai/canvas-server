@@ -1,7 +1,7 @@
 'use strict';
 
 // Environment
-import { APP, USER, DEVICE } from '../../env.js';
+import { APP, USER, DEVICE } from '@/env.js';
 
 // Utils
 import EventEmitter from 'eventemitter2';

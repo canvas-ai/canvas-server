@@ -17,7 +17,7 @@
 import Conf from 'conf';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDevice } from '../../managers/device/index.mjs';
+import { getCurrentDevice } from '@/managers/device/index.mjs';
 import _ from 'lodash';
 
 class Config {

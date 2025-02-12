@@ -1,6 +1,5 @@
 // Managers
-import sessionManager from '../../../Server.js'
-import workspaceManager from '../../../Server.js'
+import { sessionManager, workspaceManager } from '@/Server.js'
 
 export default class User {
 
