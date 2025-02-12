@@ -1,7 +1,7 @@
 import debug from 'debug';
 import EE from 'eventemitter2';
 import Url from './Url.js';
-import { uuid12 } from '../../../utils/common.js';
+import { uuid12 } from '@/utils/common.js';
 
 // Module defaults
 const CONTEXT_AUTOCREATE_LAYERS = true;

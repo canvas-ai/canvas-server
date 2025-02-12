@@ -4,8 +4,7 @@ import debugMessage from 'debug';
 const debug = debugMessage('canvas:user-manager');
 
 // Managers
-import sessionManager from '../../Server.js';
-import workspaceManager from '../../Server.js';
+import { sessionManager, workspaceManager } from '@/Server.js';
 
 // Includes
 import User from './lib/User.js';

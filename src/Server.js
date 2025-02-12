@@ -15,7 +15,7 @@ import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 import EventEmitter from 'eventemitter2';
 // JSON Utils
-import Config from './utils/config/index.js';
+import Config from '@/utils/config/index.js';
 import JsonIndexManager from './utils/jim/index.js';
 // Logging
 import winston from 'winston';

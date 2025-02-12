@@ -1,7 +1,6 @@
 /**
  * Canvas server init script
  */
-
 import Server from './Server.js'
 import {
     logger
