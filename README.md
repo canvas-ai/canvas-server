@@ -136,6 +136,61 @@ This script updates the Canvas Server by pulling the latest changes from the git
 $ ./scripts/update-git.sh
 ```
 
+## Directory structure
+
+```
+[Canvas server]
+    /data/multiverse/user@email.com
+        /Config
+            /user.json // includes auth, identities
+            /apps.json
+            /roles.json
+            /agents.json
+            /minions.json
+            /services.json
+            /workspaces.json
+        /Apps
+            /appname
+                /app.json
+                /config
+                /runtime
+        /Roles
+            /rolename
+                /role.json (type docker || pm2)
+                /runtime || Dockerfile || docker-compose
+        /Services
+            /storage
+            /neural
+                /Agents
+                    /lucy
+                        /agent.json
+                        /data
+                        /cache
+                /Minions
+                    /spamd
+                        /minion.json
+                        /runtime || Dockerfile || docker-compose
+                        /data
+                        /cache 
+                /Services
+                /Tools
+                /Connectors
+            /infrastructure
+        /Workspaces
+            /Universe
+                /workspace.json
+                /db
+                /data
+                /cache                                
+            /Work
+                workspace.json
+        /user.json
+    /data/orgname
+        /Workspaces
+            /user@orgname.com
+            /team-workspace
+```
+
 ## References
 
 ### DB / Index
