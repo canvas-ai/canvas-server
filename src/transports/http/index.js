@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 // Product info
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '@root/package.json' assert { type: 'json' };
 const {
     productName,
     version
@@ -18,11 +18,11 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
-import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import ResponseObject from '@/schemas/transports/ResponseObject.js';
 import passport from 'passport';
-import configurePassport from '../../utils/passport.js';
-import AuthService from '../../services/auth/index.js';
-import { config } from '../../Server.js';
+import configurePassport from '@/utils/passport.js';
+import AuthService from '@/services/auth/index.js';
+import { config } from '@/Server.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];

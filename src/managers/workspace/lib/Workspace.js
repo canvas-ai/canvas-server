@@ -3,7 +3,7 @@ const debug = debugMessage('canvas:context:workspace');
 
 // sesssionName@workspaceName://contextUrl
 // Example: ws@universe://foo/bar/baz
-import Db from '../../../services/synapsd/src/index.js';
+import Db from '@synapsd/index';
 
 export default class Workspace {
 

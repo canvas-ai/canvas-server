@@ -7,8 +7,8 @@ const debug = debugInstance('canvas:context-manager');
 import Context from './lib/Context.js';
 
 // Managers
-import contextTree, { indexManager } from '../../Server.js';
-import workspaceManager from '../../Server.js';
+import contextTree, { indexManager } from '@/Server.js';
+import workspaceManager from '@/Server.js';
 import TreeManager from '../contextTree/index.js';
 import LayerIndex from '../contextTree/layer/index.js';
 import Tree from '../contextTree/lib/Tree.js';

@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import passport from 'passport';
-import configurePassport from '../../../utils/passport.js';
+import configurePassport from '@/utils/passport.js';
 
 class SessionService {
   constructor(config) {

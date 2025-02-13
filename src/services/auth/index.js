@@ -1,9 +1,9 @@
 import validator from 'validator';
 import SessionService from './lib/SessionService.js';
 import EventEmitter from 'eventemitter2';
-import { workspaceManager } from '../../Server.js';
+import { workspaceManager } from '@/Server.js';
 import UserEventHandler from '../events/UserEventHandler.js';
-import User from '../../managers/prisma/models/User.js';
+import User from '@/managers/prisma/models/User.js';
 
 class AuthService extends EventEmitter {
   constructor(config) {

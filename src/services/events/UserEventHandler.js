@@ -1,5 +1,5 @@
 import debugMessage from 'debug';
-import WorkspaceManager from '../../managers/workspace/index.js';
+import WorkspaceManager from '@/managers/workspace/index.js';
 const debug = debugMessage('canvas:events:user');
 
 class UserEventHandler {
