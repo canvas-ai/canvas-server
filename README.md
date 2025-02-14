@@ -46,6 +46,8 @@ CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 ## Configuration
 
 - Rename example-*.json to *.json and amend as needed
+- Configuration files can be split into multiple files adhering to the original JSON structure
+  - config/data.json maybe be split into config/data.backends.json, config/data.sources.json, config/data.caching.json etc
 
 ## Update Canvas Server
 
@@ -140,15 +142,22 @@ $ ./scripts/update-git.sh
 
 ```
 [Canvas server]
+    /server
+        /cache // We'll move to per-workspace cache
+        /data  // We'll move to per-workspace data
+        /db    // Mostly used for session storage
+        /roles // Globaly-available canvas-roles (docker.rocketchat, docker.jitsy etc)
+        /var   // Server runtime (logs, pids, sockets etc)
     /data/multiverse/user@email.com
         /Config
             /user.json // includes auth, identities
-            /apps.json
-            /roles.json
+            /apps.json  // apps.win32.json, apps.darwin.json, apps.linux.json
+            /roles.json  // roles.docker.json, roles.pm2.json
             /agents.json
             /minions.json
             /services.json
             /workspaces.json
+            /data.json // Data sources + caching + storage
         /Apps
             /appname
                 /app.json
