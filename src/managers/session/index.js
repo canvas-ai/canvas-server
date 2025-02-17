@@ -13,25 +13,12 @@ import Session from '../prisma/models/Session.js';
 const MAX_SESSIONS = 32;
 
 class SessionManager extends EventEmitter {
-    static #instance = null;
     #maxSessions;
     #initialized = false;
 
-    static async getInstance(options) {
-        if (!SessionManager.#instance) {
-            SessionManager.#instance = new SessionManager(options);
-        }
-        await SessionManager.#instance.initialize();
-        return SessionManager.#instance;
-    }
-
     constructor(options = {}) {
-        if (SessionManager.#instance) {
-            throw new Error('SessionManager is a singleton. Use SessionManager.getInstance() instead.');
-        }
         super();
         log('Initializing Session Manager');
-
         this.#maxSessions = options.maxSessions || MAX_SESSIONS;
     }
 
@@ -39,7 +26,6 @@ class SessionManager extends EventEmitter {
         if (this.#initialized) {
             return;
         }
-
         this.#initialized = true;
     }
 
@@ -86,4 +72,7 @@ class SessionManager extends EventEmitter {
     }
 }
 
-export default SessionManager.getInstance;
+// Create and export a single instance
+const sessionManager = new SessionManager();
+await sessionManager.initialize();
+export default sessionManager;

@@ -1,6 +1,7 @@
 import express from 'express';
 const router = express.Router();
 import debugMessage from 'debug';
+import ResponseObject from '../ResponseObject.js';
 const debug = debugMessage('canvas:server:rest:auth');
 
 export default function(authService) {
@@ -10,9 +11,11 @@ export default function(authService) {
         try {
             const { user, token } = await authService.register(email, password);
             authService.sessionService.setCookie(res, token);
-            res.status(201).json({ token });
+            const response = new ResponseObject().created({ token }, 'User registered successfully');
+            res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            res.status(409).json({ error: error.message });
+            const response = new ResponseObject().conflict(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 
@@ -22,16 +25,19 @@ export default function(authService) {
         try {
             const { user, token } = await authService.login(email, password);
             authService.sessionService.setCookie(res, token);
-            res.json({ token });
+            const response = new ResponseObject().success({ token }, 'Login successful');
+            res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            res.status(401).json({ error: error.message });
+            const response = new ResponseObject().unauthorized(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 
     // Logout user
     router.post('/logout', (req, res) => {
         authService.logout(res);
-        res.json({ message: 'Logged out successfully' });
+        const response = new ResponseObject().success(null, 'Logged out successfully');
+        res.status(response.statusCode).json(response.getResponse());
     });
 
     return router;

@@ -1,11 +1,17 @@
+'use strict';
+
+// Utils
+import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:workspace');
 
 // sesssionName@workspaceName://contextUrl
 // Example: ws@universe://foo/bar/baz
+
 import Db from '@synapsd/index';
 
-export default class Workspace {
+
+export default class Workspace extends EventEmitter {
 
     #rootPath;
     #db;
@@ -13,6 +19,8 @@ export default class Workspace {
     constructor(id, opts = {}) {
         if (!id) { throw new Error('Workspace ID required'); }
         if (typeof id !== 'string') { throw new Error('Workspace ID must be a string'); }
+        super();
+
         this.id = id;
         this.name = opts.name || id;
         this.description = opts.description || 'Canvas Workspace';

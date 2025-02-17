@@ -2,7 +2,7 @@ import debugMessage from 'debug';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import ResponseObject from '@/schemas/transports/ResponseObject.js';
+import ResponseObject from '../ResponseObject.js';
 import AuthService from '@/services/auth/index.js';
 
 const debug = debugMessage('canvas:transport:ws');
@@ -25,6 +25,8 @@ class WebSocketTransport {
     #config;
     #io;
     #parent;
+    #isShuttingDown = false;
+    #closePromise;
 
     constructor(parent, options = {}) {
         this.#config = { ...DEFAULT_CONFIG, ...options };
@@ -34,6 +36,10 @@ class WebSocketTransport {
     }
 
     async start(httpServer) {
+        if (this.#isShuttingDown) {
+            throw new Error('WebSocket server is currently shutting down');
+        }
+
         const { Server } = await import('socket.io');
         this.#io = new Server(httpServer, {
             cors: {
@@ -41,6 +47,9 @@ class WebSocketTransport {
                 methods: ['GET', 'POST']
             }
         });
+
+        // Set max listeners
+        this.#io.sockets.setMaxListeners(5);
 
         if (this.#config.auth.enabled) {
             this.#setupAuthentication();
@@ -51,12 +60,47 @@ class WebSocketTransport {
     }
 
     async stop() {
-        if (!this.#io || typeof this.#io.close !== 'function') {
-            return;
+        if (!this.#io) {
+            debug('No WebSocket server instance to stop');
+            return Promise.resolve();
         }
+
+        if (this.#isShuttingDown) {
+            debug('WebSocket server is already shutting down, waiting for existing shutdown to complete');
+            return this.#closePromise;
+        }
+
+        this.#isShuttingDown = true;
         debug('Shutting down WebSocket server...');
-        await this.#io.close();
-        // TODO: Implement a proper way to close all connections
+
+        this.#closePromise = new Promise((resolve) => {
+            // Close all existing connections
+            const sockets = Array.from(this.#io.sockets.sockets.values());
+            sockets.forEach(socket => {
+                this.#handleDisconnect(socket);
+                socket.disconnect(true);
+            });
+
+            // Close the server
+            this.#io.close(() => {
+                debug('WebSocket server gracefully shut down');
+                this.#io = null;
+                this.#isShuttingDown = false;
+                resolve();
+            });
+
+            // Force close after timeout
+            setTimeout(() => {
+                if (this.#io) {
+                    debug('Force closing remaining WebSocket connections');
+                    this.#io = null;
+                    this.#isShuttingDown = false;
+                    resolve();
+                }
+            }, 5000);
+        });
+
+        return this.#closePromise;
     }
 
     async restart(httpServer) {
@@ -70,7 +114,8 @@ class WebSocketTransport {
             protocol: this.#config.protocol,
             host: this.#config.host,
             port: this.#config.port,
-            listening: true
+            listening: true,
+            connections: this.#io.sockets.sockets.size
         };
     }
 
