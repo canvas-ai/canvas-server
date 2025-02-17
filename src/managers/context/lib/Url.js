@@ -1,5 +1,5 @@
 import { urlToHttpOptions } from 'node:url';
-import internalLayers from '../../Tree/layer/lib/builtinLayers.js';
+import internalLayers from '../../tree/layer/lib/builtinLayers.js';
 
 const DEFAULT_URL_PROTOCOL = 'universe:';
 const DEFAULT_URL_PATH = '/';
