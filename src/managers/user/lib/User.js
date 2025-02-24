@@ -5,13 +5,9 @@ export default class User {
 
     constructor(options = {}) {
         this.id = options.id;
-        this.email = options.email;
-        
+
         this.sessions = new Map();        // Active sessions
         this.workspaces = new Map();      // Accessible workspaces
-        this.personalWorkspace = null;    // Reference to personal workspace
-        
-        this.accessTokens = new Map();    // Token -> Session mapping
     }
 
     async initialize() {
@@ -23,7 +19,7 @@ export default class User {
         const workspaces = await workspaceManager.getWorkspaces(this.id);
         workspaces.forEach(workspace => {
             this.workspaces.set(workspace.id, workspace);
-            
+
             // Set personal workspace reference
             if (workspace.type === 'personal' && workspace.ownerId === this.id) {
                 this.personalWorkspace = workspace;
@@ -36,7 +32,7 @@ export default class User {
             userId: this.id,
             deviceInfo
         });
-        
+
         this.sessions.set(session.id, session);
         return session;
     }
@@ -65,4 +61,4 @@ export default class User {
     getAccessibleWorkspaces() {
         return Array.from(this.workspaces.values());
     }
-}   
+}

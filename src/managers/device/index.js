@@ -1,4 +1,4 @@
-import Desktop from './types/Desktop.mjs';
+import Desktop from './lib/Desktop.js';
 
 class DeviceManager {
 
