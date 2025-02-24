@@ -6,3 +6,9 @@
 	path = src/services/synapsd
 	url = https://github.com/canvas-ai/canvas-synapsd.git
 	branch = main
+[submodule "src/services/neurald"]
+	path = src/services/neurald
+	url = https://github.com/canvas-ai/canvas-neurald.git
+[submodule "src/services/stored"]
+	path = src/services/stored
+	url = https://github.com/canvas-ai/canvas-stored.git
