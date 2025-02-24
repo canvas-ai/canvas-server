@@ -24,13 +24,19 @@ RUN mkdir -p \
     server/db \
     server/var \
     server/roles \
-    data
+    server/data
+
+# Update submodules
+RUN yarn update-submodules
 
 # Install application dependencies
 RUN yarn install
 
+# Run database migrations
+RUN yarn db:setup
+
 # Expose canvas-server ports
-EXPOSE 8001 8002
+EXPOSE 8000 8001 8002
 
 # Use the start script as entrypoint
 ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]
