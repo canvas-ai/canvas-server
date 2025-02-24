@@ -1,6 +1,6 @@
 import EventEmitter from 'eventemitter2';
 import debugInstance from 'debug';
-const debug = debugInstance('canvas:app:manager');
+const debug = debugInstance('canvas:app-manager');
 
 /**
  * App manager
@@ -13,10 +13,6 @@ class AppManager extends EventEmitter {
     constructor(options = {}) {
         debug('Initializing Canvas App Manager');
         super();
-
-        // Validate options
-        if (!options.index) { throw new Error('Index not provided'); }
-        this.#index = options.index;
     }
 
 }

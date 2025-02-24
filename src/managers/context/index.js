@@ -5,12 +5,6 @@ const debug = debugInstance('canvas:context-manager');
 
 // Includes
 import Context from './lib/Context.js';
-
-// Managers
-import workspaceManager from '@/Server.js';
-
-
-
 import LayerIndex from '../tree/layers/index.js';
 import Tree from '../tree/lib/Tree.js';
 

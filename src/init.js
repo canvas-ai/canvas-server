@@ -3,9 +3,7 @@
  */
 
 import Server from './Server.js'
-import {
-    logger
-} from './Server.js'
+import logger from '@/utils/log/index.js'
 
 async function main() {
     try {

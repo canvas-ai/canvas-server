@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 import debugInstance from 'debug';
 const debug = debugInstance('canvas:transport:http:routes:v2:sessions');
-import sessionManager from '@/managers/session/index.js';
+import sessionManager from '@root/_SCRATCH_/api/session/index.js';
 
 // List all sessions
 router.get('/', async (req, res) => {

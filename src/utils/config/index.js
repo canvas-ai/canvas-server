@@ -19,24 +19,39 @@ import fs from 'fs';
 import path from 'path';
 import { getCurrentDevice } from '@/managers/device/index.js';
 import _ from 'lodash';
+import env from '@/env.js';
+import logger from '@/utils/log/index.js';
 
 class Config {
+    constructor(options = {}) {
+        // Use environment variables with fallbacks
+        this.userConfigDir = options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
+        this.serverConfigDir = options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
 
-    constructor({ userConfigDir, serverConfigDir, configPriority = 'user', versioning = true }) {
-        this.userConfigDir = userConfigDir;
-        this.serverConfigDir = serverConfigDir;
-        this.configPriority = configPriority;
-        this.versioning = versioning;
+        // Set configPriority based on server mode
+        this.configPriority = options.configPriority ||
+            (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
+
+        this.versioning = options.versioning ?? true;
         this.device = getCurrentDevice();
         this.stores = new Map();
+
+        logger.debug(`Config initialized with:
+            - userConfigDir: ${this.userConfigDir}
+            - serverConfigDir: ${this.serverConfigDir}
+            - configPriority: ${this.configPriority}
+            - versioning: ${this.versioning}
+            - device: ${this.device.id} (${this.device.os.platform})`);
     }
 
     findFile(files) {
         for (const file of files) {
             if (fs.existsSync(file)) {
+                logger.debug(`Config file found: ${file}`);
                 return file;
             }
         }
+        logger.debug('No matching config file found');
         return null;
     }
 
@@ -65,9 +80,13 @@ class Config {
         const userPaths = generatePaths(this.userConfigDir);
         const serverPaths = generatePaths(this.serverConfigDir);
 
-        return this.configPriority === 'user'
+        // Order paths based on configPriority
+        const orderedPaths = this.configPriority === 'user'
             ? [...userPaths, ...serverPaths]
             : [...serverPaths, ...userPaths];
+
+        logger.debug(`Config search paths for ${configPath}: ${JSON.stringify(orderedPaths)}`);
+        return orderedPaths;
     }
 
     getNestedValue(obj, path) {
@@ -77,14 +96,18 @@ class Config {
     require(configName, configType = 'server') {
         const configPath = configType === 'server' ? path.join(this.serverConfigDir, configName) : path.join(this.userConfigDir, configName);
         if(!fs.existsSync(`${configPath}.json`)) {
-            throw new Error(`Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`);
+            const errorMsg = `Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`;
+            logger.error(errorMsg);
+            throw new Error(errorMsg);
         }
+        logger.debug(`Required config loaded: ${configPath}`);
         return this.open(configPath);
     }
 
     open(configPath) {
         // Check cache first
         if (this.stores.has(configPath)) {
+            logger.debug(`Using cached config for ${configPath}`);
             return this.stores.get(configPath);
         }
 
@@ -96,6 +119,7 @@ class Config {
         if (parts.length > 1) {
             const nestedFile = this.findFile(filesToCheck.slice(3)); // Skip base config files
             if (nestedFile) {
+                logger.debug(`Found nested config file: ${nestedFile}`);
                 const conf = new Conf({
                     configName: baseName,
                     cwd: path.dirname(nestedFile)
@@ -108,6 +132,7 @@ class Config {
         // Then check for base config file and nested values
         const baseFile = this.findFile(filesToCheck);
         if (baseFile) {
+            logger.debug(`Found base config file: ${baseFile}`);
             const conf = new Conf({
                 configName: baseName,
                 cwd: path.dirname(baseFile)
@@ -117,6 +142,7 @@ class Config {
             if (parts.length > 1) {
                 const nestedValue = this.getNestedValue(conf.store, configPath);
                 if (nestedValue) {
+                    logger.debug(`Found nested value in base config for: ${configPath}`);
                     // Return a new Conf instance for the nested value
                     const nestedConf = new Conf({
                         configName: baseName,
@@ -134,6 +160,7 @@ class Config {
         }
 
         // If nothing found, create new config in user directory
+        logger.debug(`No config found for ${configPath}, creating new one in user directory`);
         const conf = new Conf({
             configName: baseName,
             cwd: this.userConfigDir
@@ -145,6 +172,7 @@ class Config {
 
     save(configPath, data) {
         const conf = this.stores.get(configPath) || this.open(configPath);
+        logger.debug(`Saving config for ${configPath}`);
         Object.entries(data).forEach(([key, value]) => {
             conf.set(key, value);
         });
@@ -154,20 +182,37 @@ class Config {
     remove(configPath) {
         const conf = this.stores.get(configPath);
         if (conf) {
+            logger.debug(`Removing config for ${configPath}`);
             conf.clear();
             this.stores.delete(configPath);
             return true;
         }
+        logger.debug(`Config not found for removal: ${configPath}`);
         return false;
     }
 
     clear() {
+        logger.debug('Clearing all config stores');
         this.stores.forEach(conf => conf.clear());
         this.stores.clear();
         return true;
     }
+
+    // Static factory method to create a default config instance
+    static createDefault() {
+        return new Config({
+            userConfigDir: env.CANVAS_USER_CONFIG,
+            serverConfigDir: env.CANVAS_SERVER_CONFIG,
+            configPriority: env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server',
+            versioning: true
+        });
+    }
 }
 
+// Create and export a default instance
+const defaultConfig = Config.createDefault();
+
+export { Config, defaultConfig };
 export default Config;
 
 

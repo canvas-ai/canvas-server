@@ -1,11 +1,7 @@
-// src/managers/role/index.js
-
-const Docker = require('dockerode');
-const DockerCompose = require('dockerode-compose');
-
-
+//const Docker = require('dockerode');
+//const DockerCompose = require('dockerode-compose');
 // TEST!
-class RoleManager {
+export default class RoleManager {
     constructor(dockerConfigs) {
         this.dockerBackends = new Map();
         this.roles = new Map();
@@ -149,5 +145,3 @@ class RoleManager {
     }
 
 }
-
-module.exports = RoleManager;

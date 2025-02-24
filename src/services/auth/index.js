@@ -1,15 +1,21 @@
 import validator from 'validator';
 import SessionService from './lib/SessionService.js';
 import EventEmitter from 'eventemitter2';
-import { workspaceManager } from '@/Server.js';
 import UserEventHandler from '../events/UserEventHandler.js';
 import User from '@/managers/prisma/models/User.js';
 
+/**
+ * Auth Service
+ */
+
+// TODO: Refactor
+
 class AuthService extends EventEmitter {
-  constructor(config) {
+  constructor(config, { workspaceManager }) {
     super();
     this.config = config;
     this.sessionService = new SessionService(config);
+    this.workspaceManager = workspaceManager;
     this.userEventHandler = new UserEventHandler({
       auth: this,
       workspace: workspaceManager
@@ -31,9 +37,9 @@ class AuthService extends EventEmitter {
       email,
       password: hashedPassword
     });
-    
+
     this.emit('user:created', user);
-    
+
     const token = this.sessionService.generateToken(user);
     return { user, token };
   }
