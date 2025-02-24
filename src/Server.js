@@ -13,14 +13,17 @@ import env from './env.js';
 // Utils
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-import EventEmitter from 'eventemitter2';
-// JSON Utils
+
+// Config
 import Config from '@/utils/config/index.js';
-import JsonIndexManager from './utils/jim/index.js';
+
 // Logging
-import winston from 'winston';
-import debugMessage from 'debug';
+import winston from 'winston'; // TODO: Move to logger
+import debugMessage from 'debug'; // TODO: Move to logger
 const debug = debugMessage('canvas:server');
+
+// Events
+import EventEmitter from 'eventemitter2';
 
 // Bling-bling
 import pkg from '../package.json' assert { type: 'json' };
@@ -39,23 +42,24 @@ import WorkspaceManager from './managers/workspace/index.js';
  * Initialize utils
  **/
 
-const config = new Config({ // TODO: Rework, we can use Conf directly here
+const config = new Config({ // TODO: Refactor
     userConfigDir: env.CANVAS_SERVER_CONFIG,
     serverConfigDir: env.CANVAS_SERVER_CONFIG,
     configPriority: 'server',
     versioning: false,
 });
 
+// TODO: Move to logger
 const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
 const logLevel = env.LOG_LEVEL;
 const logger = winston.createLogger({
     level: logLevel,
     format: winston.format.combine(
         winston.format.timestamp({
-            format: 'YYYY-MM-DD HH:mm:ss'
+            format: 'YYYYMMDD-HHmmss'
         }),
         winston.format.printf(({ level, message, timestamp }) => {
-            return `${timestamp} ${level}: ${message}`;
+            return `${timestamp}|${level}|${message}`;
         })
     ),
     transports: [
@@ -63,10 +67,10 @@ const logger = winston.createLogger({
             filename: logFile,
             format: winston.format.combine(
                 winston.format.timestamp({
-                    format: 'YYYY-MM-DD HH:mm:ss'
+                    format: 'YYYYMMDD-HHmmss'
                 }),
                 winston.format.printf(({ level, message, timestamp }) => {
-                    return `${timestamp} ${level}: ${message}`;
+                    return `${timestamp}|${level}|${message}`;
                 })
             )
         }),
@@ -77,9 +81,8 @@ const logger = winston.createLogger({
  * Initialize Managers
  **/
 
-const workspaceManager = new WorkspaceManager({
-    rootPath: env.CANVAS_SERVER_DATA,
-});
+const userManager = new UserManager();
+const workspaceManager = new WorkspaceManager();
 
 
 /**
@@ -113,8 +116,6 @@ class Server extends EventEmitter {
     get version() { return `${productName} v${version} | ${description}`; }
     get license() { return license; }
     get status() { return this.#status; }
-    get debug() { return debug; }
-
 
     /**
      * Canvas service controls
@@ -153,23 +154,20 @@ class Server extends EventEmitter {
         logger.info('Starting Canvas Server..');
 
         if (this.#status === 'running') {
-            const msg = 'Server is already running';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is already running');
+            logger.warn('Server is already running');
             return;
         }
 
         if (this.#status === 'stopping') {
-            const msg = 'Server is currently stopping, please wait';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is currently stopping, please wait');
+            logger.warn('Server is currently stopping, please wait');
             return;
         }
 
         if (this.#status !== 'initialized') {
-            const msg = 'Server is not yet initialized, please run init() first';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is not yet initialized, please run init() first');
+            logger.warn('Server is not yet initialized, please run init() first');
             return;
         }
 

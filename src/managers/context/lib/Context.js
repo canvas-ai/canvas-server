@@ -1,7 +1,13 @@
-import debug from 'debug';
-import EE from 'eventemitter2';
+// Utils
 import Url from './Url.js';
+import EventEmitter from 'eventemitter2';
 import { uuid12 } from '@/utils/common.js';
+
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:context:instance');
+
+// Managers
+import { workspaceManager } from '@/Server.js';
 
 // Module defaults
 const CONTEXT_AUTOCREATE_LAYERS = true;
@@ -13,20 +19,22 @@ const CONTEXT_URL_BASE_ID = 'universe';
  * Canvas Context
  */
 
-class Context extends EE {
+class Context extends EventEmitter {
 
     #id;
-    #systemContext;
-    #sessionContext;
+    #session;
+    #currentWorkspace;
+    #currentTree;
+    #url;
 
     #sessionId;
     #baseUrl;
-    #url;
     #path;
     #array;
 
     #layerIndex;
     #tree;
+    #workspace;
 
     // System (server) context
     // - Location/network, runtime context
@@ -39,51 +47,116 @@ class Context extends EE {
     #featureArray = []; // Default OR
     #filterArray = [];  // Default AND
 
-    // TODO: Refactor to not set the context url in the constructor
-    constructor(url, db, tree, options = {}) {
-        // Initialize event emitter
+    constructor(session, options = {}) {
+        if (!session) throw new Error('Session required');
+
         super({
-            wildcard: false, // set this to `true` to use wildcards
-            delimiter: '/', // set the delimiter used to segment namespaces
-            newListener: false, // set this to `true` if you want to emit the newListener event
-            removeListener: false, // set this to `true` if you want to emit the removeListener event
-            maxListeners: 100, // the maximum amount of listeners that can be assigned to an event
-            verboseMemoryLeak: false, // show event name in memory leak message when more than maximum amount of listeners is assigned
-            ignoreErrors: false, // disable throwing uncaughtException if an error event is emitted and it has no listeners
+            wildcard: false,
+            delimiter: '/',
+            newListener: false,
+            removeListener: false,
+            maxListeners: 100,
+            verboseMemoryLeak: false,
+            ignoreErrors: false
         });
 
-        // Generate a runtime uuid
-        this.#id = options?.id || uuid12();
+        this.id = options.id || uuid12();
+        this.#session = session;
 
-        this.#systemContext = options?.systemContext;
-        this.#sessionContext = options?.sessionContext;
+        // Initialize with default universe workspace if not specified
+        const initialUrl = options.url || 'universe:///';
+        this.setUrl(initialUrl);
+    }
 
-        this.#sessionId = options?.sessionId || 'default'; // Throw?
-        this.documents = db;
+    async setUrl(url) {
+        debug(`Setting context url to ${url}`);
 
-        this.#tree = tree;
-        this.#layerIndex = this.#tree.layers; // TODO: Refactor
+        // Parse URL format: workspaceId://path
+        const [workspaceId, path] = this.#parseUrl(url);
 
-        // Set the base url
-        let baseUrl = options.baseUrl || CONTEXT_URL_BASE; // Throw?
-        this.#baseUrl = baseUrl.startsWith('/') ? baseUrl : '/' + baseUrl;
+        // Get the workspace
+        const workspace = await workspaceManager.getWorkspace(workspaceId);
+        if (!workspace) {
+            throw new Error(`Workspace ${workspaceId} not found`);
+        }
 
-        // Set the context url
-        this.setUrl(
-            url ? url : CONTEXT_URL_PROTO + '://' + CONTEXT_URL_BASE,
-            CONTEXT_AUTOCREATE_LAYERS,
-        );
+        // Switch workspace if needed
+        if (!this.#currentWorkspace || this.#currentWorkspace.id !== workspace.id) {
+            this.#currentWorkspace = workspace;
+            this.#currentTree = workspace.tree;
+        }
 
-        debug(`Context with url "${this.#url}", session id: "${this.#sessionId}", baseUrl: "${this.#baseUrl}" initialized`);
+        // Update the tree path
+        await this.#currentTree.setContextPath(this, path);
+
+        this.#url = url;
+        this.emit('url:changed', url);
+    }
+
+    #parseUrl(url) {
+        const match = url.match(/^([^:]+):\/\/(.*)$/);
+        if (!match) {
+            throw new Error(`Invalid context URL format: ${url}`);
+        }
+
+        const [_, workspaceId, path] = match;
+        return [workspaceId, path];
+    }
+
+    get id() { return this.#id; }
+    get session() { return this.#session; }
+    get url() { return this.#url; }
+    get currentWorkspace() { return this.#currentWorkspace; }
+    get currentTree() { return this.#currentTree; }
+
+    // Layer operations
+    async addLayer(name) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.addLayer(this, name);
+    }
+
+    async removeLayer(name) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.removeLayer(this, name);
+    }
+
+    async getLayers() {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.getContextLayers(this);
+    }
+
+    // Data operations
+    async query(query) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.queryContext(this, query);
+    }
+
+    async insert(data) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.insertIntoContext(this, data);
+    }
+
+    async update(query, data) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.updateInContext(this, query, data);
+    }
+
+    async remove(query) {
+        if (!this.#currentTree) throw new Error('No active workspace');
+        return await this.#currentTree.removeFromContext(this, query);
+    }
+
+    async destroy() {
+        if (this.#currentTree) {
+            await this.#currentTree.removeContext(this.id);
+        }
+        this.emit('destroyed');
+        this.removeAllListeners();
     }
 
     /**
 	 * Getters
 	 */
-
-    get id() {
-        return this.#id;
-    }
 
     get sessionId() {
         return this.#sessionId;
@@ -91,10 +164,6 @@ class Context extends EE {
 
     get baseUrl() {
         return this.#baseUrl;
-    }
-
-    get url() {
-        return this.#url;
     }
 
     get path() {
@@ -154,40 +223,8 @@ class Context extends EE {
 	 * Context management
 	 */
 
-    set url(url) {
-        this.setUrl(url);
-    }
-
     set(url = CONTEXT_URL_BASE, autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS) {
         return this.setUrl(url, autoCreateLayers);
-    }
-
-    setUrl(url, autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS) {
-        // Validate the URL
-        if (!Url.validate(url)) {
-            throw new Error(`Invalid context URL "${url}"`);
-        }
-
-        const parsed = new Url(url, this.#baseUrl);
-        if (this.#url === parsed.url) {return this.#url;}
-
-        debug(`Setting context url for context "${this.#id}", session ID "${this.#sessionId}" to "${parsed.url}"`);
-        if (!this.#tree.insert(parsed.path, null, autoCreateLayers)) {
-            debug( `Context url "${parsed.url}" not set, path "${parsed.path}" not found`);
-            return false;
-        }
-
-        // Update context variables
-        this.#url = parsed.url;
-        this.#path = parsed.path;
-        this.#array = parsed.array;
-
-        // TODO: Move to the tree class
-        this.#initializeLayers(parsed.array);
-
-        this.emit('url', this.#url);
-        this.emit('update', this.stats()); // Test
-        return this.#url;
     }
 
     /**
@@ -200,15 +237,6 @@ class Context extends EE {
 
     getLayer(name) {
         return this.#layerIndex.getLayerByName(name);
-    }
-
-    addLayer(layer) {
-        return this.#layerIndex.addLayer(layer);
-    }
-
-    layerNameToID(name) {
-        return this.#layerIndex.nameToID(name);
-        //return this.#layerIndex.getLayerByName(name)?.id
     }
 
     createLayer(name, options) {
@@ -460,28 +488,6 @@ class Context extends EE {
         };
     }
 
-    // Clean up resources associated with this context
-    destroy() {
-        debug(`Destroying context "${this.#id}"`);
-
-        // Emit a "destroy" event
-        this.emit('destroy');
-
-        // Remove all listeners from the event emitter
-        this.removeAllListeners();
-
-        // Set private fields to null to release memory
-        this.#id = null;
-        this.#sessionId = null;
-        this.#url = null;
-        this.#baseUrl = null;
-        this.#path = null;
-        this.#array = null;
-        this.#contextArray = null;
-        this.#featureArray = null;
-        this.#filterArray = null;
-    }
-
     /**
 	 * Internal methods
 	 */
@@ -565,6 +571,18 @@ class Context extends EE {
 
         return parsed.filter((x, i, a) => a.indexOf(x) === i);
         // return [... new Set(parsed)]
+    }
+
+    // Context operations
+    async createChild(path) {
+        const childPath = this.#normalizePath(path);
+        const fullPath = path.join(this.path, childPath);
+
+        return new Context(
+            this.sessionId,
+            this.#workspace,
+            fullPath
+        );
     }
 }
 

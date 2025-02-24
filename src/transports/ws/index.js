@@ -1,11 +1,11 @@
-import debugMessage from 'debug';
+import debugInstance from 'debug';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../ResponseObject.js';
 import AuthService from '@/services/auth/index.js';
 
-const debug = debugMessage('canvas:transport:ws');
+const debug = debugInstance('canvas:ws:transport');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_VERSIONS = ['v2'];

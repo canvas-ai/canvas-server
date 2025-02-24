@@ -1,8 +1,8 @@
 import express from 'express';
 const router = express.Router();
-import debugMessage from 'debug';
+import debugInstance from 'debug';
 import ResponseObject from '../ResponseObject.js';
-const debug = debugMessage('canvas:server:rest:auth');
+const debug = debugInstance('canvas:http:auth');
 
 export default function(authService) {
     // Register new user

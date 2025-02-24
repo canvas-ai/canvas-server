@@ -2,6 +2,7 @@
 import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:workspace-manager');
+
 import randomcolor from 'randomcolor';
 import path from 'path';
 import fs from 'fs';
