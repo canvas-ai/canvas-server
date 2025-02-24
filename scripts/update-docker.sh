@@ -5,7 +5,7 @@
 # Set default values for environment variables
 CANVAS_ROOT="${CANVAS_ROOT:-/opt/canvas-server}"
 DOCKER_COMPOSE_FILE="${DOCKER_COMPOSE_FILE:-docker-compose.yml}"
-TARGET_BRANCH="${TARGET_BRANCH:-main}"
+TARGET_BRANCH="${TARGET_BRANCH:-dev}"
 LOG_FILE="${LOG_FILE:-/var/log/canvas-docker-update.log}"
 
 # Function to display usage information
@@ -13,7 +13,7 @@ usage() {
     echo "Usage: $0 [-r canvas_root] [-f docker_compose_file] [-b target_branch] [-l log_file]"
     echo "  -r: Canvas root directory (default: /opt/canvas-server)"
     echo "  -f: Docker Compose file (default: docker-compose.yml)"
-    echo "  -b: Target branch for git pull (default: main)"
+    echo "  -b: Target branch for git pull (default: dev)"
     echo "  -l: Log file (default: /var/log/canvas-docker-update.log)"
     exit 1
 }

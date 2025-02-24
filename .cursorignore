@@ -1,11 +1,9 @@
 .env
 *.env
 *.env.*
+/server/**
 /extensions/**
-/ui/assets/**
-/ui/dist/**
-/ui/node_modules/**
-/ui/package-lock.json
-/ui/package.json
-/ui/tsconfig.json
-/ui/vite.config.ts
+/src/ui/**
+
+
+

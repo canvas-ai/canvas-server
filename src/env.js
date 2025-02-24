@@ -31,7 +31,6 @@ const envConfig = {
     CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
     CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
-    
 };
 
 /**
