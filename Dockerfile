@@ -8,11 +8,12 @@ WORKDIR /opt
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone the repository
-RUN git clone --branch dev https://github.com/canvas-ai/canvas-server canvas-server
+RUN git clone --branch dev https://github.com/canvas-ai/canvas-server.git canvas-server
 
 # Switch workdir
 WORKDIR /opt/canvas-server
@@ -27,13 +28,13 @@ RUN mkdir -p \
     server/data
 
 # Update submodules
-RUN yarn update-submodules
+RUN npm run update-submodules
 
 # Install application dependencies
-RUN yarn install
+RUN npm install
 
 # Run database migrations
-RUN yarn db:setup
+RUN npm run db:setup
 
 # Expose canvas-server ports
 EXPOSE 8000 8001 8002

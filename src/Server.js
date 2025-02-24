@@ -36,7 +36,9 @@ const {
 
 // Managers
 import WorkspaceManager from './managers/workspace/index.js';
-
+const workspaceManager = new WorkspaceManager({
+    rootPath: env.CANVAS_SERVER_HOME,
+});
 
 /**
  * Initialize utils
@@ -76,13 +78,6 @@ const logger = winston.createLogger({
         }),
     ],
 });
-
-/**
- * Initialize Managers
- **/
-
-const userManager = new UserManager();
-const workspaceManager = new WorkspaceManager();
 
 
 /**
@@ -432,7 +427,7 @@ class Server extends EventEmitter {
 export {
     config,
     logger,
-    workspaceManager
+    workspaceManager,
 };
 
 export default Server;

@@ -573,17 +573,6 @@ class Context extends EventEmitter {
         // return [... new Set(parsed)]
     }
 
-    // Context operations
-    async createChild(path) {
-        const childPath = this.#normalizePath(path);
-        const fullPath = path.join(this.path, childPath);
-
-        return new Context(
-            this.sessionId,
-            this.#workspace,
-            fullPath
-        );
-    }
 }
 
 export default Context;

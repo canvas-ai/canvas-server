@@ -11,7 +11,7 @@ import workspaceManager from '@/Server.js';
 
 
 
-import LayerIndex from '../tree/layer/index.js';
+import LayerIndex from '../tree/layers/index.js';
 import Tree from '../tree/lib/Tree.js';
 
 // Module defaults

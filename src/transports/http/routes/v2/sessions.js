@@ -1,7 +1,7 @@
 import express from 'express';
 const router = express.Router();
 import debugInstance from 'debug';
-const debug = debugInstance('canvas:http:routes:v2:sessions');
+const debug = debugInstance('canvas:transport:http:routes:v2:sessions');
 import sessionManager from '@/managers/session/index.js';
 
 // List all sessions

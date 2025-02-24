@@ -7,6 +7,6 @@
       "@synapsd/*": ["./src/services/synapsd/src/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "_SCRATCH_/api"],
   "exclude": ["node_modules", "dist"]
 }

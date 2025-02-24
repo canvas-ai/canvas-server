@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import ResponseObject from '../ResponseObject.js';
 import AuthService from '@/services/auth/index.js';
 
-const debug = debugInstance('canvas:ws:transport');
+const debug = debugInstance('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_VERSIONS = ['v2'];

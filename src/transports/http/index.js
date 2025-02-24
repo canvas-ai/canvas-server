@@ -1,6 +1,6 @@
 // Utils
 import debugInstance from 'debug';
-const debug = debugInstance('canvas:http:transport');
+const debug = debugInstance('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';

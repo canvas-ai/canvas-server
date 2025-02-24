@@ -2,7 +2,6 @@
 import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:workspace-manager');
-
 import randomcolor from 'randomcolor';
 import path from 'path';
 import fs from 'fs';
@@ -18,7 +17,7 @@ export default class WorkspaceManager extends EventEmitter {
 
     #rootPath;
     #index;
-    #openWorkspaces;
+    #openWorkspaces = new Map();
     #workspaces = new Map(); // just to prevent error, TODO: Make this a JsonMap
 
     constructor(options = {}) {
@@ -36,7 +35,7 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     initialize() {
-        this.#scanWorkspaces();
+        //this.#scanWorkspaces();
     }
 
     #scanWorkspaces() {
