@@ -3,12 +3,9 @@
  */
 
 import Server from './Server.js'
-import {
-    logger
-} from './Server.js'
+import logger from '@/utils/log/index.js'
 
 async function main() {
-
     try {
         const canvas = new Server();
 
@@ -47,7 +44,6 @@ main().catch(err => {
  */
 
 function setupProcessEventListeners(server) {
-
     // Handle process signals
     const shutdown = async (signal) => {
         console.log(`Received ${signal}. Shutting down gracefully...`);

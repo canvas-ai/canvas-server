@@ -5,13 +5,8 @@ const debug = debugInstance('canvas:context-manager');
 
 // Includes
 import Context from './lib/Context.js';
-
-// Managers
-import contextTree, { indexManager } from '../../Server.js';
-import workspaceManager from '../../Server.js';
-import TreeManager from '../contextTree/index.js';
-import LayerIndex from '../contextTree/layer/index.js';
-import Tree from '../contextTree/lib/Tree.js';
+import LayerIndex from '../tree/layers/index.js';
+import Tree from '../tree/lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10

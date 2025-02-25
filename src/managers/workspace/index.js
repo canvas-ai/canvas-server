@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 
 // DB Backend
-import Db from '../../services/synapsd/src/index.js'
+import Db from '@synapsd/index'
 
 // Includes
 import Workspace from './lib/Workspace.js';
@@ -17,7 +17,7 @@ export default class WorkspaceManager extends EventEmitter {
 
     #rootPath;
     #index;
-    #openWorkspaces;
+    #openWorkspaces = new Map();
     #workspaces = new Map(); // just to prevent error, TODO: Make this a JsonMap
 
     constructor(options = {}) {
@@ -35,7 +35,7 @@ export default class WorkspaceManager extends EventEmitter {
     }
 
     initialize() {
-        this.#scanWorkspaces();
+        //this.#scanWorkspaces();
     }
 
     #scanWorkspaces() {

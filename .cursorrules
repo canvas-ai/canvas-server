@@ -18,7 +18,7 @@
 
 We are building "Canvas", a cross-platform desktop overlay to help organize work / workflows and data into separate "contexts".
 Contexts are represented by a virtual file-system tree. Every tree node("directory") represents a layer linked to a roaring bitmap.
-Layers are unique - a `reports` layer of the `/work/acme/reports` and `/work/reports` context URLs are the same internally stored under the same uuid,
+Layers are unique - a `reports` layer of the `/work/acme/reports` and `/work/reports` context URLs is stored under the same uuid,
 Context layers filter different data based on where they are placed within the context tree.
 - Context URL structure: `sessionID@workspaceID://context/url`, for example `my-laptop@universe://work/acme/devops/jira-1234`
 
@@ -35,19 +35,14 @@ Context layers filter different data based on where they are placed within the c
 
 - We use ES6 vanilla JavaScript and may use TypeScript in the future
 - We use bash and powershell for scripting
-- We use Node.js with a LTS v20+
+- We use Node.js v20 LTS for the server runtime
 - We use sqlite for the main server db backend for portability (`/server/db/canvas.sqlite`)
 - We use Canvas-SynapsD for user workspace databases and as the default JSON document store
 - User data paths:
-  - `/data/multiverse/john.doe@email.com/universe/` is the default workspace directory for user data
-  - `/data/multiverse/john.doe@email.com/sample-workspace` is the example workspace directory for user
-  - `/data/orgname/john.doe@orgname.com/universe/` is the default workspace directory for a organization user
-  - `/data/orgname/teamname/` is the default workspace directory for a organization team
-- Workspace data paths:
-  - `workspace/path/db/` is the workspace database directory
-  - `workspace/path/data/` is the workspace data directory
-  - `workspace/path/cache/` is the workspace cache directory
-  - `workspace/path/var/` is the workspace variable data directory
+  - `/server/data/multiverse/john.doe@email.com/universe/` is the default workspace directory for user data
+  - `/server/data/multiverse/john.doe@email.com/sample-workspace` is the example workspace directory for user
+  - `/server/data/orgname/john.doe@orgname.com/universe/` is the default workspace directory for a organization user
+  - `/server/data/orgname/teamname/` is the default workspace directory for a organization team
 
 ## Current project file structure
 
@@ -55,195 +50,163 @@ Context layers filter different data based on where they are placed within the c
 $ tree -L 5 -I node_modules .
 .
 ├── bin
-│   ├── canvas.sh
-│   ├── context.sh
-│   ├── start-server.sh
-│   └── ws.sh
-├── data
-│   └── multiverse
+│   └── start-server.sh
+├── docker-compose.yml
+├── Dockerfile
+├── ecosystem.config.js
 ├── extensions
+├── jsconfig.json
+├── jsdoc.json
+├── LICENSE
 ├── package.json
+├── package-lock.json
 ├── prisma
 │   ├── migrations
 │   └── schema.prisma
 ├── README.md
 ├── scripts
 │   ├── build-portable-image.sh
-│   ├── install-docker.sh
 │   ├── install-ubuntu.sh
-│   ├── update-docker.sh
 │   └── update-git.sh
 ├── server
 │   ├── cache
 │   ├── config
-│   │   ├── example-roles.json
-│   │   ├── example-storage.json
-│   │   ├── example-transports.json
 │   ├── data
 │   ├── db
-│   │   └── canvas.db
 │   ├── roles
-│   ├── var
-│       └── log
-│           └── canvas-server.log
-└── src
-    ├── env.js
-    ├── init.js
-    ├── managers
-    │   ├── app
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── App.js
-    │   ├── context
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       ├── Context.js
-    │   │       └── Url.js
-    │   ├── contextTree
-    │   │   ├── index.js
-    │   │   ├── layers
-    │   │   │   ├── index.js
-    │   │   │   └── lib
-    │   │   └── lib
-    │   │       ├── Tree.js
-    │   │       └── TreeNode.js
-    │   ├── device
-    │   │   ├── index.mjs
-    │   │   ├── lib
-    │   │   │   └── Device.js
-    │   │   └── types
-    │   │       └── Desktop.mjs
-    │   ├── peer
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── Peer.js
-    │   ├── prisma
-    │   │   └── models
-    │   │       ├── Base.js
-    │   │       ├── Session.js
-    │   │       └── User.js
-    │   ├── role
-    │   │   ├── drivers
-    │   │   │   ├── canvas
-    │   │   │   ├── docker
-    │   │   │   ├── pm2
-    │   │   │   └── systemd
-    │   │   ├── index.js
-    │   │   ├── lib
-    │   │   │   ├── Agent.js
-    │   │   │   ├── Minion.js
-    │   │   │   └── Role.js
-    │   │   └── providers
-    │   │       ├── aws
-    │   │       └── docker
-    │   ├── session
-    │   │   └── index.js
-    │   ├── user
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── User.js
-    │   └── workspace
-    │       ├── index.js
-    │       ├── lib
-    │       │   └── Workspace.js
-    │       └── store
-    │           └── index.js
-    ├── Server.js
-    ├── services
-    │   ├── auth
-    │   │   ├── index.js
-    │   │   ├── lib
-    │   │   │   ├── AuthService.js
-    │   │   │   └── SessionService.js
-    │   │   └── utils
-    │   │       ├── crypto.js
-    │   │       └── token.js
-    │   ├── events
-    │   │   └── UserEventHandler.js
-    │   ├── neurald
-    │   │   ├── agents
-    │   │   │   ├── Carmack
-    │   │   │   ├── Feynman
-    │   │   │   ├── Lucy
-    │   │   │   ├── Sarge
-    │   │   │   └── Techlead
-    │   │   ├── index.js
-    │   │   ├── lib
-    │   │   │   ├── Agent.js
-    │   │   │   └── Iface.js
-    │   │   ├── models
-    │   │   │   └── README.md
-    │   │   ├── package.json
-    │   │   ├── README.md
-    │   │   └── tools
-    │   │       └── toolbox.js
-    │   ├── stored
-    │   │   ├── backends
-    │   │   │   ├── BackendManager.js
-    │   │   │   ├── file
-    │   │   │   ├── lmdb
-    │   │   │   ├── rclone
-    │   │   │   ├── s3
-    │   │   │   └── StorageBackend.js
-    │   │   ├── cache
-    │   │   │   └── index.js
-    │   │   ├── index.js
-    │   │   ├── README.md
-    │   │   ├── utils
-    │   │   │   ├── checksums
-    │   │   │   ├── common.js
-    │   │   │   ├── embeddings
-    │   │   │   ├── featureExtractor
-    │   │   │   └── fileinfo
-    │   │   └── workers
-    │   │       ├── syncd
-    │   │       └── watchd
-    │   └── synapsd
-    │       ├── package.json
-    │       └── src
-    │           ├── backends
-    │           ├── index.js
-    │           ├── lib
-    │           ├── README.md
-    │           └── schemas
-    ├── transports
-    │   ├── http
-    │   │   ├── auth.js
-    │   │   ├── index.js
-    │   │   └── routes
-    │   │       ├── v1
-    │   │       └── v2
-    │   └── ws
-    │       ├── index.js
-    │       ├── routes
-    │       │   ├── v1
-    │       │   └── v2
-    │       └── routes.js
-    ├── ui
-    │   ├── assets
-    │   ├── cli
-    │   │   ├── canvas.js
-    │   │   ├── context.js
-    │   │   └── ws.js
-    │   └── web
-    └── utils
-        ├── common.js
-        ├── config
-        │   └── index.js
-        ├── isDocker.js
-        ├── jim
-        │   ├── driver
-        │   │   ├── fs
-        │   │   └── lokijs
-        │   └── index.js
-        ├── JsonMap.js
-        ├── JsonSet.js
-        ├── log
-        │   ├── index.js
-        │   └── lib
-        │       ├── textAlign.js
-        │       └── winston.js
-        ├── passport.js
-        └── sysstat
-            └── index.js
+│   ├── multiverse
+│   └── var
+├── src
+│   ├── core
+│   ├── env.js
+│   ├── init.js
+│   ├── managers
+│   │   ├── app
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── App.js
+│   │   ├── context
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       ├── Context.js
+│   │   │       └── Url.js
+│   │   ├── device
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── Desktop.js
+│   │   ├── peer
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── Peer.js
+│   │   ├── prisma
+│   │   │   └── models
+│   │   │       ├── Base.js
+│   │   │       ├── Session.js
+│   │   │       └── User.js
+│   │   ├── role
+│   │   │   ├── drivers
+│   │   │   │   ├── canvas
+│   │   │   │   ├── docker
+│   │   │   │   ├── pm2
+│   │   │   │   └── systemd
+│   │   │   ├── index.js
+│   │   │   ├── lib
+│   │   │   │   ├── Agent.js
+│   │   │   │   ├── Minion.js
+│   │   │   │   └── Role.js
+│   │   │   └── providers
+│   │   │       ├── aws
+│   │   │       └── docker
+│   │   ├── session
+│   │   │   └── index.js
+│   │   ├── tree
+│   │   │   ├── index.js
+│   │   │   ├── layers
+│   │   │   │   ├── index.js
+│   │   │   │   └── lib
+│   │   │   └── lib
+│   │   │       ├── Tree.js
+│   │   │       └── TreeNode.js
+│   │   ├── user
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── User.js
+│   │   └── workspace
+│   │       ├── index.js
+│   │       ├── lib
+│   │       │   └── Workspace.js
+│   │       └── store
+│   │           └── index.js
+│   ├── Server.js
+│   ├── services
+│   │   ├── auth
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── SessionService.js
+│   │   ├── events
+│   │   │   └── UserEventHandler.js
+│   │   ├── neurald
+│   │   │   ├── LICENSE
+│   │   │   ├── package.json
+│   │   │   └── src
+│   │   │       ├── agents
+│   │   │       ├── index.js
+│   │   │       ├── models
+│   │   │       ├── README.md
+│   │   │       └── tools
+│   │   ├── stored
+│   │   │   ├── LICENSE
+│   │   │   ├── package.json
+│   │   │   ├── README.md
+│   │   │   └── src
+│   │   │       ├── backends
+│   │   │       ├── cache
+│   │   │       ├── index.js
+│   │   │       ├── utils
+│   │   │       └── workers
+│   │   └── synapsd
+│   │       ├── package.json
+│   │       ├── README.md
+│   │       └── src
+│   │           ├── backends
+│   │           ├── filters
+│   │           ├── indexes
+│   │           ├── index.js
+│   │           ├── schemas
+│   │           └── utils
+│   ├── transports
+│   │   ├── http
+│   │   │   ├── auth.js
+│   │   │   ├── index.js
+│   │   │   └── routes
+│   │   │       ├── v1
+│   │   │       └── v2
+│   │   ├── ResponseObject.js
+│   │   └── ws
+│   │       ├── index.js
+│   │       ├── routes
+│   │       │   ├── v1
+│   │       │   └── v2
+│   │       └── routes.js
+│   ├── ui
+│   │   ├── cli
+│   │   └── web
+│   └── utils
+│       ├── common.js
+│       ├── config
+│       │   └── index.js
+│       ├── isDocker.js
+│       ├── jim
+│       │   ├── driver
+│       │   │   ├── fs
+│       │   │   └── lokijs
+│       │   └── index.js
+│       ├── JsonMap.js
+│       ├── JsonSet.js
+│       ├── log
+│       │   └── index.js
+│       ├── passport.js
+│       └── path-resolver
+│           ├── index.js
+│           └── resolver.js
 ```

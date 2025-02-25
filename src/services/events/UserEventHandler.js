@@ -1,6 +1,6 @@
-import debugMessage from 'debug';
-import WorkspaceManager from '../../managers/workspace/index.js';
-const debug = debugMessage('canvas:events:user');
+import debugInstance from 'debug';
+import WorkspaceManager from '@/managers/workspace/index.js';
+const debug = debugInstance('canvas:events:user');
 
 class UserEventHandler {
   constructor(config, services = {}) {

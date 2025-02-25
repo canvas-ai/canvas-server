@@ -1,7 +1,7 @@
 'use strict';
 
 // Includes
-import debug from 'debug';
+import debugInstance from 'debug';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
@@ -18,6 +18,7 @@ import { ensureDirSync } from 'fs-extra';
  * Logger needs to implement at least the 4 methods below
 */
 // TODO: Replace logger with canvas-utils-logger
+const debug = debugInstance('canvas:utils:common');
 const logger = {};
 logger.debug = debug;
 logger.info = console.log;

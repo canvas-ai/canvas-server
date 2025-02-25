@@ -1,4 +1,4 @@
-import { genUUID } from '../../../../extensions/transports/net-ipc/lib/utils.js';
+import { genUUID } from '@root/extensions/transports/net-ipc/lib/utils.js';
 import BaseModel from './Base.js';
 import bcrypt from 'bcryptjs';
 

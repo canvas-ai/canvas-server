@@ -4,29 +4,13 @@
 
 # Server data directories
 /server/**
-!/server/.keep
 !/server/config/example-*.json
 !/server/config/default-*.json
 !/server/config/.keep
-/server/cache/**
-!server/cache/.keep
-/server/data/**
-!server/data/.keep
-/server/db/**
-!server/db/.keep
-/server/roles/**
-!server/roles/.keep
-/server/var/**
-!server/var/.keep
 
 # Data directories
 /data/**
-!/data/.keep
-!/data/multiverse/.keep
-
-# Canvas User directory (portable single-user use-case)
 /user/**
-!user/.keep
 
 # Dev
 /.vscode

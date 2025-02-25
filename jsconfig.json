@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@root/*": ["./*"],
+      "@synapsd/*": ["./src/services/synapsd/src/*"],
+      "@neurald/*": ["./src/services/neurald/src/*"],
+      "@stored/*": ["./src/services/stored/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "_SCRATCH_", "_TODO_", "_OLD_", "extensions"]
+}

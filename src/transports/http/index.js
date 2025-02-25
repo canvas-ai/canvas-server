@@ -1,13 +1,13 @@
 // Utils
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:transport:http');
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 // Product info
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '@root/package.json' assert { type: 'json' };
 const {
     productName,
     version
@@ -18,11 +18,11 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
-import ResponseObject from '../../schemas/transports/ResponseObject.js';
+import ResponseObject from '../ResponseObject.js';
 import passport from 'passport';
-import configurePassport from '../../utils/passport.js';
-import AuthService from '../../services/auth/index.js';
-import { config } from '../../Server.js';
+import configurePassport from '@/utils/passport.js';
+import AuthService from '@/services/auth/index.js';
+import { config } from '@/Server.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];
@@ -59,6 +59,8 @@ class HttpRestTransport {
 
     #config;
     #server;
+    #closePromise;
+    #isShuttingDown = false;
 
     constructor(options = {}) {
         debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
@@ -75,9 +77,17 @@ class HttpRestTransport {
     }
 
     async start() {
+        if (this.#isShuttingDown) {
+            throw new Error('Server is currently shutting down');
+        }
+
         const app = this.#configureExpress();
         await this.#setupRoutes(app);
         this.#server = http.createServer(app);
+
+        // Set max listeners to prevent warning
+        this.#server.setMaxListeners(5);
+
         return new Promise((resolve, reject) => {
             this.#server.listen(this.#config.port, this.#config.host, () => {
                 console.log(`HTTP server started at http://${this.#config.host}:${this.#config.port}/`);
@@ -87,15 +97,43 @@ class HttpRestTransport {
     }
 
     async stop() {
-        if (this.#server) {
-            debug('Shutting down server...');
-            return new Promise((resolve) => {
-                this.#server.close(() => {
-                    console.log('HTTP server gracefully shut down');
-                    resolve();
-                });
-            });
+        if (!this.#server) {
+            debug('No server instance to stop');
+            return Promise.resolve();
         }
+
+        if (this.#isShuttingDown) {
+            debug('Server is already shutting down, waiting for existing shutdown to complete');
+            return this.#closePromise;
+        }
+
+        this.#isShuttingDown = true;
+        debug('Shutting down server...');
+
+        this.#closePromise = new Promise((resolve) => {
+            // Remove all existing listeners to prevent memory leaks
+            this.#server.removeAllListeners('close');
+
+            this.#server.close(() => {
+                debug('HTTP server gracefully shut down');
+                this.#server = null;
+                this.#isShuttingDown = false;
+                resolve();
+            });
+
+            // Force close after timeout
+            setTimeout(() => {
+                if (this.#server) {
+                    debug('Force closing remaining connections');
+                    this.#server.closeAllConnections?.();
+                    this.#server = null;
+                    this.#isShuttingDown = false;
+                    resolve();
+                }
+            }, 5000);
+        });
+
+        return this.#closePromise;
     }
 
     async restart() {

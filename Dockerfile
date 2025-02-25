@@ -8,11 +8,12 @@ WORKDIR /opt
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone the repository
-RUN git clone --branch dev https://github.com/canvas-ai/canvas-server canvas-server
+RUN git clone --branch dev https://github.com/canvas-ai/canvas-server.git canvas-server
 
 # Switch workdir
 WORKDIR /opt/canvas-server
@@ -24,17 +25,24 @@ RUN mkdir -p \
     server/db \
     server/var \
     server/roles \
-    data
+    server/data \
+    server/multiverse
+
+# Update submodules
+RUN npm run update-submodules
 
 # Install application dependencies
-RUN yarn install
+RUN npm install
+
+# Run database migrations
+RUN npm run db:setup
 
 # Expose canvas-server ports
-EXPOSE 8001 8002
+EXPOSE 8000 8001 8002
 
-# Use the start script as entrypoint
+# Start the server
 ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]
 
 # Default command (can be overridden)
-CMD ["yarn", "start"]
+CMD ["npm", "run", "start"]
 

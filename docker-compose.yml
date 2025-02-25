@@ -7,6 +7,7 @@ services:
     container_name: canvas-server
     image: canvas-server:latest
     ports:
+      - "8000:8000"
       - "8001:8001"
       - "8002:8002"
     environment:
@@ -17,11 +18,13 @@ services:
       CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
       CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
       CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
-      CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
+      CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/server/data}
+      CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/server/multiverse}
     volumes:
       - ${CANVAS_SERVER_CONFIG:-./server/config}:/opt/canvas-server/server/config
       - ${CANVAS_SERVER_CACHE:-./server/cache}:/opt/canvas-server/server/cache
       - ${CANVAS_SERVER_DB:-./server/db}:/opt/canvas-server/server/db
       - ${CANVAS_SERVER_VAR:-./server/var}:/opt/canvas-server/server/var
       - ${CANVAS_SERVER_ROLES:-./server/roles}:/opt/canvas-server/server/roles
-      - ${CANVAS_SERVER_DATA:-./data}:/opt/canvas-server/data
+      - ${CANVAS_SERVER_DATA:-./server/data}:/opt/canvas-server/server/data
+      - ${CANVAS_USER_HOME:-./server/multiverse}:/opt/canvas-server/server/multiverse

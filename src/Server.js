@@ -5,22 +5,19 @@
 // Parsed env vars
 import env from './env.js';
 
-
-/**
- * Import dependencies
- */
-
 // Utils
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-import EventEmitter from 'eventemitter2';
-// JSON Utils
-import Config from './utils/config/index.js';
-import JsonIndexManager from './utils/jim/index.js';
+
+// Config
+import { defaultConfig as config } from '@/utils/config/index.js';
+
 // Logging
-import winston from 'winston';
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:server');
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('server');
+
+// Events
+import EventEmitter from 'eventemitter2';
 
 // Bling-bling
 import pkg from '../package.json' assert { type: 'json' };
@@ -31,56 +28,20 @@ const {
     license
 } = pkg
 
-// Managers
-import WorkspaceManager from './managers/workspace/index.js';
+// Services
 
+// Transport classes
+import HttpTransport from '@/transports/http/index.js';
+import WsTransport from '@/transports/ws/index.js';
 
-/**
- * Initialize utils
- **/
-
-const config = new Config({ // TODO: Rework, we can use Conf directly here
-    userConfigDir: env.CANVAS_SERVER_CONFIG,
-    serverConfigDir: env.CANVAS_SERVER_CONFIG,
-    configPriority: 'server',
-    versioning: false,
-});
-
-const logFile = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.log');
-const logLevel = env.LOG_LEVEL;
-const logger = winston.createLogger({
-    level: logLevel,
-    format: winston.format.combine(
-        winston.format.timestamp({
-            format: 'YYYY-MM-DD HH:mm:ss'
-        }),
-        winston.format.printf(({ level, message, timestamp }) => {
-            return `${timestamp} ${level}: ${message}`;
-        })
-    ),
-    transports: [
-        new winston.transports.File({
-            filename: logFile,
-            format: winston.format.combine(
-                winston.format.timestamp({
-                    format: 'YYYY-MM-DD HH:mm:ss'
-                }),
-                winston.format.printf(({ level, message, timestamp }) => {
-                    return `${timestamp} ${level}: ${message}`;
-                })
-            )
-        }),
-    ],
-});
-
-/**
- * Initialize Managers
- **/
-
-const workspaceManager = new WorkspaceManager({
-    rootPath: env.CANVAS_SERVER_DATA,
-});
-
+// Manager classes
+import AppManager from '@/managers/app/index.js';
+import ContextManager from '@/managers/context/index.js';
+import DeviceManager from '@/managers/device/index.js';
+import RoleManager from '@/managers/role/index.js';
+import sessionManager from '@/managers/session/index.js';
+import UserManager from '@/managers/user/index.js';
+import WorkspaceManager from '@/managers/workspace/index.js';
 
 /**
  * Canvas Server
@@ -88,13 +49,23 @@ const workspaceManager = new WorkspaceManager({
 
 class Server extends EventEmitter {
 
+    // Runtime
     #mode;                  // user, standalone
     #status = 'stopped';    // initialized, running, stopping, stopped
 
+    #services = new Map();
+    #transports = new Map();
+
+    // Managers
+    #workspaceManager;
+    #appManager;
+    #sessionManager;
+    #contextManager;
+    #deviceManager;
+    #roleManager;
+
     constructor(options = {
         mode: env.CANVAS_SERVER_MODE,
-        serverHome: env.CANVAS_SERVER_HOME,
-        dataHome: env.CANVAS_SERVER_DATA,
     }) {
         super(); // EventEmitter2
         debug('Canvas server options:', options);
@@ -102,9 +73,6 @@ class Server extends EventEmitter {
         // Set mode
         this.#mode = options.mode;
 
-        // Services and transports
-        this.services = new Map();
-        this.transports = new Map();
     }
 
     // Getters
@@ -113,8 +81,14 @@ class Server extends EventEmitter {
     get version() { return `${productName} v${version} | ${description}`; }
     get license() { return license; }
     get status() { return this.#status; }
-    get debug() { return debug; }
 
+    // Manager getters
+    get workspaceManager() { return this.#workspaceManager; }
+    get appManager() { return this.#appManager; }
+    get sessionManager() { return this.#sessionManager; }
+    get contextManager() { return this.#contextManager; }
+    get deviceManager() { return this.#deviceManager; }
+    get roleManager() { return this.#roleManager; }
 
     /**
      * Canvas service controls
@@ -124,28 +98,16 @@ class Server extends EventEmitter {
         debug('Initializing Canvas Server..');
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
-        const errors = [];
-
         try {
-            await this.initializeServices();
+            // Initialize services & transports
+            await this.#initializeServices();
+            await this.#initializeTransports();
+            this.#status = 'initialized';
+            this.emit('initialized');
         } catch (error) {
-            errors.push(`Services initialization failed: ${error.message}`);
+            logger.error('Initialization failed:', error);
+            throw error;
         }
-
-        try {
-            await this.initializeTransports();
-        } catch (error) {
-            errors.push(`Transports initialization failed: ${error.message}`);
-        }
-
-        if (errors.length > 0) {
-            const errorMessage = errors.join('\n');
-            logger.error(errorMessage);
-            throw new Error(errorMessage);
-        }
-
-        this.#status = 'initialized';
-        this.emit('initialized');
     }
 
     async start() {
@@ -153,23 +115,20 @@ class Server extends EventEmitter {
         logger.info('Starting Canvas Server..');
 
         if (this.#status === 'running') {
-            const msg = 'Server is already running';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is already running');
+            logger.warn('Server is already running');
             return;
         }
 
         if (this.#status === 'stopping') {
-            const msg = 'Server is currently stopping, please wait';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is currently stopping, please wait');
+            logger.warn('Server is currently stopping, please wait');
             return;
         }
 
         if (this.#status !== 'initialized') {
-            const msg = 'Server is not yet initialized, please run init() first';
-            debug(msg);
-            logger.warn(msg);
+            debug('Server is not yet initialized, please run init() first');
+            logger.warn('Server is not yet initialized, please run init() first');
             return;
         }
 
@@ -201,8 +160,8 @@ class Server extends EventEmitter {
 
     async stop(exit = true) {
         const action = exit ? 'Shutting down' : 'Stopping for restart';
-        debug(`${action} Canvas Server...`);
-        logger.info(`${action} Canvas Server...`);
+        debug(`Canvas Server ${action}..`);
+        logger.info(`Canvas Server ${action}..`);
 
         this.emit('before-shutdown');
         this.#status = 'stopping';
@@ -262,7 +221,7 @@ class Server extends EventEmitter {
      * Services
      */
 
-    async initializeServices() {
+    async #initializeServices() {
         debug('Initializing services');
         logger.info('Initializing services');
         return; // TODO
@@ -276,7 +235,7 @@ class Server extends EventEmitter {
         for (const [service, config] of serviceEntries) {
             try {
                 const instance = await this.#loadModule('services', service, config);
-                this.services.set(service, instance);
+                this.#services.set(service, instance);
             } catch (error) {
                 logger.error(`Failed to initialize service ${service}:`, error);
                 throw error;
@@ -289,7 +248,7 @@ class Server extends EventEmitter {
         logger.info('Starting services..');
         const errors = [];
 
-        for (const [name, service] of this.services) {
+        for (const [name, service] of this.#services) {
             try {
                 await service.start();
             } catch (error) {
@@ -311,7 +270,7 @@ class Server extends EventEmitter {
 
         const errors = [];
 
-        for (const [name, service] of this.services) {
+        for (const [name, service] of this.#services) {
             try {
                 await service.stop();
             } catch (error) {
@@ -331,7 +290,7 @@ class Server extends EventEmitter {
      * Transports
      */
 
-    async initializeTransports() {
+    async #initializeTransports() {
         // Get transports config from the config instance
         debug('Initializing transports');
         logger.info('Initializing transports');
@@ -348,7 +307,7 @@ class Server extends EventEmitter {
         for (const [transport, transportConfig] of transportEntries) {
             try {
                 const instance = await this.#loadModule('transports', transport, transportConfig);
-                this.transports.set(transport, instance);
+                this.#transports.set(transport, instance);
             } catch (error) {
                 logger.error(`Failed to initialize transport ${transport}:`, error);
                 throw error;
@@ -361,7 +320,7 @@ class Server extends EventEmitter {
         logger.info('Starting transports..');
         const errors = [];
 
-        for (const [name, transport] of this.transports) {
+        for (const [name, transport] of this.#transports) {
             try {
                 await transport.start();
             } catch (error) {
@@ -381,7 +340,7 @@ class Server extends EventEmitter {
         logger.info('Shutting down transports');
         const errors = [];
 
-        for (const [name, transport] of this.transports) {
+        for (const [name, transport] of this.#transports) {
             try {
                 await transport.stop();
             } catch (error) {
@@ -394,6 +353,23 @@ class Server extends EventEmitter {
         if (errors.length > 0) {
             throw new Error(errors.join('\n'));
         }
+    }
+
+    async #initializeManagers() {
+        debug('Initializing managers');
+        logger.info('Initializing managers');
+
+        this.#workspaceManager = new WorkspaceManager({
+            rootPath: env.CANVAS_USER_HOME, // temporary
+        });
+        this.#appManager = new AppManager();
+        this.#sessionManager = sessionManager; // Using existing singleton for now
+        this.#contextManager = new ContextManager();
+        this.#deviceManager = new DeviceManager();
+        this.#roleManager = new RoleManager();
+
+        debug('Managers initialized');
+        logger.info('Managers initialized');
     }
 
     /**
@@ -431,10 +407,11 @@ class Server extends EventEmitter {
 
 }
 
+// Utils
 export {
-    config,
     logger,
-    workspaceManager
+    config
 };
 
+// Export Server
 export default Server;

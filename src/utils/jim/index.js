@@ -1,7 +1,7 @@
 import Conf from 'conf';
 import lokiDriver from './driver/lokijs/index.js';
 import debugInstance from 'debug';
-const debug = debugInstance('canvas:service:jim');
+const debug = debugInstance('canvas:utils:jim');
 
 /**
  * For now, the only supported driver is Conf

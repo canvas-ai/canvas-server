@@ -1,7 +1,7 @@
 import express from 'express';
 const router = express.Router();
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:server:rest');
+import debugInstance from 'debug';
+const debug = debugInstance('canvas:http:routes:context');
 
 router.get('/', async (req, res) => {
     debug('GET /');

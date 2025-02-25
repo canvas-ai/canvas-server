@@ -6,7 +6,7 @@
 IMAGE_NAME="${IMAGE_NAME:-canvas-server}"
 IMAGE_TAG="${IMAGE_TAG:-portable}"
 DOCKERFILE="${DOCKERFILE:-Dockerfile}"
-CONFIG_DIR="${CONFIG_DIR:-./config}"
+CONFIG_DIR="${CONFIG_DIR:-./server/config}"
 
 # Function to display usage information
 usage() {
@@ -14,7 +14,7 @@ usage() {
     echo "  -n: Image name (default: canvas-server)"
     echo "  -t: Image tag (default: portable)"
     echo "  -f: Dockerfile to use (default: Dockerfile)"
-    echo "  -c: Config directory to copy (default: ./config)"
+    echo "  -c: Config directory to copy (default: ./server/config)"
     exit 1
 }
 

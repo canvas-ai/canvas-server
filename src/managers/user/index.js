@@ -3,28 +3,20 @@ import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:user-manager');
 
-// Managers
-import sessionManager from '../../Server.js';
-import workspaceManager from '../../Server.js';
-
-// Includes
-import User from './lib/User.js';
-import { Database } from 'sqlite3';
-
 export default class UserManager extends EventEmitter {
     constructor(options = {}) {
         super();
-        
+
         this.db = null;
         this.users = new Map(); // Cache active users
-        
+
         this.initialize(options);
     }
 
     async initialize(options) {
         // Initialize SQLite connection
         this.db = new Database(options.dbPath || 'canvas.db');
-        
+
         // Create users table if not exists
         await this.initializeDatabase();
     }
@@ -53,7 +45,7 @@ export default class UserManager extends EventEmitter {
         // Create user in SQLite
         const id = crypto.randomUUID();
         const passwordHash = await this.hashPassword(password);
-        
+
         return new Promise((resolve, reject) => {
             this.db.run(
                 'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)',
@@ -67,10 +59,10 @@ export default class UserManager extends EventEmitter {
 
                     const user = new User({ id, email });
                     await user.initialize();
-                    
+
                     this.users.set(id, user);
                     this.emit('user:created', user);
-                    
+
                     resolve(user);
                 }
             );
@@ -102,7 +94,7 @@ export default class UserManager extends EventEmitter {
 
                     const user = new User(row);
                     await user.initialize();
-                    
+
                     this.users.set(id, user);
                     resolve(user);
                 }
