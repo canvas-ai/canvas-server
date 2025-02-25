@@ -25,7 +25,8 @@ RUN mkdir -p \
     server/db \
     server/var \
     server/roles \
-    server/data
+    server/data \
+    server/multiverse
 
 # Update submodules
 RUN npm run update-submodules
@@ -39,9 +40,9 @@ RUN npm run db:setup
 # Expose canvas-server ports
 EXPOSE 8000 8001 8002
 
-# Use the start script as entrypoint
+# Start the server
 ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]
 
 # Default command (can be overridden)
-CMD ["yarn", "start"]
+CMD ["npm", "run", "start"]
 

@@ -55,7 +55,11 @@ $ tree -L 5 -I node_modules .
 ├── Dockerfile
 ├── ecosystem.config.js
 ├── extensions
+├── jsconfig.json
+├── jsdoc.json
+├── LICENSE
 ├── package.json
+├── package-lock.json
 ├── prisma
 │   ├── migrations
 │   └── schema.prisma
@@ -63,108 +67,146 @@ $ tree -L 5 -I node_modules .
 ├── scripts
 │   ├── build-portable-image.sh
 │   ├── install-ubuntu.sh
-│   ├── update-docker.sh
 │   └── update-git.sh
 ├── server
 │   ├── cache
 │   ├── config
 │   ├── data
 │   ├── db
-│   ├── multiverse
 │   ├── roles
+│   ├── multiverse
 │   └── var
-└── src
-    ├── api
-    │   ├── API.md
-    │   ├── auth.js
-    │   ├── canvas.js
-    │   └── context.js
-    ├── env.js
-    ├── init.js
-    ├── managers
-    │   ├── app
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── App.js
-    │   ├── canvas
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── Canvas.js
-    │   ├── context
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       ├── Context.js
-    │   │       └── Url.js
-    │   ├── device
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── Desktop.js
-    │   ├── peer
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── Peer.js
-    │   ├── prisma
-    │   │   └── models
-    │   │       ├── Base.js
-    │   │       ├── Session.js
-    │   │       └── User.js
-    │   ├── role
-    │   │   ├── drivers
-    │   │   │   ├── canvas
-    │   │   │   ├── docker
-    │   │   │   ├── pm2
-    │   │   │   └── systemd
-    │   │   ├── index.js
-    │   │   ├── lib
-    │   │   │   ├── Agent.js
-    │   │   │   ├── Minion.js
-    │   │   │   └── Role.js
-    │   │   └── providers
-    │   │       ├── aws
-    │   │       └── docker
-    │   ├── session
-    │   │   └── index.js
-    │   ├── tree
-    │   │   ├── index.js
-    │   │   ├── layers
-    │   │   │   ├── index.js
-    │   │   │   └── lib
-    │   │   └── lib
-    │   │       ├── Tree.js
-    │   │       └── TreeNode.js
-    │   ├── user
-    │   │   ├── index.js
-    │   │   └── lib
-    │   │       └── User.js
-    │   └── workspace
-    │       ├── index.js
-    │       ├── lib
-    │       │   └── Workspace.js
-    │       └── store
-    │           └── index.js
-    ├── Server.js
-    ├── services
-    │   ├── auth
-    │   ├── events
-    │   ├── neurald
-    │   ├── stored
-    │   └── synapsd
-    ├── transports
-    │   ├── http
-    │   ├── ResponseObject.js
-    │   └── ws
-    ├── ui
-    │   ├── cli
-    │   └── web
-    └── utils
-        ├── common.js
-        ├── config
-        ├── isDocker.js
-        ├── jim
-        ├── JsonMap.js
-        ├── JsonSet.js
-        ├── log
-        ├── passport.js
-        └── path-resolver
-
+├── src
+│   ├── core
+│   ├── env.js
+│   ├── init.js
+│   ├── managers
+│   │   ├── app
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── App.js
+│   │   ├── context
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       ├── Context.js
+│   │   │       └── Url.js
+│   │   ├── device
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── Desktop.js
+│   │   ├── peer
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── Peer.js
+│   │   ├── prisma
+│   │   │   └── models
+│   │   │       ├── Base.js
+│   │   │       ├── Session.js
+│   │   │       └── User.js
+│   │   ├── role
+│   │   │   ├── drivers
+│   │   │   │   ├── canvas
+│   │   │   │   ├── docker
+│   │   │   │   ├── pm2
+│   │   │   │   └── systemd
+│   │   │   ├── index.js
+│   │   │   ├── lib
+│   │   │   │   ├── Agent.js
+│   │   │   │   ├── Minion.js
+│   │   │   │   └── Role.js
+│   │   │   └── providers
+│   │   │       ├── aws
+│   │   │       └── docker
+│   │   ├── session
+│   │   │   └── index.js
+│   │   ├── tree
+│   │   │   ├── index.js
+│   │   │   ├── layers
+│   │   │   │   ├── index.js
+│   │   │   │   └── lib
+│   │   │   └── lib
+│   │   │       ├── Tree.js
+│   │   │       └── TreeNode.js
+│   │   ├── user
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── User.js
+│   │   └── workspace
+│   │       ├── index.js
+│   │       ├── lib
+│   │       │   └── Workspace.js
+│   │       └── store
+│   │           └── index.js
+│   ├── Server.js
+│   ├── services
+│   │   ├── auth
+│   │   │   ├── index.js
+│   │   │   └── lib
+│   │   │       └── SessionService.js
+│   │   ├── events
+│   │   │   └── UserEventHandler.js
+│   │   ├── neurald
+│   │   │   ├── LICENSE
+│   │   │   ├── package.json
+│   │   │   └── src
+│   │   │       ├── agents
+│   │   │       ├── index.js
+│   │   │       ├── models
+│   │   │       ├── README.md
+│   │   │       └── tools
+│   │   ├── stored
+│   │   │   ├── LICENSE
+│   │   │   ├── package.json
+│   │   │   ├── README.md
+│   │   │   └── src
+│   │   │       ├── backends
+│   │   │       ├── cache
+│   │   │       ├── index.js
+│   │   │       ├── utils
+│   │   │       └── workers
+│   │   └── synapsd
+│   │       ├── package.json
+│   │       ├── README.md
+│   │       └── src
+│   │           ├── backends
+│   │           ├── filters
+│   │           ├── indexes
+│   │           ├── index.js
+│   │           ├── schemas
+│   │           └── utils
+│   ├── transports
+│   │   ├── http
+│   │   │   ├── auth.js
+│   │   │   ├── index.js
+│   │   │   └── routes
+│   │   │       ├── v1
+│   │   │       └── v2
+│   │   ├── ResponseObject.js
+│   │   └── ws
+│   │       ├── index.js
+│   │       ├── routes
+│   │       │   ├── v1
+│   │       │   └── v2
+│   │       └── routes.js
+│   ├── ui
+│   │   ├── cli
+│   │   └── web
+│   └── utils
+│       ├── common.js
+│       ├── config
+│       │   └── index.js
+│       ├── isDocker.js
+│       ├── jim
+│       │   ├── driver
+│       │   │   ├── fs
+│       │   │   └── lokijs
+│       │   └── index.js
+│       ├── JsonMap.js
+│       ├── JsonSet.js
+│       ├── log
+│       │   └── index.js
+│       ├── passport.js
+│       └── path-resolver
+│           ├── index.js
+│           └── resolver.js
 ```

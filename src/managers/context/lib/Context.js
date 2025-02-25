@@ -11,35 +11,40 @@ const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/';
 const CONTEXT_URL_BASE_ID = 'universe';
 
+
 /**
  * Canvas Context
  */
 
 class Context extends EE {
 
+    // Internals
     #id;
-    #systemContext;
-    #sessionContext;
-
-    #sessionId;
     #baseUrl;
     #url;
     #path;
-    #array;
+    #array; // TODO: Change to pathArray
+    #sessionId;
+    #workspaceId;
+    #client = {};
 
-    #layerIndex;
+    // Runtime
+    #isLocked = false;
+    #isActive = false;
+    #connectedClients = [];
+
+    // Services
+    #db;
     #tree;
+    #layerIndex;
 
-    // System (server) context
-    // - Location/network, runtime context
-    // Client (user/app) context
-    // - Sent to the server by each client(eg. client/os/linux, client/user/user1, client/app/obsidian, client/network/)
-    // User context
-    // - context path/tree layers
-
-    #contextArray = []; // Implicit AND
-    #featureArray = []; // Default OR
-    #filterArray = [];  // Default AND
+    // Context arrays
+    #serverContextArray;    // Server OS, network, location, device-id
+    #clientContextArray;    // device-id, OS, network, location, app-name
+                            // Sent to the server by each client instance(fe client/os/linux, client/user/user1, client/app/obsidian, client/network/192.168.1.0/24)
+    #contextArray = [];     // Implicit AND, supports NOT
+    #featureArray = [];     // Default OR, supports NOT
+    #filterArray = [];      // Default AND, supports OR
 
     // TODO: Refactor to not set the context url in the constructor
     constructor(url, db, tree, options = {}) {
@@ -56,9 +61,6 @@ class Context extends EE {
 
         // Generate a runtime uuid
         this.#id = options?.id || uuid12();
-
-        this.#systemContext = options?.systemContext;
-        this.#sessionContext = options?.sessionContext;
 
         this.#sessionId = options?.sessionId || 'default'; // Throw?
         this.documents = db;
@@ -83,36 +85,14 @@ class Context extends EE {
 	 * Getters
 	 */
 
-    get id() {
-        return this.#id;
-    }
-
-    get sessionId() {
-        return this.#sessionId;
-    }
-
-    get baseUrl() {
-        return this.#baseUrl;
-    }
-
-    get url() {
-        return this.#url;
-    }
-
-    get path() {
-        return this.#path;
-    }
-
-    get pathArray() {
-        return this.#array;
-    }
-
-    get tree() {
-        return this.#tree.getJsonTree();
-    }
-    get paths() {
-        return this.#tree.paths;
-    }
+    get id() { return this.#id; }
+    get sessionId() { return this.#sessionId; }
+    get baseUrl() { return this.#baseUrl; }
+    get url() { return this.#url; }
+    get path() { return this.#path; }
+    get pathArray() { return this.#array; }
+    get tree() { return this.#tree.getJsonTree(); }
+    get paths() { return this.#tree.paths; }
 
     // layers
     // features

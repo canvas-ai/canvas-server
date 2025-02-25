@@ -25,8 +25,8 @@ import logger from '@/utils/log/index.js';
 class Config {
     constructor(options = {}) {
         // Use environment variables with fallbacks
-        this.userConfigDir = options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
         this.serverConfigDir = options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
+        this.userConfigDir = serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
 
         // Set configPriority based on server mode
         this.configPriority = options.configPriority ||
@@ -214,37 +214,3 @@ const defaultConfig = Config.createDefault();
 
 export { Config, defaultConfig };
 export default Config;
-
-
-// Usage examples:
-/*
-const config = new Config({
-    userConfigDir: '/path/to/user/config',
-    serverConfigDir: '/path/to/server/config'
-});
-
-const serverConfig = config.open('server');
-const rolesConfig = config.open('server.roles');
-const restTransport = config.open('server.transports.rest');
-
-// Lookup priority for 'server.roles':
-// 1. server.roles.<deviceid>.json
-// 2. server.roles.<platform>.json
-// 3. server.roles.json
-// 4. server.<deviceid>.json (looking for roles section)
-// 5. server.<platform>.json (looking for roles section)
-// 6. server.json (looking for roles section)
-// If none found, creates server.roles.json
-
-// Using nested configs
-rolesConfig.set('canvas.minion', {
-    driver: 'docker',
-    driverOptions: { host: 'localhost' }
-});
-
-// Platform-specific storage paths
-const storageConfig = config.open('storage');
-// Will look for storage.windows.json on Windows
-// Will look for storage.<deviceid>.json for device-specific paths
-// Falls back to storage.json for common paths
-*/
