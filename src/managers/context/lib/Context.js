@@ -1,552 +1,349 @@
+'use strict';
+
+import EventEmitter from 'eventemitter2';
+import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('context');
 
-import EventEmitter from 'eventemitter2';
 import Url from './Url.js';
-import { uuid12 } from '@/utils/common.js';
-
-// Module defaults
-const CONTEXT_AUTOCREATE_LAYERS = true;
-const CONTEXT_URL_PROTO = 'universe';
-const CONTEXT_URL_BASE = '/';
-const CONTEXT_URL_BASE_ID = 'universe';
-
 
 /**
- * Canvas Context
+ * Context
+ *
+ * Represents a view on top of data, holding references to workspace, session, device, etc.
  */
-
 class Context extends EventEmitter {
-
-    // Internals
     #id;
-    #baseUrl;
     #url;
-    #path;
-    #array; // TODO: Change to pathArray
-    #sessionId;
-    #workspaceId;
-    #client = {};
+    #parsedUrl;
+    #session;
+    #workspace;
+    #device;
+    #user;
+    #filters = new Map();
+    #layers = new Map();
+    #data = new Map();
+    #canvases = new Map();
+    #created;
+    #updated;
+    #initialized = false;
 
-    // Runtime
-    #isLocked = false;
-    #isActive = false;
-    #connectedClients = [];
+    constructor(url, options = {}) {
+        super();
 
-    // Services
-    #db;
-    #tree;
-    #layerIndex;
+        this.#id = options.id || uuidv4();
+        this.#parsedUrl = new Url(url);
+        this.#url = url;
 
-    // Context arrays
-    #serverContextArray;    // Server OS, network, location, device-id
-    #clientContextArray;    // device-id, OS, network, location, app-name
-                            // Sent to the server by each client instance(fe client/os/linux, client/user/user1, client/app/obsidian, client/network/192.168.1.0/24)
-    #contextArray = [];     // Implicit AND, supports NOT
-    #featureArray = [];     // Default OR, supports NOT
-    #filterArray = [];      // Default AND, supports OR
+        this.#session = options.session;
+        this.#workspace = options.workspace;
+        this.#device = options.device;
+        this.#user = options.user;
 
-    // TODO: Refactor to not set the context url in the constructor
-    constructor(url, db, tree, options = {}) {
-        // Initialize event emitter
-        super({
-            wildcard: false, // set this to `true` to use wildcards
-            delimiter: '/', // set the delimiter used to segment namespaces
-            newListener: false, // set this to `true` if you want to emit the newListener event
-            removeListener: false, // set this to `true` if you want to emit the removeListener event
-            maxListeners: 100, // the maximum amount of listeners that can be assigned to an event
-            verboseMemoryLeak: false, // show event name in memory leak message when more than maximum amount of listeners is assigned
-            ignoreErrors: false, // disable throwing uncaughtException if an error event is emitted and it has no listeners
-        });
+        this.#created = options.created || new Date().toISOString();
+        this.#updated = options.updated || new Date().toISOString();
 
-        // Generate a runtime uuid
-        this.#id = options?.id || uuid12();
+        debug(`Context created: ${this.#id} (${url})`);
+    }
 
-        this.#sessionId = options?.sessionId || 'default'; // Throw?
-        this.documents = db;
+    async initialize() {
+        if (this.#initialized) {
+            return;
+        }
 
-        this.#tree = tree;
-        this.#layerIndex = this.#tree.layers; // TODO: Refactor
+        debug(`Initializing context: ${this.#id}`);
 
-        // Set the base url
-        let baseUrl = options.baseUrl || CONTEXT_URL_BASE; // Throw?
-        this.#baseUrl = baseUrl.startsWith('/') ? baseUrl : '/' + baseUrl;
+        // Initialize layers from the path
+        await this.#initializeLayers();
 
-        // Set the context url
-        this.setUrl(
-            url ? url : CONTEXT_URL_PROTO + '://' + CONTEXT_URL_BASE,
-            CONTEXT_AUTOCREATE_LAYERS,
-        );
+        this.#initialized = true;
 
-        debug(`Context with url "${this.#url}", session id: "${this.#sessionId}", baseUrl: "${this.#baseUrl}" initialized`);
+        return this;
     }
 
     /**
-	 * Getters
-	 */
+     * Initialize layers from the path
+     */
+    async #initializeLayers() {
+        const path = this.#parsedUrl.path;
+        const pathParts = path.split('/').filter(part => part.length > 0);
 
-    get id() { return this.#id; }
-    get sessionId() { return this.#sessionId; }
-    get baseUrl() { return this.#baseUrl; }
-    get url() { return this.#url; }
-    get path() { return this.#path; }
-    get pathArray() { return this.#array; }
-    get tree() { return this.#tree.getJsonTree(); }
-    get paths() { return this.#tree.paths; }
+        // Add each path part as a layer
+        for (const part of pathParts) {
+            await this.addLayer(part);
+        }
+    }
 
-    // layers
-    // features
-    // filters
+    /**
+     * Add a layer to the context
+     * @param {string} name - Layer name
+     * @param {Object} options - Layer options
+     * @returns {Promise<Object>} - Added layer
+     */
+    async addLayer(name, options = {}) {
+        if (!name || typeof name !== 'string') {
+            throw new Error('Layer name must be a string');
+        }
 
-    get bitmaps() {
-        return {
-            context: this.#contextArray,
-            features: this.#featureArray,
-            filters: this.#filterArray,
+        // Check if layer already exists
+        if (this.#layers.has(name)) {
+            return this.#layers.get(name);
+        }
+
+        // Create layer
+        const layer = {
+            id: options.id || uuidv4(),
+            name,
+            type: options.type || 'generic',
+            filters: options.filters || [],
+            data: options.data || {},
+            created: options.created || new Date().toISOString(),
+            updated: options.updated || new Date().toISOString()
         };
-    }
 
-    get contextArray() {
-        return this.#contextArray;
-    }
-    get featureArray() {
-        return this.#featureArray;
-    }
-    get features() {
-        return this.#featureArray;
-    }
-    get filterArray() {
-        return this.#filterArray;
-    }
-    get filters() {
-        return this.#filterArray;
-    }
+        // Add layer to context
+        this.#layers.set(name, layer);
 
-    // List all apps linked to this context
-    get apps() {
-        return [];
-    }
+        // Update context
+        this.#updated = new Date().toISOString();
 
-    // List all identities linked to this context
-    get identities() {
-        return [];
+        this.emit('layer:added', layer);
+
+        return layer;
     }
 
     /**
-	 * Context management
-	 */
+     * Remove a layer from the context
+     * @param {string} name - Layer name
+     * @returns {boolean} - True if layer was removed
+     */
+    removeLayer(name) {
+        const result = this.#layers.delete(name);
 
-    set url(url) {
-        this.setUrl(url);
-    }
+        if (result) {
+            // Update context
+            this.#updated = new Date().toISOString();
 
-    set(url = CONTEXT_URL_BASE, autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS) {
-        return this.setUrl(url, autoCreateLayers);
-    }
-
-    setUrl(url, autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS) {
-        // Validate the URL
-        if (!Url.validate(url)) {
-            throw new Error(`Invalid context URL "${url}"`);
+            this.emit('layer:removed', name);
         }
 
-        const parsed = new Url(url, this.#baseUrl);
-        if (this.#url === parsed.url) {return this.#url;}
-
-        debug(`Setting context url for context "${this.#id}", session ID "${this.#sessionId}" to "${parsed.url}"`);
-        if (!this.#tree.insert(parsed.path, null, autoCreateLayers)) {
-            debug( `Context url "${parsed.url}" not set, path "${parsed.path}" not found`);
-            return false;
-        }
-
-        // Update context variables
-        this.#url = parsed.url;
-        this.#path = parsed.path;
-        this.#array = parsed.array;
-
-        // TODO: Move to the tree class
-        this.#initializeLayers(parsed.array);
-
-        this.emit('url', this.#url);
-        this.emit('update', this.stats()); // Test
-        return this.#url;
+        return result;
     }
 
     /**
-	 * Layer management
-	 */
-
-    hasLayer(name) {
-        return this.#layerIndex.hasLayerName(name);
-    }
-
+     * Get a layer by name
+     * @param {string} name - Layer name
+     * @returns {Object} - Layer object
+     */
     getLayer(name) {
-        return this.#layerIndex.getLayerByName(name);
+        return this.#layers.get(name);
     }
 
-    addLayer(layer) {
-        return this.#layerIndex.addLayer(layer);
-    }
-
-    layerNameToID(name) {
-        return this.#layerIndex.nameToID(name);
-        //return this.#layerIndex.getLayerByName(name)?.id
-    }
-
-    createLayer(name, options) {
-        return this.#layerIndex.createLayer(name, options);
-    }
-
-    updateLayer(name, options) {
-        return this.#layerIndex.updateLayer(name, options);
-    }
-
-    renameLayer(name, newName) {
-        return this.#layerIndex.renameLayer(name, newName);
-    }
-
-    deleteLayer(name) {
-        return this.#layerIndex.removeLayerByName(name);
-    }
-
+    /**
+     * List all layers
+     * @returns {Array<Object>} - Array of layer objects
+     */
     listLayers() {
-        return this.#layerIndex.list();
+        return Array.from(this.#layers.values());
     }
 
     /**
-	 * Context tree management
-	 */
-
-    parseContextPath(path) {
-        let parsed = new Url(path);
-        return parsed.path;
-    }
-
-    insertContextPath(path, autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS) {
-        return this.#tree.insert(path, null, autoCreateLayers);
-    }
-
-    removeContextPath(path, recursive = false) {
-        return this.#tree.remove(path, recursive);
-    }
-
-    moveContextPath(path, newPath, recursive) {
-        return this.#tree.move(path, newPath, recursive);
-    }
-
-    copyContextPath(path, newPath, recursive) {
-        return this.#tree.copy(path, newPath, recursive);
-    }
-
-    saveContextTree() {
-        return this.#tree.save();
-    }
-
-    updateContextTreeFromJson(json) {
-        return this.#tree.load(json);
-    }
-
-    /**
-	 * neurald methods
-	 */
-
-    query(
-        query,
-        ctxArr = this.#contextArray,
-        ftArr = this.#featureArray,
-        filArr = this.#filterArray,
-    ) {
-
-
-
-    }
-
-
-    /**
-	 * Features
-	 */
-
-    insertFeature(feature) {}
-    updateFeature(feature) {}
-    removeFeature(feature) {}
-    listActiveFeatures() {}
-    listFeatures() {}
-
-
-    /**
-	 * Filters
-	 */
-
-    insertFilter(filter) {}
-    updateFilter(filter) {}
-    removeFilter(filter) {}
-    listActiveFilters() {}
-    listFilters() {}
-
-
-    /**
-	 * Data store methods
-	 */
-
-    async listDocuments(featureArray = this.#featureArray, filterArray = this.#filterArray) {
-        if (typeof featureArray === 'string') {featureArray = [featureArray];}
-        debug(`Listing documents linked to context "${this.#url}"`);
-        debug(`Context array: "${this.#contextArray}"`);
-        debug(`Feature array: "${featureArray}"`);
-        debug(`Filter array: "${filterArray}"`);
-        const result = await this.documents.listDocuments(
-            this.#contextArray,
-            featureArray,
-            filterArray,
-        );
-
-        return result;
-    }
-
-    // TODO: Refactor the whole interface
-    getDocument(id) {
-        // TODO: Should also pass this.#contextArray and return null if the ID is not part of the current context!
-        return this.documents.getDocument(id);
-    }
-
-    // TODO: Refactor the whole interface
-    getDocumentByHash(hash) {
-        // TODO: Should also pass this.#contextArray and return null if the ID is not part of the current context!
-        return this.documents.getDocumentByHash(hash);
-    }
-
-    async getDocuments(featureArray = this.#featureArray, filterArray = this.#filterArray) {
-        if (typeof featureArray === 'string') {featureArray = [featureArray];}
-        debug(`Getting documents linked to context "${this.#url}"`);
-        debug(`Context array: "${this.#contextArray}"`);
-        debug(`Feature array: "${featureArray}"`);
-        debug(`Filter array: "${filterArray}"`);
-        const result = this.documents.getDocuments(
-            this.#contextArray,
-            featureArray,
-            filterArray,
-        );
-        return result;
-    }
-
-    async insertDocument(document, featureArray = this.#featureArray, batchOperation = false /* temporary hack */) {
-        if (typeof featureArray === 'string') {featureArray = [featureArray];}
-        const result = await this.documents.insertDocument(
-            document,
-            this.#contextArray,
-            featureArray,
-        );
-        debug(`insertDocument() result ${result}`);
-        if (!batchOperation) {this.emit('data', 'insertDocument', result);}
-        return result;
-    }
-
-    async insertDocumentArray(docArray, featureArray = this.#featureArray) {
-        debug(`Inserting document array to context "${this.#url}"`);
-        debug(`Feature array: ${featureArray}`);
-        if (typeof featureArray === 'string') {featureArray = [featureArray];}
-        const result = await this.documents.insertDocumentArray(
-            docArray,
-            this.#contextArray,
-            featureArray,
-            true,
-        );
-        debug(`insertDocumentArray() result ${result}`);
-        this.emit('data', 'insertDocumentArray', result);
-        return result;
-    }
-
-    async updateDocument(document, contextArray, featureArray) {
-        if (typeof featureArray === 'string') {featureArray = [featureArray];}
-        const result = await this.documents.updateDocument(
-            document,
-            this.#contextArray,
-            featureArray,
-        );
-        this.emit('data', 'updateDocument', result);
-        return result;
-    }
-
-    async updateDocumentArray(documentArray) {}
-
-    async removeDocument(id) {
-        if (this.#path === '/') {
-            throw new Error(`Cannot remove document ID "${id}" from universe, use deleteDocument() instead`);
+     * Add a filter to the context
+     * @param {string} name - Filter name
+     * @param {Object} options - Filter options
+     * @returns {Object} - Added filter
+     */
+    addFilter(name, options = {}) {
+        if (!name || typeof name !== 'string') {
+            throw new Error('Filter name must be a string');
         }
 
-        debug(`Removing document with id "${id}" from context "${this.#url}"`);
-        if (typeof id !== 'string' && typeof id !== 'number') {
-            throw new Error(`Document ID must be of type string or number, "${typeof id}" given`);
-        }
+        // Create filter
+        const filter = {
+            id: options.id || uuidv4(),
+            name,
+            type: options.type || 'generic',
+            value: options.value,
+            created: options.created || new Date().toISOString(),
+            updated: options.updated || new Date().toISOString()
+        };
 
-        const result = await this.documents.removeDocument(id, this.#contextArray);
-        this.emit('data', 'removeDocument', result);
-        return result;
+        // Add filter to context
+        this.#filters.set(name, filter);
+
+        // Update context
+        this.#updated = new Date().toISOString();
+
+        this.emit('filter:added', filter);
+
+        return filter;
     }
-
-    async removeDocumentArray(idArray) {
-        debug(`Removing document array from context "${this.#url}"`);
-        if (!Array.isArray(idArray)) {
-            throw new Error(`Document ID array must be of type array, "${typeof idArray}" given`);
-        }
-
-        const result = await this.documents.removeDocumentArray(idArray, this.#contextArray);
-        return result;
-    }
-
-    async deleteDocument(id) {
-        debug(`Deleting document with id "${id}" from Canvas"`);
-        if (typeof id !== 'string' && typeof id !== 'number') {
-            throw new Error(`Document ID must be of type string or number, "${typeof id}" given`);
-        }
-
-        const result = await this.documents.deleteDocument(id);
-        this.emit('data', 'deleteDocument', result);
-        return result;
-    }
-
-    async deleteDocumentArray(idArray) {
-        debug('Deleting document array from Canvas"');
-        if (!Array.isArray(idArray)) {
-            throw new Error(`Document ID array must be of type array, "${typeof idArray}" given`);
-        }
-
-        const result = await this.documents.deleteDocumentArray(idArray);
-        return result;
-    }
-
-    getDocumentSchema(schema = 'default') {
-        return this.documents.getDocumentSchema(schema);
-    }
-
 
     /**
-	 * Misc
-	 */
+     * Remove a filter from the context
+     * @param {string} name - Filter name
+     * @returns {boolean} - True if filter was removed
+     */
+    removeFilter(name) {
+        const result = this.#filters.delete(name);
 
-    getEventListeners() {
-        return this.eventNames();
+        if (result) {
+            // Update context
+            this.#updated = new Date().toISOString();
+
+            this.emit('filter:removed', name);
+        }
+
+        return result;
     }
 
-    stats() {
+    /**
+     * Get a filter by name
+     * @param {string} name - Filter name
+     * @returns {Object} - Filter object
+     */
+    getFilter(name) {
+        return this.#filters.get(name);
+    }
+
+    /**
+     * List all filters
+     * @returns {Array<Object>} - Array of filter objects
+     */
+    listFilters() {
+        return Array.from(this.#filters.values());
+    }
+
+    /**
+     * Set the URL
+     * @param {string} url - New URL
+     */
+    setUrl(url) {
+        this.#parsedUrl = new Url(url);
+        this.#url = url;
+
+        // Update context
+        this.#updated = new Date().toISOString();
+
+        this.emit('url:changed', url);
+    }
+
+    /**
+     * Create a canvas
+     * @param {string} name - Canvas name
+     * @param {Object} options - Canvas options
+     * @returns {Object} - Created canvas
+     */
+    createCanvas(name, options = {}) {
+        if (!name || typeof name !== 'string') {
+            throw new Error('Canvas name must be a string');
+        }
+
+        // Check if canvas already exists
+        if (this.#canvases.has(name)) {
+            throw new Error(`Canvas with name "${name}" already exists`);
+        }
+
+        // Create canvas
+        const canvas = {
+            id: options.id || uuidv4(),
+            name,
+            type: options.type || 'generic',
+            elements: options.elements || [],
+            data: options.data || {},
+            created: options.created || new Date().toISOString(),
+            updated: options.updated || new Date().toISOString()
+        };
+
+        // Add canvas to context
+        this.#canvases.set(name, canvas);
+
+        // Update context
+        this.#updated = new Date().toISOString();
+
+        this.emit('canvas:created', canvas);
+
+        return canvas;
+    }
+
+    /**
+     * Get a canvas by name
+     * @param {string} name - Canvas name
+     * @returns {Object} - Canvas object
+     */
+    getCanvas(name) {
+        return this.#canvases.get(name);
+    }
+
+    /**
+     * List all canvases
+     * @returns {Array<Object>} - Array of canvas objects
+     */
+    listCanvases() {
+        return Array.from(this.#canvases.values());
+    }
+
+    /**
+     * Remove a canvas
+     * @param {string} name - Canvas name
+     * @returns {boolean} - True if canvas was removed
+     */
+    removeCanvas(name) {
+        const result = this.#canvases.delete(name);
+
+        if (result) {
+            // Update context
+            this.#updated = new Date().toISOString();
+
+            this.emit('canvas:removed', name);
+        }
+
+        return result;
+    }
+
+    /**
+     * Destroy the context
+     * @returns {Promise<boolean>} - True if context was destroyed
+     */
+    async destroy() {
+        debug(`Destroying context: ${this.#id}`);
+
+        // Clear all maps
+        this.#filters.clear();
+        this.#layers.clear();
+        this.#data.clear();
+        this.#canvases.clear();
+
+        this.emit('destroyed', this.#id);
+
+        return true;
+    }
+
+    // Getters
+    get id() { return this.#id; }
+    get url() { return this.#url; }
+    get parsedUrl() { return this.#parsedUrl; }
+    get session() { return this.#session; }
+    get workspace() { return this.#workspace; }
+    get device() { return this.#device; }
+    get user() { return this.#user; }
+    get created() { return this.#created; }
+    get updated() { return this.#updated; }
+
+    toJSON() {
         return {
             id: this.#id,
-            sessionId: this.#sessionId,
-            baseUrl: this.#baseUrl,
             url: this.#url,
-            path: this.#path,
-            array: this.#array,
-            contextArray: this.#contextArray,
-            featureArray: this.#featureArray,
-            filterArray: this.#filterArray,
+            sessionId: this.#session?.id,
+            workspaceId: this.#workspace?.id,
+            deviceId: this.#device?.id,
+            userId: this.#user?.id,
+            layers: Array.from(this.#layers.values()),
+            filters: Array.from(this.#filters.values()),
+            canvases: Array.from(this.#canvases.values()),
+            created: this.#created,
+            updated: this.#updated
         };
-    }
-
-    // Clean up resources associated with this context
-    destroy() {
-        debug(`Destroying context "${this.#id}"`);
-
-        // Emit a "destroy" event
-        this.emit('destroy');
-
-        // Remove all listeners from the event emitter
-        this.removeAllListeners();
-
-        // Set private fields to null to release memory
-        this.#id = null;
-        this.#sessionId = null;
-        this.#url = null;
-        this.#baseUrl = null;
-        this.#path = null;
-        this.#array = null;
-        this.#contextArray = null;
-        this.#featureArray = null;
-        this.#filterArray = null;
-    }
-
-    /**
-	 * Internal methods
-	 */
-
-    #initializeTreeEventListeners() {
-        this.#tree.on('update', (tree) => {
-            this.emit('context:tree:update', tree);
-
-        });
-
-        /* this.#tree.on('insert', (tree) => {
-				this.emit('context:tree:insert', tree)
-			})
-			this.#tree.on('remove', (tree) => {
-				this.emit('context:tree:remove', tree)
-			})
-			this.#tree.on('update', (tree) => {
-				this.emit('context:tree:update', tree)
-			})*/
-    }
-
-    #initializeLayers(
-        layerArray = [],
-        autoCreateLayers = CONTEXT_AUTOCREATE_LAYERS,
-    ) {
-        let ctxArr = [];
-        let ftArr = [];
-        let filArr = [];
-
-        layerArray.forEach((layerName) => {
-            let layer = !this.#layerIndex.hasLayerName(layerName) && autoCreateLayers
-                ? this.createLayer(layerName)
-                : this.#layerIndex.getLayerByName(layerName);
-
-            if (!layer) {
-                debug(`Layer "${layerName}" not found and autoCreateLayers is set to false, skipping initialization`);
-                return; // TODO: FIXME
-            }
-
-            ctxArr.push(layer.id);
-            ftArr.push(...layer.featureBitmaps);
-            filArr.push(...layer.filterBitmaps);
-        });
-
-        this.#initializeContextBitmaps(ctxArr);
-        this.#initializeFeatureBitmaps(ftArr);
-        this.#initializeFilterBitmaps(filArr);
-    }
-
-    #initializeContextBitmaps(arr) {
-        // Clear local context map
-        this.#contextArray.length = 0;
-        arr.forEach((uuid) => {
-            debug(`Adding context bitmap UUID "${uuid}" to contextArray`);
-            this.#contextArray.push(uuid);
-        });
-    }
-
-    #initializeFeatureBitmaps(arr) {
-        // Clear local feature map
-        this.#featureArray.length = 0;
-        arr.forEach((uuid) => {
-            debug(`Adding feature bitmap UUID "${uuid}" to context featureArray`);
-            this.#featureArray.push(uuid);
-        });
-    }
-
-    #initializeFilterBitmaps(arr) {
-        // Clear local filter map
-        this.#filterArray.length = 0;
-        arr.forEach((uuid) => {
-            debug(`Adding filter bitmap UUID "${uuid}" to context filterArray`);
-            this.#filterArray.push(uuid);
-        });
-    }
-
-    #parseContextArray(arr) {
-        let parsed = arr.flatMap((element) => {
-            return element.includes('/') ? element.split('/') : element;
-        });
-
-        return parsed.filter((x, i, a) => a.indexOf(x) === i);
-        // return [... new Set(parsed)]
     }
 }
 

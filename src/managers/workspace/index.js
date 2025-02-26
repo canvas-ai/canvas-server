@@ -2,11 +2,16 @@
 import EventEmitter from 'eventemitter2';
 import randomcolor from 'randomcolor';
 import path from 'path';
-import fs from 'fs';
+import fs from 'fs/promises';
+import { existsSync, mkdirSync } from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('workspace-manager');
+
+// Environment
+import env from '@/env.js';
 
 // Includes
 import Workspace from './lib/Workspace.js';
@@ -16,51 +21,90 @@ import WorkspaceStore from './store/index.js';
  * Workspace Manager
  */
 class WorkspaceManager extends EventEmitter {
-
     #rootPath;
     #workspaceIndex = new Map();
     #openWorkspaces = new Map();
-
-    #db;
-    #contextTree;
+    #initialized = false;
 
     constructor(options = {}) {
         super(); // EventEmitter
 
         debug('Initializing workspace manager');
-        if (!options.rootPath) { throw new Error('Workspaces root path required'); }
-        this.#rootPath = options.rootPath;
-
+        this.#rootPath = options.rootPath || env.CANVAS_USER_HOME;
+        debug(`Workspace root path: ${this.#rootPath}`);
     }
 
-    initialize() {
-        //this.#scanWorkspaces();
+    async initialize() {
+        if (this.#initialized) {
+            return;
+        }
+
+        debug('Initializing workspace manager');
+
+        // Ensure root path exists
+        try {
+            await fs.mkdir(this.#rootPath, { recursive: true });
+            debug(`Workspace root directory created at ${this.#rootPath}`);
+        } catch (err) {
+            debug(`Error creating workspace root directory: ${err.message}`);
+            throw err;
+        }
+
+        // Scan for existing workspaces
+        await this.#scanWorkspaces();
+
+        this.#initialized = true;
     }
 
-    #scanWorkspaces() {
+    async #scanWorkspaces() {
         debug(`Scanning ${this.#rootPath} for workspaces`);
 
         try {
-            // Get all directories in rootPath
-            const items = fs.readdirSync(this.#rootPath, { withFileTypes: true });
-            const directories = items.filter(item => item.isDirectory());
+            // Get all directories in rootPath/multiverse
+            const multiversePath = path.join(this.#rootPath, 'multiverse');
 
-            for (const dir of directories) {
-                const workspacePath = path.join(this.#rootPath, dir.name);
-                const configPath = path.join(workspacePath, 'workspace.json');
+            // Create multiverse directory if it doesn't exist
+            if (!existsSync(multiversePath)) {
+                await fs.mkdir(multiversePath, { recursive: true });
+                debug(`Created multiverse directory at ${multiversePath}`);
+                return; // No workspaces to scan yet
+            }
 
-                if (fs.existsSync(configPath)) {
-                    try {
-                        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                        const workspace = new Workspace(dir.name, {
-                            ...configData,
-                            path: workspacePath
-                        });
-                        const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-                        this.#workspaceIndex.set(dir.name, proxiedWorkspace);
-                        debug(`Loaded workspace from ${configPath}`);
-                    } catch (err) {
-                        debug(`Error loading workspace config from ${configPath}: ${err.message}`);
+            // Get all user directories
+            const userDirs = await fs.readdir(multiversePath, { withFileTypes: true });
+
+            for (const userDir of userDirs.filter(dir => dir.isDirectory())) {
+                const userEmail = userDir.name;
+                const userPath = path.join(multiversePath, userEmail);
+                const workspacesPath = path.join(userPath, 'workspaces');
+
+                if (!existsSync(workspacesPath)) {
+                    continue;
+                }
+
+                // Get all workspace directories
+                const workspaceDirs = await fs.readdir(workspacesPath, { withFileTypes: true });
+
+                for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
+                    const workspaceName = workspaceDir.name;
+                    const workspacePath = path.join(workspacesPath, workspaceName);
+                    const configPath = path.join(workspacePath, 'workspace.json');
+
+                    if (existsSync(configPath)) {
+                        try {
+                            const configData = JSON.parse(await fs.readFile(configPath, 'utf8'));
+                            const workspace = new Workspace({
+                                ...configData,
+                                path: workspacePath,
+                                ownerId: userEmail
+                            });
+
+                            const workspaceId = `${userEmail}/${workspaceName}`;
+                            this.#workspaceIndex.set(workspaceId, workspace);
+                            debug(`Loaded workspace ${workspaceId} from ${configPath}`);
+                        } catch (err) {
+                            debug(`Error loading workspace config from ${configPath}: ${err.message}`);
+                        }
                     }
                 }
             }
@@ -69,40 +113,79 @@ class WorkspaceManager extends EventEmitter {
         }
     }
 
-    async createWorkspace(userEmail, name = 'universe') {
+    /**
+     * Create a new workspace for a user
+     * @param {string} userEmail - User email
+     * @param {string} name - Workspace name
+     * @param {Object} options - Workspace options
+     * @returns {Promise<Workspace>} - Created workspace
+     */
+    async createWorkspace(userEmail, name = 'universe', options = {}) {
         if (!userEmail) {
             throw new Error('User email is required');
         }
+
         if (!userEmail.includes('@')) {
             throw new Error('Invalid user email format');
         }
 
         // Create the proper workspace path following the design:
-        // /data/multiverse/user@email.tld/workspace_name
-        const workspacePath = path.join(this.#rootPath, 'multiverse', userEmail, name);
+        // /data/multiverse/user@email.tld/workspaces/workspace_name
+        const userPath = path.join(this.#rootPath, 'multiverse', userEmail);
+        const workspacesPath = path.join(userPath, 'workspaces');
+        const workspacePath = path.join(workspacesPath, name);
 
         debug(`Creating workspace "${name}" for user ${userEmail} at ${workspacePath}`);
 
-        // Create workspace directory if it doesn't exist
-        await fs.promises.mkdir(workspacePath, { recursive: true });
+        // Create workspace directory structure
+        await fs.mkdir(workspacePath, { recursive: true });
+        await fs.mkdir(path.join(workspacePath, 'db'), { recursive: true });
+        await fs.mkdir(path.join(workspacePath, 'config'), { recursive: true });
 
-        // Initialize store with the correct path
-        const store = new WorkspaceStore(workspacePath);
+        // Create workspace configuration
+        const workspaceConfig = {
+            id: options.id || uuidv4(),
+            type: name === 'universe' ? 'universe' : 'workspace',
+            name: name,
+            label: options.label || (name === 'universe' ? 'Universe' : name.charAt(0).toUpperCase() + name.slice(1)),
+            description: options.description || (name === 'universe' ? 'And then, there was geometry..' : `My ${name} workspace`),
+            color: options.color || (name === 'universe' ? '#fff' : this.#getRandomColor()),
+            locked: name === 'universe', // Universe workspace is locked by default
+            owner: userEmail,
+            acl: options.acl || {},
+            created: new Date().toISOString(),
+            updated: new Date().toISOString()
+        };
 
+        // Write workspace configuration
+        await fs.writeFile(
+            path.join(workspacePath, 'workspace.json'),
+            JSON.stringify(workspaceConfig, null, 2)
+        );
+
+        // Create workspace instance
         const workspace = new Workspace({
-            userId: userEmail,
-            name,
-            path: workspacePath,
-            store
+            ...workspaceConfig,
+            path: workspacePath
         });
 
+        // Initialize workspace
+        await workspace.initialize();
+
         // Add to tracked workspaces
-        const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-        this.#workspaceIndex.set(`${userEmail}/${name}`, proxiedWorkspace);
+        const workspaceId = `${userEmail}/${name}`;
+        this.#workspaceIndex.set(workspaceId, workspace);
+
+        this.emit('workspace:created', workspace);
 
         return workspace;
     }
 
+    /**
+     * Get workspace by ID
+     * @param {string} id - Workspace ID (format: userEmail/workspaceName)
+     * @returns {Workspace} - Workspace instance
+     */
     getWorkspace(id) {
         if (!this.#workspaceIndex.has(id)) {
             throw new Error(`Workspace with id "${id}" not found`);
@@ -111,120 +194,90 @@ class WorkspaceManager extends EventEmitter {
         return this.#workspaceIndex.get(id);
     }
 
+    /**
+     * Check if workspace exists
+     * @param {string} id - Workspace ID
+     * @returns {boolean} - True if workspace exists
+     */
     hasWorkspace(id) {
         return this.#workspaceIndex.has(id);
     }
 
+    /**
+     * List all workspaces
+     * @returns {Array<Workspace>} - Array of workspace instances
+     */
     listWorkspaces() {
-        return this.#workspaceIndex.values();
+        return Array.from(this.#workspaceIndex.values());
     }
 
-    importWorkspace(workspacePath) { /** Wont implement atm */ }
-
-    exportWorkspace(workspaceId, workspacePath) { /** Wont implement atm */ }
-
-    #loadWorkspacesSync() {
-        debug('Loading workspaces from store');
-        const data = this.#workspaceIndex.get('workspaces'); // We can do better here
-        if (data) {
-            const workspaces = JSON.parse(data);
-            for (const id in workspaces) {
-                const workspace = new Workspace(workspaces[id]);
-                const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-                this.#workspaceIndex.set(id, proxiedWorkspace);
-            }
-        }
+    /**
+     * Get workspaces for a user
+     * @param {string} userEmail - User email
+     * @returns {Array<Workspace>} - Array of workspace instances
+     */
+    getUserWorkspaces(userEmail) {
+        return Array.from(this.#workspaceIndex.values())
+            .filter(workspace => workspace.owner === userEmail);
     }
 
-    #saveWorkspacesSync() {
-        const data = {};
-        for (const [id, workspace] of this.#workspaceIndex) {
-            data[id] = {
-                id: workspace.id,
-                name: workspace.name,
-                description: workspace.description,
-                baseUrl: workspace.baseUrl,
-                color: workspace.color,
-                path: workspace.path
-            };
-        }
-        debug('Saving workspaces to store');
-        this.#workspaceIndex.set('workspaces', JSON.stringify(data, null, 2));
-    }
+    /**
+     * Open a workspace
+     * @param {string} id - Workspace ID
+     * @returns {Promise<Workspace>} - Opened workspace
+     */
+    async openWorkspace(id) {
+        const workspace = this.getWorkspace(id);
 
-    #createProxiedWorkspace(workspace) {
-        const handler = {
-            set: (target, property, value) => {
-                target[property] = value;
-                debug('Workspace update detected for ID ', target.id);
-
-                // Save configuration to workspace.json
-                const configPath = path.join(target.path, 'workspace.json');
-                const configData = {
-                    id: target.id,
-                    name: target.name,
-                    description: target.description,
-                    baseUrl: target.baseUrl,
-                    color: target.color,
-                };
-
-                fs.writeFileSync(configPath, JSON.stringify(configData, null, 2));
-                return true;
-            }
-        };
-        return new Proxy(workspace, handler);
-    }
-
-    #validateWorkspaceOptions(options) {
-        if (options.color) {
-            if (!this.#isValidHexColor(options.color)) {
-                throw new Error('Invalid color format');
-            }
-        } else { options.color = this.#getRandomColor(); }  // Not really a validate kinda thing
-
-        if (options.baseUrl && !this.#isValidUrl(options.baseUrl)) {
-            throw new Error('Invalid base URL format, use an absolute URL "/foo/bar/baz"');
+        if (this.#openWorkspaces.has(id)) {
+            return this.#openWorkspaces.get(id);
         }
 
-        if (options.name && typeof options.name !== 'string') {
-            throw new Error('Invalid workspace name');
+        await workspace.initialize();
+        this.#openWorkspaces.set(id, workspace);
+
+        this.emit('workspace:opened', workspace);
+
+        return workspace;
+    }
+
+    /**
+     * Close a workspace
+     * @param {string} id - Workspace ID
+     * @returns {Promise<boolean>} - True if workspace was closed
+     */
+    async closeWorkspace(id) {
+        if (!this.#openWorkspaces.has(id)) {
+            return false;
         }
 
-        if (options.description && typeof options.description !== 'string') {
-            throw new Error('Invalid workspace description');
-        }
+        const workspace = this.#openWorkspaces.get(id);
+        await workspace.shutdown();
 
-        return options;
+        this.#openWorkspaces.delete(id);
+        this.emit('workspace:closed', id);
+
+        return true;
     }
 
-    #parseWorkspaceId(id) {
-        // work.mb
-        // work.acme
-        // .work.acme
-
-        // Remove leading dot
-        id = id.replace(/^\./, '');
-        // Remove all non-alphanumeric characters except dot, underscore and dash
-        id = id.replace(/[^a-zA-Z0-9_-]/g, '');
-        id = id.trim();
-        if (id.length === 0) { throw new Error('Invalid workspace ID'); }
-        id = id.toLowerCase();
-        return id;
-    }
-
-    #isValidHexColor(color) {
-        const hexColorRegex = /^#([0-9A-F]{3}|[0-9A-F]{6})$/i;
-        return hexColorRegex.test(color);
-    }
-
-    #isValidUrl(url) {
-        const urlRegex = /^\/(?:[a-z0-9_-]+(?:\/[a-z0-9_-]+)*)?$/i;
-        return urlRegex.test(url);
-    }
-
+    /**
+     * Get a random color
+     * @param {Object} opts - Options for randomcolor
+     * @returns {string} - Random color in hex format
+     */
     #getRandomColor(opts = {}) {
         // https://www.npmjs.com/package/randomcolor
         return randomcolor(opts);
+    }
+
+    /**
+     * Validate hex color
+     * @param {string} color - Color in hex format
+     * @returns {boolean} - True if valid hex color
+     */
+    #isValidHexColor(color) {
+        const hexColorRegex = /^#([0-9A-F]{3}|[0-9A-F]{6})$/i;
+        return hexColorRegex.test(color);
     }
 }
 

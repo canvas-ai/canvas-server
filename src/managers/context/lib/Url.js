@@ -1,102 +1,146 @@
-import { urlToHttpOptions } from 'node:url';
-import internalLayers from '../../tree/layers/lib/builtinLayers.js';
+'use strict';
 
-const DEFAULT_URL_PROTOCOL = 'universe:';
-const DEFAULT_URL_PATH = '/';
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('context-url');
 
-export default class Url {
-    constructor(url, baseUrl = null, protocol = DEFAULT_URL_PROTOCOL) {
-        this._baseUrl = baseUrl;
-        this._protocol = protocol;
-        this.setUrl(url);
+/**
+ * Context URL
+ *
+ * Handles parsing and formatting context URLs
+ * Format: sessionId@workspaceId://path
+ * Example: my-laptop@universe://work/acme/devops/jira-1234
+ */
+class Url {
+    #raw;
+    #sessionId;
+    #workspaceId;
+    #path;
+    #valid = false;
+
+    constructor(url) {
+        this.#raw = url;
+        this.#parse(url);
     }
 
-    validate(url) { return Url.validate(url); }
-
-    static validate(url) {
-        if (typeof url !== 'string') {
-            throw new Error(`Context path needs to be of type string, got "${typeof url}"`);
+    /**
+     * Parse a context URL
+     * @param {string} url - Context URL
+     */
+    #parse(url) {
+        if (!url || typeof url !== 'string') {
+            throw new Error('Invalid URL: URL must be a string');
         }
 
-        if (/[`$%^*;'",<>{}[\]\\]/gi.test(url)) {
-            throw new Error(`Context path cannot contain special characters, got "${url}"`);
+        // Parse URL format: sessionId@workspaceId://path
+        const urlRegex = /^([^@]+)@([^:]+):\/\/(.*)$/;
+        const match = url.match(urlRegex);
+
+        if (!match) {
+            throw new Error('Invalid URL format. Expected: sessionId@workspaceId://path');
         }
 
-        return true;
-    }
+        this.#sessionId = match[1];
+        this.#workspaceId = match[2];
+        this.#path = match[3] || '/';
 
-    setUrl(url = DEFAULT_URL_PATH) {
-        if (typeof url !== 'string') {throw new Error('Context path needs to be of type string');}
-
-        this._path = this.getPath(url);
-        this._protocol = this.getProtocol(url);
-        this._string = this._protocol + '//' + this._path;
-        this._array = this.getArrayFromString(this._string);
-
-        return this._path;
-    }
-
-    get url() { return this._string; }
-    get string() { return this._string; }
-    get path() { return this._path; }
-    get array() { return this._array; }
-    get protocol() { return this._protocol; }
-
-    static parse(url) {
-        let path = Url.getPath(url);
-        let protocol = Url.getProtocol(url);
-        return protocol + '/' + path;
-    }
-
-    getProtocol(url) { return Url.getProtocol(url); }
-
-    static getProtocol(url) {
-        if (!url.includes(':')) {return DEFAULT_URL_PROTOCOL;}
-        let proto = url.split(':');
-        return (proto && proto.length > 0) ? proto[0] + ':' : DEFAULT_URL_PROTOCOL;
-    }
-
-    getPath(url) { return Url.getPath(url);  }
-
-    static getPath(url) {
-        let sanitized = url.toLowerCase();
-
-        if (!sanitized.startsWith(DEFAULT_URL_PROTOCOL) && !sanitized.startsWith('/') && this._baseUrl) {
-            sanitized = this._baseUrl + '/' + sanitized;
+        // Normalize path
+        if (!this.#path.startsWith('/')) {
+            this.#path = '/' + this.#path;
         }
 
-        sanitized = sanitized
-            .replace(/\\/g, '/')
-            .replace(/^[^:]+:/, '')
-            .replace(/\/+/g, '/')
-            .replace(/ +/g, '_')
-            .replace(/[`$%^*;'",<>{}[\]\\]/gi, '');
-
-        sanitized = sanitized.split('/')
-            .map(part => {
-                if (part.startsWith('.')) {
-                    return internalLayers.some(layer => layer.name === part) ? part : part.substring(1);
-                }
-                return part.trim();
-            })
-            .filter(part => part.length > 0)
-            .join('/');
-
-        if (!sanitized.startsWith('/')) {sanitized = '/' + sanitized;}
-        return sanitized || DEFAULT_URL_PATH;
+        this.#valid = true;
     }
 
-    getArrayFromString(url) { return Url.getArrayFromString(url); }
+    /**
+     * Get the raw URL
+     * @returns {string} - Raw URL
+     */
+    get raw() {
+        return this.#raw;
+    }
 
-    static getArrayFromString(url) {
-        let parsed = urlToHttpOptions(new URL(url));
-        if (!parsed) {throw new Error(`Invalid URL: ${url}`);}
+    /**
+     * Get the session ID
+     * @returns {string} - Session ID
+     */
+    get sessionId() {
+        return this.#sessionId;
+    }
 
-        let context = [
-            parsed.hostname,
-            ...parsed.pathname.split('/'),
-        ];
+    /**
+     * Get the workspace ID
+     * @returns {string} - Workspace ID
+     */
+    get workspaceId() {
+        return this.#workspaceId;
+    }
 
-        return context.filter(v => v.length > 0);
+    /**
+     * Get the path
+     * @returns {string} - Path
+     */
+    get path() {
+        return this.#path;
+    }
+
+    /**
+     * Check if the URL is valid
+     * @returns {boolean} - True if valid
+     */
+    get isValid() {
+        return this.#valid;
+    }
+
+    /**
+     * Format the URL
+     * @returns {string} - Formatted URL
+     */
+    toString() {
+        if (!this.#valid) {
+            throw new Error('Cannot format invalid URL');
+        }
+
+        return `${this.#sessionId}@${this.#workspaceId}://${this.#path.replace(/^\//, '')}`;
+    }
+
+    /**
+     * Create a new URL with a different path
+     * @param {string} path - New path
+     * @returns {Url} - New URL instance
+     */
+    withPath(path) {
+        if (!this.#valid) {
+            throw new Error('Cannot modify invalid URL');
+        }
+
+        return new Url(`${this.#sessionId}@${this.#workspaceId}://${path}`);
+    }
+
+    /**
+     * Create a new URL with a different session ID
+     * @param {string} sessionId - New session ID
+     * @returns {Url} - New URL instance
+     */
+    withSessionId(sessionId) {
+        if (!this.#valid) {
+            throw new Error('Cannot modify invalid URL');
+        }
+
+        return new Url(`${sessionId}@${this.#workspaceId}://${this.#path}`);
+    }
+
+    /**
+     * Create a new URL with a different workspace ID
+     * @param {string} workspaceId - New workspace ID
+     * @returns {Url} - New URL instance
+     */
+    withWorkspaceId(workspaceId) {
+        if (!this.#valid) {
+            throw new Error('Cannot modify invalid URL');
+        }
+
+        return new Url(`${this.#sessionId}@${workspaceId}://${this.#path}`);
     }
 }
+
+export default Url;
