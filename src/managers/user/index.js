@@ -1,15 +1,32 @@
 // Utils
 import EventEmitter from 'eventemitter2';
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:user-manager');
+import path from 'path';
+import fs from 'fs';
 
-export default class UserManager extends EventEmitter {
+// Logging
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('user-manager');
+
+// Environment
+import env from '@/env.js';
+
+// Includes
+import User from './lib/User.js';
+
+/**
+ * User Manager
+ */
+class UserManager extends EventEmitter {
+
+    #userHome;
+
     constructor(options = {}) {
         super();
 
-        this.db = null;
-        this.users = new Map(); // Cache active users
+        debug('Initializing user manager');
+        this.#userHome = options.userHome ?? env.CANVAS_USER_HOME;
 
+        this.users = new Map(); // Cache active users
         this.initialize(options);
     }
 
@@ -102,5 +119,6 @@ export default class UserManager extends EventEmitter {
         });
     }
 
-    // Additional methods...
 }
+
+export default UserManager;

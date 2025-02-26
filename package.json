@@ -18,8 +18,8 @@
     "pm2:logs": "PM2_HOME=../var/pm2 pm2 logs ecosystem.config.js",
     "pm2:kill": "PM2_HOME=../var/pm2 pm2 kill",
     "pm2:delete": "PM2_HOME=../var/pm2 pm2 delete ecosystem.config.js",
-    "db:setup": "prisma generate && prisma migrate dev --name init",
-    "db:migrate": "prisma migrate dev",
+    "db:setup": "cd src/prisma && prisma generate && prisma migrate dev --name init",
+    "db:migrate": "cd src/prisma && prisma migrate dev",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
     "postinstall": "npm run build -w src/ui/web"
   },

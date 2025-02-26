@@ -1,37 +1,36 @@
 // Utils
 import EventEmitter from 'eventemitter2';
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:workspace-manager');
 import randomcolor from 'randomcolor';
 import path from 'path';
 import fs from 'fs';
 
-// DB Backend
-import Db from '@synapsd/index'
+// Logging
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('workspace-manager');
 
 // Includes
 import Workspace from './lib/Workspace.js';
 import WorkspaceStore from './store/index.js';
 
-export default class WorkspaceManager extends EventEmitter {
+/**
+ * Workspace Manager
+ */
+class WorkspaceManager extends EventEmitter {
 
     #rootPath;
-    #index;
+    #workspaceIndex = new Map();
     #openWorkspaces = new Map();
-    #workspaces = new Map(); // just to prevent error, TODO: Make this a JsonMap
+
+    #db;
+    #contextTree;
 
     constructor(options = {}) {
         super(); // EventEmitter
 
-        if (!options.rootPath) { throw new Error('Root path is required'); }
+        debug('Initializing workspace manager');
+        if (!options.rootPath) { throw new Error('Workspaces root path required'); }
         this.#rootPath = options.rootPath;
 
-        // Lists all found workspaces in #rootPath
-        this.#index = new Map(); // I think this is not needed
-        // Lists all open workspaces
-        this.#openWorkspaces = new Map();
-
-        this.initialize()
     }
 
     initialize() {
@@ -58,7 +57,7 @@ export default class WorkspaceManager extends EventEmitter {
                             path: workspacePath
                         });
                         const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-                        this.#workspaces.set(dir.name, proxiedWorkspace);
+                        this.#workspaceIndex.set(dir.name, proxiedWorkspace);
                         debug(`Loaded workspace from ${configPath}`);
                     } catch (err) {
                         debug(`Error loading workspace config from ${configPath}: ${err.message}`);
@@ -99,25 +98,25 @@ export default class WorkspaceManager extends EventEmitter {
 
         // Add to tracked workspaces
         const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-        this.#workspaces.set(`${userEmail}/${name}`, proxiedWorkspace);
+        this.#workspaceIndex.set(`${userEmail}/${name}`, proxiedWorkspace);
 
         return workspace;
     }
 
     getWorkspace(id) {
-        if (!this.#workspaces.has(id)) {
+        if (!this.#workspaceIndex.has(id)) {
             throw new Error(`Workspace with id "${id}" not found`);
         }
 
-        return this.#workspaces.get(id);
+        return this.#workspaceIndex.get(id);
     }
 
     hasWorkspace(id) {
-        return this.#workspaces.has(id);
+        return this.#workspaceIndex.has(id);
     }
 
     listWorkspaces() {
-        return this.#workspaces.values();
+        return this.#workspaceIndex.values();
     }
 
     importWorkspace(workspacePath) { /** Wont implement atm */ }
@@ -126,20 +125,20 @@ export default class WorkspaceManager extends EventEmitter {
 
     #loadWorkspacesSync() {
         debug('Loading workspaces from store');
-        const data = this.#index.get('workspaces'); // We can do better here
+        const data = this.#workspaceIndex.get('workspaces'); // We can do better here
         if (data) {
             const workspaces = JSON.parse(data);
             for (const id in workspaces) {
                 const workspace = new Workspace(workspaces[id]);
                 const proxiedWorkspace = this.#createProxiedWorkspace(workspace);
-                this.#workspaces.set(id, proxiedWorkspace);
+                this.#workspaceIndex.set(id, proxiedWorkspace);
             }
         }
     }
 
     #saveWorkspacesSync() {
         const data = {};
-        for (const [id, workspace] of this.#workspaces) {
+        for (const [id, workspace] of this.#workspaceIndex) {
             data[id] = {
                 id: workspace.id,
                 name: workspace.name,
@@ -150,7 +149,7 @@ export default class WorkspaceManager extends EventEmitter {
             };
         }
         debug('Saving workspaces to store');
-        this.#index.set('workspaces', JSON.stringify(data, null, 2));
+        this.#workspaceIndex.set('workspaces', JSON.stringify(data, null, 2));
     }
 
     #createProxiedWorkspace(workspace) {
@@ -228,3 +227,5 @@ export default class WorkspaceManager extends EventEmitter {
         return randomcolor(opts);
     }
 }
+
+export default WorkspaceManager;

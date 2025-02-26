@@ -1,7 +1,7 @@
 import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('context:instance');
+const debug = createDebug('context');
 
-import EE from 'eventemitter2';
+import EventEmitter from 'eventemitter2';
 import Url from './Url.js';
 import { uuid12 } from '@/utils/common.js';
 
@@ -16,7 +16,7 @@ const CONTEXT_URL_BASE_ID = 'universe';
  * Canvas Context
  */
 
-class Context extends EE {
+class Context extends EventEmitter {
 
     // Internals
     #id;

@@ -1,24 +1,38 @@
 'use strict';
 
 // Utils
+import EventEmitter from 'eventemitter2';
+import randomcolor from 'randomcolor';
 import path from 'path';
-import fs from 'fs/promises';
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:workspace:instance');
+import fs from 'fs';
 
-// Database
+// Logging
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('workspace');
+
+// Includes
 import SynapsD from '@/services/synapsd/src/index.js';
-
-// Tree
 import Tree from '../../tree/lib/Tree.js';
 
-// sesssionName@workspaceName://contextUrl
-// Example: ws@universe://foo/bar/baz
+/**
+ * Canvas Workspace
+ */
+class Workspace extends EventEmitter {
 
-export default class Workspace {
+    // Paths
+    #rootPath;
+    #configPath = 'config';
+    #dbPath = 'db';
+    #treeStorePath = 'db';
+    #layersStorePath = 'db';
+
+    // Modules
     #db;
     #tree;
+    #layers;
     #config;
+
+    #dataSources = [];
 
     constructor(options = {}) {
         this.id = options.id;

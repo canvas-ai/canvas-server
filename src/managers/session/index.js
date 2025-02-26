@@ -1,10 +1,10 @@
 // Utils
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('session-manager');
 import EventEmitter from 'eventemitter2';
-import debug from 'debug';
-const log = debug('canvas:session-manager');
 
 // Includes
-import Session from '../prisma/models/Session.js';
+import Session from '../../prisma/models/Session.js';
 
 /**
  * Session manager
@@ -72,7 +72,17 @@ class SessionManager extends EventEmitter {
     }
 }
 
-// Create and export a single instance
-const sessionManager = new SessionManager();
-await sessionManager.initialize();
-export default sessionManager;
+// Create a singleton instance
+const instance = new SessionManager();
+
+// Initialize the instance
+// Note: This is an async operation, so consumers should await the initialize method if needed
+instance.initialize().catch(err => {
+    console.error('Failed to initialize SessionManager:', err);
+});
+
+// Named export for the class
+export { SessionManager };
+
+// Default export for the singleton
+export default instance;

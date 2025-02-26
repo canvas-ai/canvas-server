@@ -1,7 +1,7 @@
 // Utils
 import EventEmitter from 'eventemitter2';
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:context-manager');
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('context-manager');
 
 // Includes
 import Context from './lib/Context.js';
@@ -15,7 +15,7 @@ const CONTEXT_URL_PROTO = 'universe';
 const CONTEXT_URL_BASE = '/'
 
 
-export default class ContextManager extends EventEmitter {
+class ContextManager extends EventEmitter {
 
     #index;
     #db;
@@ -117,3 +117,5 @@ export default class ContextManager extends EventEmitter {
     }
 
 }
+
+export default ContextManager;

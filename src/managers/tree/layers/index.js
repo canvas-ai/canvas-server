@@ -7,7 +7,10 @@ const debug = debugMessage('canvas:context:layer-manager');
 import Layer from './lib/Layer.js';
 import builtInLayers from './lib/builtinLayers.js';
 
-export default class LayerIndex extends EventEmitter {
+/**
+ * Layer Index
+ */
+class LayerIndex extends EventEmitter {
 
     constructor(index) {
         super(); // EventEmitter
@@ -140,3 +143,4 @@ export default class LayerIndex extends EventEmitter {
     }
 }
 
+export default LayerIndex;

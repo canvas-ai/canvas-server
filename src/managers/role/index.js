@@ -1,8 +1,15 @@
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('role-manager');
+import EventEmitter from 'eventemitter2';
+
+
 //const Docker = require('dockerode');
 //const DockerCompose = require('dockerode-compose');
+
 // TEST!
-export default class RoleManager {
-    constructor(dockerConfigs) {
+class RoleManager extends EventEmitter {
+    constructor(dockerConfigs = []) {
+        super();
         this.dockerBackends = new Map();
         this.roles = new Map();
 
@@ -145,3 +152,5 @@ export default class RoleManager {
     }
 
 }
+
+export default RoleManager;

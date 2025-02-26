@@ -1,7 +1,7 @@
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
-import User from '@/managers/prisma/models/User.js';
+import User from '@/prisma/models/User.js';
 
 const cookieExtractor = (req) => {
   let token = null;

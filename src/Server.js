@@ -41,6 +41,8 @@ import DeviceManager from '@/managers/device/index.js';
 import RoleManager from '@/managers/role/index.js';
 import sessionManager from '@/managers/session/index.js';
 import UserManager from '@/managers/user/index.js';
+
+// Singleton managers
 import WorkspaceManager from '@/managers/workspace/index.js';
 
 /**
@@ -72,6 +74,9 @@ class Server extends EventEmitter {
 
         // Set mode
         this.#mode = options.mode;
+
+        // Initialize managers
+        this.#initializeManagers();
 
     }
 
@@ -360,13 +365,8 @@ class Server extends EventEmitter {
         logger.info('Initializing managers');
 
         this.#workspaceManager = new WorkspaceManager({
-            rootPath: env.CANVAS_USER_HOME, // temporary
+            rootPath: env.CANVAS_USER_HOME,
         });
-        this.#appManager = new AppManager();
-        this.#sessionManager = sessionManager; // Using existing singleton for now
-        this.#contextManager = new ContextManager();
-        this.#deviceManager = new DeviceManager();
-        this.#roleManager = new RoleManager();
 
         debug('Managers initialized');
         logger.info('Managers initialized');

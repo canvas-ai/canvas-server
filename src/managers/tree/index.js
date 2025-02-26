@@ -1,14 +1,12 @@
 // Utils
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('tree-manager');
 import EventEmitter from 'eventemitter2';
-import debugMessage from 'debug';
-const debug = debugMessage('canvas:context:tree-manager');
-
-// Includes
 import Tree from './lib/Tree.js';
 
 // TODO: Add tree versioning
 // TODO: Finish this implementation (proxy the Tree class to trigger save on updates)
-export default class TreeManager extends EventEmitter {
+class TreeManager extends EventEmitter {
 
     #treeIndexStore;
     #layerIndexStore;
@@ -51,3 +49,5 @@ export default class TreeManager extends EventEmitter {
     diffContextTree(vID1, vID2) {}
 
 }
+
+export default TreeManager;
