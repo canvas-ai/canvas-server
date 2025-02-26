@@ -1,5 +1,5 @@
 /**
- * Canvas
+ * Canvas Server
  */
 
 // Parsed env vars

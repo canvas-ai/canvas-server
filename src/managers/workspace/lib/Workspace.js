@@ -19,6 +19,8 @@ import Tree from '../../tree/lib/Tree.js';
  */
 class Workspace extends EventEmitter {
 
+    #id;
+    
     // Paths
     #rootPath;
     #configPath = 'config';

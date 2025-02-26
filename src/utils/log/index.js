@@ -1,6 +1,5 @@
 /**
- * Canvas Logger Module
- * Centralized logging configuration for the Canvas application
+ * Single Logger Module for Canvas
  */
 
 import winston from 'winston';

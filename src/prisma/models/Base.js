@@ -15,7 +15,7 @@ class BaseModel {
   static async create(data) {
     const filteredData = this.filterData(data);
     const connectionData = this.buildConnections(data);
-    
+
     const result = await this.prisma[this.modelName].create({
       data: {
         ...filteredData,

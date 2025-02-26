@@ -2,7 +2,7 @@ export default [
     {
         id: '0000-0000-0000',
         type: 'universe',
-        name: '/',
+        name: 'universe',
         label: 'Universe',
         description: 'And then, there was geometry..',
         color: '#fff',

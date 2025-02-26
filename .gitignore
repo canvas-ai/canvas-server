@@ -1,12 +1,14 @@
+# dotenv environment variables file
+.env
+.env*
+
 # Portable runtimes
 /runtimes/**
-!/runtimes/.keep
 
 # Server data directories
 /server/**
 !/server/config/example-*.json
 !/server/config/default-*.json
-!/server/config/.keep
 
 # Data directories
 /data/**
@@ -16,8 +18,6 @@
 /.vscode
 /.fossil-settings
 /_SCRATCH_
-/_TODO_
-/_OLD_
 
 # Logs
 *.log
@@ -47,10 +47,6 @@ typings/
 
 # Yarn Integrity file
 .yarn-integrity
-
-# dotenv environment variables file
-.env
-.env*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -118,3 +114,6 @@ bower_components
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
+
+# Include all .keep files
+!**/.keep

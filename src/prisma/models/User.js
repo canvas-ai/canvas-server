@@ -1,17 +1,12 @@
-import { genUUID } from '@root/extensions/transports/net-ipc/lib/utils.js';
+import { uuid } from '@/utils/common.js';
 import BaseModel from './Base.js';
 import bcrypt from 'bcryptjs';
 
 class User extends BaseModel {
-  static fillable = ['id', 'email', 'password'];
+  static fillable = ['id', 'email', 'password', 'homePath'];
   static hidden = [];
   static connections = ['sessions'];
   static modelName = 'user';
-
-  // Instance methods
-  _generateUniqueId() {
-    return genUUID();
-  }
 
   async comparePassword(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);

@@ -1,7 +1,7 @@
 /**
  * Simple Config module for Canvas
  *
- * The above will do the following
+ * Module will do the following on initialization:
  * - Check if myConfig.<deviceid>.json exists in the user config dir
  * - Check if myConfig.<platform>.json exists in the user config dir
  * - Check if myConfig.json exists in the user config dir
