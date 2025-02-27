@@ -17,7 +17,7 @@
 import Conf from 'conf';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDevice } from '@/managers/device/index.js';
+import dm from '@/managers/device/index.js';
 import _ from 'lodash';
 import env from '@/env.js';
 import logger from '@/utils/log/index.js';
@@ -26,14 +26,14 @@ class Config {
     constructor(options = {}) {
         // Use environment variables with fallbacks
         this.serverConfigDir = options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
-        this.userConfigDir = serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
+        this.userConfigDir = this.serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
 
         // Set configPriority based on server mode
         this.configPriority = options.configPriority ||
             (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
 
         this.versioning = options.versioning ?? true;
-        this.device = getCurrentDevice();
+        this.device = dm.getCurrentDevice();
         this.stores = new Map();
 
         logger.debug(`Config initialized with:

@@ -211,9 +211,9 @@ class DeviceManager extends EventEmitter {
     }
 }
 
-// Named exports
-export { DeviceManager };
-export const getCurrentDevice = () => DeviceManager.getCurrentDevice();
+const deviceManager = new DeviceManager();
+deviceManager.initialize();
+
 
 // Default export
-export default DeviceManager;
+export default deviceManager;
