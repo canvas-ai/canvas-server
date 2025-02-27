@@ -2,7 +2,6 @@
     "env": {
         "browser": true,
         "node": true,
-        "esm": true,
         "commonjs": true,
         "es2021": true
     },
@@ -29,6 +28,10 @@
         "**/_test*.js",
         "**/_test/",
         "**/_old_/",
-        "**/_SCRATCH_/"
+        "**/_SCRATCH_/",
+        "/src/ui/web",
+        "/src/services/neurald",
+        "/src/services/stored",
+        "/src/services/synapsd"
     ]
 }

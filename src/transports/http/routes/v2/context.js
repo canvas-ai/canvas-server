@@ -156,7 +156,7 @@ export default function contextRoutes(options) {
             }
 
             const context = contextManager.getContext(id);
-            context.setUrl(url);
+            await context.setUrl(url);
 
             return res.json(new ResponseObject(context));
         } catch (err) {

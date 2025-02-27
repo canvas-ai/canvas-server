@@ -27,6 +27,7 @@ class Context extends EventEmitter {
     #created;
     #updated;
     #initialized = false;
+    #tree;
 
     constructor(url, options = {}) {
         super();
@@ -39,6 +40,18 @@ class Context extends EventEmitter {
         this.#workspace = options.workspace;
         this.#device = options.device;
         this.#user = options.user;
+
+        // If URL doesn't have a session ID but we have a session, update the parsed URL
+        // We don't update the raw URL here, that will happen in initialize()
+        if (!this.#parsedUrl.hasSessionId && this.#session) {
+            debug(`URL doesn't have a session ID, using provided session: ${this.#session.id}`);
+
+            if (this.#parsedUrl.hasWorkspaceId) {
+                // If URL has a workspace ID, create a full URL
+                this.#parsedUrl = this.#parsedUrl.withSessionId(this.#session.id);
+            }
+            // If URL doesn't have a workspace ID, we'll handle this in initialize()
+        }
 
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
@@ -53,6 +66,32 @@ class Context extends EventEmitter {
 
         debug(`Initializing context: ${this.#id}`);
 
+        // If URL doesn't have a workspace ID but we have a workspace, update the URL
+        if (!this.#parsedUrl.hasWorkspaceId && this.#workspace) {
+            debug(`URL doesn't have a workspace ID, using current workspace: ${this.#workspace.id}`);
+
+            // If URL also has a session ID, create a full URL
+            if (this.#parsedUrl.hasSessionId && this.#session) {
+                this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
+                    this.#session.id,
+                    this.#workspace.id
+                );
+            } else {
+                // Otherwise, create a workspace URL
+                this.#parsedUrl = this.#parsedUrl.withWorkspaceId(this.#workspace.id);
+            }
+
+            // Update the raw URL
+            this.#url = this.#parsedUrl.toString();
+            debug(`Updated URL to: ${this.#url}`);
+        }
+
+        // Get the tree from the workspace
+        if (this.#workspace) {
+            this.#tree = await this.#workspace.getTree();
+            debug(`Got tree from workspace: ${this.#workspace.id}`);
+        }
+
         // Initialize layers from the path
         await this.#initializeLayers();
 
@@ -65,8 +104,42 @@ class Context extends EventEmitter {
      * Initialize layers from the path
      */
     async #initializeLayers() {
+        if (!this.#workspace) {
+            debug('No workspace available to initialize layers');
+            return;
+        }
+
+        const path = this.#parsedUrl.path;
+        debug(`Initializing layers from path: ${path}`);
+
+        try {
+            // Use the workspace to create layers from the path
+            const layers = await this.#workspace.createLayersFromPath(path);
+
+            // Add layers to the context
+            if (Array.isArray(layers)) {
+                for (const layer of layers) {
+                    this.#layers.set(layer.name, layer);
+                    debug(`Added layer from workspace: ${layer.name}`);
+                }
+            } else {
+                debug('No layers returned from workspace.createLayersFromPath()');
+            }
+        } catch (err) {
+            debug(`Error initializing layers from path: ${err.message}`);
+            // Fallback to manual layer creation if workspace method fails
+            await this.#createLayersManually();
+        }
+    }
+
+    /**
+     * Create layers manually from the path (fallback method)
+     */
+    async #createLayersManually() {
         const path = this.#parsedUrl.path;
         const pathParts = path.split('/').filter(part => part.length > 0);
+
+        debug(`Creating layers manually from path parts: ${pathParts.join(', ')}`);
 
         // Add each path part as a layer
         for (const part of pathParts) {
@@ -90,16 +163,30 @@ class Context extends EventEmitter {
             return this.#layers.get(name);
         }
 
-        // Create layer
-        const layer = {
-            id: options.id || uuidv4(),
-            name,
-            type: options.type || 'generic',
-            filters: options.filters || [],
-            data: options.data || {},
-            created: options.created || new Date().toISOString(),
-            updated: options.updated || new Date().toISOString()
-        };
+        // Try to get layer from workspace tree if available
+        let layer = null;
+        if (this.#tree) {
+            try {
+                layer = await this.#tree.getLayer(name);
+                debug(`Got layer from tree: ${name}`);
+            } catch (err) {
+                debug(`Could not get layer from tree: ${err.message}`);
+            }
+        }
+
+        // Create layer if not found in tree
+        if (!layer) {
+            layer = {
+                id: options.id || uuidv4(),
+                name,
+                type: options.type || 'generic',
+                filters: options.filters || [],
+                data: options.data || {},
+                created: options.created || new Date().toISOString(),
+                updated: options.updated || new Date().toISOString()
+            };
+            debug(`Created new layer: ${name}`);
+        }
 
         // Add layer to context
         this.#layers.set(name, layer);
@@ -217,15 +304,121 @@ class Context extends EventEmitter {
     /**
      * Set the URL
      * @param {string} url - New URL
+     * @returns {Promise<boolean>} - True if URL was set successfully
      */
-    setUrl(url) {
+    async setUrl(url) {
+        const oldUrl = this.#url;
+        const oldParsedUrl = this.#parsedUrl;
+
+        // Parse the new URL
         this.#parsedUrl = new Url(url);
+
+        // If URL doesn't have a workspace ID but we have a workspace, update the URL
+        if (!this.#parsedUrl.hasWorkspaceId && this.#workspace) {
+            debug(`URL doesn't have a workspace ID, using current workspace: ${this.#workspace.id}`);
+
+            // If URL also has a session ID, create a full URL
+            if (this.#parsedUrl.hasSessionId && this.#session) {
+                this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
+                    this.#session.id,
+                    this.#workspace.id
+                );
+            } else {
+                // Otherwise, create a workspace URL
+                this.#parsedUrl = this.#parsedUrl.withWorkspaceId(this.#workspace.id);
+            }
+
+            // Update the URL
+            url = this.#parsedUrl.toString();
+            debug(`Updated URL to: ${url}`);
+        }
+
         this.#url = url;
+
+        debug(`Setting URL from ${oldUrl} to ${url}`);
+
+        // Check if workspace has changed
+        if (this.#parsedUrl.hasWorkspaceId &&
+            (oldParsedUrl.workspaceId !== this.#parsedUrl.workspaceId)) {
+
+            debug(`Workspace ID changed from ${oldParsedUrl.workspaceId} to ${this.#parsedUrl.workspaceId}`);
+
+            // Get the workspace manager
+            const workspaceManager = global.app.getManager('workspace');
+            if (!workspaceManager) {
+                throw new Error('Workspace manager not available');
+            }
+
+            // Check if the new workspace exists
+            const newWorkspace = await workspaceManager.getWorkspace(this.#parsedUrl.workspaceId);
+            if (!newWorkspace) {
+                throw new Error(`Workspace not found: ${this.#parsedUrl.workspaceId}`);
+            }
+
+            // Switch to the new workspace
+            this.#workspace = newWorkspace;
+
+            // Get the tree from the new workspace
+            this.#tree = await this.#workspace.getTree();
+
+            debug(`Switched to workspace: ${this.#workspace.id}`);
+
+            // Emit workspace changed event
+            this.emit('workspace:changed', {
+                oldWorkspaceId: oldParsedUrl.workspaceId,
+                newWorkspaceId: this.#parsedUrl.workspaceId,
+                workspace: this.#workspace
+            });
+        }
+
+        // Check if path has changed
+        if (oldParsedUrl.path !== this.#parsedUrl.path) {
+            debug(`Path changed from ${oldParsedUrl.path} to ${this.#parsedUrl.path}`);
+
+            // Clear existing layers
+            this.#layers.clear();
+
+            // Re-initialize layers from the new path
+            if (this.#workspace) {
+                try {
+                    // Use the workspace to create layers from the new path
+                    const layers = await this.#workspace.createLayersFromPath(this.#parsedUrl.path);
+
+                    // Add layers to the context
+                    if (Array.isArray(layers)) {
+                        for (const layer of layers) {
+                            this.#layers.set(layer.name, layer);
+                            debug(`Added layer from workspace: ${layer.name}`);
+                        }
+                    }
+                } catch (err) {
+                    debug(`Error creating layers from path: ${err.message}`);
+                    // Fallback to manual layer creation
+                    await this.#createLayersManually();
+                }
+            } else {
+                // Fallback to manual layer creation
+                await this.#createLayersManually();
+            }
+
+            // Emit path changed event
+            this.emit('path:changed', {
+                oldPath: oldParsedUrl.path,
+                newPath: this.#parsedUrl.path
+            });
+        }
 
         // Update context
         this.#updated = new Date().toISOString();
 
-        this.emit('url:changed', url);
+        this.emit('url:changed', {
+            oldUrl,
+            newUrl: url,
+            oldParsedUrl,
+            newParsedUrl: this.#parsedUrl
+        });
+
+        return true;
     }
 
     /**
@@ -329,6 +522,7 @@ class Context extends EventEmitter {
     get user() { return this.#user; }
     get created() { return this.#created; }
     get updated() { return this.#updated; }
+    get tree() { return this.#tree; }
 
     toJSON() {
         return {

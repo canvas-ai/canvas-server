@@ -3,13 +3,10 @@ import EventEmitter from 'eventemitter2';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('context-manager');
 import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
 
 // Includes
 import Context from './lib/Context.js';
 import Url from './lib/Url.js';
-import LayerIndex from '../tree/layers/index.js';
-import Tree from '../tree/lib/Tree.js';
 
 // Module defaults
 const MAX_CONTEXTS = 1024; // 2^10
@@ -52,13 +49,12 @@ class ContextManager extends EventEmitter {
         }
 
         debug('Initializing context manager');
-
         this.#initialized = true;
     }
 
     /**
      * Create a new context
-     * @param {string} url - Context URL (format: sessionId@workspaceId://path)
+     * @param {string} url - Context URL (formats: sessionId@workspaceId://path, workspaceId://path, or /path)
      * @param {Object} options - Context options
      * @returns {Context} - Created context
      */
@@ -75,25 +71,59 @@ class ContextManager extends EventEmitter {
             const context = this.#activeContexts.get(options.id);
             // Change the url if a url is supplied
             if (url !== context.url) {
-                context.setUrl(url);
+                await context.setUrl(url);
             }
             return context;
         }
 
         // Get the session
-        const sessionId = parsedUrl.sessionId;
-        const session = await this.#sessionManager.getSession(sessionId);
+        let session = null;
+        if (parsedUrl.hasSessionId) {
+            // If URL has a session ID, get the session
+            const sessionId = parsedUrl.sessionId;
+            session = await this.#sessionManager.getSession(sessionId);
+
+            if (!session) {
+                throw new Error(`Session with id "${sessionId}" not found`);
+            }
+        } else if (options.session) {
+            // If URL doesn't have a session ID but a session is provided in options, use it
+            session = options.session;
+        } else if (options.user) {
+            // If URL doesn't have a session ID and no session is provided, but a user is provided,
+            // try to get the user's active session
+            const userSessions = await this.#sessionManager.getUserSessions(options.user.id);
+            if (userSessions.length > 0) {
+                // Use the first active session
+                session = userSessions[0];
+            }
+        }
 
         if (!session) {
-            throw new Error(`Session with id "${sessionId}" not found`);
+            throw new Error('No session available for context creation');
         }
 
         // Get the workspace
-        const workspaceId = parsedUrl.workspaceId;
-        const workspace = this.#workspaceManager.getWorkspace(workspaceId);
+        let workspace = null;
+        if (parsedUrl.hasWorkspaceId) {
+            // If URL has a workspace ID, get the workspace
+            const workspaceId = parsedUrl.workspaceId;
+            workspace = await this.#workspaceManager.getWorkspace(workspaceId);
+
+            if (!workspace) {
+                throw new Error(`Workspace with id "${workspaceId}" not found`);
+            }
+        } else if (options.workspace) {
+            // If URL doesn't have a workspace ID but a workspace is provided in options, use it
+            workspace = options.workspace;
+        } else if (options.user) {
+            // If URL doesn't have a workspace ID and no workspace is provided, but a user is provided,
+            // try to get the user's default workspace
+            workspace = await this.#workspaceManager.getUserDefaultWorkspace(options.user.id);
+        }
 
         if (!workspace) {
-            throw new Error(`Workspace with id "${workspaceId}" not found`);
+            throw new Error('No workspace available for context creation');
         }
 
         // Create context options
@@ -152,8 +182,27 @@ class ContextManager extends EventEmitter {
         const parsedUrl = new Url(url);
 
         for (const context of this.#activeContexts.values()) {
-            if (context.url === url) {
-                return context;
+            const contextParsedUrl = context.parsedUrl;
+
+            // Compare paths
+            if (contextParsedUrl.path === parsedUrl.path) {
+                // If both URLs have workspace IDs, compare them
+                if (contextParsedUrl.hasWorkspaceId && parsedUrl.hasWorkspaceId) {
+                    if (contextParsedUrl.workspaceId === parsedUrl.workspaceId) {
+                        // If both URLs have session IDs, compare them
+                        if (contextParsedUrl.hasSessionId && parsedUrl.hasSessionId) {
+                            if (contextParsedUrl.sessionId === parsedUrl.sessionId) {
+                                return context;
+                            }
+                        } else {
+                            // If one URL doesn't have a session ID, it's still a match
+                            return context;
+                        }
+                    }
+                } else if (!contextParsedUrl.hasWorkspaceId && !parsedUrl.hasWorkspaceId) {
+                    // If neither URL has a workspace ID, it's a match based on path
+                    return context;
+                }
             }
         }
 

@@ -69,7 +69,7 @@ export default function contextRoutes(socket, deps) {
         try {
             debug(`Setting context URL: ${data.id} -> ${data.url}`);
             const context = contextManager.getContext(data.id);
-            context.setUrl(data.url);
+            await context.setUrl(data.url);
 
             // Emit event to all clients in the room
             socket.to(data.id).emit(routes.EVENT_CONTEXT_URL, {

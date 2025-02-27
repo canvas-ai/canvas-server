@@ -1,14 +1,25 @@
 'use strict';
 
-import logger, { createDebug } from '@/utils/log/index.js';
+import { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('context-url');
 
 /**
  * Context URL
  *
  * Handles parsing and formatting context URLs
- * Format: sessionId@workspaceId://path
- * Example: my-laptop@universe://work/acme/devops/jira-1234
+ * Formats supported:
+ * 1. sessionId@workspaceId://path - Full format with session and workspace
+ * 2. workspaceId://path - Format with only workspace
+ * 3. /path or path - Simple path format (uses current workspace)
+ *
+ * Note: The workspaceId is a UUID and should not contain @ symbols.
+ * The sessionId is also a UUID.
+ *
+ * Examples:
+ * - 550e8400-e29b-41d4-a716-446655440000@123e4567-e89b-12d3-a456-426614174000://work/acme/devops/jira-1234
+ * - 123e4567-e89b-12d3-a456-426614174000://work/acme/devops/jira-1234
+ * - /work/acme/devops/jira-1234
+ * - work/acme/devops/jira-1234
  */
 class Url {
     #raw;
@@ -16,6 +27,7 @@ class Url {
     #workspaceId;
     #path;
     #valid = false;
+    #format = 'simple'; // 'full', 'workspace', 'simple'
 
     constructor(url) {
         this.#raw = url;
@@ -31,17 +43,30 @@ class Url {
             throw new Error('Invalid URL: URL must be a string');
         }
 
-        // Parse URL format: sessionId@workspaceId://path
-        const urlRegex = /^([^@]+)@([^:]+):\/\/(.*)$/;
-        const match = url.match(urlRegex);
+        // Try to parse as full format: sessionId@workspaceId://path
+        const fullFormatRegex = /^([^@]+)@([^:]+):\/\/(.*)$/;
+        const fullMatch = url.match(fullFormatRegex);
 
-        if (!match) {
-            throw new Error('Invalid URL format. Expected: sessionId@workspaceId://path');
+        if (fullMatch) {
+            this.#sessionId = fullMatch[1];
+            this.#workspaceId = fullMatch[2];
+            this.#path = fullMatch[3] || '/';
+            this.#format = 'full';
+        } else {
+            // Try to parse as workspace format: workspaceId://path
+            const workspaceFormatRegex = /^([^:]+):\/\/(.*)$/;
+            const workspaceMatch = url.match(workspaceFormatRegex);
+
+            if (workspaceMatch) {
+                this.#workspaceId = workspaceMatch[1];
+                this.#path = workspaceMatch[2] || '/';
+                this.#format = 'workspace';
+            } else {
+                // Simple path format: /path or path
+                this.#path = url;
+                this.#format = 'simple';
+            }
         }
-
-        this.#sessionId = match[1];
-        this.#workspaceId = match[2];
-        this.#path = match[3] || '/';
 
         // Normalize path
         if (!this.#path.startsWith('/')) {
@@ -61,18 +86,18 @@ class Url {
 
     /**
      * Get the session ID
-     * @returns {string} - Session ID
+     * @returns {string|null} - Session ID or null if not present
      */
     get sessionId() {
-        return this.#sessionId;
+        return this.#sessionId || null;
     }
 
     /**
      * Get the workspace ID
-     * @returns {string} - Workspace ID
+     * @returns {string|null} - Workspace ID or null if not present
      */
     get workspaceId() {
-        return this.#workspaceId;
+        return this.#workspaceId || null;
     }
 
     /**
@@ -92,6 +117,30 @@ class Url {
     }
 
     /**
+     * Get the URL format
+     * @returns {string} - 'full', 'workspace', or 'simple'
+     */
+    get format() {
+        return this.#format;
+    }
+
+    /**
+     * Check if the URL has a session ID
+     * @returns {boolean} - True if the URL has a session ID
+     */
+    get hasSessionId() {
+        return !!this.#sessionId;
+    }
+
+    /**
+     * Check if the URL has a workspace ID
+     * @returns {boolean} - True if the URL has a workspace ID
+     */
+    get hasWorkspaceId() {
+        return !!this.#workspaceId;
+    }
+
+    /**
      * Format the URL
      * @returns {string} - Formatted URL
      */
@@ -100,7 +149,15 @@ class Url {
             throw new Error('Cannot format invalid URL');
         }
 
-        return `${this.#sessionId}@${this.#workspaceId}://${this.#path.replace(/^\//, '')}`;
+        const pathWithoutLeadingSlash = this.#path.replace(/^\//, '');
+
+        if (this.#format === 'full' && this.#sessionId && this.#workspaceId) {
+            return `${this.#sessionId}@${this.#workspaceId}://${pathWithoutLeadingSlash}`;
+        } else if (this.#format === 'workspace' && this.#workspaceId) {
+            return `${this.#workspaceId}://${pathWithoutLeadingSlash}`;
+        } else {
+            return this.#path;
+        }
     }
 
     /**
@@ -113,7 +170,13 @@ class Url {
             throw new Error('Cannot modify invalid URL');
         }
 
-        return new Url(`${this.#sessionId}@${this.#workspaceId}://${path}`);
+        if (this.#format === 'full' && this.#sessionId && this.#workspaceId) {
+            return new Url(`${this.#sessionId}@${this.#workspaceId}://${path}`);
+        } else if (this.#format === 'workspace' && this.#workspaceId) {
+            return new Url(`${this.#workspaceId}://${path}`);
+        } else {
+            return new Url(path);
+        }
     }
 
     /**
@@ -126,7 +189,12 @@ class Url {
             throw new Error('Cannot modify invalid URL');
         }
 
-        return new Url(`${sessionId}@${this.#workspaceId}://${this.#path}`);
+        if (this.#workspaceId) {
+            return new Url(`${sessionId}@${this.#workspaceId}://${this.#path.replace(/^\//, '')}`);
+        } else {
+            // If there's no workspace ID, we can't create a full URL
+            throw new Error('Cannot set session ID without a workspace ID');
+        }
     }
 
     /**
@@ -139,7 +207,25 @@ class Url {
             throw new Error('Cannot modify invalid URL');
         }
 
-        return new Url(`${this.#sessionId}@${workspaceId}://${this.#path}`);
+        if (this.#sessionId) {
+            return new Url(`${this.#sessionId}@${workspaceId}://${this.#path.replace(/^\//, '')}`);
+        } else {
+            return new Url(`${workspaceId}://${this.#path.replace(/^\//, '')}`);
+        }
+    }
+
+    /**
+     * Create a full URL with session ID and workspace ID
+     * @param {string} sessionId - Session ID
+     * @param {string} workspaceId - Workspace ID
+     * @returns {Url} - New URL instance
+     */
+    withSessionAndWorkspace(sessionId, workspaceId) {
+        if (!this.#valid) {
+            throw new Error('Cannot modify invalid URL');
+        }
+
+        return new Url(`${sessionId}@${workspaceId}://${this.#path.replace(/^\//, '')}`);
     }
 }
 

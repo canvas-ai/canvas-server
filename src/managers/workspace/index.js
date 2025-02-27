@@ -15,7 +15,6 @@ import env from '@/env.js';
 
 // Includes
 import Workspace from './lib/Workspace.js';
-import WorkspaceStore from './store/index.js';
 
 /**
  * Workspace Manager
