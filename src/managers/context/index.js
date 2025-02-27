@@ -132,7 +132,7 @@ class ContextManager extends EventEmitter {
             session: session,
             workspace: workspace,
             path: parsedUrl.path,
-            ...options
+            ...options,
         };
 
         // Create the context

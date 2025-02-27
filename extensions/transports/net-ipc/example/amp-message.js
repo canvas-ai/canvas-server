@@ -1,7 +1,7 @@
-var Message = require('amp-message');
+const Message = require('amp-message');
  
 
-var msg = new Message;
+const msg = new Message;
  
 console.log(msg.toBuffer());
  
@@ -17,7 +17,7 @@ console.log(msg.toBuffer());
 //msg.push({ foo: 'bar' });
 console.log(msg.toBuffer());
  
-var other = new Message(msg.toBuffer());
+const other = new Message(msg.toBuffer());
 
 console.log('----------------------');
 console.log(other); 

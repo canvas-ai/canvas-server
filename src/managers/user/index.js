@@ -68,7 +68,7 @@ class UserManager extends EventEmitter {
         const hashedPassword = await User.hashPassword(userData.password);
         const user = await User.create({
             email: userData.email,
-            password: hashedPassword
+            password: hashedPassword,
         });
 
         // Create user home directory
@@ -107,12 +107,12 @@ class UserManager extends EventEmitter {
             const userConfig = {
                 email,
                 created: new Date().toISOString(),
-                updated: new Date().toISOString()
+                updated: new Date().toISOString(),
             };
 
             await fs.writeFile(
                 path.join(userHomePath, 'user.json'),
-                JSON.stringify(userConfig, null, 2)
+                JSON.stringify(userConfig, null, 2),
             );
 
             return userHomePath;

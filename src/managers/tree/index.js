@@ -21,7 +21,7 @@ class TreeManager extends EventEmitter {
         this.#tree = new Tree({
             treeIndexStore: this.#treeIndexStore,
             layerIndexStore: this.#layerIndexStore,
-        })
+        });
     }
 
     createContextTree() {

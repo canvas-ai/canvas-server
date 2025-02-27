@@ -74,7 +74,7 @@ class Context extends EventEmitter {
             if (this.#parsedUrl.hasSessionId && this.#session) {
                 this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
                     this.#session.id,
-                    this.#workspace.id
+                    this.#workspace.id,
                 );
             } else {
                 // Otherwise, create a workspace URL
@@ -183,7 +183,7 @@ class Context extends EventEmitter {
                 filters: options.filters || [],
                 data: options.data || {},
                 created: options.created || new Date().toISOString(),
-                updated: options.updated || new Date().toISOString()
+                updated: options.updated || new Date().toISOString(),
             };
             debug(`Created new layer: ${name}`);
         }
@@ -252,7 +252,7 @@ class Context extends EventEmitter {
             type: options.type || 'generic',
             value: options.value,
             created: options.created || new Date().toISOString(),
-            updated: options.updated || new Date().toISOString()
+            updated: options.updated || new Date().toISOString(),
         };
 
         // Add filter to context
@@ -321,7 +321,7 @@ class Context extends EventEmitter {
             if (this.#parsedUrl.hasSessionId && this.#session) {
                 this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
                     this.#session.id,
-                    this.#workspace.id
+                    this.#workspace.id,
                 );
             } else {
                 // Otherwise, create a workspace URL
@@ -367,7 +367,7 @@ class Context extends EventEmitter {
             this.emit('workspace:changed', {
                 oldWorkspaceId: oldParsedUrl.workspaceId,
                 newWorkspaceId: this.#parsedUrl.workspaceId,
-                workspace: this.#workspace
+                workspace: this.#workspace,
             });
         }
 
@@ -404,7 +404,7 @@ class Context extends EventEmitter {
             // Emit path changed event
             this.emit('path:changed', {
                 oldPath: oldParsedUrl.path,
-                newPath: this.#parsedUrl.path
+                newPath: this.#parsedUrl.path,
             });
         }
 
@@ -415,7 +415,7 @@ class Context extends EventEmitter {
             oldUrl,
             newUrl: url,
             oldParsedUrl,
-            newParsedUrl: this.#parsedUrl
+            newParsedUrl: this.#parsedUrl,
         });
 
         return true;
@@ -445,7 +445,7 @@ class Context extends EventEmitter {
             elements: options.elements || [],
             data: options.data || {},
             created: options.created || new Date().toISOString(),
-            updated: options.updated || new Date().toISOString()
+            updated: options.updated || new Date().toISOString(),
         };
 
         // Add canvas to context
@@ -536,7 +536,7 @@ class Context extends EventEmitter {
             filters: Array.from(this.#filters.values()),
             canvases: Array.from(this.#canvases.values()),
             created: this.#created,
-            updated: this.#updated
+            updated: this.#updated,
         };
     }
 }

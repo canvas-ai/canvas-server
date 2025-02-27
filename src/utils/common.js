@@ -62,8 +62,8 @@ const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
 }, {});
 
 function pathsToTree(paths) {
-    let result = [];
-    let level = {result};
+    const result = [];
+    const level = {result};
 
     paths.forEach(path => {
         path.replace(/^universe:\/\//, '').split('/').reduce((r, name, i, a) => {

@@ -45,7 +45,7 @@ server.on('req', (data, cb) => {
     console.log('Dostal som request');
     console.log(data);
 
-    let reply = 'ak toto bude fungovat tak pecka!';
+    const reply = 'ak toto bude fungovat tak pecka!';
 
     cb(reply);
 

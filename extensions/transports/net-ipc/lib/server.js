@@ -69,9 +69,9 @@ class Server extends EE {
             log(`IPC server::Terminating, PID ${process.pid}`);
 
             if (Object.keys(this.sockets).length) {
-                let clients = Object.keys(this.sockets);
+                const clients = Object.keys(this.sockets);
                 while(clients.length){
-                    let client = clients.pop();
+                    const client = clients.pop();
                     this.sockets[client].write(msgPack({type: '__disconnect'}));
                     this.sockets[client].end();
                 }
@@ -87,7 +87,7 @@ class Server extends EE {
 
         if (!socket) {return this.broadcast(data);}
 
-        let message = msgPack({
+        const message = msgPack({
             id: (data.id) ? data.id : genUUID(),
             type: (data.type) ? data.type : 'data',
             payload: (data.payload) ? data.payload : data,
@@ -105,17 +105,17 @@ class Server extends EE {
 
     broadcast(data) {
 
-        let message = msgPack({
+        const message = msgPack({
             id: genUUID(),
             type: 'broadcast',
             payload: (data.payload) ? data.payload : data,
         });
 
-        var clients = Object.keys(this.sockets);
+        const clients = Object.keys(this.sockets);
         if (clients.length === 0) { log('IPC Server: No clients connected'); return false; }
 
         while (clients.length) {
-            let client = clients.pop();
+            const client = clients.pop();
             log(`IPC Server: Sending broadcast message to ${client}`);
             this.sockets[client].write(message);
         }
@@ -124,7 +124,7 @@ class Server extends EE {
 
     _handleConnection(socket) {
 
-        var sockID = genUUID();
+        const sockID = genUUID();
 
         this.sockets[sockID] = socket;
         this.connectionCount++;
@@ -172,7 +172,7 @@ class Server extends EE {
                 log('IPC Server: Got request -> will reply');
                 this.emit('req', data, (reply) => {
                     log('IPC Server: Reply callback function');
-                    let message = msgPack({
+                    const message = msgPack({
                         id: data.id,
                         type: 'rep',
                         payload: reply,

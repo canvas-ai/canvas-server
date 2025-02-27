@@ -54,7 +54,7 @@ class RoleManager extends EventEmitter {
         if (!backend) {
             throw new Error(`Docker backend not found: ${backendName}`);
         }
-        return backend;2
+        return backend;2;
     }
 
     listRoles() {
@@ -128,7 +128,7 @@ class RoleManager extends EventEmitter {
     }
 
     async listContainers(backend) {
-        const docker = this.getBackend(backend)
+        const docker = this.getBackend(backend);
         try {
             // List all containers (including stopped ones)
             const containers = await docker.listContainers({ all: true });

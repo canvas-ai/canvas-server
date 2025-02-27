@@ -49,10 +49,10 @@ class GenericDevice {
 export default GenericDevice;
 
 function getActiveIP() {
-    let nets = os.networkInterfaces();
+    const nets = os.networkInterfaces();
 
-    for (let i in nets) {
-        var candidate = nets[i].filter(function (item) {
+    for (const i in nets) {
+        const candidate = nets[i].filter(function (item) {
             return item.family === 'IPv4' && !item.internal;
         })[0];
 

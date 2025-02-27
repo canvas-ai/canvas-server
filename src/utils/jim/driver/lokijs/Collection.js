@@ -56,8 +56,8 @@ class Collection {
     save() {
         return new Promise((resolve, reject) => {
             this.db.saveDatabase(err => {
-                if (err) reject(err);
-                else resolve();
+                if (err) {reject(err);}
+                else {resolve();}
             });
         });
     }

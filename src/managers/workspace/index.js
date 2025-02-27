@@ -95,7 +95,7 @@ class WorkspaceManager extends EventEmitter {
                             const workspace = new Workspace({
                                 ...configData,
                                 path: workspacePath,
-                                ownerId: userEmail
+                                ownerId: userEmail,
                             });
 
                             const workspaceId = `${userEmail}/${workspaceName}`;
@@ -153,19 +153,19 @@ class WorkspaceManager extends EventEmitter {
             owner: userEmail,
             acl: options.acl || {},
             created: new Date().toISOString(),
-            updated: new Date().toISOString()
+            updated: new Date().toISOString(),
         };
 
         // Write workspace configuration
         await fs.writeFile(
             path.join(workspacePath, 'workspace.json'),
-            JSON.stringify(workspaceConfig, null, 2)
+            JSON.stringify(workspaceConfig, null, 2),
         );
 
         // Create workspace instance
         const workspace = new Workspace({
             ...workspaceConfig,
-            path: workspacePath
+            path: workspacePath,
         });
 
         // Initialize workspace

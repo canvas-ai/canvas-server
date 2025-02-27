@@ -42,7 +42,7 @@ class DeviceManager extends EventEmitter {
             platform: os.platform(),
             arch: os.arch(),
             release: os.release(),
-            isCurrentDevice: true
+            isCurrentDevice: true,
         });
 
         // Load saved devices if config path is provided
@@ -80,7 +80,7 @@ class DeviceManager extends EventEmitter {
             arch: options.arch,
             release: options.release,
             isCurrentDevice: options.isCurrentDevice || false,
-            lastSeen: options.lastSeen || new Date().toISOString()
+            lastSeen: options.lastSeen || new Date().toISOString(),
         });
 
         this.#devices.set(id, device);

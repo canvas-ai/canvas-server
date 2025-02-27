@@ -62,7 +62,7 @@ class Workspace extends EventEmitter {
         const dirs = [
             this.path,
             path.join(this.path, 'db'),
-            path.join(this.path, 'config')
+            path.join(this.path, 'config'),
         ];
 
         for (const dir of dirs) {
@@ -77,7 +77,7 @@ class Workspace extends EventEmitter {
             path: dbPath,
             backupOnOpen: false,
             backupOnClose: true,
-            compression: true
+            compression: true,
         });
 
         await this.#db.start();
@@ -87,7 +87,7 @@ class Workspace extends EventEmitter {
     async #initializeTree() {
         this.#tree = new Tree({
             db: this.#db,
-            workspace: this
+            workspace: this,
         });
         await this.#tree.initialize();
         debug(`Initialized context tree for workspace ${this.id}`);
@@ -107,7 +107,7 @@ class Workspace extends EventEmitter {
                 type: this.type,
                 ownerId: this.ownerId,
                 created: this.created,
-                updated: this.updated
+                updated: this.updated,
             };
             await this.saveConfig();
         }
@@ -173,7 +173,7 @@ class Workspace extends EventEmitter {
                         path: currentPath,
                         type: 'generic',
                         created: new Date().toISOString(),
-                        updated: new Date().toISOString()
+                        updated: new Date().toISOString(),
                     });
 
                     debug(`Created new layer: ${part} at path ${currentPath}`);
@@ -192,7 +192,7 @@ class Workspace extends EventEmitter {
                     path: currentPath,
                     type: 'generic',
                     created: new Date().toISOString(),
-                    updated: new Date().toISOString()
+                    updated: new Date().toISOString(),
                 };
 
                 layers.push(fallbackLayer);

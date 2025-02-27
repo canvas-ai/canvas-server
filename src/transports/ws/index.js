@@ -18,7 +18,7 @@ const DEFAULT_CONFIG = {
         accessToken: process.env.CANVAS_TRANSPORT_WS_ACCESS_TOKEN || 'canvas-server-token',
         jwtSecret: process.env.CANVAS_TRANSPORT_WS_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_WS_JWT_LIFETIME || '48h',
-    }
+    },
 };
 
 class WebSocketTransport {
@@ -32,7 +32,7 @@ class WebSocketTransport {
         this.#config = { ...DEFAULT_CONFIG, ...options };
         this.#parent = parent;
         this.ResponseObject = ResponseObject;
-        debug(`WebSocket Transport initialized with config:`, this.#config);
+        debug('WebSocket Transport initialized with config:', this.#config);
     }
 
     async start(httpServer) {
@@ -44,8 +44,8 @@ class WebSocketTransport {
         this.#io = new Server(httpServer, {
             cors: {
                 origin: '*',
-                methods: ['GET', 'POST']
-            }
+                methods: ['GET', 'POST'],
+            },
         });
 
         // Set max listeners
@@ -115,7 +115,7 @@ class WebSocketTransport {
             host: this.#config.host,
             port: this.#config.port,
             listening: true,
-            connections: this.#io.sockets.sockets.size
+            connections: this.#io.sockets.sockets.size,
         };
     }
 
@@ -181,7 +181,7 @@ class WebSocketTransport {
             sessionManager: this.#parent.sessionManager,
             session: socket.session,
             context: socket.context,
-            db: this.#parent.db
+            db: this.#parent.db,
         };
     }
 

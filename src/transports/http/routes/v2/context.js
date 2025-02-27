@@ -67,7 +67,7 @@ export default function contextRoutes(options) {
 
             const context = await contextManager.createContext(url, {
                 ...options,
-                user: req.user
+                user: req.user,
             });
 
             return res.status(201).json(new ResponseObject(context));

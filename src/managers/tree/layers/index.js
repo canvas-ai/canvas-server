@@ -43,7 +43,7 @@ class LayerIndex extends EventEmitter {
     }
 
     list() {
-        let result = [];
+        const result = [];
         for (const [id, layer] of this.index()) {
             result.push(layer);
         }
@@ -72,12 +72,12 @@ class LayerIndex extends EventEmitter {
     }
 
     getLayerByName(name) {
-        let res = this.nameToLayerMap.get(name);
+        const res = this.nameToLayerMap.get(name);
         return res || null;
     }
 
     updateLayer(name, options) {
-        let layer = this.getLayerByName(name);
+        const layer = this.getLayerByName(name);
         if (!layer) {return false;}
         if (layer.locked) {throw new Error('Layer is locked');}
         Object.assign(layer, options);

@@ -107,8 +107,8 @@ class Tree extends EventEmitter {
         const parentNode = this.getNode(parentPath);
         if (!parentNode) { return false; }
 
-        let layer = node.payload;
-        let targetNode = new TreeNode(layer.id, layer);
+        const layer = node.payload;
+        const targetNode = new TreeNode(layer.id, layer);
 
         if (!this.insert(pathTo, targetNode)) {
             console.log(`Unable to move layer "${layer.name}" to path "${pathTo}"`);
@@ -184,7 +184,7 @@ class Tree extends EventEmitter {
 
     save() {
         debug('Saving in-memory tree to database');
-        let data = this.#buildJsonIndexTree();
+        const data = this.#buildJsonIndexTree();
         try {
             this.dbtree.set('tree', data);
             debug('Tree saved successfully.');
@@ -223,13 +223,13 @@ class Tree extends EventEmitter {
         let currentNode = this.root;
 
         for (const layerName of layerNames) {
-            let layer = this.dblayers.getLayerByName(layerName);
+            const layer = this.dblayers.getLayerByName(layerName);
             if (!layer) {
                 debug(`Layer "${layerName}" not found in index`);
                 return false;
             }
 
-            let child = currentNode.getChild(layer.id);
+            const child = currentNode.getChild(layer.id);
             if (!child) {
                 debug(`Target path "${path}" does not exist`);
                 return false;

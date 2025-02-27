@@ -119,7 +119,7 @@ class SessionManager extends EventEmitter {
             ...sessionOptions,
             name,
             user: userId,
-            initializer: sessionOptions.initializer || 'system'
+            initializer: sessionOptions.initializer || 'system',
         });
 
         // Add to active sessions

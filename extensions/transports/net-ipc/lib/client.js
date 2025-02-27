@@ -127,7 +127,7 @@ class Client extends EE {
 
         }
 
-        let message = msgPack({
+        const message = msgPack({
             id: (data.id) ? data.id : genUUID(),
             type: (data.type) ? data.type : type,
             payload: (data.payload) ? data.payload : data,
@@ -140,7 +140,7 @@ class Client extends EE {
 
     req(data, cb) {
 
-        let requestID = genUUID();
+        const requestID = genUUID();
 
         if (!this.send({
             id: requestID,
@@ -183,7 +183,7 @@ class Client extends EE {
                 log('IPC Client: > Received request message');
                 this.emit('req', data, (reply) => {
                     log('IPC Client: Reply callback function');
-                    let message = msgPack({
+                    const message = msgPack({
                         id: data.id,
                         type: 'rep',
                         payload: reply,

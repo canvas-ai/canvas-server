@@ -74,7 +74,7 @@ export default function contextRoutes(socket, deps) {
             // Emit event to all clients in the room
             socket.to(data.id).emit(routes.EVENT_CONTEXT_URL, {
                 id: data.id,
-                url: data.url
+                url: data.url,
             });
 
             callback(new ResponseObject(context));
@@ -96,7 +96,7 @@ export default function contextRoutes(socket, deps) {
             debug(`Creating context: ${data.url}`);
             const context = await contextManager.createContext(data.url, {
                 ...data.options,
-                user
+                user,
             });
 
             // Join the context room
@@ -191,7 +191,7 @@ export default function contextRoutes(socket, deps) {
             // Emit event to all clients in the room
             socket.to(data.id).emit('context:layer:added', {
                 contextId: data.id,
-                layer
+                layer,
             });
 
             callback(new ResponseObject(layer));
@@ -221,7 +221,7 @@ export default function contextRoutes(socket, deps) {
             // Emit event to all clients in the room
             socket.to(data.id).emit('context:layer:removed', {
                 contextId: data.id,
-                name: data.name
+                name: data.name,
             });
 
             callback(new ResponseObject({ success: true }));
@@ -248,7 +248,7 @@ export default function contextRoutes(socket, deps) {
             // Emit event to all clients in the room
             socket.to(data.id).emit('context:filter:added', {
                 contextId: data.id,
-                filter
+                filter,
             });
 
             callback(new ResponseObject(filter));
@@ -278,7 +278,7 @@ export default function contextRoutes(socket, deps) {
             // Emit event to all clients in the room
             socket.to(data.id).emit('context:filter:removed', {
                 contextId: data.id,
-                name: data.name
+                name: data.name,
             });
 
             callback(new ResponseObject({ success: true }));

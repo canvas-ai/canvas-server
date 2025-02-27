@@ -42,12 +42,12 @@ class User extends EventEmitter {
                     id: this.#id,
                     email: this.#email,
                     created: new Date().toISOString(),
-                    updated: new Date().toISOString()
+                    updated: new Date().toISOString(),
                 };
 
                 await fs.writeFile(
                     userConfigPath,
-                    JSON.stringify(userConfig, null, 2)
+                    JSON.stringify(userConfig, null, 2),
                 );
 
                 debug(`Created user config at ${userConfigPath}`);
@@ -143,7 +143,7 @@ class User extends EventEmitter {
         return {
             id: this.#id,
             email: this.#email,
-            homePath: this.#homePath
+            homePath: this.#homePath,
         };
     }
 }
