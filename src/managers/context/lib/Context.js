@@ -28,6 +28,7 @@ class Context extends EventEmitter {
     #updated;
     #initialized = false;
     #tree;
+    #workspaceManager;
 
     constructor(url, options = {}) {
         super();
@@ -55,6 +56,8 @@ class Context extends EventEmitter {
 
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
+
+        this.#workspaceManager = options.workspaceManager;
 
         debug(`Context created: ${this.#id} (${url})`);
     }
@@ -302,123 +305,138 @@ class Context extends EventEmitter {
     }
 
     /**
-     * Set the URL
-     * @param {string} url - New URL
-     * @returns {Promise<boolean>} - True if URL was set successfully
+     * Get the context URL
+     * @returns {string} - Context URL
      */
-    async setUrl(url) {
-        const oldUrl = this.#url;
-        const oldParsedUrl = this.#parsedUrl;
+    get url() {
+        return this.#url;
+    }
 
-        // Parse the new URL
-        this.#parsedUrl = new Url(url);
+    /**
+     * Get the parsed URL
+     * @returns {Url} - Parsed URL
+     */
+    get parsedUrl() {
+        return this.#parsedUrl;
+    }
 
-        // If URL doesn't have a workspace ID but we have a workspace, update the URL
-        if (!this.#parsedUrl.hasWorkspaceId && this.#workspace) {
-            debug(`URL doesn't have a workspace ID, using current workspace: ${this.#workspace.id}`);
+    /**
+     * Get the workspace
+     * @returns {Workspace} - Workspace
+     */
+    get workspace() {
+        return this.#workspace;
+    }
 
-            // If URL also has a session ID, create a full URL
-            if (this.#parsedUrl.hasSessionId && this.#session) {
-                this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
-                    this.#session.id,
-                    this.#workspace.id,
-                );
-            } else {
-                // Otherwise, create a workspace URL
-                this.#parsedUrl = this.#parsedUrl.withWorkspaceId(this.#workspace.id);
-            }
+    /**
+     * Get the session
+     * @returns {Session} - Session
+     */
+    get session() {
+        return this.#session;
+    }
 
-            // Update the URL
-            url = this.#parsedUrl.toString();
-            debug(`Updated URL to: ${url}`);
+    /**
+     * Switch to a different workspace while maintaining the same context path
+     * @param {Workspace} workspace - New workspace
+     * @returns {Promise<Context>} - Updated context
+     */
+    async switchWorkspace(workspace) {
+        if (!workspace) {
+            throw new Error('Workspace is required');
         }
 
-        this.#url = url;
+        debug(`Switching context ${this.#id} from workspace ${this.#workspace?.id} to ${workspace.id}`);
 
-        debug(`Setting URL from ${oldUrl} to ${url}`);
+        // Store the current path
+        const contextPath = this.#parsedUrl.path;
 
-        // Check if workspace has changed
-        if (this.#parsedUrl.hasWorkspaceId &&
-            (oldParsedUrl.workspaceId !== this.#parsedUrl.workspaceId)) {
+        // Update the workspace reference
+        this.#workspace = workspace;
 
-            debug(`Workspace ID changed from ${oldParsedUrl.workspaceId} to ${this.#parsedUrl.workspaceId}`);
-
-            // Get the workspace manager
-            const workspaceManager = global.app.getManager('workspace');
-            if (!workspaceManager) {
-                throw new Error('Workspace manager not available');
-            }
-
-            // Check if the new workspace exists
-            const newWorkspace = await workspaceManager.getWorkspace(this.#parsedUrl.workspaceId);
-            if (!newWorkspace) {
-                throw new Error(`Workspace not found: ${this.#parsedUrl.workspaceId}`);
-            }
-
-            // Switch to the new workspace
-            this.#workspace = newWorkspace;
-
-            // Get the tree from the new workspace
-            this.#tree = await this.#workspace.getTree();
-
-            debug(`Switched to workspace: ${this.#workspace.id}`);
-
-            // Emit workspace changed event
-            this.emit('workspace:changed', {
-                oldWorkspaceId: oldParsedUrl.workspaceId,
-                newWorkspaceId: this.#parsedUrl.workspaceId,
-                workspace: this.#workspace,
-            });
+        // Update the URL with the new workspace ID
+        if (this.#parsedUrl.hasSessionId) {
+            this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
+                this.#session.id,
+                workspace.id
+            );
+        } else {
+            this.#parsedUrl = this.#parsedUrl.withWorkspaceId(workspace.id);
         }
 
-        // Check if path has changed
-        if (oldParsedUrl.path !== this.#parsedUrl.path) {
-            debug(`Path changed from ${oldParsedUrl.path} to ${this.#parsedUrl.path}`);
+        // Update the raw URL
+        this.#url = this.#parsedUrl.toString();
+        debug(`Updated URL to: ${this.#url}`);
 
-            // Clear existing layers
-            this.#layers.clear();
+        // Reset initialization state
+        this.#initialized = false;
 
-            // Re-initialize layers from the new path
-            if (this.#workspace) {
-                try {
-                    // Use the workspace to create layers from the new path
-                    const layers = await this.#workspace.createLayersFromPath(this.#parsedUrl.path);
+        // Clear existing layers
+        this.#layers.clear();
 
-                    // Add layers to the context
-                    if (Array.isArray(layers)) {
-                        for (const layer of layers) {
-                            this.#layers.set(layer.name, layer);
-                            debug(`Added layer from workspace: ${layer.name}`);
-                        }
-                    }
-                } catch (err) {
-                    debug(`Error creating layers from path: ${err.message}`);
-                    // Fallback to manual layer creation
-                    await this.#createLayersManually();
-                }
-            } else {
-                // Fallback to manual layer creation
-                await this.#createLayersManually();
-            }
+        // Re-initialize with the new workspace
+        await this.initialize();
 
-            // Emit path changed event
-            this.emit('path:changed', {
-                oldPath: oldParsedUrl.path,
-                newPath: this.#parsedUrl.path,
-            });
-        }
-
-        // Update context
-        this.#updated = new Date().toISOString();
-
-        this.emit('url:changed', {
-            oldUrl,
-            newUrl: url,
-            oldParsedUrl,
-            newParsedUrl: this.#parsedUrl,
+        // Emit an event for the workspace change
+        this.emit('workspace:changed', {
+            contextId: this.#id,
+            workspaceId: workspace.id,
+            path: contextPath
         });
 
-        return true;
+        return this;
+    }
+
+    /**
+     * Set a new URL for this context
+     * @param {string} url - New URL
+     * @returns {Promise<Context>} - Updated context
+     */
+    async setUrl(url) {
+        debug(`Setting new URL for context ${this.#id}: ${url}`);
+
+        // Parse the new URL
+        const newParsedUrl = new Url(url);
+
+        // If the new URL has a different workspace ID, we need to switch workspaces
+        if (newParsedUrl.hasWorkspaceId &&
+            this.#parsedUrl.hasWorkspaceId &&
+            newParsedUrl.workspaceId !== this.#parsedUrl.workspaceId) {
+
+            // We need to find the workspace manager to get the new workspace
+            // This would typically be injected or available through a service locator
+            // For now, we'll assume it's passed in the options
+            if (!this.#workspaceManager) {
+                throw new Error('Workspace manager is required to switch workspaces');
+            }
+
+            // Get the new workspace
+            const newWorkspace = await this.#workspaceManager.getWorkspace(newParsedUrl.workspaceId);
+
+            // Switch to the new workspace
+            return this.switchWorkspace(newWorkspace);
+        }
+
+        // If only the path changed, update the URL and re-initialize
+        this.#url = url;
+        this.#parsedUrl = newParsedUrl;
+
+        // Reset initialization state
+        this.#initialized = false;
+
+        // Clear existing layers
+        this.#layers.clear();
+
+        // Re-initialize with the new URL
+        await this.initialize();
+
+        // Emit an event for the URL change
+        this.emit('url:changed', {
+            contextId: this.#id,
+            url: this.#url
+        });
+
+        return this;
     }
 
     /**
@@ -514,10 +532,6 @@ class Context extends EventEmitter {
 
     // Getters
     get id() { return this.#id; }
-    get url() { return this.#url; }
-    get parsedUrl() { return this.#parsedUrl; }
-    get session() { return this.#session; }
-    get workspace() { return this.#workspace; }
     get device() { return this.#device; }
     get user() { return this.#user; }
     get created() { return this.#created; }
@@ -538,6 +552,472 @@ class Context extends EventEmitter {
             created: this.#created,
             updated: this.#updated,
         };
+    }
+
+    /**
+     * Clone this context to a different workspace
+     * @param {Workspace} workspace - Target workspace
+     * @returns {Promise<Context>} - New context in the target workspace
+     */
+    async cloneToWorkspace(workspace) {
+        if (!workspace) {
+            throw new Error('Target workspace is required');
+        }
+
+        debug(`Cloning context ${this.#id} to workspace ${workspace.id}`);
+
+        // Create a new context with the same path but in the target workspace
+        const contextPath = this.#parsedUrl.path;
+
+        // Create the new URL
+        let newUrl;
+        if (this.#parsedUrl.hasSessionId) {
+            newUrl = `${this.#session.id}@${workspace.id}://${contextPath.replace(/^\//, '')}`;
+        } else {
+            newUrl = `${workspace.id}://${contextPath.replace(/^\//, '')}`;
+        }
+
+        // Create a new context with the new URL
+        const newContext = new Context(newUrl, {
+            workspace: workspace,
+            session: this.#session,
+            device: this.#device,
+            user: this.#user
+        });
+
+        // Initialize the new context
+        await newContext.initialize();
+
+        // Copy any relevant data from this context to the new one
+        // This would depend on your specific implementation
+
+        return newContext;
+    }
+
+    /**
+     * List documents in the context
+     * @param {Array<string>} featureArray - Array of features to filter by
+     * @param {Array<string>} filterArray - Array of filters to apply
+     * @param {Object} options - Options for listing documents
+     * @returns {Promise<Array<Object>>} - Array of documents
+     */
+    async listDocuments(featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        try {
+            const contextLayers = await this.listLayers();
+            if (!contextLayers || !contextLayers.length) {
+                throw new Error('No context layers found');
+            }
+
+            // Convert context layers to array of UUIDs
+            const contextArray = contextLayers.map(layer => `context/${layer.uuid}`);
+
+            // Ensure feature array has proper prefixes
+            const formattedFeatureArray = featureArray.map(feature =>
+                feature.startsWith('tag/') ? feature : `tag/${feature}`
+            );
+
+            debug(`Listing documents in context "${this.url}" with ${contextArray.length} layers, ${formattedFeatureArray.length} features, and ${filterArray.length} filters`);
+
+            // Call SynapsD listDocuments method
+            const documents = await this.#workspace.db.listDocuments(
+                contextArray,
+                formattedFeatureArray,
+                filterArray,
+                options
+            );
+
+            debug(`Found ${documents.length} documents in context "${this.url}"`);
+            return documents;
+        } catch (error) {
+            console.error('Error listing documents:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get a document by ID
+     * @param {string} documentId - Document ID
+     * @returns {Promise<Object|null>} - Document object or null if not found
+     */
+    async getDocument(documentId) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!documentId) {
+            throw new Error('Document ID is required');
+        }
+
+        try {
+            debug(`Getting document "${documentId}" in context "${this.url}"`);
+            const document = await this.#workspace.db.getDocument(documentId);
+            return document;
+        } catch (error) {
+            console.error(`Error getting document "${documentId}":`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Insert documents into the context
+     * @param {Array<Object>} documents - Array of document objects to insert
+     * @param {Array<string>} featureArray - Array of features to associate with the documents
+     * @param {Object} options - Options for inserting documents
+     * @returns {Promise<Array<Object>>} - Array of inserted documents with IDs
+     */
+    async insertDocuments(documents, featureArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!Array.isArray(documents) || documents.length === 0) {
+            throw new Error('Documents array is required and must not be empty');
+        }
+
+        try {
+            const contextLayers = await this.listLayers();
+            if (!contextLayers || !contextLayers.length) {
+                throw new Error('No context layers found');
+            }
+
+            // Convert context layers to array of UUIDs
+            const contextArray = contextLayers.map(layer => `context/${layer.uuid}`);
+
+            // Ensure feature array has proper prefixes
+            const formattedFeatureArray = featureArray.map(feature =>
+                feature.startsWith('tag/') ? feature : `tag/${feature}`
+            );
+
+            debug(`Inserting ${documents.length} documents into context "${this.url}" with ${contextArray.length} layers and ${formattedFeatureArray.length} features`);
+
+            // Create any features that don't exist yet
+            for (const feature of formattedFeatureArray) {
+                const featureName = feature.replace('tag/', '');
+                await this.addFeature(featureName);
+            }
+
+            // Call SynapsD insertDocuments method
+            const insertedDocs = [];
+            for (const doc of documents) {
+                const insertedDoc = await this.#workspace.db.insertDocument(
+                    doc,
+                    contextArray,
+                    formattedFeatureArray,
+                    options
+                );
+                insertedDocs.push(insertedDoc);
+            }
+
+            debug(`Inserted ${insertedDocs.length} documents into context "${this.url}"`);
+            return insertedDocs;
+        } catch (error) {
+            console.error('Error inserting documents:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update documents in the context
+     * @param {Array<Object>} documents - Array of document objects to update
+     * @param {Array<string>} featureArray - Array of features to associate with the documents
+     * @param {Object} options - Options for updating documents
+     * @returns {Promise<Array<Object>>} - Array of updated documents
+     */
+    async updateDocuments(documents, featureArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!Array.isArray(documents) || documents.length === 0) {
+            throw new Error('Documents array is required and must not be empty');
+        }
+
+        try {
+            const contextLayers = await this.listLayers();
+            if (!contextLayers || !contextLayers.length) {
+                throw new Error('No context layers found');
+            }
+
+            // Convert context layers to array of UUIDs
+            const contextArray = contextLayers.map(layer => `context/${layer.uuid}`);
+
+            // Ensure feature array has proper prefixes
+            const formattedFeatureArray = featureArray.map(feature =>
+                feature.startsWith('tag/') ? feature : `tag/${feature}`
+            );
+
+            debug(`Updating ${documents.length} documents in context "${this.url}" with ${contextArray.length} layers and ${formattedFeatureArray.length} features`);
+
+            // Create any features that don't exist yet
+            for (const feature of formattedFeatureArray) {
+                const featureName = feature.replace('tag/', '');
+                await this.addFeature(featureName);
+            }
+
+            // Call SynapsD updateDocuments method
+            const updatedDocs = [];
+            for (const doc of documents) {
+                const updatedDoc = await this.#workspace.db.updateDocument(
+                    doc,
+                    contextArray,
+                    formattedFeatureArray,
+                    options
+                );
+                updatedDocs.push(updatedDoc);
+            }
+
+            debug(`Updated ${updatedDocs.length} documents in context "${this.url}"`);
+            return updatedDocs;
+        } catch (error) {
+            console.error('Error updating documents:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete documents from the context
+     * @param {Array<string>} documentIds - Array of document IDs to delete
+     * @param {Object} options - Options for deleting documents
+     * @returns {Promise<boolean>} - Success status
+     */
+    async deleteDocuments(documentIds, options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!Array.isArray(documentIds) || documentIds.length === 0) {
+            throw new Error('Document IDs array is required and must not be empty');
+        }
+
+        try {
+            debug(`Deleting ${documentIds.length} documents from context "${this.url}"`);
+
+            // Call SynapsD deleteDocument method for each document
+            for (const docId of documentIds) {
+                await this.#workspace.db.deleteDocument(docId);
+            }
+
+            debug(`Deleted ${documentIds.length} documents from context "${this.url}"`);
+            return true;
+        } catch (error) {
+            console.error('Error deleting documents:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Add a feature to the context
+     * @param {string} feature - Feature name
+     * @returns {Promise<boolean>} - Success status
+     */
+    async addFeature(feature) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        try {
+            const contextLayers = await this.listLayers();
+            if (!contextLayers || !contextLayers.length) {
+                throw new Error('No context layers found');
+            }
+
+            // Check if bitmap exists
+            // Use 'tag/' prefix instead of 'feature/' to comply with allowed prefixes
+            const bitmapKey = `tag/${feature}`;
+
+            // Use the correct property path to access bitmap methods
+            const bitmapExists = this.#workspace.db.bitmapIndex.hasBitmap(bitmapKey);
+
+            if (!bitmapExists) {
+                debug(`Creating bitmap for feature "${feature}"`);
+                await this.#workspace.db.createBitmap(bitmapKey);
+            }
+
+            debug(`Added feature "${feature}" to context "${this.url}"`);
+            return true;
+        } catch (error) {
+            console.error(`Error adding feature "${feature}" to context:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Remove a feature from the context
+     * @param {string} featurePath - Feature path
+     * @returns {Promise<boolean>} - Success status
+     */
+    async removeFeature(featurePath) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        debug(`Removing feature ${featurePath} from context ${this.id}`);
+
+        // Get layer UUIDs for the current context path
+        const contextLayers = await this.listLayers();
+        const contextArray = contextLayers.map(layer => layer.id);
+
+        try {
+            await this.#workspace.db.removeFeature(featurePath, contextArray);
+            debug(`Removed feature ${featurePath}`);
+            return true;
+        } catch (error) {
+            debug(`Error removing feature: ${error.message}`);
+            throw new Error(`Failed to remove feature: ${error.message}`);
+        }
+    }
+
+    /**
+     * Tick a feature for a document in the context
+     * @param {string} feature - Feature name
+     * @param {string} documentId - Document ID
+     * @returns {Promise<boolean>} - Success status
+     */
+    async tickFeature(feature, documentId) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!feature || !documentId) {
+            throw new Error('Feature name and document ID are required');
+        }
+
+        try {
+            const contextLayers = await this.listLayers();
+            if (!contextLayers || !contextLayers.length) {
+                throw new Error('No context layers found');
+            }
+
+            // Check if bitmap exists, create if not
+            // Use 'tag/' prefix instead of 'feature/' to comply with allowed prefixes
+            const bitmapKey = `tag/${feature}`;
+
+            // Use the correct property path to access bitmap methods
+            const bitmapExists = this.#workspace.db.bitmapIndex.hasBitmap(bitmapKey);
+
+            if (!bitmapExists) {
+                debug(`Creating bitmap for feature "${feature}"`);
+                await this.#workspace.db.createBitmap(bitmapKey);
+            }
+
+            // Tick the feature for the document
+            debug(`Ticking feature "${feature}" for document "${documentId}"`);
+            await this.#workspace.db.bitmapIndex.tickSync(bitmapKey, documentId);
+
+            // Also tick for all context layers
+            for (const layer of contextLayers) {
+                const contextBitmapKey = `context/${layer.id}`;
+                const layerBitmapExists = this.#workspace.db.bitmapIndex.hasBitmap(contextBitmapKey);
+
+                if (!layerBitmapExists) {
+                    debug(`Creating bitmap for context layer "${layer.name}"`);
+                    await this.#workspace.db.createBitmap(contextBitmapKey);
+                }
+
+                await this.#workspace.db.bitmapIndex.tickSync(contextBitmapKey, documentId);
+            }
+
+            return true;
+        } catch (error) {
+            console.error(`Error ticking feature "${feature}" for document "${documentId}":`, error);
+            return false;
+        }
+    }
+
+    /**
+     * List all features in the context
+     * @returns {Promise<Array<string>>} - Array of feature names
+     */
+    async listFeatures() {
+        try {
+            // Get all bitmaps with prefix 'tag/' instead of 'feature/'
+            const bitmaps = await this.#workspace.db.listBitmaps();
+
+            // Extract feature names from bitmap keys
+            const features = bitmaps
+                .filter(key => key.startsWith('tag/'))
+                .map(key => key.replace('tag/', ''));
+
+            debug(`Found ${features.length} features in context "${this.url}"`);
+            return features;
+        } catch (error) {
+            console.error('Error listing features:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Update a document in the context
+     * @param {number} documentId - The ID of the document to update
+     * @param {Object} newData - The new data for the document
+     * @param {Array<string>} features - Optional array of features to associate with the document
+     * @returns {Promise<Object>} - The updated document
+     */
+    async updateDocument(documentId, newData, features = []) {
+        // Initialize logger if it doesn't exist
+        if (!this.logger) {
+            this.logger = {
+                debug: console.log,
+                info: console.log,
+                warn: console.warn,
+                error: console.error
+            };
+        }
+
+        this.logger.debug(`Updating document "${documentId}" in context "${this.url}"`);
+
+        try {
+            // 1. Get the existing document
+            const existingDoc = await this.getDocument(documentId);
+            if (!existingDoc) {
+                throw new Error(`Document with ID ${documentId} not found`);
+            }
+
+            // 2. Get the schema for the document
+            const Schema = this.workspace.db.getSchema(existingDoc.schema);
+            if (!Schema) {
+                throw new Error(`Schema ${existingDoc.schema} not found`);
+            }
+
+            // 3. Delete the existing document
+            await this.deleteDocuments([documentId]);
+
+            // 4. Create a new document with the same schema and ID
+            const updatedDoc = new Schema({
+                ...existingDoc.data,
+                ...newData
+            });
+
+            // 5. Copy the ID from the original document
+            updatedDoc.id = documentId;
+
+            // 6. Insert the updated document with the specified features
+            // Merge existing features with new features if needed
+            const existingFeatures = await this.getDocumentFeatures(documentId);
+            const allFeatures = [...new Set([...existingFeatures, ...features])];
+
+            const [insertedDoc] = await this.insertDocuments([updatedDoc], allFeatures);
+            return insertedDoc;
+        } catch (error) {
+            this.logger.error(`Error updating document ${documentId} in context ${this.url}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get features associated with a document
+     * @param {number} documentId - The ID of the document
+     * @returns {Promise<Array<string>>} - Array of feature names
+     */
+    async getDocumentFeatures(documentId) {
+        // This is a placeholder implementation
+        // In a real implementation, you would query the bitmap index to find
+        // all features that have this document ID ticked
+        return [];
     }
 }
 

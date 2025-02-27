@@ -5,6 +5,7 @@ const debug = debugInstance('canvas:context:tree');
 
 import TreeNode from './TreeNode.js';
 import LayerIndex from '../layers/index.js';
+import { v4 as uuidv4 } from 'uuid';
 
 class Tree extends EventEmitter {
 
@@ -370,6 +371,53 @@ class Tree extends EventEmitter {
         };
         traverseTree(this.root);
         return sort ? paths.sort() : paths;
+    }
+
+    /**
+     * Create a new layer with the given properties
+     * @param {Object} options - Layer properties
+     * @returns {Object} - Created layer
+     */
+    createLayer(options = {}) {
+        debug(`Creating layer with options: ${JSON.stringify(options)}`);
+
+        // Generate a UUID if not provided
+        if (!options.id) {
+            options.id = uuidv4();
+        }
+
+        // Set default type if not provided
+        if (!options.type) {
+            options.type = 'generic';
+        }
+
+        // Create the layer in the layer index
+        const layer = this.dblayers.createLayer(options);
+
+        if (!layer) {
+            throw new Error(`Failed to create layer with options: ${JSON.stringify(options)}`);
+        }
+
+        debug(`Layer created: ${layer.name} (${layer.id})`);
+        return layer;
+    }
+
+    /**
+     * Get a layer by name
+     * @param {string} name - Layer name
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayer(name) {
+        return this.dblayers.getLayerByName(name);
+    }
+
+    /**
+     * Get a layer by ID
+     * @param {string} id - Layer ID
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayerById(id) {
+        return this.dblayers.getLayerByID(id);
     }
 }
 

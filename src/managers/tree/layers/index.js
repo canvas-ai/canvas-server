@@ -58,7 +58,19 @@ class LayerIndex extends EventEmitter {
             };
         } else { options = name; }
         debug(`Creating layer ${JSON.stringify(options)}`);
-        if (this.hasLayerName(options.name)) {return false;}
+
+        // Check if layer already exists
+        if (this.hasLayerName(options.name)) {
+            // If update option is set, update the existing layer
+            if (options.update === true) {
+                const existingLayer = this.getLayerByName(options.name);
+                // Update properties
+                Object.assign(existingLayer, options);
+                debug(`Updated existing layer ${options.name}`);
+                return existingLayer;
+            }
+            return false;
+        }
 
         const layer = new Layer(options);
         if (!layer) {throw new Error(`Failed to create layer with options ${options}`);}
@@ -131,7 +143,14 @@ class LayerIndex extends EventEmitter {
     }
 
     #initBuiltInLayers() {
+        // Check if a root layer already exists in the index
+        const rootExists = this.hasLayerName('/');
+
         for (const layer of builtInLayers) {
+            // Skip the root layer if it already exists
+            if (rootExists && layer.name === '/') {
+                continue;
+            }
             this.createLayer(layer);
         }
     }

@@ -2,8 +2,8 @@
 import EventEmitter from 'eventemitter2';
 import randomcolor from 'randomcolor';
 import path from 'path';
-import fs from 'fs/promises';
-import { existsSync, mkdirSync } from 'fs';
+import * as fsPromises from 'fs/promises';
+import { existsSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 // Logging
@@ -25,16 +25,47 @@ class WorkspaceManager extends EventEmitter {
     #openWorkspaces = new Map();
     #initialized = false;
 
+    /**
+     * Create a new WorkspaceManager instance
+     * @param {Object} options - Configuration options
+     * @param {string} options.rootPath - Root path for workspaces
+     */
     constructor(options = {}) {
         super(); // EventEmitter
-
         debug('Initializing workspace manager');
-        this.#rootPath = options.rootPath || env.CANVAS_USER_HOME;
-        debug(`Workspace root path: ${this.#rootPath}`);
+
+        if (!options.rootPath) {
+            throw new Error('Workspace root path is required');
+        }
+
+        this.#rootPath = options.rootPath;
+        debug(`Workspaces root path: ${this.#rootPath}`);
     }
 
+    /**
+     * Getters
+     */
+
+    get rootPath() {
+        return this.#rootPath;
+    }
+
+    get workspaces() {
+        return this.#workspaceIndex;
+    }
+
+    get openWorkspaces() {
+        return this.#openWorkspaces;
+    }
+
+    /**
+     * Initialize the workspace manager
+     * @returns {Promise<void>}
+     * @throws {Error} If initialization fails
+     */
     async initialize() {
         if (this.#initialized) {
+            debug('Workspace manager already initialized');
             return;
         }
 
@@ -42,69 +73,95 @@ class WorkspaceManager extends EventEmitter {
 
         // Ensure root path exists
         try {
-            await fs.mkdir(this.#rootPath, { recursive: true });
-            debug(`Workspace root directory created at ${this.#rootPath}`);
+            await this.#ensureDirectoryExists(this.#rootPath);
+            debug(`Workspace root directory ensured at ${this.#rootPath}`);
         } catch (err) {
-            debug(`Error creating workspace root directory: ${err.message}`);
-            throw err;
+            const error = new Error(`Failed to initialize workspace manager: ${err.message}`);
+            debug(error.message);
+            throw error;
         }
 
         // Scan for existing workspaces
         await this.#scanWorkspaces();
 
         this.#initialized = true;
+        debug('Workspace manager initialized successfully');
+    }
+
+    /**
+     * Ensure a directory exists, creating it if necessary
+     * @param {string} dirPath - Path to ensure exists
+     * @returns {Promise<void>}
+     * @throws {Error} If directory creation fails
+     */
+    async #ensureDirectoryExists(dirPath) {
+        try {
+            // Check if directory exists first to avoid unnecessary operations
+            if (!existsSync(dirPath)) {
+                debug(`Creating directory: ${dirPath}`);
+                await fsPromises.mkdir(dirPath, { recursive: true });
+                debug(`Directory created: ${dirPath}`);
+            } else {
+                debug(`Directory already exists: ${dirPath}`);
+            }
+
+            // Verify directory is writable
+            try {
+                const testFile = path.join(dirPath, '.write-test');
+                await fsPromises.writeFile(testFile, '');
+                await fsPromises.unlink(testFile);
+                debug(`Directory ${dirPath} is writable`);
+            } catch (writeErr) {
+                throw new Error(`Directory ${dirPath} is not writable: ${writeErr.message}`);
+            }
+        } catch (err) {
+            debug(`Error ensuring directory ${dirPath}: ${err.message}`);
+            throw err;
+        }
     }
 
     async #scanWorkspaces() {
         debug(`Scanning ${this.#rootPath} for workspaces`);
 
         try {
-            // Get all directories in rootPath/multiverse
-            const multiversePath = path.join(this.#rootPath, 'multiverse');
-
-            // Create multiverse directory if it doesn't exist
-            if (!existsSync(multiversePath)) {
-                await fs.mkdir(multiversePath, { recursive: true });
-                debug(`Created multiverse directory at ${multiversePath}`);
+            // Get all workspace directories directly from rootPath
+            if (!existsSync(this.#rootPath)) {
+                debug('Workspace root directory does not exist yet, no workspaces to scan');
                 return; // No workspaces to scan yet
             }
 
-            // Get all user directories
-            const userDirs = await fs.readdir(multiversePath, { withFileTypes: true });
+            // Get all workspace directories
+            const workspaceDirs = await fsPromises.readdir(this.#rootPath, { withFileTypes: true });
+            debug(`Found ${workspaceDirs.filter(dir => dir.isDirectory()).length} workspace directories`);
 
-            for (const userDir of userDirs.filter(dir => dir.isDirectory())) {
-                const userEmail = userDir.name;
-                const userPath = path.join(multiversePath, userEmail);
-                const workspacesPath = path.join(userPath, 'workspaces');
+            for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
+                const workspaceName = workspaceDir.name;
+                const workspacePath = path.join(this.#rootPath, workspaceName);
+                const configPath = path.join(workspacePath, 'workspace.json');
 
-                if (!existsSync(workspacesPath)) {
-                    continue;
-                }
+                if (existsSync(configPath)) {
+                    try {
+                        const configData = JSON.parse(await fsPromises.readFile(configPath, 'utf8'));
 
-                // Get all workspace directories
-                const workspaceDirs = await fs.readdir(workspacesPath, { withFileTypes: true });
-
-                for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
-                    const workspaceName = workspaceDir.name;
-                    const workspacePath = path.join(workspacesPath, workspaceName);
-                    const configPath = path.join(workspacePath, 'workspace.json');
-
-                    if (existsSync(configPath)) {
-                        try {
-                            const configData = JSON.parse(await fs.readFile(configPath, 'utf8'));
-                            const workspace = new Workspace({
-                                ...configData,
-                                path: workspacePath,
-                                ownerId: userEmail,
-                            });
-
-                            const workspaceId = `${userEmail}/${workspaceName}`;
-                            this.#workspaceIndex.set(workspaceId, workspace);
-                            debug(`Loaded workspace ${workspaceId} from ${configPath}`);
-                        } catch (err) {
-                            debug(`Error loading workspace config from ${configPath}: ${err.message}`);
+                        // Ensure owner is defined in the config
+                        if (!configData.owner) {
+                            debug(`Workspace ${workspaceName} has no owner defined, skipping`);
+                            continue;
                         }
+
+                        const workspace = new Workspace({
+                            ...configData,
+                            path: workspacePath,
+                        });
+
+                        const workspaceId = `${configData.owner}/${workspaceName}`;
+                        this.#workspaceIndex.set(workspaceId, workspace);
+                        debug(`Loaded workspace ${workspaceId} from ${configPath}`);
+                    } catch (err) {
+                        debug(`Error loading workspace config from ${configPath}: ${err.message}`);
                     }
+                } else {
+                    debug(`No workspace.json found for ${workspaceName} at ${configPath}`);
                 }
             }
         } catch (err) {
@@ -113,71 +170,109 @@ class WorkspaceManager extends EventEmitter {
     }
 
     /**
-     * Create a new workspace for a user
-     * @param {string} userEmail - User email
+     * Create a new workspace
      * @param {string} name - Workspace name
      * @param {Object} options - Workspace options
+     * @param {string} options.owner - User email (required)
+     * @param {string} [options.label] - Display label for the workspace
+     * @param {string} [options.description] - Workspace description
+     * @param {string} [options.color] - Workspace color (hex format)
+     * @param {boolean} [options.locked] - Whether the workspace is locked
+     * @param {Object} [options.acl] - Access control list
      * @returns {Promise<Workspace>} - Created workspace
+     * @throws {Error} If workspace creation fails
      */
-    async createWorkspace(userEmail, name = 'universe', options = {}) {
-        if (!userEmail) {
-            throw new Error('User email is required');
+    async createWorkspace(name, options = {}) {
+        // Validate required parameters
+        if (!name) {
+            throw new Error('Workspace name is required');
         }
 
-        if (!userEmail.includes('@')) {
-            throw new Error('Invalid user email format');
+        if (!options.owner) {
+            throw new Error('Workspace owner is required (options.owner)');
         }
 
-        // Create the proper workspace path following the design:
-        // /data/multiverse/user@email.tld/workspaces/workspace_name
-        const userPath = path.join(this.#rootPath, 'multiverse', userEmail);
-        const workspacesPath = path.join(userPath, 'workspaces');
-        const workspacePath = path.join(workspacesPath, name);
+        if (!options.owner.includes('@')) {
+            throw new Error('Invalid owner email format');
+        }
 
-        debug(`Creating workspace "${name}" for user ${userEmail} at ${workspacePath}`);
+        // Check if this is a universe workspace and if one already exists for this user
+        if (name === 'universe' || options.type === 'universe') {
+            const existingUniverses = Array.from(this.#workspaceIndex.values())
+                .filter(ws => ws.owner === options.owner && ws.type === 'universe');
 
-        // Create workspace directory structure
-        await fs.mkdir(workspacePath, { recursive: true });
-        await fs.mkdir(path.join(workspacePath, 'db'), { recursive: true });
-        await fs.mkdir(path.join(workspacePath, 'config'), { recursive: true });
+            if (existingUniverses.length > 0) {
+                throw new Error(`User ${options.owner} already has a universe workspace`);
+            }
+        }
 
-        // Create workspace configuration
-        const workspaceConfig = {
-            id: options.id || uuidv4(),
-            type: name === 'universe' ? 'universe' : 'workspace',
-            name: name,
-            label: options.label || (name === 'universe' ? 'Universe' : name.charAt(0).toUpperCase() + name.slice(1)),
-            description: options.description || (name === 'universe' ? 'And then, there was geometry..' : `My ${name} workspace`),
-            color: options.color || (name === 'universe' ? '#fff' : this.#getRandomColor()),
-            locked: name === 'universe', // Universe workspace is locked by default
-            owner: userEmail,
-            acl: options.acl || {},
-            created: new Date().toISOString(),
-            updated: new Date().toISOString(),
-        };
+        // Create the workspace path
+        const workspacePath = path.join(this.#rootPath, name);
 
-        // Write workspace configuration
-        await fs.writeFile(
-            path.join(workspacePath, 'workspace.json'),
-            JSON.stringify(workspaceConfig, null, 2),
-        );
+        debug(`Creating workspace "${name}" for user ${options.owner} at ${workspacePath}`);
 
-        // Create workspace instance
-        const workspace = new Workspace({
-            ...workspaceConfig,
-            path: workspacePath,
-        });
+        try {
+            // Check if workspace already exists
+            if (existsSync(workspacePath)) {
+                throw new Error(`Workspace directory already exists at ${workspacePath}`);
+            }
 
-        // Initialize workspace
-        await workspace.initialize();
+            // Create workspace directory structure
+            await this.#ensureDirectoryExists(workspacePath);
+            await this.#ensureDirectoryExists(path.join(workspacePath, 'db'));
+            await this.#ensureDirectoryExists(path.join(workspacePath, 'config'));
+            await this.#ensureDirectoryExists(path.join(workspacePath, 'data'));
+            await this.#ensureDirectoryExists(path.join(workspacePath, 'cache'));
+            await this.#ensureDirectoryExists(path.join(workspacePath, 'dotfiles'));
 
-        // Add to tracked workspaces
-        const workspaceId = `${userEmail}/${name}`;
-        this.#workspaceIndex.set(workspaceId, workspace);
+            // Determine if this is a universe workspace
+            const isUniverse = name === 'universe' || options.type === 'universe';
 
-        this.emit('workspace:created', workspace);
+            // Create workspace configuration
+            const workspaceConfig = {
+                id: options.id || uuidv4(),
+                type: isUniverse ? 'universe' : 'workspace',
+                name: name,
+                label: options.label || (isUniverse ? 'Universe' : name.charAt(0).toUpperCase() + name.slice(1)),
+                description: options.description || (isUniverse ? 'And then, there was geometry..' : `My ${name} workspace`),
+                color: options.color || (isUniverse ? '#fff' : this.#getRandomColor()),
+                locked: options.locked || isUniverse, // Universe workspace is locked by default
+                owner: options.owner,
+                acl: options.acl || {},
+                created: new Date().toISOString(),
+                updated: new Date().toISOString(),
+            };
 
-        return workspace;
+            // Write workspace configuration
+            const configPath = path.join(workspacePath, 'workspace.json');
+            await fsPromises.writeFile(
+                configPath,
+                JSON.stringify(workspaceConfig, null, 2)
+            );
+            debug(`Workspace configuration written to ${configPath}`);
+
+            // Create workspace instance
+            const workspace = new Workspace({
+                ...workspaceConfig,
+                path: workspacePath,
+            });
+
+            // Initialize workspace
+            await workspace.initialize();
+
+            // Add to tracked workspaces
+            const workspaceId = `${options.owner}/${name}`;
+            this.#workspaceIndex.set(workspaceId, workspace);
+
+            this.emit('workspace:created', workspace);
+            debug(`Workspace ${workspaceId} created successfully`);
+
+            return workspace;
+        } catch (err) {
+            const error = new Error(`Failed to create workspace "${name}" for user ${options.owner}: ${err.message}`);
+            debug(error.message);
+            throw error;
+        }
     }
 
     /**
@@ -267,16 +362,6 @@ class WorkspaceManager extends EventEmitter {
     #getRandomColor(opts = {}) {
         // https://www.npmjs.com/package/randomcolor
         return randomcolor(opts);
-    }
-
-    /**
-     * Validate hex color
-     * @param {string} color - Color in hex format
-     * @returns {boolean} - True if valid hex color
-     */
-    #isValidHexColor(color) {
-        const hexColorRegex = /^#([0-9A-F]{3}|[0-9A-F]{6})$/i;
-        return hexColorRegex.test(color);
     }
 }
 

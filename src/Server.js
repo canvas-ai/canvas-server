@@ -28,22 +28,7 @@ const {
     license
 } = pkg
 
-// Services
 
-// Transport classes
-import HttpTransport from '@/transports/http/index.js';
-import WsTransport from '@/transports/ws/index.js';
-
-// Manager classes
-import AppManager from '@/managers/app/index.js';
-import ContextManager from '@/managers/context/index.js';
-import DeviceManager from '@/managers/device/index.js';
-import RoleManager from '@/managers/role/index.js';
-import sessionManager from '@/managers/session/index.js';
-import UserManager from '@/managers/user/index.js';
-
-// Singleton managers
-import WorkspaceManager from '@/managers/workspace/index.js';
 
 /**
  * Canvas Server

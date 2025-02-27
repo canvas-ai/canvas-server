@@ -54,98 +54,71 @@ class ContextManager extends EventEmitter {
 
     /**
      * Create a new context
-     * @param {string} url - Context URL (formats: sessionId@workspaceId://path, workspaceId://path, or /path)
+     * @param {string} url - Context URL
      * @param {Object} options - Context options
-     * @returns {Context} - Created context
+     * @returns {Promise<Context>} - Created context
      */
     async createContext(url, options = {}) {
-        if (this.#activeContexts.size >= MAX_CONTEXTS) {
-            throw new Error('Maximum number of contexts reached');
-        }
+        debug(`Creating context: ${url}`);
 
         // Parse the URL
         const parsedUrl = new Url(url);
 
-        // If a context with the same id already exists, return it
-        if (options.id && this.#activeContexts.has(options.id)) {
-            const context = this.#activeContexts.get(options.id);
-            // Change the url if a url is supplied
-            if (url !== context.url) {
-                await context.setUrl(url);
-            }
-            return context;
-        }
-
-        // Get the session
-        let session = null;
-        if (parsedUrl.hasSessionId) {
-            // If URL has a session ID, get the session
-            const sessionId = parsedUrl.sessionId;
-            session = await this.#sessionManager.getSession(sessionId);
-
-            if (!session) {
-                throw new Error(`Session with id "${sessionId}" not found`);
-            }
-        } else if (options.session) {
-            // If URL doesn't have a session ID but a session is provided in options, use it
-            session = options.session;
-        } else if (options.user) {
-            // If URL doesn't have a session ID and no session is provided, but a user is provided,
-            // try to get the user's active session
-            const userSessions = await this.#sessionManager.getUserSessions(options.user.id);
-            if (userSessions.length > 0) {
-                // Use the first active session
-                session = userSessions[0];
-            }
-        }
-
-        if (!session) {
-            throw new Error('No session available for context creation');
-        }
-
-        // Get the workspace
-        let workspace = null;
+        // If URL has a workspace ID, get the workspace
+        let workspace;
         if (parsedUrl.hasWorkspaceId) {
-            // If URL has a workspace ID, get the workspace
-            const workspaceId = parsedUrl.workspaceId;
-            workspace = await this.#workspaceManager.getWorkspace(workspaceId);
+            debug(`URL has workspace ID: ${parsedUrl.workspaceId}`);
 
-            if (!workspace) {
-                throw new Error(`Workspace with id "${workspaceId}" not found`);
+            // Get the workspace manager
+            const workspaceManager = global.app.getManager('workspace');
+            if (!workspaceManager) {
+                throw new Error('Workspace manager not available');
             }
-        } else if (options.workspace) {
-            // If URL doesn't have a workspace ID but a workspace is provided in options, use it
-            workspace = options.workspace;
-        } else if (options.user) {
-            // If URL doesn't have a workspace ID and no workspace is provided, but a user is provided,
-            // try to get the user's default workspace
-            workspace = await this.#workspaceManager.getUserDefaultWorkspace(options.user.id);
+
+            // Get the workspace
+            workspace = await workspaceManager.getWorkspace(parsedUrl.workspaceId);
+            if (!workspace) {
+                throw new Error(`Workspace not found: ${parsedUrl.workspaceId}`);
+            }
+
+            debug(`Found workspace: ${workspace.id}`);
         }
 
-        if (!workspace) {
-            throw new Error('No workspace available for context creation');
-        }
+        // If URL has a session ID, get the session
+        let session;
+        if (parsedUrl.hasSessionId) {
+            debug(`URL has session ID: ${parsedUrl.sessionId}`);
 
-        // Create context options
-        const contextOptions = {
-            id: options.id || uuidv4(),
-            session: session,
-            workspace: workspace,
-            path: parsedUrl.path,
-            ...options,
-        };
+            // Get the session manager
+            const sessionManager = global.app.getManager('session');
+            if (!sessionManager) {
+                throw new Error('Session manager not available');
+            }
+
+            // Get the session
+            session = await sessionManager.getSession(parsedUrl.sessionId);
+            if (!session) {
+                throw new Error(`Session not found: ${parsedUrl.sessionId}`);
+            }
+
+            debug(`Found session: ${session.id}`);
+        }
 
         // Create the context
-        const context = new Context(url, contextOptions);
+        const context = new Context(url, {
+            ...options,
+            workspace,
+            session,
+            workspaceManager: global.app.getManager('workspace') // Inject the workspace manager
+        });
 
         // Initialize the context
         await context.initialize();
 
-        // Add to active contexts
+        // Add to contexts
         this.#activeContexts.set(context.id, context);
 
-        this.emit('context:created', context);
-
+        // Return the context
         return context;
     }
 
@@ -260,6 +233,74 @@ class ContextManager extends EventEmitter {
         }
 
         return id;
+    }
+
+    /**
+     * Switch a context to a different workspace
+     * @param {string} contextId - Context ID
+     * @param {string} workspaceId - Target workspace ID
+     * @returns {Promise<Context>} - Updated context
+     */
+    async switchContextWorkspace(contextId, workspaceId) {
+        debug(`Switching context ${contextId} to workspace ${workspaceId}`);
+
+        // Get the context
+        const context = this.#activeContexts.get(contextId);
+        if (!context) {
+            throw new Error(`Context not found: ${contextId}`);
+        }
+
+        // Get the workspace manager
+        const workspaceManager = global.app.getManager('workspace');
+        if (!workspaceManager) {
+            throw new Error('Workspace manager not available');
+        }
+
+        // Get the target workspace
+        const workspace = await workspaceManager.getWorkspace(workspaceId);
+        if (!workspace) {
+            throw new Error(`Workspace not found: ${workspaceId}`);
+        }
+
+        // Switch the context to the new workspace
+        return context.switchWorkspace(workspace);
+    }
+
+    /**
+     * Clone a context to a different workspace
+     * @param {string} contextId - Context ID
+     * @param {string} workspaceId - Target workspace ID
+     * @returns {Promise<Context>} - New context in the target workspace
+     */
+    async cloneContextToWorkspace(contextId, workspaceId) {
+        debug(`Cloning context ${contextId} to workspace ${workspaceId}`);
+
+        // Get the context
+        const context = this.#activeContexts.get(contextId);
+        if (!context) {
+            throw new Error(`Context not found: ${contextId}`);
+        }
+
+        // Get the workspace manager
+        const workspaceManager = global.app.getManager('workspace');
+        if (!workspaceManager) {
+            throw new Error('Workspace manager not available');
+        }
+
+        // Get the target workspace
+        const workspace = await workspaceManager.getWorkspace(workspaceId);
+        if (!workspace) {
+            throw new Error(`Workspace not found: ${workspaceId}`);
+        }
+
+        // Clone the context to the new workspace
+        const newContext = await context.cloneToWorkspace(workspace);
+
+        // Add to contexts
+        this.#activeContexts.set(newContext.id, newContext);
+
+        // Return the new context
+        return newContext;
     }
 }
 
