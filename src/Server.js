@@ -1,5 +1,5 @@
 /**
- * Canvas
+ * Canvas Server
  */
 
 // Parsed env vars
@@ -28,20 +28,7 @@ const {
     license
 } = pkg
 
-// Services
 
-// Transport classes
-import HttpTransport from '@/transports/http/index.js';
-import WsTransport from '@/transports/ws/index.js';
-
-// Manager classes
-import AppManager from '@/managers/app/index.js';
-import ContextManager from '@/managers/context/index.js';
-import DeviceManager from '@/managers/device/index.js';
-import RoleManager from '@/managers/role/index.js';
-import sessionManager from '@/managers/session/index.js';
-import UserManager from '@/managers/user/index.js';
-import WorkspaceManager from '@/managers/workspace/index.js';
 
 /**
  * Canvas Server
@@ -72,6 +59,9 @@ class Server extends EventEmitter {
 
         // Set mode
         this.#mode = options.mode;
+
+        // Initialize managers
+        this.#initializeManagers();
 
     }
 
@@ -360,13 +350,8 @@ class Server extends EventEmitter {
         logger.info('Initializing managers');
 
         this.#workspaceManager = new WorkspaceManager({
-            rootPath: env.CANVAS_USER_HOME, // temporary
+            rootPath: env.CANVAS_USER_HOME,
         });
-        this.#appManager = new AppManager();
-        this.#sessionManager = sessionManager; // Using existing singleton for now
-        this.#contextManager = new ContextManager();
-        this.#deviceManager = new DeviceManager();
-        this.#roleManager = new RoleManager();
 
         debug('Managers initialized');
         logger.info('Managers initialized');

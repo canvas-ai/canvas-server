@@ -1,10 +1,10 @@
 export default [
     {
         id: '0000-0000-0000',
-        type: 'universe',
+        type: 'root',
         name: '/',
-        label: 'Universe',
-        description: 'And then, there was geometry..',
+        label: 'Root',
+        description: 'Root layer',
         color: '#fff',
         locked: true,
     },

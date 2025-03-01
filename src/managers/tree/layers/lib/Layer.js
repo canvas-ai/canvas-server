@@ -4,7 +4,8 @@ const debug = debugMessage('canvas:context:layer');
 import { uuid12 } from '@/utils/common.js';
 
 const LAYER_TYPES = [
-    'universe',     // TODO
+    'universe',
+    'root',         // Root layer for a workspace
     'system',
     'workspace',    // Collection of canvases, has additional parameters (color, description ..)
     'canvas',       // Can store context, feature and filter bitmaps + dashboard / UI layouts

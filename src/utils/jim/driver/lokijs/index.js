@@ -33,7 +33,7 @@ class PersistentIndex {
                 autosaveInterval: 4000,
                 autoloadCallback: () => { // cspell:ignore autoload
                     resolve();
-                }
+                },
             });
         });
     }

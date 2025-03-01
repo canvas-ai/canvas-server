@@ -2,8 +2,8 @@
  * Canvas server init script
  */
 
-import Server from './Server.js'
-import logger from '@/utils/log/index.js'
+import Server from './Server.js';
+import logger from '@/utils/log/index.js';
 
 async function main() {
     try {
@@ -95,7 +95,7 @@ function setupProcessEventListeners(server) {
             const { createInterface } = await import('readline');
             const readline = createInterface({
                 input: process.stdin,
-                output: process.stdout
+                output: process.stdout,
             });
 
             readline.on('SIGINT', () => {

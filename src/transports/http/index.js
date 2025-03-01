@@ -22,7 +22,9 @@ import ResponseObject from '../ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '@/utils/passport.js';
 import AuthService from '@/services/auth/index.js';
-import { config } from '@/Server.js';
+
+// Routes
+import contextRoutes from './routes/v2/context.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];
@@ -228,7 +230,13 @@ class HttpRestTransport {
         console.log('Setting up routes with base path:', this.#config.basePath);
 
         // Initialize auth service
-        const authService = new AuthService(this.#config.auth);
+        const authService = new AuthService(this.#config.auth, {
+            userManager: this.canvas.userManager,
+            workspaceManager: this.canvas.workspaceManager,
+            sessionManager: this.canvas.sessionManager,
+            deviceManager: this.canvas.deviceManager,
+            contextManager: this.canvas.contextManager
+        });
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
@@ -245,10 +253,19 @@ class HttpRestTransport {
 
         // Mount auth routes (unprotected)
         const authBasePath = `${this.#config.basePath}/`;
-        app.use(authBasePath, (await import('./auth.js')).default(authService));
+        app.use(authBasePath, (await import('./routes/v2/auth.js')).default(authService));
 
         // Protect all other routes with authentication
         app.use(this.#config.basePath, authService.getAuthMiddleware());
+
+        // Register context routes
+        const contextBasePath = `${this.#config.basePath}/v2/context`;
+        app.use(contextBasePath, contextRoutes({
+            auth: authService,
+            contextManager: this.canvas.contextManager,
+            sessionManager: this.canvas.sessionManager,
+            workspaceManager: this.canvas.workspaceManager
+        }));
 
         // API routes (protected)
         this.#loadApiRoutes(app);

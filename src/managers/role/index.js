@@ -1,8 +1,15 @@
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('role-manager');
+import EventEmitter from 'eventemitter2';
+
+
 //const Docker = require('dockerode');
 //const DockerCompose = require('dockerode-compose');
+
 // TEST!
-export default class RoleManager {
-    constructor(dockerConfigs) {
+class RoleManager extends EventEmitter {
+    constructor(dockerConfigs = []) {
+        super();
         this.dockerBackends = new Map();
         this.roles = new Map();
 
@@ -47,7 +54,7 @@ export default class RoleManager {
         if (!backend) {
             throw new Error(`Docker backend not found: ${backendName}`);
         }
-        return backend;2
+        return backend;2;
     }
 
     listRoles() {
@@ -121,7 +128,7 @@ export default class RoleManager {
     }
 
     async listContainers(backend) {
-        const docker = this.getBackend(backend)
+        const docker = this.getBackend(backend);
         try {
             // List all containers (including stopped ones)
             const containers = await docker.listContainers({ all: true });
@@ -145,3 +152,5 @@ export default class RoleManager {
     }
 
 }
+
+export default RoleManager;

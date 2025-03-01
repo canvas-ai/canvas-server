@@ -4,12 +4,11 @@ import os from 'os';
 import ip from 'ip';
 import { familySync } from 'detect-libc';
 
-class Desktop {
+class GenericDevice {
 
     constructor() {
         this.id = machineIdSync(true).substr(0, 11);
         this.endianness = os.endianness();
-        //this.type = 'desktop';
         this.os = {
             arch: os.arch(),
             platform: os.platform(),
@@ -47,13 +46,13 @@ class Desktop {
 
 }
 
-export default Desktop;
+export default GenericDevice;
 
 function getActiveIP() {
-    let nets = os.networkInterfaces();
+    const nets = os.networkInterfaces();
 
-    for (let i in nets) {
-        var candidate = nets[i].filter(function (item) {
+    for (const i in nets) {
+        const candidate = nets[i].filter(function (item) {
             return item.family === 'IPv4' && !item.internal;
         })[0];
 

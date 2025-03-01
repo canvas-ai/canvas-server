@@ -7,7 +7,10 @@ const debug = debugMessage('canvas:context:layer-manager');
 import Layer from './lib/Layer.js';
 import builtInLayers from './lib/builtinLayers.js';
 
-export default class LayerIndex extends EventEmitter {
+/**
+ * Layer Index
+ */
+class LayerIndex extends EventEmitter {
 
     constructor(index) {
         super(); // EventEmitter
@@ -40,7 +43,7 @@ export default class LayerIndex extends EventEmitter {
     }
 
     list() {
-        let result = [];
+        const result = [];
         for (const [id, layer] of this.index()) {
             result.push(layer);
         }
@@ -55,7 +58,19 @@ export default class LayerIndex extends EventEmitter {
             };
         } else { options = name; }
         debug(`Creating layer ${JSON.stringify(options)}`);
-        if (this.hasLayerName(options.name)) {return false;}
+
+        // Check if layer already exists
+        if (this.hasLayerName(options.name)) {
+            // If update option is set, update the existing layer
+            if (options.update === true) {
+                const existingLayer = this.getLayerByName(options.name);
+                // Update properties
+                Object.assign(existingLayer, options);
+                debug(`Updated existing layer ${options.name}`);
+                return existingLayer;
+            }
+            return false;
+        }
 
         const layer = new Layer(options);
         if (!layer) {throw new Error(`Failed to create layer with options ${options}`);}
@@ -69,12 +84,12 @@ export default class LayerIndex extends EventEmitter {
     }
 
     getLayerByName(name) {
-        let res = this.nameToLayerMap.get(name);
+        const res = this.nameToLayerMap.get(name);
         return res || null;
     }
 
     updateLayer(name, options) {
-        let layer = this.getLayerByName(name);
+        const layer = this.getLayerByName(name);
         if (!layer) {return false;}
         if (layer.locked) {throw new Error('Layer is locked');}
         Object.assign(layer, options);
@@ -128,7 +143,14 @@ export default class LayerIndex extends EventEmitter {
     }
 
     #initBuiltInLayers() {
+        // Check if a root layer already exists in the index
+        const rootExists = this.hasLayerName('/');
+
         for (const layer of builtInLayers) {
+            // Skip the root layer if it already exists
+            if (rootExists && layer.name === '/') {
+                continue;
+            }
             this.createLayer(layer);
         }
     }
@@ -140,3 +162,4 @@ export default class LayerIndex extends EventEmitter {
     }
 }
 
+export default LayerIndex;

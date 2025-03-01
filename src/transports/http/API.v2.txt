@@ -1,0 +1,70 @@
+# API Documentation
+
+## REST API
+
+baseUrl: /rest/v2
+
+├── /auth
+│   ├── /login
+│   ├── /logout
+│   ├── /register
+│   ├── /forgot-password
+│   ├── /reset-password
+│   ├── /verify-email
+│   └── /verify-email/:token
+│
+├── /users
+│   ├── /:userId
+│   ├── /:userId/workspaces
+│   ├── /:userId/sessions
+│   └── /:userId/contexts
+│
+├── /sessions
+│   ├── /:sessionId
+│   └── /:sessionId/contexts
+│
+├── /workspaces
+│   ├── /:workspaceId
+│   ├── /:workspaceId/documents
+│   ├── /:workspaceId/tree
+│   └── /:workspaceId/tree/layers
+│
+├── /contexts
+│   ├── /:contextId
+│   ├── /:contextId/documents
+│   ├── /:contextId/layers
+│   ├── /:contextId/bitmaps
+│   └── /:contextId/query
+│
+├── /documents
+│   ├── /schemas
+│   ├── /by-id/:documentId
+│   ├── /by-abstraction/:abstractionId
+│   └── /by-hash/:hashString
+│
+├── /tree
+│   ├── /copy
+│   ├── /move
+│   ├── /remove
+│   ├── /merge
+│   ├── /subtract
+│   └── ... (other bitmap tree operations)
+│
+├── /roles
+│   ├── /:roleId
+│   ├── /:roleId/status
+│   ├── /:roleId/start
+│   ├── /:roleId/stop
+│   ├── /:roleId/restart
+│   ├── /:roleId/logs
+│   ├── /:roleId/logs/:logId
+│   ├── /:roleId/logs/:logId/follow
+│   └── ... (other role operations)
+│
+├── /devices
+│   ├── /:deviceId
+│   └── ... (other device operations)
+|
+└── /status
+    └── /ping
+

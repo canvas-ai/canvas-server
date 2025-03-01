@@ -1,7 +1,7 @@
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('app-manager');
 import EventEmitter from 'eventemitter2';
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:app-manager');
-
+import App from './lib/App.js';
 /**
  * App manager
  */

@@ -1,0 +1,70 @@
+We need to update the following managers:
+- ./UserManager in ./src/managers/user
+- ./WorkspaceManager in ./src/managers/workspace
+- ./ContextManager in ./src/managers/context
+- ./SessionManager in ./src/managers/session
+- ./DeviceManager in ./src/managers/device
+
+And properly implement the auth service in ./src/services/auth so as to be usable in a ./transports/http (REST API) and ./transports/ws (socket.io websockets), as well as for the webui which may use the same rest/ws endpoints internally(if its a good idea)
+
+# Part 1
+
+Users and Sessions are stored in a global sqlite database - see src/prisma/schema.prisma
+Everything else is scoped either to User or to one of user's Workspaces
+We need to create a home folder for every registered user during registration, folder should be in env.CANVAS_USER_HOME/user@email.tld
+Scoped user configuration data can be stored under user home directory in user.json (currently this is not used)
+For every user, we should create a default workspace in his home directory under workspaces/Universe with a workspace.json config within it
+{
+    id: uuid,
+    type: 'universe',
+    name: 'universe',
+    label: 'Universe',
+    description: 'And then, there was geometry..',
+    color: '#fff',
+    locked: true,
+    owner: "user@email.com",
+    acl: {}
+}
+
+User can create other workspaces like "edu", "Work"
+{
+    id: uuid,
+    type: 'workspace',
+    name: 'work',
+    label: 'Work',
+    description: 'My work workspace',
+    color: '#000',
+    locked: false,
+    owner: "user@email.com",
+    acl: {}
+}
+
+Every workspace represents a virtual FS-like tree on top of ./src/services/synapsd, hence should initialize the db backend and ./src/managers/tree.
+Database rootPath should be in the workspace path at ./db, we can store the tree structure and layer map (mapping layer names to uuids) in the same ./db folder under ./db/tree.json and ./db/layers.json.
+WorkspaceManager should scan users home/workspaces/ folder and try to load(but not open) every workspace with a valid workspace.json
+it should automatically open his Universe workspace but opening of other workspaces based on a stored session would be managed by the sessionManager(I guess)
+
+Now lets discuss Contexts and Canvases on the side as these are the core concept of the whole app.
+A context is essentially a view on top of your data, it holds a reference what workspace you are in, what device.app you are connected from, what your local NW is(if possible, not mandatory and also may not be possible from a firefox browser extension).
+Its like your AR glasses, once you select a context you can navigate from lets say universe://home/housebuild/kitches to work://mb/jira/jiratask-1234, when doing that, all your files, folders tabs etc will (if configured this way) update in all connected apps.
+When you connect a second device to the same context, you essentially track all context changes from both devices (switching context on your workstation would swith it on you phone app too - iow - you can control all the filters and navigation from your phone or tablet and keep a focused view on your workstation)
+Now one nice use-case is searching for accomodation or through ebay.com or any other such website with your wife. You can create a context for her with a baseUrl universe://home/travel/bratislava/2025/02
+She should see that context available when she logs in to canvas from a browser extension besides her own.
+Now she would only be able to navgate within the base url(so all sub-"folders")
+Additioanlly, if I open a new tab she will either get that tab listed in the canvas browser extension(this we already have implemented with the legacy API) as a new tab OR when configured to autosync tabs, would automaticaly open a new tab for her (also automatically close a tab when for example I go thought a listing and close it).
+She can apply her own filters as the context she uses is her, my context will be on the same context path and receive all events on update but we would not really interfere
+A shared context path becomes locked automatically.
+
+Now the concept of Canvas-es.
+A canvas is a dyamic element - same as context - a browserWindow stored within the context tree. a full canvas url may look like: device.app@work://mb/reports/2024/:mycanvasname
+A canvas stores your view elements, what bitmaps are set, what filters applied, what UI elements active and what users allowed to collaborate on it. I wont go into the design yet, important is that a canvas is something like a shareable frozen context(we coule even export data of a canvas element separately)
+This element is tightly integrated with model so as to ad-hoc add/remove/edit UI elements while analysing some data.
+We wont focus on canvases yet but as FYI that we'll have a prsumably tree element as this one day.
+
+User login workflow should be as follows:
+- User registration requires a user email and a password (everything else we can sort out later), we can internally use a uuid for the user id but users emails are treated as unique user IDs too(not sure if thats a good option though, a user may want to change his primary email so feel free to update it)
+- User loggs-in either using his email address + password or his access token (JWT auth flow, one token for integration with other tools should be autogenerated during registration)
+.. rest of the workflow here
+
+
+

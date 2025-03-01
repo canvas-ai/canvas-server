@@ -1,6 +1,5 @@
 /**
- * Canvas Logger Module
- * Centralized logging configuration for the Canvas application
+ * Single Logger Module for Canvas
  */
 
 import winston from 'winston';
@@ -23,22 +22,22 @@ function createLogger(options = {}) {
         level = env.LOG_LEVEL || 'info',
         filename = DEFAULT_LOG_FILE,
         console = true,
-        format = 'default'
+        format = 'default',
     } = options;
 
     // Define log formats
     const formats = {
         default: winston.format.combine(
             winston.format.timestamp({
-                format: 'YYYYMMDD-HHmmss'
+                format: 'YYYYMMDD-HHmmss',
             }),
             winston.format.printf(({ level, message, timestamp }) => {
                 return `${timestamp}|${level}|${message}`;
-            })
+            }),
         ),
         json: winston.format.combine(
             winston.format.timestamp(),
-            winston.format.json()
+            winston.format.json(),
         ),
         // Add more formats as needed
     };
@@ -47,8 +46,8 @@ function createLogger(options = {}) {
     const transports = [
         new winston.transports.File({
             filename,
-            format: formats[format] || formats.default
-        })
+            format: formats[format] || formats.default,
+        }),
     ];
 
     // Add console transport if enabled
@@ -57,9 +56,9 @@ function createLogger(options = {}) {
             new winston.transports.Console({
                 format: winston.format.combine(
                     winston.format.colorize(),
-                    winston.format.simple()
-                )
-            })
+                    winston.format.simple(),
+                ),
+            }),
         );
     }
 
@@ -67,7 +66,7 @@ function createLogger(options = {}) {
     return winston.createLogger({
         level,
         format: formats[format] || formats.default,
-        transports
+        transports,
     });
 }
 
@@ -78,7 +77,7 @@ const logger = createLogger();
 export {
     logger,
     createLogger,
-    createDebug
+    createDebug,
 };
 
 export default logger;

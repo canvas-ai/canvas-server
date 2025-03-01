@@ -20,3 +20,6 @@ CREATE TABLE "sessions" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "sessions_user_id_name_key" ON "sessions"("user_id", "name");

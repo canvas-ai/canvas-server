@@ -5,6 +5,7 @@ const debug = debugInstance('canvas:context:tree');
 
 import TreeNode from './TreeNode.js';
 import LayerIndex from '../layers/index.js';
+import { v4 as uuidv4 } from 'uuid';
 
 class Tree extends EventEmitter {
 
@@ -107,8 +108,8 @@ class Tree extends EventEmitter {
         const parentNode = this.getNode(parentPath);
         if (!parentNode) { return false; }
 
-        let layer = node.payload;
-        let targetNode = new TreeNode(layer.id, layer);
+        const layer = node.payload;
+        const targetNode = new TreeNode(layer.id, layer);
 
         if (!this.insert(pathTo, targetNode)) {
             console.log(`Unable to move layer "${layer.name}" to path "${pathTo}"`);
@@ -184,7 +185,7 @@ class Tree extends EventEmitter {
 
     save() {
         debug('Saving in-memory tree to database');
-        let data = this.#buildJsonIndexTree();
+        const data = this.#buildJsonIndexTree();
         try {
             this.dbtree.set('tree', data);
             debug('Tree saved successfully.');
@@ -223,13 +224,13 @@ class Tree extends EventEmitter {
         let currentNode = this.root;
 
         for (const layerName of layerNames) {
-            let layer = this.dblayers.getLayerByName(layerName);
+            const layer = this.dblayers.getLayerByName(layerName);
             if (!layer) {
                 debug(`Layer "${layerName}" not found in index`);
                 return false;
             }
 
-            let child = currentNode.getChild(layer.id);
+            const child = currentNode.getChild(layer.id);
             if (!child) {
                 debug(`Target path "${path}" does not exist`);
                 return false;
@@ -370,6 +371,53 @@ class Tree extends EventEmitter {
         };
         traverseTree(this.root);
         return sort ? paths.sort() : paths;
+    }
+
+    /**
+     * Create a new layer with the given properties
+     * @param {Object} options - Layer properties
+     * @returns {Object} - Created layer
+     */
+    createLayer(options = {}) {
+        debug(`Creating layer with options: ${JSON.stringify(options)}`);
+
+        // Generate a UUID if not provided
+        if (!options.id) {
+            options.id = uuidv4();
+        }
+
+        // Set default type if not provided
+        if (!options.type) {
+            options.type = 'generic';
+        }
+
+        // Create the layer in the layer index
+        const layer = this.dblayers.createLayer(options);
+
+        if (!layer) {
+            throw new Error(`Failed to create layer with options: ${JSON.stringify(options)}`);
+        }
+
+        debug(`Layer created: ${layer.name} (${layer.id})`);
+        return layer;
+    }
+
+    /**
+     * Get a layer by name
+     * @param {string} name - Layer name
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayer(name) {
+        return this.dblayers.getLayerByName(name);
+    }
+
+    /**
+     * Get a layer by ID
+     * @param {string} id - Layer ID
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayerById(id) {
+        return this.dblayers.getLayerByID(id);
     }
 }
 

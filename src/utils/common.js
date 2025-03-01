@@ -39,15 +39,13 @@ function getDefaultContextDirectory() {
 }
 
 function uuid(delimiter = true) {
-    return (delimiter) ?
-        ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16)) :
-        ([1e7]+1e3+4e3+8e3+1e11).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16));
+    const id = crypto.randomUUID();
+    return delimiter ? id : id.replace(/-/g, '');
 }
 
 function uuid12(delimiter = true) {
-    return (delimiter) ?
-        ([1e3]+-1e3+-1e3).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16)) :
-        ([1e3]+1e3+1e3).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16));
+    const id = crypto.randomUUID().substring(0, 12);
+    return delimiter ? id : id.replace(/-/g, '');
 }
 
 const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
@@ -64,8 +62,8 @@ const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
 }, {});
 
 function pathsToTree(paths) {
-    let result = [];
-    let level = {result};
+    const result = [];
+    const level = {result};
 
     paths.forEach(path => {
         path.replace(/^universe:\/\//, '').split('/').reduce((r, name, i, a) => {

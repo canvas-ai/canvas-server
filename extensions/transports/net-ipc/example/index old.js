@@ -67,7 +67,7 @@ class Server extends EE {
 
         if (!socket) {return this.broadcast(data);}
 
-        let message = {
+        const message = {
             id: genUUID(),
             type: '',
             payload: '',
@@ -96,10 +96,10 @@ class Server extends EE {
         if (Object.keys(this.sockets).length) {
 
             log(`IPC Server: Sending broadcast message to ${Object.keys(this.sockets).length} clients`);
-            let clients = Object.keys(this.sockets);
+            const clients = Object.keys(this.sockets);
 
             while(clients.length){
-                let client = clients.pop();
+                const client = clients.pop();
                 this.sockets[client].write(message);
             }
         }
@@ -113,9 +113,9 @@ class Server extends EE {
             log(`IPC server::Terminating, PID ${process.pid}`);
 
             if (Object.keys(this.sockets).length) {
-                let clients = Object.keys(this.sockets);
+                const clients = Object.keys(this.sockets);
                 while(clients.length){
-                    let client = clients.pop();
+                    const client = clients.pop();
                     this.sockets[client].write(msgPack({type: '__disconnect'}));
                     this.sockets[client].end();
                 }
@@ -126,7 +126,7 @@ class Server extends EE {
     }
 
     _handleConnection(socket) {
-        var socketID = Date.now(); // TODO: Change to uuid
+        const socketID = Date.now(); // TODO: Change to uuid
         socket.id = socketID;
 
         this.sockets[socketID] = socket;
@@ -307,7 +307,7 @@ class Client extends EE {
 
     req(data, cb) {
 
-        let requestID = genUUID();
+        const requestID = genUUID();
 
         if (!this.send({
             id: requestID,
@@ -401,7 +401,7 @@ module.exports = {
  */
 function xpipe(path) {
 
-    let prefix = process.platform === 'win32' ? '//./pipe/' : '';
+    const prefix = process.platform === 'win32' ? '//./pipe/' : '';
     if (prefix.endsWith('/') && path.startsWith('/')) {
         return prefix + path.substr(1);
     }
@@ -411,7 +411,7 @@ function xpipe(path) {
 }
 
 function msgPack(msg) {
-    let packer = new Packer;
+    const packer = new Packer;
     packer.push(msg);
     return packer.toBuffer();
 }

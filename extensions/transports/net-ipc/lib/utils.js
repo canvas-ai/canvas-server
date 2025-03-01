@@ -12,7 +12,7 @@ const Packer = require('amp-message');
  * @returns
  */
 function xpipe(path) {
-    let prefix = process.platform === 'win32' ? '//./pipe/' : '';
+    const prefix = process.platform === 'win32' ? '//./pipe/' : '';
     if (prefix.endsWith('/') && path.startsWith('/')) {
         return prefix + path.substr(1);
     }
@@ -20,7 +20,7 @@ function xpipe(path) {
 }
 
 function msgPack(msg) {
-    let packer = new Packer;
+    const packer = new Packer;
     packer.push(msg);
     return packer.toBuffer();
 }

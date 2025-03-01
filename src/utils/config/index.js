@@ -1,7 +1,7 @@
 /**
  * Simple Config module for Canvas
  *
- * The above will do the following
+ * Module will do the following on initialization:
  * - Check if myConfig.<deviceid>.json exists in the user config dir
  * - Check if myConfig.<platform>.json exists in the user config dir
  * - Check if myConfig.json exists in the user config dir
@@ -17,7 +17,7 @@
 import Conf from 'conf';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDevice } from '@/managers/device/index.js';
+import dm from '@/managers/device/index.js';
 import _ from 'lodash';
 import env from '@/env.js';
 import logger from '@/utils/log/index.js';
@@ -26,14 +26,14 @@ class Config {
     constructor(options = {}) {
         // Use environment variables with fallbacks
         this.serverConfigDir = options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
-        this.userConfigDir = serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
+        this.userConfigDir = this.serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
 
         // Set configPriority based on server mode
         this.configPriority = options.configPriority ||
             (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
 
         this.versioning = options.versioning ?? true;
-        this.device = getCurrentDevice();
+        this.device = dm.getCurrentDevice();
         this.stores = new Map();
 
         logger.debug(`Config initialized with:
@@ -71,8 +71,8 @@ class Config {
                 ...(parts.length > 1 ? [
                     path.join(dir, `${configPath}.${this.device.id}.json`),
                     path.join(dir, `${configPath}.${this.device.os.platform}.json`),
-                    path.join(dir, `${configPath}.json`)
-                ] : [])
+                    path.join(dir, `${configPath}.json`),
+                ] : []),
             ];
             return devicePaths;
         };
@@ -122,7 +122,7 @@ class Config {
                 logger.debug(`Found nested config file: ${nestedFile}`);
                 const conf = new Conf({
                     configName: baseName,
-                    cwd: path.dirname(nestedFile)
+                    cwd: path.dirname(nestedFile),
                 });
                 this.stores.set(configPath, conf);
                 return conf;
@@ -135,7 +135,7 @@ class Config {
             logger.debug(`Found base config file: ${baseFile}`);
             const conf = new Conf({
                 configName: baseName,
-                cwd: path.dirname(baseFile)
+                cwd: path.dirname(baseFile),
             });
 
             // If we're looking for a nested path, check if it exists in the base config
@@ -146,7 +146,7 @@ class Config {
                     // Return a new Conf instance for the nested value
                     const nestedConf = new Conf({
                         configName: baseName,
-                        cwd: path.dirname(baseFile)
+                        cwd: path.dirname(baseFile),
                     });
                     nestedConf.store = nestedValue;
                     this.stores.set(configPath, nestedConf);
@@ -163,7 +163,7 @@ class Config {
         logger.debug(`No config found for ${configPath}, creating new one in user directory`);
         const conf = new Conf({
             configName: baseName,
-            cwd: this.userConfigDir
+            cwd: this.userConfigDir,
         });
 
         this.stores.set(configPath, conf);
@@ -204,7 +204,7 @@ class Config {
             userConfigDir: env.CANVAS_USER_CONFIG,
             serverConfigDir: env.CANVAS_SERVER_CONFIG,
             configPriority: env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server',
-            versioning: true
+            versioning: true,
         });
     }
 }

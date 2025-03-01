@@ -9,16 +9,16 @@ const SERVER_ROOT = dirname(dirname(dirname(__dirname)));
 const PATH_ALIASES = {
     '@/': {
         basePath: join(SERVER_ROOT, 'src'),
-        prefix: '@/'
+        prefix: '@/',
     },
     '@root/': {
         basePath: SERVER_ROOT,
-        prefix: '@root/'
+        prefix: '@root/',
     },
     '@synapsd/': {
         basePath: join(SERVER_ROOT, 'src/services/synapsd/src'),
-        prefix: '@synapsd/'
-    }
+        prefix: '@synapsd/',
+    },
 };
 
 export function resolve(specifier, context, nextResolve) {
