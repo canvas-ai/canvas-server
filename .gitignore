@@ -14,6 +14,11 @@
 /data/**
 /user/**
 
+# Test files and directories(well, non-production files)
+tests/**
+tests/**/*
+_test*
+
 # Dev
 /.vscode
 /.fossil-settings
@@ -87,7 +92,6 @@ packer_cache/
 *.tar
 *.tsbuildinfo
 *.zip
-_test*
 
 # Runtime
 *.pid

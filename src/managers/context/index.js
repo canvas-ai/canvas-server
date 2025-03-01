@@ -2,25 +2,18 @@
 import EventEmitter from 'eventemitter2';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('context-manager');
-import { v4 as uuidv4 } from 'uuid';
 
 // Includes
 import Context from './lib/Context.js';
 import Url from './lib/Url.js';
 
-// Module defaults
-const MAX_CONTEXTS = 1024; // 2^10
-const CONTEXT_URL_PROTO = 'universe';
-const CONTEXT_URL_BASE = '/';
-
 /**
  * Context Manager
- *
  * Manages contexts for users and workspaces
  */
+
 class ContextManager extends EventEmitter {
-    #tree;
-    #layers;
+
     #activeContexts = new Map();
     #initialized = false;
     #workspaceManager;
@@ -75,13 +68,13 @@ class ContextManager extends EventEmitter {
                 throw new Error('Workspace manager not available');
             }
 
-            // Get the workspace
-            workspace = await workspaceManager.getWorkspace(parsedUrl.workspaceId);
-            if (!workspace) {
-                throw new Error(`Workspace not found: ${parsedUrl.workspaceId}`);
+            // Open the workspace (this will load it first if needed)
+            try {
+                workspace = await workspaceManager.open(parsedUrl.workspaceId);
+                debug(`Opened workspace: ${workspace.id}`);
+            } catch (err) {
+                throw new Error(`Failed to open workspace ${parsedUrl.workspaceId}: ${err.message}`);
             }
-
-            debug(`Found workspace: ${workspace.id}`);
         }
 
         // If URL has a session ID, get the session
@@ -256,10 +249,10 @@ class ContextManager extends EventEmitter {
             throw new Error('Workspace manager not available');
         }
 
-        // Get the target workspace
-        const workspace = await workspaceManager.getWorkspace(workspaceId);
+        // Open the target workspace
+        const workspace = await workspaceManager.open(workspaceId);
         if (!workspace) {
-            throw new Error(`Workspace not found: ${workspaceId}`);
+            throw new Error(`Failed to open workspace: ${workspaceId}`);
         }
 
         // Switch the context to the new workspace
@@ -287,10 +280,10 @@ class ContextManager extends EventEmitter {
             throw new Error('Workspace manager not available');
         }
 
-        // Get the target workspace
-        const workspace = await workspaceManager.getWorkspace(workspaceId);
+        // Open the target workspace
+        const workspace = await workspaceManager.open(workspaceId);
         if (!workspace) {
-            throw new Error(`Workspace not found: ${workspaceId}`);
+            throw new Error(`Failed to open workspace: ${workspaceId}`);
         }
 
         // Clone the context to the new workspace

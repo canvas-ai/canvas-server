@@ -7,6 +7,7 @@ import path from 'path';
 import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import Conf from 'conf';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
@@ -36,7 +37,7 @@ class Workspace extends EventEmitter {
     #db;
     #tree;
     #layers;
-    #config;
+    #configStore;
     #jim;
 
     #dataSources = [];
@@ -47,20 +48,22 @@ class Workspace extends EventEmitter {
         this.id = options.id;
         this.name = options.name;
         this.type = options.type || 'universe';
+        this.owner = options.owner;
         this.ownerId = options.ownerId;
         this.path = options.path;
         this.created = options.created || new Date().toISOString();
         this.updated = options.updated || new Date().toISOString();
 
-        this.#config = null;
+        // Initialize config store to null, will be set in initialize()
+        this.#configStore = null;
     }
 
     async initialize() {
         await this.#createWorkspaceDirectories();
         await this.#initializeDatabase();
+        await this.#initializeConfigStore();
         await this.#initializeJIM();
         await this.#initializeTree();
-        await this.#loadConfig();
     }
 
     async #createWorkspaceDirectories() {
@@ -90,6 +93,40 @@ class Workspace extends EventEmitter {
 
         await this.#db.start();
         debug(`Initialized SynapsD database for workspace ${this.id} at ${dbPath}`);
+    }
+
+    /**
+     * Initialize the configuration store using Conf
+     */
+    async #initializeConfigStore() {
+        // Create a Conf instance for workspace configuration with all properties from this instance
+        this.#configStore = new Conf({
+            configName: 'workspace',
+            cwd: this.path,
+            // Use all properties from this instance as defaults
+            defaults: {
+                // Core properties
+                id: this.id,
+                name: this.name,
+                type: this.type || 'workspace',
+                owner: this.owner,
+                ownerId: this.ownerId,
+
+                // Display properties
+                label: this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Workspace'),
+                description: this.description || (this.name ? `My ${this.name} workspace` : 'My workspace'),
+                color: this.color || '#4285F4',
+                locked: this.locked || false,
+
+                // Metadata
+                created: this.created || new Date().toISOString(),
+                updated: this.updated || new Date().toISOString(),
+                acl: this.acl || {},
+                meta: this.meta || {}
+            }
+        });
+
+        debug(`Initialized configuration store for workspace ${this.id}`);
     }
 
     async #initializeJIM() {
@@ -162,29 +199,41 @@ class Workspace extends EventEmitter {
         return this.#tree;
     }
 
-    async #loadConfig() {
-        const configPath = path.join(this.path, 'workspace.json');
-        try {
-            const configData = await fsPromises.readFile(configPath, 'utf8');
-            this.#config = JSON.parse(configData);
-        } catch (error) {
-            debug(`Failed to load workspace config: ${error.message}`);
-            // Create default config if not exists
-            this.#config = {
-                id: this.id,
-                name: this.name,
-                type: this.type,
-                ownerId: this.ownerId,
-                created: this.created,
-                updated: this.updated,
-            };
-            await this.saveConfig();
-        }
+    /**
+     * Get a configuration value
+     * @param {string} key - Configuration key
+     * @param {*} defaultValue - Default value if key doesn't exist
+     * @returns {*} - Configuration value
+     */
+    getConfig(key, defaultValue) {
+        return this.#configStore.get(key, defaultValue);
     }
 
-    async saveConfig() {
-        const configPath = path.join(this.path, 'workspace.json');
-        await fsPromises.writeFile(configPath, JSON.stringify(this.#config, null, 2));
+    /**
+     * Set a configuration value
+     * @param {string} key - Configuration key
+     * @param {*} value - Configuration value
+     */
+    setConfig(key, value) {
+        this.#configStore.set(key, value);
+        // Update the updated timestamp
+        this.#configStore.set('updated', new Date().toISOString());
+    }
+
+    /**
+     * Delete a configuration value
+     * @param {string} key - Configuration key
+     */
+    deleteConfig(key) {
+        this.#configStore.delete(key);
+    }
+
+    /**
+     * Get all configuration values
+     * @returns {Object} - All configuration values
+     */
+    getAllConfig() {
+        return this.#configStore.store;
     }
 
     /**
@@ -330,7 +379,7 @@ class Workspace extends EventEmitter {
 
     get db() { return this.#db; }
     get tree() { return this.#tree; }
-    get config() { return this.#config; }
+    get config() { return this.#configStore.store; }
 
     async createContext(sessionId, contextPath = '/') {
         if (!this.#tree) {

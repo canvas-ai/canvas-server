@@ -2,9 +2,6 @@
 import EventEmitter from 'eventemitter2';
 import path from 'path';
 import fs from 'fs/promises';
-import { existsSync, mkdirSync } from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import bcrypt from 'bcryptjs';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
@@ -15,12 +12,13 @@ import env from '@/env.js';
 
 // Includes
 import User from '@/prisma/models/User.js';
-import WorkspaceManager from '@/managers/workspace/index.js';
+
 
 /**
  * User Manager
  */
 class UserManager extends EventEmitter {
+
     #userHome;
     #workspaceManager;
     #initialized = false;

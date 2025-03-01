@@ -351,6 +351,18 @@ class Context extends EventEmitter {
         // Store the current path
         const contextPath = this.#parsedUrl.path;
 
+        // Ensure the workspace is open
+        const workspaceManager = global.app.getManager('workspace');
+        if (!workspaceManager) {
+            throw new Error('Workspace manager not available');
+        }
+
+        // Make sure the workspace is open
+        if (!workspaceManager.isOpen(workspace.name)) {
+            debug(`Opening workspace ${workspace.name} before switching context`);
+            await workspaceManager.open(workspace.name);
+        }
+
         // Update the workspace reference
         this.#workspace = workspace;
 
@@ -565,6 +577,18 @@ class Context extends EventEmitter {
         }
 
         debug(`Cloning context ${this.#id} to workspace ${workspace.id}`);
+
+        // Ensure the workspace is open
+        const workspaceManager = global.app.getManager('workspace');
+        if (!workspaceManager) {
+            throw new Error('Workspace manager not available');
+        }
+
+        // Make sure the workspace is open
+        if (!workspaceManager.isOpen(workspace.name)) {
+            debug(`Opening workspace ${workspace.name} before cloning context`);
+            await workspaceManager.open(workspace.name);
+        }
 
         // Create a new context with the same path but in the target workspace
         const contextPath = this.#parsedUrl.path;

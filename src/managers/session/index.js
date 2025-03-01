@@ -9,13 +9,11 @@ import Session from '@/prisma/models/Session.js';
 
 /**
  * Session manager
- *
  * Manages user sessions and their associated contexts
  */
-const MAX_SESSIONS = 32;
 
 class SessionManager extends EventEmitter {
-    #maxSessions;
+
     #initialized = false;
     #activeSessions = new Map();
     #userManager;
@@ -23,7 +21,6 @@ class SessionManager extends EventEmitter {
     constructor(options = {}) {
         super();
         debug('Initializing Session Manager');
-        this.#maxSessions = options.maxSessions || MAX_SESSIONS;
         this.#userManager = options.userManager;
 
         if (!this.#userManager) {
@@ -37,7 +34,6 @@ class SessionManager extends EventEmitter {
         }
 
         debug('Initializing session manager');
-
         this.#initialized = true;
     }
 
