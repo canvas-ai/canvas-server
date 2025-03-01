@@ -32,38 +32,30 @@ class Context extends EventEmitter {
     #initialized = false;
     #tree;
     #workspaceManager;
+    #workspaceId;
+    #sessionInfo;
 
-    constructor(url, options = {}) {
+    constructor(options) {
         super();
 
         this.#id = options.id || uuidv4();
-        this.#parsedUrl = new Url(url);
-        this.#url = url;
-        this.#path = this.#parsedUrl.path;
+        this.#parsedUrl = new Url(options.url);
+        this.#url = options.url;
+        this.#path = options.path || '/';
+        this.#sessionInfo = options.sessionInfo || {};
 
-        this.#session = options.session;
         this.#workspace = options.workspace;
         this.#device = options.device;
         this.#user = options.user;
 
-        // If URL doesn't have a session ID but we have a session, update the parsed URL
-        // We don't update the raw URL here, that will happen in initialize()
-        if (!this.#parsedUrl.hasSessionId && this.#session) {
-            debug(`URL doesn't have a session ID, using provided session: ${this.#session.id}`);
-
-            if (this.#parsedUrl.hasWorkspaceId) {
-                // If URL has a workspace ID, create a full URL
-                this.#parsedUrl = this.#parsedUrl.withSessionId(this.#session.id);
-            }
-            // If URL doesn't have a workspace ID, we'll handle this in initialize()
-        }
+        this.#workspaceId = options.workspaceId;
 
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
 
         this.#workspaceManager = options.workspaceManager;
 
-        debug(`Context created: ${this.#id} (${url})`);
+        debug(`Context created: ${this.#id} (${options.url})`);
     }
 
     async initialize() {
@@ -337,10 +329,10 @@ class Context extends EventEmitter {
 
     /**
      * Get the context URL
-     * @returns {string} - Context URL
+     * @returns {String} Context URL in the format workspaceID://path
      */
     get url() {
-        return this.#url;
+        return `${this.#workspaceId}://${this.#path}`;
     }
 
     /**
@@ -365,6 +357,14 @@ class Context extends EventEmitter {
      */
     get session() {
         return this.#session;
+    }
+
+    /**
+     * Get the session information associated with this context
+     * @returns {Object} Session information
+     */
+    get sessionInfo() {
+        return this.#sessionInfo;
     }
 
     /**

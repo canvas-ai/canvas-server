@@ -68,3 +68,43 @@ User login workflow should be as follows:
 
 
 
+# Part 2
+
+Is the following module organization / HLD correct?
+
+Managers relationship
+
+Canvas (Server.js, main server class) initializes and manages
+    - Services (canvas services like synapsd, stored)
+    - Transports (REST and WS APIs)
+    - Roles (global canvas-server roles)
+    - Sessions (user-sessions, should we add auth + registration management here too?)
+    - Users (user global prisma+sqlite db, UserManager initializes the User + is factory for User)
+
+User class manages
+    - Contexts (all active contexts of a user, ContextManager initialized from User class?)
+        - (contextid) sessionID@workspaceID://path
+        - (contextid) sessionID@workspaceID2://path
+        - (contextid) sessionID2@workspaceID://path
+    - Sessions (all user sessions, probably a reference from canvas)
+    - Workspaces (all user workspaces are folders in users home dir/workspaces/, User class initializes WorkspaceManager for each user?)
+    - Devices (all linked devices to this user, DeviceManager initialized from User class?)
+
+Classes
+Workspace
+    - Initializes its own DB + Tree classes
+    - Works like a bitmap-enabled "directory tree" with its own apps, roles, dotfiles, data, cache folders that additional services can serve(like minio the data folder from a users workspace)
+
+Context
+    - Holds reference to what session, workspace and context path we are in, what context features / filters are active for this particular context (what user device, nw, os, are in)
+    - Provides simple data management + query API that call backend services with the above context information to return relevant data
+
+
+A normal UI workflow would be
+- User logs in, for sake of simplicity automatically gets a new session with a uuid sessionID(or deviceid.app for electron client where we can reliably generate a device ID)
+- User automatically gets a Context within his session with his default workspace Universe and the default path set to /
+- User can then connect to a different context or create a new one etc (probably if you would want to run 2 Canvas windows side-by-side both would internally use 2 different contexts which would mean making context IDs uuidv4)
+
+
+Is the above OK or should I amend the design for sake of simplicity and usability.
+Should I create named sessions (with deviceid.appname) or use a standard session implementation we see in most nodejs webapps and instead store what device and app we are connecting from on a Context basis(we do that anyway) - iow - A user would not really care about "sessions" / "session-names" and connectToSession - even though it sounds more familliar - but instead would be able to connect to a context directly - removing one abstraction from the equation

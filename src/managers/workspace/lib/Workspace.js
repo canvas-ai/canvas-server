@@ -25,6 +25,10 @@ class Workspace extends EventEmitter {
     #tree;
     #jim;
 
+    //#apps;
+    //#roles;
+    //#dotfiles;
+
     /**
      * Create a new Workspace instance
      * @param {Object} options - Configuration options
