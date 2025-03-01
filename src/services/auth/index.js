@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 
 import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('auth-service');
+const debug = createDebug('service:auth');
 
 import SessionService from './lib/SessionService.js';
 import UserEventHandler from '../events/UserEventHandler.js';
@@ -71,11 +71,11 @@ class AuthService {
     }
 
     /**
-   * Register a new user
-   * @param {string} email - User email
-   * @param {string} password - User password
-   * @returns {Promise<Object>} - User and token
-   */
+     * Register a new user
+     * @param {string} email - User email
+     * @param {string} password - User password
+     * @returns {Promise<Object>} - User and token
+     */
     async register(email, password) {
         debug(`Registering user with email: ${email}`);
 
@@ -96,12 +96,12 @@ class AuthService {
         });
 
         // Create default session
-        const session = await this.#sessionManager.createSession(user, 'default', {
+        const session = await this.#sessionManager.createSession(user.id, {
             initializer: 'registration',
         });
 
         // Generate token
-        const token = this.#sessionService.generateToken(user);
+        const token = this.#sessionService.generateToken(user, session);
 
         debug(`User registered: ${email}`);
 
@@ -109,11 +109,11 @@ class AuthService {
     }
 
     /**
-   * Login a user
-   * @param {string} email - User email
-   * @param {string} password - User password
-   * @returns {Promise<Object>} - User and token
-   */
+     * Login a user
+     * @param {string} email - User email
+     * @param {string} password - User password
+     * @returns {Promise<Object>} - User and token
+     */
     async login(email, password) {
         debug(`Login attempt for user: ${email}`);
 
@@ -124,17 +124,13 @@ class AuthService {
         // Authenticate user
         const user = await this.#userManager.authenticateUser(email, password);
 
-        // Get or create default session
-        let session = await this.#sessionManager.getSession(user, 'default');
-
-        if (!session) {
-            session = await this.#sessionManager.createSession(user, 'default', {
-                initializer: 'login',
-            });
-        }
+        // Create a new session
+        const session = await this.#sessionManager.createSession(user.id, {
+            initializer: 'login',
+        });
 
         // Generate token
-        const token = this.#sessionService.generateToken(user);
+        const token = this.#sessionService.generateToken(user, session);
 
         debug(`User logged in: ${email}`);
 
@@ -142,37 +138,86 @@ class AuthService {
     }
 
     /**
-   * Logout a user
-   * @param {Object} req - Request object
-   * @param {Object} res - Response object
-   */
+     * Logout a user
+     * @param {Object} req - Request object
+     * @param {Object} res - Response object
+     */
     logout(req, res) {
         debug('User logout');
+
+        // End the session if available
+        if (req.session && req.session.id) {
+            this.#sessionManager.endSession(req.session.id);
+        }
+
+        // Clear the cookie
         this.#sessionService.clearCookie(res);
     }
 
     /**
-   * Get authentication middleware
-   * @returns {Function} - Authentication middleware
-   */
+     * Verify a session by token
+     * @param {string} token - JWT token
+     * @returns {Promise<Object|null>} - Session data or null if invalid
+     */
+    async verifySession(token) {
+        // First, verify the token
+        const payload = this.#sessionService.verifyToken(token);
+        if (!payload) {
+            debug('Invalid token');
+            return null;
+        }
+
+        // Get the user
+        const user = await this.#userManager.getUserById(payload.id);
+        if (!user) {
+            debug(`User not found: ${payload.id}`);
+            return null;
+        }
+
+        // If we have a session ID in the payload, verify it
+        if (payload.sessionId) {
+            const session = this.#sessionManager.getSession(payload.sessionId);
+            if (!session || !session.isActive) {
+                debug(`Invalid or inactive session: ${payload.sessionId}`);
+                return null;
+            }
+
+            // Update last active time
+            this.#sessionManager.touchSession(payload.sessionId);
+
+            return { user, session };
+        }
+
+        // If no session ID in payload, create or get a default session
+        const session = await this.#sessionManager.createSession(user.id, {
+            initializer: 'token_verification',
+        });
+
+        return { user, session };
+    }
+
+    /**
+     * Get authentication middleware
+     * @returns {Function} - Authentication middleware
+     */
     getAuthMiddleware() {
         return this.#sessionService.getAuthMiddleware();
     }
 
     /**
-   * Verify a token
-   * @param {string} token - JWT token
-   * @returns {Object|null} - Decoded token or null
-   */
+     * Verify a token
+     * @param {string} token - JWT token
+     * @returns {Object|null} - Decoded token or null
+     */
     verifyToken(token) {
         return this.#sessionService.verifyToken(token);
     }
 
     /**
-   * Get user from request
-   * @param {Object} req - Request object
-   * @returns {Promise<Object>} - User object
-   */
+     * Get user from request
+     * @param {Object} req - Request object
+     * @returns {Promise<Object>} - User object
+     */
     async getUserFromRequest(req) {
         if (!req.user || !req.user.id) {
             return null;
@@ -182,13 +227,13 @@ class AuthService {
     }
 
     /**
-   * Create a context for a user
-   * @param {Object} user - User object
-   * @param {string} sessionName - Session name
-   * @param {string} workspaceName - Workspace name
-   * @param {string} contextPath - Context path
-   * @returns {Promise<Object>} - Created context
-   */
+     * Create a context for a user
+     * @param {Object} user - User object
+     * @param {string} sessionName - Session name
+     * @param {string} workspaceName - Workspace name
+     * @param {string} contextPath - Context path
+     * @returns {Promise<Object>} - Created context
+     */
     async createUserContext(user, sessionName, workspaceName, contextPath = '/') {
     // Get session
         const session = await this.#sessionManager.getSession(user, sessionName);

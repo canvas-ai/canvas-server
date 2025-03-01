@@ -29,7 +29,6 @@ const {
 } = pkg
 
 
-
 /**
  * Canvas Server
  */
@@ -50,6 +49,7 @@ class Server extends EventEmitter {
     #contextManager;
     #deviceManager;
     #roleManager;
+    #userManager;
 
     constructor(options = {
         mode: env.CANVAS_SERVER_MODE,
@@ -79,6 +79,7 @@ class Server extends EventEmitter {
     get contextManager() { return this.#contextManager; }
     get deviceManager() { return this.#deviceManager; }
     get roleManager() { return this.#roleManager; }
+    get userManager() { return this.#userManager; }
 
     /**
      * Canvas service controls
@@ -352,6 +353,24 @@ class Server extends EventEmitter {
         this.#workspaceManager = new WorkspaceManager({
             rootPath: env.CANVAS_USER_HOME,
         });
+
+        this.#userManager = new UserManager(config);
+        this.#sessionManager = new SessionManager(config);
+
+        // Initialize dependencies
+        this.#sessionManager.initialize({
+            userManager: this.#userManager
+        });
+
+        // Initialize services
+        const authService = new AuthService(config);
+        authService.initialize({
+            sessionManager: this.#sessionManager,
+            userManager: this.#userManager
+        });
+
+        // Add to services
+        this.#services.set('auth', authService);
 
         debug('Managers initialized');
         logger.info('Managers initialized');

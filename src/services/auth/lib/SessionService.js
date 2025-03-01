@@ -68,14 +68,22 @@ class SessionService {
     /**
    * Generate a JWT token for a user
    * @param {Object} user - User object
+   * @param {Object} session - Session object
    * @returns {string} - JWT token
    */
-    generateToken(user) {
+    generateToken(user, session = null) {
+        const payload = {
+            id: user.id,
+            email: user.email,
+        };
+
+        // Include session ID if provided
+        if (session && session.id) {
+            payload.sessionId = session.id;
+        }
+
         return jwt.sign(
-            {
-                id: user.id,
-                email: user.email,
-            },
+            payload,
             this.#config.jwtSecret,
             {
                 expiresIn: this.#config.jwtLifetime,
