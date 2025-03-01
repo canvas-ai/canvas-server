@@ -230,9 +230,10 @@ class ContextManager extends EventEmitter {
 
     /**
      * Switch a context to a different workspace
+     * This replaces the previous cloneContextToWorkspace method with a more accurate implementation
      * @param {string} contextId - Context ID
      * @param {string} workspaceId - Target workspace ID
-     * @returns {Promise<Context>} - Updated context
+     * @returns {Promise<Context>} - Updated context with the new workspace
      */
     async switchContextWorkspace(contextId, workspaceId) {
         debug(`Switching context ${contextId} to workspace ${workspaceId}`);
@@ -256,7 +257,10 @@ class ContextManager extends EventEmitter {
         }
 
         // Switch the context to the new workspace
-        return context.switchWorkspace(workspace);
+        await context.switchWorkspace(workspace);
+
+        // Return the updated context
+        return context;
     }
 
     /**
@@ -264,36 +268,11 @@ class ContextManager extends EventEmitter {
      * @param {string} contextId - Context ID
      * @param {string} workspaceId - Target workspace ID
      * @returns {Promise<Context>} - New context in the target workspace
+     * @deprecated Use switchContextWorkspace instead
      */
     async cloneContextToWorkspace(contextId, workspaceId) {
-        debug(`Cloning context ${contextId} to workspace ${workspaceId}`);
-
-        // Get the context
-        const context = this.#activeContexts.get(contextId);
-        if (!context) {
-            throw new Error(`Context not found: ${contextId}`);
-        }
-
-        // Get the workspace manager
-        const workspaceManager = global.app.getManager('workspace');
-        if (!workspaceManager) {
-            throw new Error('Workspace manager not available');
-        }
-
-        // Open the target workspace
-        const workspace = await workspaceManager.open(workspaceId);
-        if (!workspace) {
-            throw new Error(`Failed to open workspace: ${workspaceId}`);
-        }
-
-        // Clone the context to the new workspace
-        const newContext = await context.cloneToWorkspace(workspace);
-
-        // Add to contexts
-        this.#activeContexts.set(newContext.id, newContext);
-
-        // Return the new context
-        return newContext;
+        debug(`cloneContextToWorkspace is deprecated, use switchContextWorkspace instead`);
+        return this.switchContextWorkspace(contextId, workspaceId);
     }
 }
 

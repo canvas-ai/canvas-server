@@ -12,6 +12,7 @@
 - Think thoroughly before coding, always consider multiple suitable options how to achieve a given goal and explain why you think the one you chose is preferred
 - Provide improvement suggestions or technologies you think would fit better to solve a given problem
 - Put getters/setters on top of the classes after constructor, then public methods, then private methods
+- Create all your tests / ad-hoc test scripts and test-data in the ./tests folder
 
 
 ## Personality

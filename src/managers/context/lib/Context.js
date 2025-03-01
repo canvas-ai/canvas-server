@@ -13,15 +13,18 @@ import Url from './Url.js';
  * Represents a view on top of data, holding references to workspace, session, device, etc.
  */
 class Context extends EventEmitter {
+
     #id;
     #url;
     #parsedUrl;
+    #path;
     #session;
     #workspace;
     #device;
     #user;
     #filters = new Map();
     #layers = new Map();
+    #contextBitmapArray = [];
     #data = new Map();
     #canvases = new Map();
     #created;
@@ -36,6 +39,7 @@ class Context extends EventEmitter {
         this.#id = options.id || uuidv4();
         this.#parsedUrl = new Url(url);
         this.#url = url;
+        this.#path = this.#parsedUrl.path;
 
         this.#session = options.session;
         this.#workspace = options.workspace;
@@ -112,11 +116,11 @@ class Context extends EventEmitter {
             return;
         }
 
-        const path = this.#parsedUrl.path;
+        const path = this.#path;
         debug(`Initializing layers from path: ${path}`);
 
         try {
-            // Get the tree from the workspace and use it directly
+            // Get the tree from the workspace
             if (!this.#tree) {
                 this.#tree = this.#workspace.getTree();
                 if (!this.#tree) {
@@ -125,34 +129,36 @@ class Context extends EventEmitter {
                 }
             }
 
-            // Use the tree's insert method to create the path
-            const success = this.#tree.insert(path, null, true);
-
-            if (success) {
-                // Get all layers in the path
-                const pathParts = path.split('/').filter(part => part.length > 0);
-                let currentPath = '';
-
-                // Add root layer
-                const rootLayer = this.#tree.getLayer('/');
-                if (rootLayer) {
-                    this.#layers.set(rootLayer.name, rootLayer);
-                    debug(`Added root layer: ${rootLayer.name}`);
-                }
-
-                // Add each layer in the path
-                for (const part of pathParts) {
-                    currentPath += `/${part}`;
-                    const layer = this.#tree.getLayer(currentPath);
-                    if (layer) {
-                        this.#layers.set(layer.name, layer);
-                        debug(`Added layer from tree: ${layer.name}`);
-                    }
-                }
-            } else {
+            // Use the tree's insert method to create the path if needed
+            // This will create any missing layers along the path
+            const success = this.#tree.insert(path);
+            if (!success) {
                 debug('Failed to insert path into tree');
                 throw new Error('Failed to insert path into tree');
             }
+
+            // Clear existing layers and context bitmap array
+            this.#layers.clear();
+            this.#contextBitmapArray = [];
+
+            // Get all nodes from root to the target path
+            const pathParts = ['/', ...path.split('/').filter(Boolean)];
+            const uniquePaths = [...new Set(pathParts.map((_, i, arr) =>
+                i === 0 ? '/' : '/' + arr.slice(1, i + 1).join('/')
+            ))];
+
+            // Add each layer in the path to our context
+            for (const currentPath of uniquePaths) {
+                const node = this.#tree.getNode(currentPath);
+                if (node && node.payload) {
+                    const layer = node.payload;
+                    this.#layers.set(currentPath, layer);
+                    this.#contextBitmapArray.push(`context/${layer.id}`);
+                    debug(`Added layer from tree: ${currentPath} (${layer.id})`);
+                }
+            }
+
+            debug(`Context initialized with ${this.#contextBitmapArray.length} layers`);
         } catch (err) {
             debug(`Error initializing layers from path: ${err.message}`);
             // Fallback to manual layer creation if tree method fails
@@ -375,6 +381,7 @@ class Context extends EventEmitter {
 
         // Store the current path
         const contextPath = this.#parsedUrl.path;
+        this.#path = contextPath; // Ensure path property is updated
 
         // Ensure the workspace is open
         const workspaceManager = global.app.getManager('workspace');
@@ -410,6 +417,7 @@ class Context extends EventEmitter {
 
         // Clear existing layers
         this.#layers.clear();
+        this.#contextBitmapArray = []; // Clear context bitmap array
 
         // Re-initialize with the new workspace
         await this.initialize();
@@ -418,7 +426,8 @@ class Context extends EventEmitter {
         this.emit('workspace:changed', {
             contextId: this.#id,
             workspaceId: workspace.id,
-            path: contextPath
+            path: contextPath,
+            url: this.#url
         });
 
         return this;
@@ -426,23 +435,60 @@ class Context extends EventEmitter {
 
     /**
      * Set a new URL for this context
+     * Handles various URL formats:
+     * - sessionID@workspaceID://path (full URL)
+     * - workspaceID://path (workspace-specific URL)
+     * - /path (absolute path in current workspace)
+     * - path/ (relative path appended to current path)
+     *
      * @param {string} url - New URL
      * @returns {Promise<Context>} - Updated context
      */
     async setUrl(url) {
         debug(`Setting new URL for context ${this.#id}: ${url}`);
 
-        // Parse the new URL
-        const newParsedUrl = new Url(url);
+        let newUrl = url;
+        let newParsedUrl;
+
+        // Handle different URL formats
+        if (url.includes('://')) {
+            // Full URL or workspace-specific URL
+            newParsedUrl = new Url(url);
+        } else if (url.startsWith('/')) {
+            // Absolute path in current workspace
+            if (this.#parsedUrl.hasSessionId && this.#parsedUrl.hasWorkspaceId) {
+                newUrl = `${this.#session.id}@${this.#workspace.id}://${url.replace(/^\//, '')}`;
+            } else if (this.#parsedUrl.hasWorkspaceId) {
+                newUrl = `${this.#workspace.id}://${url.replace(/^\//, '')}`;
+            } else {
+                // If we don't have a workspace ID, just use the path
+                newUrl = url;
+            }
+            newParsedUrl = new Url(newUrl);
+        } else {
+            // Relative path to be appended to current path
+            const currentPath = this.#parsedUrl.path || '/';
+            const newPath = currentPath.endsWith('/')
+                ? `${currentPath}${url}`
+                : `${currentPath}/${url}`;
+
+            if (this.#parsedUrl.hasSessionId && this.#parsedUrl.hasWorkspaceId) {
+                newUrl = `${this.#session.id}@${this.#workspace.id}://${newPath.replace(/^\//, '')}`;
+            } else if (this.#parsedUrl.hasWorkspaceId) {
+                newUrl = `${this.#workspace.id}://${newPath.replace(/^\//, '')}`;
+            } else {
+                newUrl = newPath;
+            }
+            newParsedUrl = new Url(newUrl);
+        }
+
+        debug(`Processed URL: ${newUrl}`);
 
         // If the new URL has a different workspace ID, we need to switch workspaces
         if (newParsedUrl.hasWorkspaceId &&
             this.#parsedUrl.hasWorkspaceId &&
             newParsedUrl.workspaceId !== this.#parsedUrl.workspaceId) {
 
-            // We need to find the workspace manager to get the new workspace
-            // This would typically be injected or available through a service locator
-            // For now, we'll assume it's passed in the options
             if (!this.#workspaceManager) {
                 throw new Error('Workspace manager is required to switch workspaces');
             }
@@ -454,9 +500,10 @@ class Context extends EventEmitter {
             return this.switchWorkspace(newWorkspace);
         }
 
-        // If only the path changed, update the URL and re-initialize
-        this.#url = url;
+        // Update the URL and parsed URL
+        this.#url = newUrl;
         this.#parsedUrl = newParsedUrl;
+        this.#path = newParsedUrl.path;
 
         // Reset initialization state
         this.#initialized = false;
@@ -470,7 +517,8 @@ class Context extends EventEmitter {
         // Emit an event for the URL change
         this.emit('url:changed', {
             contextId: this.#id,
-            url: this.#url
+            url: this.#url,
+            path: this.#path
         });
 
         return this;
@@ -589,58 +637,6 @@ class Context extends EventEmitter {
             created: this.#created,
             updated: this.#updated,
         };
-    }
-
-    /**
-     * Clone this context to a different workspace
-     * @param {Workspace} workspace - Target workspace
-     * @returns {Promise<Context>} - New context in the target workspace
-     */
-    async cloneToWorkspace(workspace) {
-        if (!workspace) {
-            throw new Error('Target workspace is required');
-        }
-
-        debug(`Cloning context ${this.#id} to workspace ${workspace.id}`);
-
-        // Ensure the workspace is open
-        const workspaceManager = global.app.getManager('workspace');
-        if (!workspaceManager) {
-            throw new Error('Workspace manager not available');
-        }
-
-        // Make sure the workspace is open
-        if (!workspaceManager.isOpen(workspace.name)) {
-            debug(`Opening workspace ${workspace.name} before cloning context`);
-            await workspaceManager.open(workspace.name);
-        }
-
-        // Create a new context with the same path but in the target workspace
-        const contextPath = this.#parsedUrl.path;
-
-        // Create the new URL
-        let newUrl;
-        if (this.#parsedUrl.hasSessionId) {
-            newUrl = `${this.#session.id}@${workspace.id}://${contextPath.replace(/^\//, '')}`;
-        } else {
-            newUrl = `${workspace.id}://${contextPath.replace(/^\//, '')}`;
-        }
-
-        // Create a new context with the new URL
-        const newContext = new Context(newUrl, {
-            workspace: workspace,
-            session: this.#session,
-            device: this.#device,
-            user: this.#user
-        });
-
-        // Initialize the new context
-        await newContext.initialize();
-
-        // Copy any relevant data from this context to the new one
-        // This would depend on your specific implementation
-
-        return newContext;
     }
 
     /**
@@ -1057,17 +1053,6 @@ class Context extends EventEmitter {
         }
     }
 
-    /**
-     * Get features associated with a document
-     * @param {number} documentId - The ID of the document
-     * @returns {Promise<Array<string>>} - Array of feature names
-     */
-    async getDocumentFeatures(documentId) {
-        // This is a placeholder implementation
-        // In a real implementation, you would query the bitmap index to find
-        // all features that have this document ID ticked
-        return [];
-    }
 }
 
 export default Context;
