@@ -17,6 +17,7 @@ class SessionManager extends EventEmitter {
     #sessions = new Map();
     #config;
     #userManager;
+    #db;
 
     constructor(config = {}) {
         super();
@@ -29,9 +30,34 @@ class SessionManager extends EventEmitter {
      * @param {Object} dependencies - External dependencies
      */
     initialize(dependencies) {
-        const { userManager } = dependencies;
+        const { userManager, db } = dependencies;
         this.#userManager = userManager;
+        this.#db = db;
         debug('Session Manager dependencies initialized');
+
+        // Load active sessions from database if available
+        this.#loadActiveSessions();
+    }
+
+    /**
+     * Load active sessions from database
+     * @private
+     */
+    async #loadActiveSessions() {
+        if (!this.#db) return;
+
+        try {
+            const activeSessions = await Session.findActive();
+
+            if (activeSessions && activeSessions.length > 0) {
+                activeSessions.forEach(session => {
+                    this.#sessions.set(session.id, session);
+                });
+                debug(`Loaded ${activeSessions.length} active sessions from database`);
+            }
+        } catch (error) {
+            debug(`Error loading active sessions: ${error.message}`);
+        }
     }
 
     /**
@@ -40,7 +66,7 @@ class SessionManager extends EventEmitter {
      * @param {Object} metadata - Session metadata (device, app, etc.)
      * @returns {Object} Session object
      */
-    createSession(userId, metadata = {}) {
+    async createSession(userId, metadata = {}) {
         const sessionId = uuidv4();
         const session = {
             id: sessionId,
@@ -54,6 +80,17 @@ class SessionManager extends EventEmitter {
         this.#sessions.set(sessionId, session);
         debug(`Session created for user ${userId}`, { sessionId });
 
+        // Save to database if available
+        if (this.#db) {
+            try {
+                await Session.create(session);
+                debug(`Session saved to database: ${sessionId}`);
+            } catch (error) {
+                debug(`Error saving session to database: ${error.message}`);
+            }
+        }
+
+        this.emit('session:created', session);
         return session;
     }
 
@@ -93,6 +130,17 @@ class SessionManager extends EventEmitter {
         if (!session) return false;
 
         session.lastActiveAt = new Date();
+
+        // Update in database if available
+        if (this.#db) {
+            try {
+                Session.update(sessionId, { lastActiveAt: session.lastActiveAt });
+                debug(`Session updated in database: ${sessionId}`);
+            } catch (error) {
+                debug(`Error updating session in database: ${error.message}`);
+            }
+        }
+
         return true;
     }
 
@@ -101,17 +149,32 @@ class SessionManager extends EventEmitter {
      * @param {String} sessionId - Session ID
      * @returns {Boolean} Success status
      */
-    endSession(sessionId) {
+    async endSession(sessionId) {
         const session = this.#sessions.get(sessionId);
         if (!session) return false;
 
         session.isActive = false;
         session.endedAt = new Date();
 
-        // Optionally remove from active sessions map
+        // Update in database if available
+        if (this.#db) {
+            try {
+                await Session.update(sessionId, {
+                    isActive: false,
+                    endedAt: session.endedAt
+                });
+                debug(`Session ended in database: ${sessionId}`);
+            } catch (error) {
+                debug(`Error ending session in database: ${error.message}`);
+            }
+        }
+
+        // Remove from active sessions map
         this.#sessions.delete(sessionId);
 
         debug(`Session ended for user ${session.userId}`, { sessionId });
+        this.emit('session:ended', session);
+
         return true;
     }
 
@@ -120,17 +183,52 @@ class SessionManager extends EventEmitter {
      * @param {String} userId - User ID
      * @returns {Number} Number of sessions ended
      */
-    endUserSessions(userId) {
+    async endUserSessions(userId) {
         let count = 0;
+        const sessionIds = [];
 
         for (const [sessionId, session] of this.#sessions.entries()) {
             if (session.userId === userId) {
-                this.endSession(sessionId);
-                count++;
+                sessionIds.push(sessionId);
             }
         }
 
+        // End each session
+        for (const sessionId of sessionIds) {
+            await this.endSession(sessionId);
+            count++;
+        }
+
         debug(`Ended ${count} sessions for user ${userId}`);
+        return count;
+    }
+
+    /**
+     * Clean up expired sessions
+     * @returns {Number} Number of sessions cleaned up
+     */
+    async cleanupExpiredSessions() {
+        const now = new Date();
+        let count = 0;
+        const expiredSessionIds = [];
+
+        // Find expired sessions
+        for (const [sessionId, session] of this.#sessions.entries()) {
+            const lastActive = new Date(session.lastActiveAt);
+            const sessionTimeout = this.#config.sessionTimeout || 24 * 60 * 60 * 1000; // Default 24 hours
+
+            if (now - lastActive > sessionTimeout) {
+                expiredSessionIds.push(sessionId);
+            }
+        }
+
+        // End each expired session
+        for (const sessionId of expiredSessionIds) {
+            await this.endSession(sessionId);
+            count++;
+        }
+
+        debug(`Cleaned up ${count} expired sessions`);
         return count;
     }
 }

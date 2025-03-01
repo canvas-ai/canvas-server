@@ -1,11 +1,11 @@
 /**
- * Authentication middleware for REST API
+ * Authentication middleware for HTTP API
  */
 
 import createAuthMiddleware from '../../common/middleware/auth.js';
 
 /**
- * Create REST auth middleware
+ * Create HTTP auth middleware
  * @param {Object} server - Server instance
  * @returns {Function} - Authentication middleware
  */
