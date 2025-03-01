@@ -20,6 +20,14 @@ const WORKSPACE_TYPES = [
     'workspace',
 ]
 
+const WORKSPACE_DIRECTORIES = {
+    db: 'db',
+    config: 'config',
+    data: 'data',
+    cache: 'cache',
+    dotfiles: 'dotfiles',
+}
+
 /**
  * Workspace Manager
  */
@@ -136,11 +144,12 @@ class WorkspaceManager extends EventEmitter {
 
             // Create workspace directory structure
             await this.#ensureDirectoryExists(workspacePath);
-            await this.#ensureDirectoryExists(path.join(workspacePath, 'db'));
-            await this.#ensureDirectoryExists(path.join(workspacePath, 'config'));
-            await this.#ensureDirectoryExists(path.join(workspacePath, 'data'));
-            await this.#ensureDirectoryExists(path.join(workspacePath, 'cache'));
-            await this.#ensureDirectoryExists(path.join(workspacePath, 'dotfiles'));
+
+            // Create all workspace subdirectories defined in WORKSPACE_DIRECTORIES
+            for (const [key, dirName] of Object.entries(WORKSPACE_DIRECTORIES)) {
+                await this.#ensureDirectoryExists(path.join(workspacePath, dirName));
+                debug(`Created workspace ${key} directory: ${dirName}`);
+            }
 
             // Create workspace configuration
             const workspaceConfig = {

@@ -116,21 +116,46 @@ class Context extends EventEmitter {
         debug(`Initializing layers from path: ${path}`);
 
         try {
-            // Use the workspace to create layers from the path
-            const layers = await this.#workspace.createLayersFromPath(path);
+            // Get the tree from the workspace and use it directly
+            if (!this.#tree) {
+                this.#tree = this.#workspace.getTree();
+                if (!this.#tree) {
+                    debug('No tree available in workspace');
+                    throw new Error('Tree not available');
+                }
+            }
 
-            // Add layers to the context
-            if (Array.isArray(layers)) {
-                for (const layer of layers) {
-                    this.#layers.set(layer.name, layer);
-                    debug(`Added layer from workspace: ${layer.name}`);
+            // Use the tree's insert method to create the path
+            const success = this.#tree.insert(path, null, true);
+
+            if (success) {
+                // Get all layers in the path
+                const pathParts = path.split('/').filter(part => part.length > 0);
+                let currentPath = '';
+
+                // Add root layer
+                const rootLayer = this.#tree.getLayer('/');
+                if (rootLayer) {
+                    this.#layers.set(rootLayer.name, rootLayer);
+                    debug(`Added root layer: ${rootLayer.name}`);
+                }
+
+                // Add each layer in the path
+                for (const part of pathParts) {
+                    currentPath += `/${part}`;
+                    const layer = this.#tree.getLayer(currentPath);
+                    if (layer) {
+                        this.#layers.set(layer.name, layer);
+                        debug(`Added layer from tree: ${layer.name}`);
+                    }
                 }
             } else {
-                debug('No layers returned from workspace.createLayersFromPath()');
+                debug('Failed to insert path into tree');
+                throw new Error('Failed to insert path into tree');
             }
         } catch (err) {
             debug(`Error initializing layers from path: ${err.message}`);
-            // Fallback to manual layer creation if workspace method fails
+            // Fallback to manual layer creation if tree method fails
             await this.#createLayersManually();
         }
     }
