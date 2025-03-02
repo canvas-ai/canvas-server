@@ -587,11 +587,5 @@ class Server extends EventEmitter {
 
 }
 
-// Utils
-export {
-    logger,
-    config
-};
-
 // Export Server
 export default Server;

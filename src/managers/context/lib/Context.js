@@ -1,371 +1,116 @@
 'use strict';
 
+// Utils
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('context');
 
+// Includes
 import Url from './Url.js';
 
 /**
  * Context
- *
  * Represents a view on top of data, holding references to workspace, session, device, etc.
  */
 class Context extends EventEmitter {
 
+    // Context properties
     #id;
+    #name;
+    #baseUrl;
     #url;
-    #parsedUrl;
-    #path;
-    #session;
-    #workspace;
+    #urlPath;
+
+    // Workspace references
+    #db; // workspace.db
+    #tree; // workspace.tree
+    #treeLayers; // workspace.tree.layers
+
+    // Bitmap arrays
+    #systemBitmapArray = [];
+    #contextBitmapArray = [];
+    #featureBitmapArray = [];
+    #filterBitmapArray = [];
+
+    // Manager module references
     #device;
     #user;
-    #filters = new Map();
-    #layers = new Map();
-    #contextBitmapArray = [];
-    #data = new Map();
-    #canvases = new Map();
+    #workspace;
+
+    // Context metadata
     #created;
     #updated;
-    #initialized = false;
-    #tree;
-    #workspaceManager;
-    #workspaceId;
-    #sessionInfo;
+    #isLocked = false;    #
 
     constructor(options) {
         super();
 
+        // Context properties
         this.#id = options.id || uuidv4();
-        this.#parsedUrl = new Url(options.url);
-        this.#url = options.url;
-        this.#path = options.path || '/';
-        this.#sessionInfo = options.sessionInfo || {};
+        this.#name = options.name || this.#id;
+        this.#baseUrl = options.baseUrl || false;
 
-        this.#workspace = options.workspace;
+        // Manager module references
         this.#device = options.device;
         this.#user = options.user;
+        this.#workspace = options.workspace;
 
-        this.#workspaceId = options.workspaceId;
+        // Workspace references
+        this.#db = this.#workspace.db;
+        this.#tree = this.#workspace.tree;
+        this.#treeLayers = this.#workspace.tree.layers;
 
+        // Context metadata
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
-
-        this.#workspaceManager = options.workspaceManager;
 
         debug(`Context created: ${this.#id} (${options.url})`);
     }
 
-    async initialize() {
-        if (this.#initialized) {
-            return;
-        }
+    // Getters
+    get id() { return this.#id; }
+    get name() { return this.#name; }
 
-        debug(`Initializing context: ${this.#id}`);
+    get baseUrl() { return this.#baseUrl; }
+    get url() { return this.#url; }
+    get urlPath() { return this.#urlPath; }
 
-        // If URL doesn't have a workspace ID but we have a workspace, update the URL
-        if (!this.#parsedUrl.hasWorkspaceId && this.#workspace) {
-            debug(`URL doesn't have a workspace ID, using current workspace: ${this.#workspace.id}`);
+    get workspace() { return this.#workspace.id; }
+    get device() { return this.#device; }
+    get app() { return this.#device.app; }
+    get user() { return this.#user; }
+    get identity() { return this.#user.identity; }
+    get tree() { return this.#workspace.tree.toJSON(); } // Legacy
 
-            // If URL also has a session ID, create a full URL
-            if (this.#parsedUrl.hasSessionId && this.#session) {
-                this.#parsedUrl = this.#parsedUrl.withSessionAndWorkspace(
-                    this.#session.id,
-                    this.#workspace.id,
-                );
-            } else {
-                // Otherwise, create a workspace URL
-                this.#parsedUrl = this.#parsedUrl.withWorkspaceId(this.#workspace.id);
-            }
-
-            // Update the raw URL
-            this.#url = this.#parsedUrl.toString();
-            debug(`Updated URL to: ${this.#url}`);
-        }
-
-        // Get the tree from the workspace
-        if (this.#workspace) {
-            this.#tree = await this.#workspace.getTree();
-            debug(`Got tree from workspace: ${this.#workspace.id}`);
-        }
-
-        // Initialize layers from the path
-        await this.#initializeLayers();
-
-        this.#initialized = true;
-
-        return this;
-    }
 
     /**
-     * Initialize layers from the path
+     * New API
      */
-    async #initializeLayers() {
-        if (!this.#workspace) {
-            debug('No workspace available to initialize layers');
-            return;
+
+    getDocument(documentId) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
         }
 
-        const path = this.#path;
-        debug(`Initializing layers from path: ${path}`);
 
-        try {
-            // Get the tree from the workspace
-            if (!this.#tree) {
-                this.#tree = this.#workspace.getTree();
-                if (!this.#tree) {
-                    debug('No tree available in workspace');
-                    throw new Error('Tree not available');
-                }
-            }
+    }
 
-            // Use the tree's insert method to create the path if needed
-            // This will create any missing layers along the path
-            const success = this.#tree.insert(path);
-            if (!success) {
-                debug('Failed to insert path into tree');
-                throw new Error('Failed to insert path into tree');
-            }
-
-            // Clear existing layers and context bitmap array
-            this.#layers.clear();
-            this.#contextBitmapArray = [];
-
-            // Get all nodes from root to the target path
-            const pathParts = ['/', ...path.split('/').filter(Boolean)];
-            const uniquePaths = [...new Set(pathParts.map((_, i, arr) =>
-                i === 0 ? '/' : '/' + arr.slice(1, i + 1).join('/')
-            ))];
-
-            // Add each layer in the path to our context
-            for (const currentPath of uniquePaths) {
-                const node = this.#tree.getNode(currentPath);
-                if (node && node.payload) {
-                    const layer = node.payload;
-                    this.#layers.set(currentPath, layer);
-                    this.#contextBitmapArray.push(`context/${layer.id}`);
-                    debug(`Added layer from tree: ${currentPath} (${layer.id})`);
-                }
-            }
-
-            debug(`Context initialized with ${this.#contextBitmapArray.length} layers`);
-        } catch (err) {
-            debug(`Error initializing layers from path: ${err.message}`);
-            // Fallback to manual layer creation if tree method fails
-            await this.#createLayersManually();
+    getDocuments(featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
         }
     }
 
-    /**
-     * Create layers manually from the path (fallback method)
-     */
-    async #createLayersManually() {
-        const path = this.#parsedUrl.path;
-        const pathParts = path.split('/').filter(part => part.length > 0);
-
-        debug(`Creating layers manually from path parts: ${pathParts.join(', ')}`);
-
-        // Add each path part as a layer
-        for (const part of pathParts) {
-            await this.addLayer(part);
+    listDocuments(featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
         }
     }
 
-    /**
-     * Add a layer to the context
-     * @param {string} name - Layer name
-     * @param {Object} options - Layer options
-     * @returns {Promise<Object>} - Added layer
-     */
-    async addLayer(name, options = {}) {
-        if (!name || typeof name !== 'string') {
-            throw new Error('Layer name must be a string');
-        }
 
-        // Check if layer already exists
-        if (this.#layers.has(name)) {
-            return this.#layers.get(name);
-        }
 
-        // Try to get layer from workspace tree if available
-        let layer = null;
-        if (this.#tree) {
-            try {
-                layer = await this.#tree.getLayer(name);
-                debug(`Got layer from tree: ${name}`);
-            } catch (err) {
-                debug(`Could not get layer from tree: ${err.message}`);
-            }
-        }
 
-        // Create layer if not found in tree
-        if (!layer) {
-            layer = {
-                id: options.id || uuidv4(),
-                name,
-                type: options.type || 'generic',
-                filters: options.filters || [],
-                data: options.data || {},
-                created: options.created || new Date().toISOString(),
-                updated: options.updated || new Date().toISOString(),
-            };
-            debug(`Created new layer: ${name}`);
-        }
-
-        // Add layer to context
-        this.#layers.set(name, layer);
-
-        // Update context
-        this.#updated = new Date().toISOString();
-
-        this.emit('layer:added', layer);
-
-        return layer;
-    }
-
-    /**
-     * Remove a layer from the context
-     * @param {string} name - Layer name
-     * @returns {boolean} - True if layer was removed
-     */
-    removeLayer(name) {
-        const result = this.#layers.delete(name);
-
-        if (result) {
-            // Update context
-            this.#updated = new Date().toISOString();
-
-            this.emit('layer:removed', name);
-        }
-
-        return result;
-    }
-
-    /**
-     * Get a layer by name
-     * @param {string} name - Layer name
-     * @returns {Object} - Layer object
-     */
-    getLayer(name) {
-        return this.#layers.get(name);
-    }
-
-    /**
-     * List all layers
-     * @returns {Array<Object>} - Array of layer objects
-     */
-    listLayers() {
-        return Array.from(this.#layers.values());
-    }
-
-    /**
-     * Add a filter to the context
-     * @param {string} name - Filter name
-     * @param {Object} options - Filter options
-     * @returns {Object} - Added filter
-     */
-    addFilter(name, options = {}) {
-        if (!name || typeof name !== 'string') {
-            throw new Error('Filter name must be a string');
-        }
-
-        // Create filter
-        const filter = {
-            id: options.id || uuidv4(),
-            name,
-            type: options.type || 'generic',
-            value: options.value,
-            created: options.created || new Date().toISOString(),
-            updated: options.updated || new Date().toISOString(),
-        };
-
-        // Add filter to context
-        this.#filters.set(name, filter);
-
-        // Update context
-        this.#updated = new Date().toISOString();
-
-        this.emit('filter:added', filter);
-
-        return filter;
-    }
-
-    /**
-     * Remove a filter from the context
-     * @param {string} name - Filter name
-     * @returns {boolean} - True if filter was removed
-     */
-    removeFilter(name) {
-        const result = this.#filters.delete(name);
-
-        if (result) {
-            // Update context
-            this.#updated = new Date().toISOString();
-
-            this.emit('filter:removed', name);
-        }
-
-        return result;
-    }
-
-    /**
-     * Get a filter by name
-     * @param {string} name - Filter name
-     * @returns {Object} - Filter object
-     */
-    getFilter(name) {
-        return this.#filters.get(name);
-    }
-
-    /**
-     * List all filters
-     * @returns {Array<Object>} - Array of filter objects
-     */
-    listFilters() {
-        return Array.from(this.#filters.values());
-    }
-
-    /**
-     * Get the context URL
-     * @returns {String} Context URL in the format workspaceID://path
-     */
-    get url() {
-        return `${this.#workspaceId}://${this.#path}`;
-    }
-
-    /**
-     * Get the parsed URL
-     * @returns {Url} - Parsed URL
-     */
-    get parsedUrl() {
-        return this.#parsedUrl;
-    }
-
-    /**
-     * Get the workspace
-     * @returns {Workspace} - Workspace
-     */
-    get workspace() {
-        return this.#workspace;
-    }
-
-    /**
-     * Get the session
-     * @returns {Session} - Session
-     */
-    get session() {
-        return this.#session;
-    }
-
-    /**
-     * Get the session information associated with this context
-     * @returns {Object} Session information
-     */
-    get sessionInfo() {
-        return this.#sessionInfo;
-    }
 
     /**
      * Switch to a different workspace while maintaining the same context path
@@ -433,195 +178,9 @@ class Context extends EventEmitter {
         return this;
     }
 
-    /**
-     * Set a new URL for this context
-     * Handles various URL formats:
-     * - sessionID@workspaceID://path (full URL)
-     * - workspaceID://path (workspace-specific URL)
-     * - /path (absolute path in current workspace)
-     * - path/ (relative path appended to current path)
-     *
-     * @param {string} url - New URL
-     * @returns {Promise<Context>} - Updated context
-     */
-    async setUrl(url) {
-        debug(`Setting new URL for context ${this.#id}: ${url}`);
 
-        let newUrl = url;
-        let newParsedUrl;
 
-        // Handle different URL formats
-        if (url.includes('://')) {
-            // Full URL or workspace-specific URL
-            newParsedUrl = new Url(url);
-        } else if (url.startsWith('/')) {
-            // Absolute path in current workspace
-            if (this.#parsedUrl.hasSessionId && this.#parsedUrl.hasWorkspaceId) {
-                newUrl = `${this.#session.id}@${this.#workspace.id}://${url.replace(/^\//, '')}`;
-            } else if (this.#parsedUrl.hasWorkspaceId) {
-                newUrl = `${this.#workspace.id}://${url.replace(/^\//, '')}`;
-            } else {
-                // If we don't have a workspace ID, just use the path
-                newUrl = url;
-            }
-            newParsedUrl = new Url(newUrl);
-        } else {
-            // Relative path to be appended to current path
-            const currentPath = this.#parsedUrl.path || '/';
-            const newPath = currentPath.endsWith('/')
-                ? `${currentPath}${url}`
-                : `${currentPath}/${url}`;
 
-            if (this.#parsedUrl.hasSessionId && this.#parsedUrl.hasWorkspaceId) {
-                newUrl = `${this.#session.id}@${this.#workspace.id}://${newPath.replace(/^\//, '')}`;
-            } else if (this.#parsedUrl.hasWorkspaceId) {
-                newUrl = `${this.#workspace.id}://${newPath.replace(/^\//, '')}`;
-            } else {
-                newUrl = newPath;
-            }
-            newParsedUrl = new Url(newUrl);
-        }
-
-        debug(`Processed URL: ${newUrl}`);
-
-        // If the new URL has a different workspace ID, we need to switch workspaces
-        if (newParsedUrl.hasWorkspaceId &&
-            this.#parsedUrl.hasWorkspaceId &&
-            newParsedUrl.workspaceId !== this.#parsedUrl.workspaceId) {
-
-            if (!this.#workspaceManager) {
-                throw new Error('Workspace manager is required to switch workspaces');
-            }
-
-            // Get the new workspace
-            const newWorkspace = await this.#workspaceManager.getWorkspace(newParsedUrl.workspaceId);
-
-            // Switch to the new workspace
-            return this.switchWorkspace(newWorkspace);
-        }
-
-        // Update the URL and parsed URL
-        this.#url = newUrl;
-        this.#parsedUrl = newParsedUrl;
-        this.#path = newParsedUrl.path;
-
-        // Reset initialization state
-        this.#initialized = false;
-
-        // Clear existing layers
-        this.#layers.clear();
-
-        // Re-initialize with the new URL
-        await this.initialize();
-
-        // Emit an event for the URL change
-        this.emit('url:changed', {
-            contextId: this.#id,
-            url: this.#url,
-            path: this.#path
-        });
-
-        return this;
-    }
-
-    /**
-     * Create a canvas
-     * @param {string} name - Canvas name
-     * @param {Object} options - Canvas options
-     * @returns {Object} - Created canvas
-     */
-    createCanvas(name, options = {}) {
-        if (!name || typeof name !== 'string') {
-            throw new Error('Canvas name must be a string');
-        }
-
-        // Check if canvas already exists
-        if (this.#canvases.has(name)) {
-            throw new Error(`Canvas with name "${name}" already exists`);
-        }
-
-        // Create canvas
-        const canvas = {
-            id: options.id || uuidv4(),
-            name,
-            type: options.type || 'generic',
-            elements: options.elements || [],
-            data: options.data || {},
-            created: options.created || new Date().toISOString(),
-            updated: options.updated || new Date().toISOString(),
-        };
-
-        // Add canvas to context
-        this.#canvases.set(name, canvas);
-
-        // Update context
-        this.#updated = new Date().toISOString();
-
-        this.emit('canvas:created', canvas);
-
-        return canvas;
-    }
-
-    /**
-     * Get a canvas by name
-     * @param {string} name - Canvas name
-     * @returns {Object} - Canvas object
-     */
-    getCanvas(name) {
-        return this.#canvases.get(name);
-    }
-
-    /**
-     * List all canvases
-     * @returns {Array<Object>} - Array of canvas objects
-     */
-    listCanvases() {
-        return Array.from(this.#canvases.values());
-    }
-
-    /**
-     * Remove a canvas
-     * @param {string} name - Canvas name
-     * @returns {boolean} - True if canvas was removed
-     */
-    removeCanvas(name) {
-        const result = this.#canvases.delete(name);
-
-        if (result) {
-            // Update context
-            this.#updated = new Date().toISOString();
-
-            this.emit('canvas:removed', name);
-        }
-
-        return result;
-    }
-
-    /**
-     * Destroy the context
-     * @returns {Promise<boolean>} - True if context was destroyed
-     */
-    async destroy() {
-        debug(`Destroying context: ${this.#id}`);
-
-        // Clear all maps
-        this.#filters.clear();
-        this.#layers.clear();
-        this.#data.clear();
-        this.#canvases.clear();
-
-        this.emit('destroyed', this.#id);
-
-        return true;
-    }
-
-    // Getters
-    get id() { return this.#id; }
-    get device() { return this.#device; }
-    get user() { return this.#user; }
-    get created() { return this.#created; }
-    get updated() { return this.#updated; }
-    get tree() { return this.#tree; }
 
     toJSON() {
         return {
