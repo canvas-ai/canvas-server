@@ -21,7 +21,6 @@ import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '@/utils/passport.js';
-import AuthService from '@/services/auth/index.js';
 
 // Routes
 import contextRoutes from './routes/v2/context.js';
@@ -63,6 +62,7 @@ class HttpRestTransport {
     #server;
     #closePromise;
     #isShuttingDown = false;
+    #canvasServer;
 
     constructor(options = {}) {
         debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
@@ -78,9 +78,29 @@ class HttpRestTransport {
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
 
+    /**
+     * Set the Canvas server instance
+     * @param {Object} server - Canvas server instance
+     */
+    setCanvasServer(server) {
+        this.#canvasServer = server;
+    }
+
+    /**
+     * Get the HTTP server instance
+     * @returns {Object} - HTTP server instance
+     */
+    getServer() {
+        return this.#server;
+    }
+
     async start() {
         if (this.#isShuttingDown) {
             throw new Error('Server is currently shutting down');
+        }
+
+        if (!this.#canvasServer) {
+            throw new Error('Canvas server instance not set. Call setCanvasServer() before starting.');
         }
 
         const app = this.#configureExpress();
@@ -229,14 +249,11 @@ class HttpRestTransport {
     async #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
 
-        // Initialize auth service
-        const authService = new AuthService(this.#config.auth, {
-            userManager: this.canvas.userManager,
-            workspaceManager: this.canvas.workspaceManager,
-            sessionManager: this.canvas.sessionManager,
-            deviceManager: this.canvas.deviceManager,
-            contextManager: this.canvas.contextManager
-        });
+        // Get auth service from the Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        if (!authService) {
+            throw new Error('Auth service not found in Canvas server');
+        }
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
@@ -262,9 +279,9 @@ class HttpRestTransport {
         const contextBasePath = `${this.#config.basePath}/v2/context`;
         app.use(contextBasePath, contextRoutes({
             auth: authService,
-            contextManager: this.canvas.contextManager,
-            sessionManager: this.canvas.sessionManager,
-            workspaceManager: this.canvas.workspaceManager
+            contextManager: this.#canvasServer.contextManager,
+            sessionManager: this.#canvasServer.sessionManager,
+            workspaceManager: this.#canvasServer.workspaceManager
         }));
 
         // API routes (protected)
@@ -308,7 +325,7 @@ class HttpRestTransport {
 
     #injectDependencies(req, res, next) {
         req.ResponseObject = this.ResponseObject;
-        req.canvas = this.canvas;
+        req.canvas = this.#canvasServer;
         next();
     }
 }

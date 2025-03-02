@@ -28,6 +28,39 @@ const {
     license
 } = pkg
 
+// Managers
+import WorkspaceManager from '@/managers/workspace/index.js';
+import UserManager from '@/managers/user/index.js';
+import SessionManager from '@/managers/session/index.js';
+
+// Try to import optional managers
+let DeviceManager, RoleManager, AppManager, ContextManager;
+try {
+    DeviceManager = (await import('@/managers/device/index.js')).default;
+} catch (error) {
+    debug(`DeviceManager import failed: ${error.message}`);
+}
+
+try {
+    RoleManager = (await import('@/managers/role/index.js')).default;
+} catch (error) {
+    debug(`RoleManager import failed: ${error.message}`);
+}
+
+try {
+    AppManager = (await import('@/managers/app/index.js')).default;
+} catch (error) {
+    debug(`AppManager import failed: ${error.message}`);
+}
+
+try {
+    ContextManager = (await import('@/managers/context/index.js')).default;
+} catch (error) {
+    debug(`ContextManager import failed: ${error.message}`);
+}
+
+// Services
+import AuthService from '@/services/auth/index.js';
 
 /**
  * Canvas Server
@@ -80,6 +113,9 @@ class Server extends EventEmitter {
     get deviceManager() { return this.#deviceManager; }
     get roleManager() { return this.#roleManager; }
     get userManager() { return this.#userManager; }
+
+    // Service getters
+    get services() { return this.#services; }
 
     /**
      * Canvas service controls
@@ -298,6 +334,13 @@ class Server extends EventEmitter {
         for (const [transport, transportConfig] of transportEntries) {
             try {
                 const instance = await this.#loadModule('transports', transport, transportConfig);
+
+                // Set the server instance on the transport if it has the method
+                if (typeof instance.setCanvasServer === 'function') {
+                    instance.setCanvasServer(this);
+                    debug(`Set server instance on ${transport} transport`);
+                }
+
                 this.#transports.set(transport, instance);
             } catch (error) {
                 logger.error(`Failed to initialize transport ${transport}:`, error);
@@ -311,9 +354,35 @@ class Server extends EventEmitter {
         logger.info('Starting transports..');
         const errors = [];
 
-        for (const [name, transport] of this.#transports) {
+        // First, start the HTTP transport if it exists
+        const httpTransport = this.#transports.get('http');
+        let httpServer = null;
+
+        if (httpTransport) {
             try {
-                await transport.start();
+                await httpTransport.start();
+                // Get the HTTP server instance if available
+                httpServer = httpTransport.getServer?.();
+                debug('HTTP transport started');
+            } catch (error) {
+                const msg = `Error starting http transport: ${error.message}`;
+                logger.error(msg);
+                errors.push(msg);
+            }
+        }
+
+        // Then start other transports, passing the HTTP server to WebSocket transport
+        for (const [name, transport] of this.#transports) {
+            // Skip HTTP transport as it's already started
+            if (name === 'http') continue;
+
+            try {
+                // If this is the WebSocket transport and we have an HTTP server, use it
+                if (name === 'ws' && httpServer) {
+                    await transport.start(httpServer);
+                } else {
+                    await transport.start();
+                }
             } catch (error) {
                 const msg = `Error starting ${name} transport: ${error.message}`;
                 logger.error(msg);
@@ -350,27 +419,96 @@ class Server extends EventEmitter {
         debug('Initializing managers');
         logger.info('Initializing managers');
 
+        // Initialize device manager if available
+        if (DeviceManager) {
+            try {
+                this.#deviceManager = new DeviceManager(config);
+                debug('Device manager initialized');
+            } catch (error) {
+                debug(`Device manager initialization failed: ${error.message}`);
+            }
+        }
+
+        // Initialize workspace manager
         this.#workspaceManager = new WorkspaceManager({
             rootPath: env.CANVAS_USER_HOME,
         });
+        debug('Workspace manager initialized');
 
+        // Initialize user manager
         this.#userManager = new UserManager(config);
+        debug('User manager initialized');
+
+        // Initialize session manager
         this.#sessionManager = new SessionManager(config);
+        debug('Session manager initialized');
 
-        // Initialize dependencies
+        // Initialize role manager (if available)
+        if (RoleManager) {
+            try {
+                this.#roleManager = new RoleManager(config);
+                debug('Role manager initialized');
+            } catch (error) {
+                debug(`Role manager initialization failed: ${error.message}`);
+            }
+        }
+
+        // Initialize app manager (if available)
+        if (AppManager) {
+            try {
+                this.#appManager = new AppManager(config);
+                debug('App manager initialized');
+            } catch (error) {
+                debug(`App manager initialization failed: ${error.message}`);
+            }
+        }
+
+        // Initialize context manager (if available)
+        if (ContextManager) {
+            try {
+                this.#contextManager = new ContextManager({
+                    ...config,
+                    workspaceManager: this.#workspaceManager,
+                    sessionManager: this.#sessionManager
+                });
+                debug('Context manager initialized');
+            } catch (error) {
+                debug(`Context manager initialization failed: ${error.message}`);
+            }
+        }
+
+        // Initialize dependencies between managers
         this.#sessionManager.initialize({
-            userManager: this.#userManager
+            userManager: this.#userManager,
+            db: null // We'll add database support later
         });
 
-        // Initialize services
-        const authService = new AuthService(config);
-        authService.initialize({
-            sessionManager: this.#sessionManager,
-            userManager: this.#userManager
-        });
+        // Initialize auth service
+        try {
+            // Prepare auth config with JWT secret
+            const authConfig = {
+                ...config,
+                jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret-dev-only',
+                jwtLifetime: process.env.CANVAS_JWT_LIFETIME || '7d'
+            };
 
-        // Add to services
-        this.#services.set('auth', authService);
+            const authService = new AuthService(authConfig, {
+                sessionManager: this.#sessionManager,
+                userManager: this.#userManager,
+                workspaceManager: this.#workspaceManager,
+                deviceManager: this.#deviceManager,
+                contextManager: this.#contextManager
+            });
+
+            await authService.initialize();
+
+            // Add to services
+            this.#services.set('auth', authService);
+            debug('Auth service initialized and registered');
+        } catch (error) {
+            logger.error(`Auth service initialization failed: ${error.message}`);
+            throw error;
+        }
 
         debug('Managers initialized');
         logger.info('Managers initialized');

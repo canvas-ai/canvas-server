@@ -29,6 +29,7 @@ class AuthService {
     #userEventHandler;
     #config;
     #initialized = false;
+    #started = false;
 
     constructor(config, options = {}) {
         this.#config = config;
@@ -68,6 +69,27 @@ class AuthService {
         debug('Initializing auth service');
 
         this.#initialized = true;
+    }
+
+    /**
+     * Start the auth service
+     * @returns {Promise<void>}
+     */
+    async start() {
+        if (this.#started) {
+            return;
+        }
+
+        if (!this.#initialized) {
+            await this.initialize();
+        }
+
+        debug('Starting auth service');
+
+        // Any startup tasks can go here
+
+        this.#started = true;
+        debug('Auth service started');
     }
 
     /**
