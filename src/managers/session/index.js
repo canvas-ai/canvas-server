@@ -16,7 +16,6 @@ class SessionManager extends EventEmitter {
 
     #sessions = new Map();
     #config;
-    #userManager;
     #db;
 
     constructor(config = {}) {
@@ -30,8 +29,7 @@ class SessionManager extends EventEmitter {
      * @param {Object} dependencies - External dependencies
      */
     initialize(dependencies) {
-        const { userManager, db } = dependencies;
-        this.#userManager = userManager;
+        const { db } = dependencies;
         this.#db = db;
         debug('Session Manager dependencies initialized');
 
