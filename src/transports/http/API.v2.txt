@@ -8,10 +8,17 @@ baseUrl: /rest/v2
 │   ├── /login
 │   ├── /logout
 │   ├── /register
+│   ├── /password [PUT] - Update current user's password
 │   ├── /forgot-password
 │   ├── /reset-password
 │   ├── /verify-email
 │   └── /verify-email/:token
+│
+├── /admin
+│   ├── /users [GET] - Get all users (admin only)
+│   ├── /users/:userId [GET] - Get a specific user (admin only)
+│   ├── /users/:userId [PUT] - Update a user (admin only)
+│   └── /users/:userId/password [PUT] - Update a user's password (admin only)
 │
 ├── /users
 │   ├── /:userId

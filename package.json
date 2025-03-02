@@ -8,6 +8,7 @@
   "scripts": {
     "test": "eslint . --ext .js",
     "test:fix": "eslint . --ext .js --fix",
+    "test:admin": "node --import ./src/utils/path-resolver/index.js ./tests/create-admin-user.js",
     "cli": "node ./src/ui/cli",
     "start": "cross-env DEBUG=canvas*,prisma* node --import ./src/utils/path-resolver/index.js ./src/init.js",
     "pm2:start": "PM2_HOME=../var/pm2 pm2 start ecosystem.config.js --watch",

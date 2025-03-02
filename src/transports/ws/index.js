@@ -75,6 +75,10 @@ class WebSocketTransport {
         }
 
         this.#setupConnectionHandler();
+
+        // Register admin routes
+        await this.#setupAdminRoutes();
+
         debug('WebSocket server started');
     }
 
@@ -214,6 +218,22 @@ class WebSocketTransport {
         }
         if (socket.session) {
             socket.session.cleanup?.();
+        }
+    }
+
+    async #setupAdminRoutes() {
+        // Get auth service from the Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        if (!authService) {
+            throw new Error('Auth service not found in Canvas server');
+        }
+
+        try {
+            const adminRoutes = await import('./routes/v2/admin.js');
+            adminRoutes.default(this.#io, authService);
+            debug('Admin routes registered');
+        } catch (error) {
+            debug(`Error loading admin routes: ${error.message}`);
         }
     }
 }

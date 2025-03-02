@@ -42,5 +42,30 @@ export default function(authService) {
         res.status(response.statusCode).json(response.getResponse());
     });
 
+    // Update password (requires authentication)
+    router.put('/password', authService.getAuthMiddleware(), async (req, res) => {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            const response = new ResponseObject().badRequest('Current password and new password are required');
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+
+        try {
+            const user = await authService.getUserFromRequest(req);
+            if (!user) {
+                const response = new ResponseObject().unauthorized('User not authenticated');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            await authService.updatePassword(user.id, currentPassword, newPassword, user);
+            const response = new ResponseObject().success({ success: true }, 'Password updated successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            const response = new ResponseObject().error(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
     return router;
 }

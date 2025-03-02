@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
             'https://getcanvas.org'
         ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-app-name'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-device-name', 'x-app-name'],
         credentials: true
     },
     auth: {
@@ -283,6 +283,10 @@ class HttpRestTransport {
             sessionManager: this.#canvasServer.sessionManager,
             workspaceManager: this.#canvasServer.workspaceManager
         }));
+
+        // Register admin routes
+        const adminBasePath = `${this.#config.basePath}/v2/admin`;
+        app.use(adminBasePath, (await import('./routes/v2/admin.js')).default(authService));
 
         // API routes (protected)
         this.#loadApiRoutes(app);

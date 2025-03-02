@@ -129,6 +129,10 @@ class Server extends EventEmitter {
             // Initialize services & transports
             await this.#initializeServices();
             await this.#initializeTransports();
+
+            // Check if we need to create an initial admin user
+            await this.#createInitialAdminUser();
+
             this.#status = 'initialized';
             this.emit('initialized');
         } catch (error) {
@@ -544,6 +548,40 @@ class Server extends EventEmitter {
 
             logger.error(errorMessage);
             throw new Error(errorMessage);
+        }
+    }
+
+    /**
+     * Create initial admin user if no users exist
+     * Uses environment variables for admin credentials
+     * @private
+     */
+    async #createInitialAdminUser() {
+        // Check if admin creation is enabled
+        if (!env.CANVAS_CREATE_ADMIN_USER) {
+            debug('Initial admin user creation is disabled');
+            return;
+        }
+
+        // Check if admin credentials are provided
+        if (!env.CANVAS_ADMIN_EMAIL || !env.CANVAS_ADMIN_PASSWORD) {
+            debug('Admin credentials not provided, skipping initial admin creation');
+            return;
+        }
+
+        try {
+            // Create initial admin user
+            const adminUser = await this.#userManager.createInitialAdminUser({
+                email: env.CANVAS_ADMIN_EMAIL,
+                password: env.CANVAS_ADMIN_PASSWORD
+            });
+
+            if (adminUser) {
+                logger.info(`Initial admin user created with email: ${env.CANVAS_ADMIN_EMAIL}`);
+            }
+        } catch (error) {
+            logger.error(`Failed to create initial admin user: ${error.message}`);
+            // Don't throw error to allow server to continue starting
         }
     }
 

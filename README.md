@@ -47,7 +47,23 @@ CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 
 - Rename example-*.json to *.json and amend as needed
 - Configuration files can be split into multiple files adhering to the original JSON structure
-  - config/data.json maybe be split into config/data.backends.json, config/data.sources.json, config/data.caching.json etc
+  - config/data.json maybe be split into config/data.backends.json, config/data.sources.json etc
+
+### Initial Admin User Creation
+
+When the Canvas server starts for the first time, it can automatically create an initial admin user if no users exist in the database. This is controlled by environment variables:
+
+1. Set `CANVAS_CREATE_ADMIN_USER=true` to enable initial admin user creation
+2. Set `CANVAS_ADMIN_EMAIL` to the desired admin email (defaults to 'admin@canvas.local')
+3. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
+
+Example:
+```bash
+# In .env file or environment variables
+CANVAS_CREATE_ADMIN_USER=true
+CANVAS_ADMIN_EMAIL=admin@example.com
+CANVAS_ADMIN_PASSWORD=securepassword
+```
 
 ## Update Canvas Server
 
@@ -136,68 +152,6 @@ This script updates the Canvas Server by pulling the latest changes from the git
 
 ```bash
 $ ./scripts/update-git.sh
-```
-
-## Directory structure
-
-```
-[Canvas server]
-    /server
-        /cache // We'll move to per-workspace cache
-        /data  // We'll move to per-workspace data
-        /db    // Mostly used for session storage
-        /roles // Globaly-available canvas-roles (docker.rocketchat, docker.jitsy etc)
-        /var   // Server runtime (logs, pids, sockets etc)
-    /data/multiverse/user@email.com
-        /Config
-            /user.json // includes auth, identities
-            /apps.json  // apps.win32.json, apps.darwin.json, apps.linux.json
-            /roles.json  // roles.docker.json, roles.pm2.json
-            /agents.json
-            /minions.json
-            /services.json
-            /workspaces.json
-            /data.json // Data sources + caching + storage
-        /Apps
-            /appname
-                /app.json
-                /config
-                /runtime
-        /Roles
-            /rolename
-                /role.json (type docker || pm2)
-                /runtime || Dockerfile || docker-compose
-        /Services
-            /storage
-            /neural
-                /Agents
-                    /lucy
-                        /agent.json
-                        /data
-                        /cache
-                /Minions
-                    /spamd
-                        /minion.json
-                        /runtime || Dockerfile || docker-compose
-                        /data
-                        /cache 
-                /Services
-                /Tools
-                /Connectors
-            /infrastructure
-        /Workspaces
-            /Universe
-                /workspace.json
-                /db
-                /data
-                /cache                                
-            /Work
-                workspace.json
-        /user.json
-    /data/orgname
-        /Workspaces
-            /user@orgname.com
-            /team-workspace
 ```
 
 ## References

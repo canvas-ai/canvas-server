@@ -96,9 +96,10 @@ class AuthService {
      * Register a new user
      * @param {string} email - User email
      * @param {string} password - User password
+     * @param {string} [userType='user'] - User type ('user' or 'admin')
      * @returns {Promise<Object>} - User and token
      */
-    async register(email, password) {
+    async register(email, password, userType = 'user') {
         debug(`Registering user with email: ${email}`);
 
         if (!validator.isEmail(email)) {
@@ -115,6 +116,7 @@ class AuthService {
         const user = await this.#userManager.registerUser({
             email,
             password,
+            userType,
         });
 
         // Create default session
@@ -287,6 +289,85 @@ class AuthService {
         });
 
         return context;
+    }
+
+    /**
+     * Update a user
+     * @param {string} userId - User ID to update
+     * @param {Object} userData - User data to update
+     * @param {Object} requestingUser - User making the request
+     * @returns {Promise<Object>} - Updated user
+     * @throws {Error} - If validation fails or permissions are insufficient
+     */
+    async updateUser(userId, userData, requestingUser) {
+        debug(`User ${requestingUser.email} attempting to update user ${userId}`);
+
+        // Check permissions
+        const isSelf = userId === requestingUser.id;
+        const isAdmin = requestingUser.isAdmin();
+
+        // Only admins can change userType
+        if (userData.userType !== undefined && !isAdmin) {
+            throw new Error('Only admins can change user types');
+        }
+
+        // Prevent admins from demoting themselves
+        if (isSelf && userData.userType === 'user' && isAdmin) {
+            throw new Error('Admins cannot demote themselves');
+        }
+
+        // Non-admins can only update their own account
+        if (!isAdmin && !isSelf) {
+            throw new Error('You can only update your own account');
+        }
+
+        // Update the user
+        const updatedUser = await this.#userManager.updateUser(userId, userData);
+
+        debug(`User ${updatedUser.email} updated by ${requestingUser.email}`);
+        return updatedUser;
+    }
+
+    /**
+     * Update user password
+     * @param {string} userId - User ID
+     * @param {string} currentPassword - Current password (required for non-admins)
+     * @param {string} newPassword - New password
+     * @param {Object} requestingUser - User making the request
+     * @returns {Promise<Object>} - Updated user
+     * @throws {Error} - If validation fails or permissions are insufficient
+     */
+    async updatePassword(userId, currentPassword, newPassword, requestingUser) {
+        debug(`User ${requestingUser.email} attempting to update password for user ${userId}`);
+
+        // Check permissions
+        const isSelf = userId === requestingUser.id;
+        const isAdmin = requestingUser.isAdmin();
+
+        // Non-admins can only update their own password
+        if (!isAdmin && !isSelf) {
+            throw new Error('You can only update your own password');
+        }
+
+        // Non-admins must provide current password
+        if (!isAdmin && isSelf && currentPassword) {
+            // Verify current password
+            const user = await this.#userManager.getUserById(userId);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            const isValid = await user.comparePassword(currentPassword);
+            if (!isValid) {
+                throw new Error('Current password is incorrect');
+            }
+        }
+
+        // Update the password
+        const updatedUser = await this.#userManager.updateUser(userId, { password: newPassword });
+
+        debug(`Password updated for user ${updatedUser.email}`);
+        return updatedUser;
     }
 }
 
