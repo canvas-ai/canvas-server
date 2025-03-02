@@ -15,7 +15,7 @@ import Url from './lib/Url.js';
 class ContextManager extends EventEmitter {
 
     #activeContexts = new Map();
-    #initialized = false;
+
     #workspaceManager;
     #sessionManager;
 
@@ -23,7 +23,6 @@ class ContextManager extends EventEmitter {
         super(); // EventEmitter
 
         debug('Initializing context manager');
-
         this.#workspaceManager = options.workspaceManager;
         this.#sessionManager = options.sessionManager;
 
@@ -34,23 +33,10 @@ class ContextManager extends EventEmitter {
         if (!this.#sessionManager) {
             throw new Error('SessionManager is required');
         }
+
+        debug('Context manager initialized');
     }
 
-    async initialize() {
-        if (this.#initialized) {
-            return;
-        }
-
-        debug('Initializing context manager');
-        this.#initialized = true;
-    }
-
-    /**
-     * Create a new context
-     * @param {string} url - Context URL
-     * @param {Object} options - Context options
-     * @returns {Promise<Context>} - Created context
-     */
     async createContext(url, options = {}) {
         debug(`Creating context: ${url}`);
 
@@ -140,57 +126,11 @@ class ContextManager extends EventEmitter {
     }
 
     /**
-     * Get a context by URL
-     * @param {string} url - Context URL
-     * @returns {Context} - Context instance
-     */
-    getContextByUrl(url) {
-        const parsedUrl = new Url(url);
-
-        for (const context of this.#activeContexts.values()) {
-            const contextParsedUrl = context.parsedUrl;
-
-            // Compare paths
-            if (contextParsedUrl.path === parsedUrl.path) {
-                // If both URLs have workspace IDs, compare them
-                if (contextParsedUrl.hasWorkspaceId && parsedUrl.hasWorkspaceId) {
-                    if (contextParsedUrl.workspaceId === parsedUrl.workspaceId) {
-                        // If both URLs have session IDs, compare them
-                        if (contextParsedUrl.hasSessionId && parsedUrl.hasSessionId) {
-                            if (contextParsedUrl.sessionId === parsedUrl.sessionId) {
-                                return context;
-                            }
-                        } else {
-                            // If one URL doesn't have a session ID, it's still a match
-                            return context;
-                        }
-                    }
-                } else if (!contextParsedUrl.hasWorkspaceId && !parsedUrl.hasWorkspaceId) {
-                    // If neither URL has a workspace ID, it's a match based on path
-                    return context;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * List all active contexts
      * @returns {Array<Context>} - Array of context instances
      */
     listContexts() {
         return Array.from(this.#activeContexts.values());
-    }
-
-    /**
-     * List contexts for a session
-     * @param {string} sessionId - Session ID
-     * @returns {Array<Context>} - Array of context instances
-     */
-    listSessionContexts(sessionId) {
-        return Array.from(this.#activeContexts.values())
-            .filter(context => context.session.id === sessionId);
     }
 
     /**
@@ -261,18 +201,6 @@ class ContextManager extends EventEmitter {
 
         // Return the updated context
         return context;
-    }
-
-    /**
-     * Clone a context to a different workspace
-     * @param {string} contextId - Context ID
-     * @param {string} workspaceId - Target workspace ID
-     * @returns {Promise<Context>} - New context in the target workspace
-     * @deprecated Use switchContextWorkspace instead
-     */
-    async cloneContextToWorkspace(contextId, workspaceId) {
-        debug(`cloneContextToWorkspace is deprecated, use switchContextWorkspace instead`);
-        return this.switchContextWorkspace(contextId, workspaceId);
     }
 }
 
