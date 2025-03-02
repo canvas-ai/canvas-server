@@ -3,7 +3,7 @@ import BaseModel from './Base.js';
 import bcrypt from 'bcryptjs';
 
 class User extends BaseModel {
-    static fillable = ['id', 'email', 'password', 'homePath'];
+    static fillable = ['id', 'email', 'password'];
     static hidden = [];
     static connections = ['sessions'];
     static modelName = 'user';
