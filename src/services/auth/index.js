@@ -268,7 +268,7 @@ class AuthService {
 
         // Get workspace
         const workspaceId = `${user.email}/${workspaceName}`;
-        const workspace = this.#workspaceManager.getWorkspace(workspaceId);
+        const workspace = this.#workspaceManager.getWorkspaceConfig(workspaceId);
 
         if (!workspace) {
             throw new Error(`Workspace "${workspaceName}" not found`);

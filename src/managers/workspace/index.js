@@ -416,7 +416,7 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} name - Workspace name
      * @returns {boolean} - True if workspace exists
      */
-    exists(name) {
+    hasWorkspace(name) {
         return this.#workspaceIndex.has(name);
     }
 
@@ -425,22 +425,37 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} name - Workspace name
      * @returns {boolean} - True if workspace exists on disk
      */
-    existsOnDisk(name) {
+    hasWorkspaceOnDisk(name) {
         const workspacePath = path.join(this.#rootPath, name);
         return existsSync(workspacePath);
     }
 
     /**
-     * Get workspace by name
+     * Get workspace configuration without initializing it
      * @param {string} name - Workspace name
-     * @returns {Workspace} - Workspace instance
+     * @returns {Workspace} - Workspace instance (not initialized)
      */
-    getWorkspace(name) {
+    getWorkspaceConfig(name) {
         if (!this.#workspaceIndex.has(name)) {
             throw new Error(`Workspace with name "${name}" not found`);
         }
 
         return this.#workspaceIndex.get(name);
+    }
+
+    /**
+     * Get workspace and automatically open it if not already initialized
+     * @param {string} name - Workspace name
+     * @returns {Promise<Workspace>} - Initialized workspace instance
+     */
+    async getWorkspace(name) {
+        // Check if workspace is already open
+        if (this.#openWorkspaces.has(name)) {
+            return this.#openWorkspaces.get(name);
+        }
+
+        // If not open, open it
+        return this.open(name);
     }
 
     /**

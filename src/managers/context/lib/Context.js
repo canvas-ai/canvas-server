@@ -25,7 +25,6 @@ class Context extends EventEmitter {
     // Workspace references
     #db; // workspace.db
     #tree; // workspace.tree
-    #treeLayers; // workspace.tree.layers
 
     // Bitmap arrays
     #systemBitmapArray = [];
@@ -41,7 +40,7 @@ class Context extends EventEmitter {
     // Context metadata
     #created;
     #updated;
-    #isLocked = false;
+    #isLocked;
 
     constructor(url, options) {
         super();
@@ -50,22 +49,26 @@ class Context extends EventEmitter {
         this.#id = options.id || uuidv4();
         this.#name = options.name || this.#id;
         this.#baseUrl = options.baseUrl || false;
+        this.#isLocked = options.locked || false;
 
         // Manager module references
         this.#device = options.device;
         this.#user = options.user;
         this.#workspace = options.workspace;
 
-        // Workspace references
+        // In-Workspace references
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
-        this.#treeLayers = this.#workspace.tree.layers;
 
         // Context metadata
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
 
+        // Set URL
+        this.setUrl(url);
+
         debug(`Context ${this.#id} created at ${url}, base URL: ${this.#baseUrl}`);
+        this.emit('created', this.toJSON());
     }
 
     // Getters
@@ -81,15 +84,39 @@ class Context extends EventEmitter {
     get app() { return this.#device.app; }
     get user() { return this.#user; }
     get identity() { return this.#user.identity; }
-    get tree() { return this.#workspace.tree.toJSON(); } // Legacy
+    get tree() { return this.#tree.toJSON(); } // Legacy
 
     /**
      * Context API
      */
 
     setUrl(url) {
+        if (this.#isLocked) {
+            throw new Error('Context is locked');
+        }
+
         this.#url = url;
         this.#urlPath = new Url(url).path;
+        this.emit('change:url', url);
+    }
+
+    setBaseUrl(baseUrl) {
+        if (this.#isLocked) {
+            throw new Error('Context is locked');
+        }
+
+        this.#baseUrl = baseUrl;
+        this.setUrl(baseUrl);
+    }
+
+    lock() {
+        this.#isLocked = true;
+        this.emit('lock', this.#id);
+    }
+
+    unlock() {
+        this.#isLocked = false;
+        this.emit('unlock', this.#id);
     }
 
     /**
@@ -112,7 +139,9 @@ class Context extends EventEmitter {
         }
 
         // Filters are out of scope for now
-        return this.#db.listDocuments(featureArray, filterArray, options);
+        const documents = this.#db.listDocuments(featureArray, filterArray, options);
+        this.emit('documents:list', documents.length);
+        return documents;
     }
 
     insertDocument(document, featureArray = []) {
@@ -132,7 +161,9 @@ class Context extends EventEmitter {
         ];
 
         // Insert the document
-        return this.#db.insertDocument(document, featureArray, options); // not sure if its a good practice to allow passing options here
+        const result = this.#db.insertDocument(document, featureArray);
+        this.emit('document:insert', document.id || result.id);
+        return result;
     }
 
     insertDocuments(documentArray, featureArray = [], options = {}) {
@@ -152,7 +183,9 @@ class Context extends EventEmitter {
         ];
 
         // Insert the documents
-        return this.#db.insertDocuments(documentArray, featureArray, options);
+        const result = this.#db.insertDocuments(documentArray, featureArray, options);
+        this.emit('documents:insert', documentArray.length);
+        return result;
     }
 
     updateDocument(document, featureArray = []) {
@@ -172,7 +205,9 @@ class Context extends EventEmitter {
         ];
 
         // Update the document
-        return this.#db.updateDocument(document, featureArray, options);
+        const result = this.#db.updateDocument(document, featureArray);
+        this.emit('document:update', document.id);
+        return result;
     }
 
     updateDocuments(documentArray, featureArray = [], options = {}) {
@@ -185,7 +220,9 @@ class Context extends EventEmitter {
         }
 
         // Update the documents
-        return this.#db.updateDocuments(documentArray, featureArray, options);
+        const result = this.#db.updateDocuments(documentArray, featureArray, options);
+        this.emit('documents:update', documentArray.length);
+        return result;
     }
 
     removeDocument(documentId, options = {}) {
@@ -194,7 +231,9 @@ class Context extends EventEmitter {
         }
 
         // We remove document from the current context not from the database
-        return this.#db.removeDocument(documentId, featureArray, options);
+        const result = this.#db.removeDocument(documentId, this.#featureBitmapArray, options);
+        this.emit('document:remove', documentId);
+        return result;
     }
 
     removeDocuments(documentIdArray, featureArray = [], options = {}) {
@@ -207,7 +246,9 @@ class Context extends EventEmitter {
         }
 
         // We remove documents from the current context not from the database
-        return this.#db.removeDocuments(documentIdArray, featureArray, options);
+        const result = this.#db.removeDocuments(documentIdArray, featureArray, options);
+        this.emit('documents:remove', documentIdArray.length);
+        return result;
     }
 
     deleteDocument(documentId) {
@@ -216,7 +257,9 @@ class Context extends EventEmitter {
         }
 
         // Completely delete the document from the database
-        return this.#db.deleteDocument(documentId);
+        const result = this.#db.deleteDocument(documentId);
+        this.emit('document:delete', documentId);
+        return result;
     }
 
     deleteDocuments(documentIdArray, featureArray = [], options = {}) {
@@ -229,24 +272,45 @@ class Context extends EventEmitter {
         }
 
         // Completely delete the documents from the database
-        return this.#db.deleteDocuments(documentIdArray, featureArray, options);
+        const result = this.#db.deleteDocuments(documentIdArray, featureArray, options);
+        this.emit('documents:delete', documentIdArray.length);
+        return result;
     }
 
     /**
      * Document Feature API
      */
 
-    addDocumentFeature(feature) { }
-    removeDocumentFeature(feature) { }
-    listDocumentFeatures() { }
-    hasDocumentFeature(feature) { }
+    addDocumentFeature(feature) {
+        // Implementation needed
+        this.emit('feature:add', feature);
+    }
+
+    removeDocumentFeature(feature) {
+        // Implementation needed
+        this.emit('feature:remove', feature);
+    }
+
+    listDocumentFeatures() {
+        // Implementation needed
+        const features = []; // Placeholder for actual implementation
+        this.emit('features:list', features.length);
+        return features;
+    }
+
+    hasDocumentFeature(feature) {
+        // Implementation needed
+        const hasFeature = false; // Placeholder for actual implementation
+        this.emit('feature:check', { feature, exists: hasFeature });
+        return hasFeature;
+    }
 
     /**
      * Utils
      */
 
     toJSON() {
-        return {
+        const json = {
             id: this.#id,
             name: this.#name,
             url: this.#url,
@@ -254,6 +318,29 @@ class Context extends EventEmitter {
             created: this.#created,
             updated: this.#updated,
         };
+        this.emit('json', json);
+        return json;
+    }
+
+    /**
+     * Cleanup and destroy the context
+     * @returns {Promise<void>}
+     */
+    async destroy() {
+        // Perform any cleanup needed
+        this.#isLocked = true;
+
+        // Clear references
+        this.#db = null;
+        this.#tree = null;
+
+        // Emit destroy event
+        this.emit('destroyed', this.#id);
+
+        // Remove all listeners
+        this.removeAllListeners();
+
+        return Promise.resolve();
     }
 
 }
