@@ -50,7 +50,7 @@ class ContextManager extends EventEmitter {
         // Create the context
         const context = new Context(url, {
             ...options,
-            workspace,
+            workspace: workspace,
             workspaceManager: this.#workspaceManager // Inject the workspace manager
         });
 

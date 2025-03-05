@@ -260,6 +260,22 @@ class Context extends EventEmitter {
      * Document API
      */
 
+    getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        // This may be subject to change, if featureArray is empty, we'll use the context-wide feature array
+        if (featureArray.length === 0) {
+            featureArray = this.#featureBitmapArray;
+        }
+
+        // Filters are out of scope for now
+        const document = this.#db.getDocument(documentId, this.#contextBitmapArray, featureArray, filterArray, options);
+        this.emit('document:get', document.id);
+        return document;
+    }
+
     listDocuments(featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');

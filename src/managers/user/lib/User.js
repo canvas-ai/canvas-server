@@ -18,6 +18,7 @@ class User extends EventEmitter {
     #contexts = new Map();
     #devices = new Map();
     #roles = new Map();
+    #timeline;
 
     constructor(options = {}) {
         super();
