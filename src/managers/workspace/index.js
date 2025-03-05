@@ -254,25 +254,28 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Open a workspace (initialize database and resources)
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {Promise<Workspace>} - Opened workspace
      * @throws {Error} If workspace opening fails
      */
-    async openWorkspace(name) {
-        debug(`Opening workspace: ${name}`);
+    async openWorkspace(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Opening workspace: ${workspacePath}`);
 
         // Check if workspace is already open
-        if (this.#openWorkspaces.has(name)) {
-            debug(`Workspace ${name} is already open`);
-            return this.#openWorkspaces.get(name);
+        if (this.#openWorkspaces.has(workspacePath)) {
+            debug(`Workspace ${workspacePath} is already open`);
+            return this.#openWorkspaces.get(workspacePath);
         }
 
         // Load the workspace if not already loaded
         let workspace;
-        if (!this.#workspaceIndex.has(name)) {
-            workspace = await this.loadWorkspace(name);
+        if (!this.#workspaceIndex.has(workspacePath)) {
+            workspace = await this.loadWorkspace(workspacePath);
         } else {
-            workspace = this.#workspaceIndex.get(name);
+            workspace = this.#workspaceIndex.get(workspacePath);
         }
 
         // Initialize the workspace
@@ -280,14 +283,14 @@ class WorkspaceManager extends EventEmitter {
             await workspace.initialize();
 
             // Add to open workspaces
-            this.#openWorkspaces.set(name, workspace);
+            this.#openWorkspaces.set(workspacePath, workspace);
 
             this.emit('workspace:opened', workspace.name);
-            debug(`Workspace ${name} opened successfully`);
+            debug(`Workspace ${workspacePath} opened successfully`);
 
             return workspace;
         } catch (err) {
-            const error = new Error(`Failed to open workspace "${name}": ${err.message}`);
+            const error = new Error(`Failed to open workspace "${workspacePath}": ${err.message}`);
             debug(error.message);
             throw error;
         }
@@ -295,29 +298,32 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Close a workspace (shutdown database and resources)
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {Promise<boolean>} - True if workspace was closed
      */
-    async closeWorkspace(name) {
-        debug(`Closing workspace: ${name}`);
+    async closeWorkspace(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Closing workspace: ${workspacePath}`);
 
-        if (!this.#openWorkspaces.has(name)) {
-            debug(`Workspace ${name} is not open`);
+        if (!this.#openWorkspaces.has(workspacePath)) {
+            debug(`Workspace ${workspacePath} is not open`);
             return false;
         }
 
-        const workspace = this.#openWorkspaces.get(name);
+        const workspace = this.#openWorkspaces.get(workspacePath);
 
         try {
             await workspace.shutdown();
-            this.#openWorkspaces.delete(name);
+            this.#openWorkspaces.delete(workspacePath);
 
-            this.emit('workspace:closed', name);
-            debug(`Workspace ${name} closed successfully`);
+            this.emit('workspace:closed', workspace.name);
+            debug(`Workspace ${workspacePath} closed successfully`);
 
             return true;
         } catch (err) {
-            const error = new Error(`Failed to close workspace "${name}": ${err.message}`);
+            const error = new Error(`Failed to close workspace "${workspacePath}": ${err.message}`);
             debug(error.message);
             throw error;
         }
@@ -325,40 +331,46 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Remove a workspace from the index (but not from disk)
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {Promise<boolean>} - True if workspace was removed
      */
-    async removeWorkspace(name) {
-        debug(`Removing workspace ${name} from index`);
+    async removeWorkspace(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Removing workspace ${workspacePath} from index`);
 
-        if (!this.#workspaceIndex.has(name)) {
-            debug(`Workspace ${name} is not in the index`);
+        if (!this.#workspaceIndex.has(workspacePath)) {
+            debug(`Workspace ${workspacePath} is not in the index`);
             return false;
         }
 
         // Close the workspace if it's open
-        if (this.#openWorkspaces.has(name)) {
-            await this.closeWorkspace(name);
+        if (this.#openWorkspaces.has(workspacePath)) {
+            await this.closeWorkspace(userID, workspaceID);
         }
 
         // Remove from index
-        this.#workspaceIndex.delete(name);
+        this.#workspaceIndex.delete(workspacePath);
 
-        this.emit('workspace:removed', name);
-        debug(`Workspace ${name} removed from index`);
+        this.emit('workspace:removed', workspacePath);
+        debug(`Workspace ${workspacePath} removed from index`);
 
         return true;
     }
 
     /**
      * Delete a workspace (remove from index and delete from disk)
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @param {Object} options - Delete options
      * @param {boolean} options.confirm - Confirmation flag (required)
      * @returns {Promise<boolean>} - True if workspace was deleted
      */
-    async deleteWorkspace(name, options = {}) {
-        debug(`Deleting workspace: ${name}`);
+    async deleteWorkspace(userID, workspaceID, options = {}) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Deleting workspace: ${workspacePath}`);
 
         // Require confirmation to prevent accidental deletion
         if (!options.confirm) {
@@ -366,37 +378,34 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // Check if workspace exists
-        if (!this.#workspaceIndex.has(name)) {
+        if (!this.#workspaceIndex.has(workspacePath)) {
             // Try to load it first
             try {
-                await this.loadWorkspace(name);
+                await this.loadWorkspace(workspacePath);
             } catch (err) {
-                debug(`Workspace ${name} not found, cannot delete`);
+                debug(`Workspace ${workspacePath} not found, cannot delete`);
                 return false;
             }
         }
 
         // Close the workspace if it's open
-        if (this.#openWorkspaces.has(name)) {
-            await this.closeWorkspace(name);
+        if (this.#openWorkspaces.has(workspacePath)) {
+            await this.closeWorkspace(userID, workspaceID);
         }
-
-        // Get workspace path
-        const workspacePath = path.join(this.#rootPath, name);
 
         try {
             // Delete workspace directory
             await fsPromises.rm(workspacePath, { recursive: true, force: true });
 
             // Remove from index
-            this.#workspaceIndex.delete(name);
+            this.#workspaceIndex.delete(workspacePath);
 
-            this.emit('workspace:deleted', name);
-            debug(`Workspace ${name} deleted successfully`);
+            this.emit('workspace:deleted', workspacePath);
+            debug(`Workspace ${workspacePath} deleted successfully`);
 
             return true;
         } catch (err) {
-            const error = new Error(`Failed to delete workspace "${name}": ${err.message}`);
+            const error = new Error(`Failed to delete workspace "${workspacePath}": ${err.message}`);
             debug(error.message);
             throw error;
         }
@@ -404,74 +413,135 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Check if a workspace is open
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {boolean} - True if workspace is open
      */
-    isOpen(name) {
-        return this.#openWorkspaces.has(name);
+    isOpen(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        return this.#openWorkspaces.has(workspacePath);
     }
 
     /**
      * Check if a workspace exists in the index
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {boolean} - True if workspace exists
      */
-    hasWorkspace(name) {
-        return this.#workspaceIndex.has(name);
+    hasWorkspace(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        return this.#workspaceIndex.has(workspacePath);
     }
 
     /**
      * Check if a workspace exists on disk
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {boolean} - True if workspace exists on disk
      */
-    hasWorkspaceOnDisk(name) {
-        const workspacePath = path.join(this.#rootPath, name);
+    hasWorkspaceOnDisk(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
         return existsSync(workspacePath);
     }
 
     /**
      * Get workspace configuration without initializing it
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {Workspace} - Workspace instance (not initialized)
      */
-    getWorkspaceConfig(name) {
-        if (!this.#workspaceIndex.has(name)) {
-            throw new Error(`Workspace with name "${name}" not found`);
+    getWorkspaceConfig(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        if (!this.#workspaceIndex.has(workspacePath)) {
+            throw new Error(`Workspace with name "${workspacePath}" not found`);
         }
 
-        return this.#workspaceIndex.get(name);
+        return this.#workspaceIndex.get(workspacePath);
     }
 
     /**
      * Get workspace and automatically open it if not already initialized
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID
+     * @param {string} workspaceID - Workspace ID
      * @returns {Promise<Workspace>} - Initialized workspace instance
      */
-    async getWorkspace(name) {
+    async getWorkspace(userID, workspaceID) {
         // Check if workspace is already open
-        if (this.#openWorkspaces.has(name)) {
-            return this.#openWorkspaces.get(name);
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        if (this.#openWorkspaces.has(workspacePath)) {
+            return this.#openWorkspaces.get(workspacePath);
         }
 
         // If not open, open it
-        return this.openWorkspace(name);
+        return this.openWorkspace(userID, workspaceID);
     }
 
     /**
-     * List all workspaces
+     * List all workspaces for a specific user
+     * @param {string} userID - User ID (email)
      * @returns {Array<Workspace>} - Array of workspace instances
      */
-    listWorkspaces() {
-        return Array.from(this.#workspaceIndex.values());
+    listWorkspaces(userID) {
+        if (!userID) {
+            return Array.from(this.#workspaceIndex.values());
+        }
+
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        return Array.from(this.#workspaceIndex.values())
+            .filter(workspace => workspace.path.startsWith(userPath));
     }
 
     /**
-     * List all open workspaces
+     * List all open workspaces for a specific user
+     * @param {string} userID - User ID (email)
      * @returns {Array<Workspace>} - Array of open workspace instances
      */
-    listOpenWorkspaces() {
-        return Array.from(this.#openWorkspaces.values());
+    listOpenWorkspaces(userID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        return Array.from(this.#openWorkspaces.values())
+            .filter(workspace => workspace.path.startsWith(userPath));
+    }
+
+    /**
+     * Scan for existing workspaces across all users
+     * @private
+     */
+    async #scanWorkspaces() {
+        debug(`Scanning ${this.#rootPath} for workspaces`);
+
+        try {
+            const multiversePath = path.join(this.#rootPath, 'multiverse');
+            if (!existsSync(multiversePath)) {
+                debug('Multiverse directory does not exist yet, no workspaces to scan');
+                return;
+            }
+
+            // Scan user directories
+            const userDirs = await fsPromises.readdir(multiversePath, { withFileTypes: true });
+            debug(`Found ${userDirs.filter(dir => dir.isDirectory()).length} user directories`);
+
+            for (const userDir of userDirs.filter(dir => dir.isDirectory())) {
+                const userPath = path.join(multiversePath, userDir.name);
+                const workspaceDirs = await fsPromises.readdir(userPath, { withFileTypes: true });
+
+                for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
+                    const workspacePath = path.join(userPath, workspaceDir.name);
+                    try {
+                        // Load the workspace (but don't open it)
+                        await this.loadWorkspace(workspacePath);
+                    } catch (err) {
+                        debug(`Error loading workspace ${workspacePath}: ${err.message}`);
+                    }
+                }
+            }
+        } catch (err) {
+            debug(`Error scanning workspaces: ${err.message}`);
+        }
     }
 
     /**
@@ -503,35 +573,6 @@ class WorkspaceManager extends EventEmitter {
         } catch (err) {
             debug(`Error ensuring directory ${dirPath}: ${err.message}`);
             throw err;
-        }
-    }
-
-    async #scanWorkspaces() {
-        debug(`Scanning ${this.#rootPath} for workspaces`);
-
-        try {
-            // Get all workspace directories directly from rootPath
-            if (!existsSync(this.#rootPath)) {
-                debug('Workspace root directory does not exist yet, no workspaces to scan');
-                return; // No workspaces to scan yet
-            }
-
-            // Get all workspace directories
-            const workspaceDirs = await fsPromises.readdir(this.#rootPath, { withFileTypes: true });
-            debug(`Found ${workspaceDirs.filter(dir => dir.isDirectory()).length} workspace directories`);
-
-            for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
-                const workspaceName = workspaceDir.name;
-
-                try {
-                    // Load the workspace (but don't open it)
-                    await this.loadWorkspace(workspaceName);
-                } catch (err) {
-                    debug(`Error loading workspace ${workspaceName}: ${err.message}`);
-                }
-            }
-        } catch (err) {
-            debug(`Error scanning workspaces: ${err.message}`);
         }
     }
 

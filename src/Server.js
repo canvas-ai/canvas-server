@@ -27,6 +27,7 @@ const { productName, version, description, license } = pkg;
 import WorkspaceManager from '@/managers/workspace/index.js';
 import UserManager from '@/managers/user/index.js';
 import SessionManager from '@/managers/session/index.js';
+import ContextManager from '@/managers/context/index.js';
 
 // Services
 import AuthService from '@/services/auth/index.js';
@@ -52,6 +53,7 @@ class Server extends EventEmitter {
     #workspaceManager;
     #userManager;
     #sessionManager;
+    #contextManager;
 
     /**
      * Create a new Canvas Server instance
@@ -74,6 +76,7 @@ class Server extends EventEmitter {
     get workspaceManager() { return this.#workspaceManager; }
     get userManager() { return this.#userManager; }
     get sessionManager() { return this.#sessionManager; }
+    get contextManager() { return this.#contextManager; }
 
     // Service getters
     get services() { return this.#services; }
@@ -213,10 +216,17 @@ class Server extends EventEmitter {
             this.#userManager = new UserManager();
             debug('User manager initialized');
 
-            // Initialize session manager (now using singleton)
+            // Initialize session manager
             this.#sessionManager = SessionManager();
             await this.#sessionManager.initialize();
             debug('Session manager initialized');
+
+            // Initialize the context manager with dependencies
+            this.#contextManager = new ContextManager({
+                workspaceManager: this.#workspaceManager,
+                sessionManager: this.#sessionManager
+            });
+            debug('Context manager initialized');
 
             debug('Core managers initialized');
             logger.info('Core managers initialized');

@@ -29,22 +29,19 @@ class ContextManager extends EventEmitter {
         debug('Context manager initialized');
     }
 
-    async createContext(url, options = {}) {
-        // Parse the URL
+    async createContext(userID, url, options = {}) {
         const parsed = new Url(url);
-        debug(`Creating context with URL: ${parsed.url}, options: ${JSON.stringify(options, null, 2)}`);
+        debug(`Creating context for user ${userID} with URL: ${parsed.url}`);
 
         if (!parsed.workspaceID) {
-            parsed.workspaceID = 'universe'; // Default to universe if no workspace ID is provided
+            parsed.workspaceID = 'universe';
         }
 
-        debug(`Setting workspace to ${parsed.workspaceID}, checking if workspace exists..`);
-        if (!this.#workspaceManager.hasWorkspace(parsed.workspaceID)) {
+        if (!this.#workspaceManager.hasWorkspace(userID, parsed.workspaceID)) {
             throw new Error(`Workspace not found: ${parsed.workspaceID}`);
         }
 
-        // Open the workspace
-        const workspace = await this.#workspaceManager.openWorkspace(parsed.workspaceID);
+        const workspace = await this.#workspaceManager.openWorkspace(userID, parsed.workspaceID);
         debug(`Opened workspace: ${workspace.name}`);
 
         // Create the context
