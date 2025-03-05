@@ -7,34 +7,61 @@ import { v4 as uuidv4 } from 'uuid';
 // Includes
 import Session from '@/prisma/models/Session.js';
 
+// Environment
+import env from '@/env.js';
+
 /**
  * Session Manager
  * Handles user sessions and authentication
+ * Implemented as a singleton
  */
+
+// Singleton instance
+let instance = null;
 
 class SessionManager extends EventEmitter {
 
     #sessions = new Map();
     #config;
-    #db;
+    #initialized = false;
+
+    /**
+     * Get the singleton instance
+     * @param {Object} config - Configuration options
+     * @returns {SessionManager} Singleton instance
+     */
+    static getInstance(config = {}) {
+        if (!instance) {
+            instance = new SessionManager(config);
+        }
+        return instance;
+    }
 
     constructor(config = {}) {
         super();
-        this.#config = config;
+        this.#config = {
+            sessionTimeout: 24 * 60 * 60 * 1000, // Default 24 hours
+            ...config
+        };
         debug('Session Manager initialized');
     }
 
     /**
-     * Initialize with external dependencies
-     * @param {Object} dependencies - External dependencies
+     * Initialize the session manager
+     * @returns {Promise<void>}
      */
-    initialize(dependencies) {
-        const { db } = dependencies;
-        this.#db = db;
-        debug('Session Manager dependencies initialized');
+    async initialize() {
+        if (this.#initialized) {
+            return;
+        }
 
-        // Load active sessions from database if available
-        this.#loadActiveSessions();
+        debug('Initializing session manager');
+
+        // Load active sessions from database
+        await this.#loadActiveSessions();
+
+        this.#initialized = true;
+        debug('Session manager initialized');
     }
 
     /**
@@ -42,10 +69,8 @@ class SessionManager extends EventEmitter {
      * @private
      */
     async #loadActiveSessions() {
-        if (!this.#db) return;
-
         try {
-            const activeSessions = await Session.findActive();
+            const activeSessions = await Session.findMany({ isActive: true });
 
             if (activeSessions && activeSessions.length > 0) {
                 activeSessions.forEach(session => {
@@ -62,173 +87,195 @@ class SessionManager extends EventEmitter {
      * Create a new session for a user
      * @param {String} userId - User ID
      * @param {Object} metadata - Session metadata (device, app, etc.)
-     * @returns {Object} Session object
+     * @returns {Promise<Object>} Session object
      */
     async createSession(userId, metadata = {}) {
         const sessionId = uuidv4();
-        const session = {
+        const sessionData = {
             id: sessionId,
             userId,
-            metadata,
+            metadata: JSON.stringify(metadata),
             createdAt: new Date(),
             lastActiveAt: new Date(),
             isActive: true
         };
 
-        this.#sessions.set(sessionId, session);
-        debug(`Session created for user ${userId}`, { sessionId });
+        try {
+            // Create session in database
+            const session = await Session.create(sessionData);
 
-        // Save to database if available
-        if (this.#db) {
-            try {
-                await Session.create(session);
-                debug(`Session saved to database: ${sessionId}`);
-            } catch (error) {
-                debug(`Error saving session to database: ${error.message}`);
-            }
+            // Add to in-memory cache
+            this.#sessions.set(sessionId, session);
+
+            debug(`Session created for user ${userId}`, { sessionId });
+            this.emit('session:created', session);
+
+            return session;
+        } catch (error) {
+            debug(`Error creating session: ${error.message}`);
+            throw error;
         }
-
-        this.emit('session:created', session);
-        return session;
     }
 
     /**
      * Get a session by ID
      * @param {String} sessionId - Session ID
-     * @returns {Object|null} Session object or null if not found
+     * @returns {Promise<Object|null>} Session object or null if not found
      */
-    getSession(sessionId) {
-        return this.#sessions.get(sessionId) || null;
+    async getSession(sessionId) {
+        // Check cache first
+        if (this.#sessions.has(sessionId)) {
+            return this.#sessions.get(sessionId);
+        }
+
+        // Try to fetch from database
+        try {
+            const session = await Session.findById(sessionId);
+            if (session && session.isActive) {
+                this.#sessions.set(sessionId, session);
+                return session;
+            }
+        } catch (error) {
+            debug(`Error fetching session ${sessionId}: ${error.message}`);
+        }
+
+        return null;
     }
 
     /**
      * Get all sessions for a user
      * @param {String} userId - User ID
-     * @returns {Array} Array of session objects
+     * @returns {Promise<Array>} Array of session objects
      */
-    getUserSessions(userId) {
-        const userSessions = [];
+    async getUserSessions(userId) {
+        try {
+            const sessions = await Session.findByUserId(userId);
 
-        for (const session of this.#sessions.values()) {
-            if (session.userId === userId) {
-                userSessions.push(session);
-            }
+            // Update cache with any active sessions
+            sessions.forEach(session => {
+                if (session.isActive) {
+                    this.#sessions.set(session.id, session);
+                }
+            });
+
+            return sessions;
+        } catch (error) {
+            debug(`Error fetching sessions for user ${userId}: ${error.message}`);
+            return [];
         }
-
-        return userSessions;
     }
 
     /**
      * Update session last active time
      * @param {String} sessionId - Session ID
-     * @returns {Boolean} Success status
+     * @returns {Promise<Boolean>} Success status
      */
-    touchSession(sessionId) {
-        const session = this.#sessions.get(sessionId);
-        if (!session) return false;
+    async touchSession(sessionId) {
+        try {
+            const session = await this.getSession(sessionId);
+            if (!session) return false;
 
-        session.lastActiveAt = new Date();
+            const lastActiveAt = new Date();
 
-        // Update in database if available
-        if (this.#db) {
-            try {
-                Session.update(sessionId, { lastActiveAt: session.lastActiveAt });
-                debug(`Session updated in database: ${sessionId}`);
-            } catch (error) {
-                debug(`Error updating session in database: ${error.message}`);
-            }
+            // Update in database
+            await Session.update(sessionId, { lastActiveAt });
+
+            // Update in cache
+            session.lastActiveAt = lastActiveAt;
+
+            return true;
+        } catch (error) {
+            debug(`Error updating session ${sessionId}: ${error.message}`);
+            return false;
         }
-
-        return true;
     }
 
     /**
      * End a session
      * @param {String} sessionId - Session ID
-     * @returns {Boolean} Success status
+     * @returns {Promise<Boolean>} Success status
      */
     async endSession(sessionId) {
-        const session = this.#sessions.get(sessionId);
-        if (!session) return false;
+        try {
+            const session = await this.getSession(sessionId);
+            if (!session) return false;
 
-        session.isActive = false;
-        session.endedAt = new Date();
+            const endedAt = new Date();
 
-        // Update in database if available
-        if (this.#db) {
-            try {
-                await Session.update(sessionId, {
-                    isActive: false,
-                    endedAt: session.endedAt
-                });
-                debug(`Session ended in database: ${sessionId}`);
-            } catch (error) {
-                debug(`Error ending session in database: ${error.message}`);
-            }
+            // Update in database
+            await Session.update(sessionId, {
+                isActive: false,
+                endedAt
+            });
+
+            // Remove from cache
+            this.#sessions.delete(sessionId);
+
+            debug(`Session ended for user ${session.userId}`, { sessionId });
+            this.emit('session:ended', session);
+
+            return true;
+        } catch (error) {
+            debug(`Error ending session ${sessionId}: ${error.message}`);
+            return false;
         }
-
-        // Remove from active sessions map
-        this.#sessions.delete(sessionId);
-
-        debug(`Session ended for user ${session.userId}`, { sessionId });
-        this.emit('session:ended', session);
-
-        return true;
     }
 
     /**
      * End all sessions for a user
      * @param {String} userId - User ID
-     * @returns {Number} Number of sessions ended
+     * @returns {Promise<Number>} Number of sessions ended
      */
     async endUserSessions(userId) {
-        let count = 0;
-        const sessionIds = [];
+        try {
+            const sessions = await this.getUserSessions(userId);
+            let count = 0;
 
-        for (const [sessionId, session] of this.#sessions.entries()) {
-            if (session.userId === userId) {
-                sessionIds.push(sessionId);
+            for (const session of sessions) {
+                if (session.isActive) {
+                    await this.endSession(session.id);
+                    count++;
+                }
             }
-        }
 
-        // End each session
-        for (const sessionId of sessionIds) {
-            await this.endSession(sessionId);
-            count++;
+            debug(`Ended ${count} sessions for user ${userId}`);
+            return count;
+        } catch (error) {
+            debug(`Error ending sessions for user ${userId}: ${error.message}`);
+            return 0;
         }
-
-        debug(`Ended ${count} sessions for user ${userId}`);
-        return count;
     }
 
     /**
      * Clean up expired sessions
-     * @returns {Number} Number of sessions cleaned up
+     * @returns {Promise<Number>} Number of sessions cleaned up
      */
     async cleanupExpiredSessions() {
         const now = new Date();
+        const sessionTimeout = this.#config.sessionTimeout;
         let count = 0;
-        const expiredSessionIds = [];
 
-        // Find expired sessions
-        for (const [sessionId, session] of this.#sessions.entries()) {
-            const lastActive = new Date(session.lastActiveAt);
-            const sessionTimeout = this.#config.sessionTimeout || 24 * 60 * 60 * 1000; // Default 24 hours
+        try {
+            // Find all active sessions
+            const activeSessions = await Session.findMany({ isActive: true });
 
-            if (now - lastActive > sessionTimeout) {
-                expiredSessionIds.push(sessionId);
+            for (const session of activeSessions) {
+                const lastActive = new Date(session.lastActiveAt);
+
+                if (now - lastActive > sessionTimeout) {
+                    await this.endSession(session.id);
+                    count++;
+                }
             }
-        }
 
-        // End each expired session
-        for (const sessionId of expiredSessionIds) {
-            await this.endSession(sessionId);
-            count++;
+            debug(`Cleaned up ${count} expired sessions`);
+            return count;
+        } catch (error) {
+            debug(`Error cleaning up expired sessions: ${error.message}`);
+            return 0;
         }
-
-        debug(`Cleaned up ${count} expired sessions`);
-        return count;
     }
 }
 
-export default SessionManager;
+// Export the singleton getter
+export default SessionManager.getInstance;

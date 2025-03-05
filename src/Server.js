@@ -213,15 +213,10 @@ class Server extends EventEmitter {
             this.#userManager = new UserManager();
             debug('User manager initialized');
 
-            // Initialize session manager
-            this.#sessionManager = new SessionManager();
+            // Initialize session manager (now using singleton)
+            this.#sessionManager = SessionManager();
+            await this.#sessionManager.initialize();
             debug('Session manager initialized');
-
-            // Initialize dependencies between managers
-            this.#sessionManager.initialize({
-                userManager: this.#userManager,
-                db: null // We'll add database support later
-            });
 
             debug('Core managers initialized');
             logger.info('Core managers initialized');

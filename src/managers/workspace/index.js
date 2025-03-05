@@ -179,7 +179,7 @@ class WorkspaceManager extends EventEmitter {
             // Add to tracked workspaces - use just the name as the ID
             this.#workspaceIndex.set(name, workspace);
 
-            this.emit('workspace:created', workspace);
+            this.emit('workspace:created', workspace.name);
             debug(`Workspace ${name} created successfully`);
 
             return workspace;
@@ -196,7 +196,7 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} - Loaded workspace
      * @throws {Error} If workspace loading fails
      */
-    async load(name) {
+    async loadWorkspace(name) {
         debug(`Loading workspace: ${name}`);
 
         // Check if workspace is already loaded
@@ -243,7 +243,7 @@ class WorkspaceManager extends EventEmitter {
             this.#workspaceIndex.set(name, workspace);
             debug(`Loaded workspace ${name} from ${workspacePath}`);
 
-            this.emit('workspace:loaded', workspace);
+            this.emit('workspace:loaded', workspace.name);
             return workspace;
         } catch (err) {
             const error = new Error(`Failed to load workspace "${name}": ${err.message}`);
@@ -258,7 +258,7 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} - Opened workspace
      * @throws {Error} If workspace opening fails
      */
-    async open(name) {
+    async openWorkspace(name) {
         debug(`Opening workspace: ${name}`);
 
         // Check if workspace is already open
@@ -270,7 +270,7 @@ class WorkspaceManager extends EventEmitter {
         // Load the workspace if not already loaded
         let workspace;
         if (!this.#workspaceIndex.has(name)) {
-            workspace = await this.load(name);
+            workspace = await this.loadWorkspace(name);
         } else {
             workspace = this.#workspaceIndex.get(name);
         }
@@ -282,7 +282,7 @@ class WorkspaceManager extends EventEmitter {
             // Add to open workspaces
             this.#openWorkspaces.set(name, workspace);
 
-            this.emit('workspace:opened', workspace);
+            this.emit('workspace:opened', workspace.name);
             debug(`Workspace ${name} opened successfully`);
 
             return workspace;
@@ -298,7 +298,7 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} name - Workspace name
      * @returns {Promise<boolean>} - True if workspace was closed
      */
-    async close(name) {
+    async closeWorkspace(name) {
         debug(`Closing workspace: ${name}`);
 
         if (!this.#openWorkspaces.has(name)) {
@@ -328,7 +328,7 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} name - Workspace name
      * @returns {Promise<boolean>} - True if workspace was removed
      */
-    async remove(name) {
+    async removeWorkspace(name) {
         debug(`Removing workspace ${name} from index`);
 
         if (!this.#workspaceIndex.has(name)) {
@@ -338,7 +338,7 @@ class WorkspaceManager extends EventEmitter {
 
         // Close the workspace if it's open
         if (this.#openWorkspaces.has(name)) {
-            await this.close(name);
+            await this.closeWorkspace(name);
         }
 
         // Remove from index
@@ -357,7 +357,7 @@ class WorkspaceManager extends EventEmitter {
      * @param {boolean} options.confirm - Confirmation flag (required)
      * @returns {Promise<boolean>} - True if workspace was deleted
      */
-    async delete(name, options = {}) {
+    async deleteWorkspace(name, options = {}) {
         debug(`Deleting workspace: ${name}`);
 
         // Require confirmation to prevent accidental deletion
@@ -369,7 +369,7 @@ class WorkspaceManager extends EventEmitter {
         if (!this.#workspaceIndex.has(name)) {
             // Try to load it first
             try {
-                await this.load(name);
+                await this.loadWorkspace(name);
             } catch (err) {
                 debug(`Workspace ${name} not found, cannot delete`);
                 return false;
@@ -378,7 +378,7 @@ class WorkspaceManager extends EventEmitter {
 
         // Close the workspace if it's open
         if (this.#openWorkspaces.has(name)) {
-            await this.close(name);
+            await this.closeWorkspace(name);
         }
 
         // Get workspace path
@@ -455,7 +455,7 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // If not open, open it
-        return this.open(name);
+        return this.openWorkspace(name);
     }
 
     /**
@@ -472,16 +472,6 @@ class WorkspaceManager extends EventEmitter {
      */
     listOpenWorkspaces() {
         return Array.from(this.#openWorkspaces.values());
-    }
-
-    /**
-     * Get workspaces for a user
-     * @param {string} userEmail - User email
-     * @returns {Array<Workspace>} - Array of workspace instances
-     */
-    getUserWorkspaces(userEmail) {
-        return Array.from(this.#workspaceIndex.values())
-            .filter(workspace => workspace.owner === userEmail);
     }
 
     /**
@@ -535,7 +525,7 @@ class WorkspaceManager extends EventEmitter {
 
                 try {
                     // Load the workspace (but don't open it)
-                    await this.load(workspaceName);
+                    await this.loadWorkspace(workspaceName);
                 } catch (err) {
                     debug(`Error loading workspace ${workspaceName}: ${err.message}`);
                 }

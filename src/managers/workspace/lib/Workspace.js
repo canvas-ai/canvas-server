@@ -88,10 +88,11 @@ class Workspace extends EventEmitter {
     get isConfigLoaded() { return this.#configStore !== null; }
     get isOpen() { return this.#db !== null && this.#tree !== null; }
 
+
     /**
-     * Get the tree instance
-     * @returns {Tree} - The tree instance
+     * Tree methods
      */
+
     getTree() {
         return this.#tree.toJSON();
     }
@@ -100,12 +101,27 @@ class Workspace extends EventEmitter {
         return this.#tree.insert(path, options);
     }
 
-    // Setters and configuration methods
+    removePath(path, options = {}) {
+        return this.#tree.remove(path, options);
+    }
+
+    movePath(pathFrom, pathTo, options = {}) {
+        return this.#tree.move(pathFrom, pathTo, options);
+    }
+
+    copyPath(pathFrom, pathTo, options = {}) {
+        return this.#tree.copy(pathFrom, pathTo, options);
+    }
+
+    pathToIdArray(path) {
+        return this.#tree.pathToIdArray(path);
+    }
+
+
     /**
-     * Set workspace color
-     * @param {string} color - Color in hex format
-     * @returns {boolean} - True if color was set successfully
+     * Setters and configuration methods
      */
+
     setColor(color) {
         if (!this.#validateColor(color)) {
             debug(`Invalid color format: ${color}`);
@@ -121,10 +137,6 @@ class Workspace extends EventEmitter {
         return true;
     }
 
-    /**
-     * Set workspace description
-     * @param {string} description - Workspace description
-     */
     setDescription(description) {
         this.description = description;
         if (this.#configStore) {
@@ -134,10 +146,6 @@ class Workspace extends EventEmitter {
         }
     }
 
-    /**
-     * Set workspace label
-     * @param {string} label - Workspace label
-     */
     setLabel(label) {
         this.label = label;
         if (this.#configStore) {
@@ -147,9 +155,6 @@ class Workspace extends EventEmitter {
         }
     }
 
-    /**
-     * Lock the workspace
-     */
     lock() {
         this.locked = true;
         if (this.#configStore) {
@@ -159,9 +164,6 @@ class Workspace extends EventEmitter {
         }
     }
 
-    /**
-     * Unlock the workspace
-     */
     unlock() {
         this.locked = false;
         if (this.#configStore) {
@@ -171,21 +173,10 @@ class Workspace extends EventEmitter {
         }
     }
 
-    /**
-     * Get a configuration value
-     * @param {string} key - Configuration key
-     * @param {*} defaultValue - Default value if key doesn't exist
-     * @returns {*} - Configuration value
-     */
     getConfigKey(key, defaultValue) {
         return this.#configStore?.get(key, defaultValue);
     }
 
-    /**
-     * Set a configuration value
-     * @param {string} key - Configuration key
-     * @param {*} value - Configuration value
-     */
     setConfigKey(key, value) {
         if (this.#configStore) {
             this.#configStore.set(key, value);
@@ -194,10 +185,6 @@ class Workspace extends EventEmitter {
         }
     }
 
-    /**
-     * Get all configuration values
-     * @returns {Object} - All configuration values
-     */
     getConfig() {
         return this.#configStore?.store || {};
     }
