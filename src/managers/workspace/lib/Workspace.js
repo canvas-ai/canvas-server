@@ -119,6 +119,14 @@ class Workspace extends EventEmitter {
 
 
     /**
+     * Document methods
+     */
+
+    getSchema(schema) {
+        return this.#db.getSchema(schema);
+    }
+
+    /**
      * Setters and configuration methods
      */
 

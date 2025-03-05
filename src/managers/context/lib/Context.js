@@ -127,7 +127,7 @@ class Context extends EventEmitter {
         debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the context bitmap array
-        this.#contextBitmapArray = contextLayers;
+        this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
 
         // Update the URL
         this.#url = parsed.url;
@@ -221,8 +221,9 @@ class Context extends EventEmitter {
                 const contextLayers = this.#workspace.insertPath(parsed.path);
                 debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
-                // Update the context bitmap array
-                this.#contextBitmapArray = contextLayers;
+                // Update the context bitmap array with prefixed layers
+                // Prefix workaround till we implement propper collections in the DB
+                this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
 
                 // Update the URL
                 this.#url = parsed.url;
@@ -275,7 +276,7 @@ class Context extends EventEmitter {
         }
 
         // Filters are out of scope for now
-        const documents = this.#db.listDocuments(featureArray, filterArray, options);
+        const documents = this.#db.listDocuments(this.#contextBitmapArray, featureArray, filterArray, options);
         this.emit('documents:list', documents.length);
         return documents;
     }
@@ -297,7 +298,7 @@ class Context extends EventEmitter {
         ];
 
         // Insert the document
-        const result = this.#db.insertDocument(document, featureArray);
+        const result = this.#db.insertDocument(document, this.#contextBitmapArray, featureArray);
         this.emit('document:insert', document.id || result.id);
         return result;
     }
@@ -319,7 +320,7 @@ class Context extends EventEmitter {
         ];
 
         // Insert the documents
-        const result = this.#db.insertDocuments(documentArray, featureArray, options);
+        const result = this.#db.insertDocuments(documentArray, this.#contextBitmapArray, featureArray, options);
         this.emit('documents:insert', documentArray.length);
         return result;
     }
@@ -341,7 +342,7 @@ class Context extends EventEmitter {
         ];
 
         // Update the document
-        const result = this.#db.updateDocument(document, featureArray);
+        const result = this.#db.updateDocument(document, this.#contextBitmapArray, featureArray);
         this.emit('document:update', document.id);
         return result;
     }
@@ -356,18 +357,18 @@ class Context extends EventEmitter {
         }
 
         // Update the documents
-        const result = this.#db.updateDocuments(documentArray, featureArray, options);
+        const result = this.#db.updateDocuments(documentArray, this.#contextBitmapArray, featureArray, options);
         this.emit('documents:update', documentArray.length);
         return result;
     }
 
-    removeDocument(documentId, options = {}) {
+    removeDocument(documentId, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
 
         // We remove document from the current context not from the database
-        const result = this.#db.removeDocument(documentId, this.#featureBitmapArray, options);
+        const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
         this.emit('document:remove', documentId);
         return result;
     }
@@ -382,7 +383,7 @@ class Context extends EventEmitter {
         }
 
         // We remove documents from the current context not from the database
-        const result = this.#db.removeDocuments(documentIdArray, featureArray, options);
+        const result = this.#db.removeDocuments(documentIdArray, this.#contextBitmapArray, featureArray, options);
         this.emit('documents:remove', documentIdArray.length);
         return result;
     }
