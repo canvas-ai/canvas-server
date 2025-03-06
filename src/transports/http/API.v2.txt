@@ -23,12 +23,8 @@ baseUrl: /rest/v2
 ├── /users
 │   ├── /:userId
 │   ├── /:userId/workspaces
-│   ├── /:userId/sessions
-│   └── /:userId/contexts
-│
-├── /sessions
-│   ├── /:sessionId
-│   └── /:sessionId/contexts
+│   ├── /:userId/contexts
+│   └── /:userId/sessions
 │
 ├── /workspaces
 │   ├── /:workspaceId
@@ -39,7 +35,6 @@ baseUrl: /rest/v2
 ├── /contexts
 │   ├── /:contextId
 │   ├── /:contextId/documents
-│   ├── /:contextId/layers
 │   ├── /:contextId/bitmaps
 │   └── /:contextId/query
 │
@@ -64,8 +59,6 @@ baseUrl: /rest/v2
 │   ├── /:roleId/stop
 │   ├── /:roleId/restart
 │   ├── /:roleId/logs
-│   ├── /:roleId/logs/:logId
-│   ├── /:roleId/logs/:logId/follow
 │   └── ... (other role operations)
 │
 ├── /devices
