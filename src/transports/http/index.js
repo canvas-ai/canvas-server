@@ -22,8 +22,14 @@ import ResponseObject from '../ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '@/utils/passport.js';
 
+// Swagger documentation
+import setupSwagger from '@/utils/swagger.js';
+
 // Routes
 import contextRoutes from './routes/v2/context.js';
+import usersRoutes from './routes/v2/users.js';
+import workspacesRoutes from './routes/v2/workspaces.js';
+import documentsRoutes from './routes/v2/documents.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];
@@ -255,6 +261,10 @@ class HttpRestTransport {
             throw new Error('Auth service not found in Canvas server');
         }
 
+        // Setup Swagger documentation
+        const swagger = setupSwagger();
+        swagger.setupRoutes(app);
+
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
             res.status(200).json({
@@ -282,6 +292,31 @@ class HttpRestTransport {
             contextManager: this.#canvasServer.contextManager,
             sessionManager: this.#canvasServer.sessionManager,
             workspaceManager: this.#canvasServer.workspaceManager
+        }));
+
+        // Register users routes
+        const usersBasePath = `${this.#config.basePath}/v2/users`;
+        app.use(usersBasePath, usersRoutes({
+            auth: authService,
+            userManager: this.#canvasServer.userManager,
+            workspaceManager: this.#canvasServer.workspaceManager,
+            contextManager: this.#canvasServer.contextManager,
+            sessionManager: this.#canvasServer.sessionManager
+        }));
+
+        // Register workspaces routes
+        const workspacesBasePath = `${this.#config.basePath}/v2/workspaces`;
+        app.use(workspacesBasePath, workspacesRoutes({
+            auth: authService,
+            workspaceManager: this.#canvasServer.workspaceManager
+        }));
+
+        // Register documents routes
+        const documentsBasePath = `${this.#config.basePath}/v2/documents`;
+        app.use(documentsBasePath, documentsRoutes({
+            auth: authService,
+            workspaceManager: this.#canvasServer.workspaceManager,
+            contextManager: this.#canvasServer.contextManager
         }));
 
         // Register admin routes

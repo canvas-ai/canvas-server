@@ -7,6 +7,74 @@ const debug = createDebug('http:routes:context');
 import ResponseObject from '@/transports/ResponseObject.js';
 
 /**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Context:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: The context ID
+ *         name:
+ *           type: string
+ *           description: The context name
+ *         url:
+ *           type: string
+ *           description: The context URL
+ *         baseUrl:
+ *           type: string
+ *           description: The context base URL
+ *         created:
+ *           type: string
+ *           format: date-time
+ *           description: Creation timestamp
+ *         updated:
+ *           type: string
+ *           format: date-time
+ *           description: Last update timestamp
+ *         locked:
+ *           type: boolean
+ *           description: Whether the context is locked
+ *     Layer:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: The layer ID
+ *         name:
+ *           type: string
+ *           description: The layer name
+ *     Filter:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: The filter ID
+ *         name:
+ *           type: string
+ *           description: The filter name
+ *     Document:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: The document ID
+ *         content:
+ *           type: object
+ *           description: The document content
+ *     Error:
+ *       type: object
+ *       properties:
+ *         message:
+ *           type: string
+ *           description: Error message
+ *         code:
+ *           type: integer
+ *           description: HTTP status code
+ */
+
+/**
  * Context routes
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
@@ -54,8 +122,39 @@ export default function contextRoutes(options) {
     router.use(getUserMiddleware);
 
     /**
-     * Create a context
-     * POST /api/v2/context
+     * @swagger
+     * /:
+     *   post:
+     *     summary: Create a new context
+     *     tags: [Contexts]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - url
+     *             properties:
+     *               url:
+     *                 type: string
+     *                 description: The context URL
+     *               options:
+     *                 type: object
+     *                 description: Additional options for context creation
+     *     responses:
+     *       201:
+     *         description: Context created successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.post('/', async (req, res) => {
         try {
@@ -78,8 +177,31 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Get a context by ID
-     * GET /api/v2/context/:id
+     * @swagger
+     * /{id}:
+     *   get:
+     *     summary: Get a context by ID
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     responses:
+     *       200:
+     *         description: Context retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
      */
     router.get('/:id', async (req, res) => {
         try {
@@ -94,8 +216,67 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * List all contexts
-     * GET /api/v2/context
+     * @swagger
+     * /url/{url}:
+     *   get:
+     *     summary: Get a context by URL
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: url
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context URL
+     *     responses:
+     *       200:
+     *         description: Context retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.get('/url/:url(*)', async (req, res) => {
+        try {
+            const { url } = req.params;
+            const context = contextManager.getContextByUrl(url);
+
+            if (!context) {
+                return res.status(404).json(new ResponseObject(null, 'Context not found', 404));
+            }
+
+            return res.json(new ResponseObject(context));
+        } catch (err) {
+            debug(`Error getting context by URL: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
+    /**
+     * @swagger
+     * /:
+     *   get:
+     *     summary: List all contexts
+     *     tags: [Contexts]
+     *     responses:
+     *       200:
+     *         description: List of contexts
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.get('/', async (req, res) => {
         try {
@@ -107,10 +288,82 @@ export default function contextRoutes(options) {
         }
     });
 
+    /**
+     * @swagger
+     * /session/{sessionId}:
+     *   get:
+     *     summary: List contexts for a session
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: sessionId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Session ID
+     *     responses:
+     *       200:
+     *         description: List of contexts for the session
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.get('/session/:sessionId', async (req, res) => {
+        try {
+            const { sessionId } = req.params;
+            const contexts = contextManager.listSessionContexts(sessionId);
+            return res.json(new ResponseObject(contexts));
+        } catch (err) {
+            debug(`Error listing session contexts: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
 
     /**
-     * Update context URL
-     * PUT /api/v2/context/:id/url
+     * @swagger
+     * /{id}/url:
+     *   put:
+     *     summary: Update context URL
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - url
+     *             properties:
+     *               url:
+     *                 type: string
+     *                 description: New context URL
+     *     responses:
+     *       200:
+     *         description: Context URL updated successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.put('/:id/url', async (req, res) => {
         try {
@@ -132,8 +385,43 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Update context base URL
-     * PUT /api/v2/context/:id/baseurl
+     * @swagger
+     * /{id}/baseurl:
+     *   put:
+     *     summary: Update context base URL
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - baseUrl
+     *             properties:
+     *               baseUrl:
+     *                 type: string
+     *                 description: New context base URL
+     *     responses:
+     *       200:
+     *         description: Context base URL updated successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.put('/:id/baseurl', async (req, res) => {
         try {
@@ -155,8 +443,29 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Lock a context
-     * PUT /api/v2/context/:id/lock
+     * @swagger
+     * /{id}/lock:
+     *   put:
+     *     summary: Lock a context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     responses:
+     *       200:
+     *         description: Context locked successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.put('/:id/lock', async (req, res) => {
         try {
@@ -172,8 +481,29 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Unlock a context
-     * PUT /api/v2/context/:id/unlock
+     * @swagger
+     * /{id}/unlock:
+     *   put:
+     *     summary: Unlock a context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     responses:
+     *       200:
+     *         description: Context unlocked successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.put('/:id/unlock', async (req, res) => {
         try {
@@ -189,8 +519,47 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Switch workspace for a context
-     * PUT /api/v2/context/:id/workspace
+     * @swagger
+     * /{id}/workspace:
+     *   put:
+     *     summary: Switch workspace for a context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - workspace
+     *             properties:
+     *               workspace:
+     *                 type: string
+     *                 description: Workspace ID to switch to
+     *               url:
+     *                 type: string
+     *                 description: URL path in the new workspace
+     *                 default: "/"
+     *     responses:
+     *       200:
+     *         description: Workspace switched successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.put('/:id/workspace', async (req, res) => {
         try {
@@ -212,12 +581,298 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Document API Routes
+     * @swagger
+     * /{id}/initialize:
+     *   put:
+     *     summary: Initialize a context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     responses:
+     *       200:
+     *         description: Context initialized successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Context'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
+    router.put('/:id/initialize', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const context = contextManager.getContext(id);
+            await context.initialize();
+
+            return res.json(new ResponseObject(context));
+        } catch (err) {
+            debug(`Error initializing context: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
 
     /**
-     * Get a document from a context
-     * GET /api/v2/context/:id/document/:documentId
+     * @swagger
+     * /{id}/layer:
+     *   post:
+     *     summary: Add a layer to a context
+     *     tags: [Layers]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - name
+     *             properties:
+     *               name:
+     *                 type: string
+     *                 description: Layer name
+     *               options:
+     *                 type: object
+     *                 description: Additional options for layer creation
+     *     responses:
+     *       201:
+     *         description: Layer added successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Layer'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.post('/:id/layer', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { name, options = {} } = req.body;
+
+            if (!name) {
+                return res.status(400).json(new ResponseObject(null, 'Layer name is required', 400));
+            }
+
+            const context = contextManager.getContext(id);
+            const layer = await context.addLayer(name, options);
+
+            return res.status(201).json(new ResponseObject(layer));
+        } catch (err) {
+            debug(`Error adding layer: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/layer/{name}:
+     *   get:
+     *     summary: Get a layer from a context
+     *     tags: [Layers]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *       - in: path
+     *         name: name
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Layer name
+     *     responses:
+     *       200:
+     *         description: Layer retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Layer'
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Layer not found
+     *       500:
+     *         description: Server error
+     */
+    router.get('/:id/layer/:name', async (req, res) => {
+        try {
+            const { id, name } = req.params;
+            const context = contextManager.getContext(id);
+            const layer = context.getLayer(name);
+
+            if (!layer) {
+                return res.status(404).json(new ResponseObject(null, 'Layer not found', 404));
+            }
+
+            return res.json(new ResponseObject(layer));
+        } catch (err) {
+            debug(`Error getting layer: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/layer:
+     *   get:
+     *     summary: List all layers in a context
+     *     tags: [Layers]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     responses:
+     *       200:
+     *         description: List of layers
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 $ref: '#/components/schemas/Layer'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.get('/:id/layer', async (req, res) => {
+        try {
+            const { id } = req.params;
+            const context = contextManager.getContext(id);
+            const layers = context.listLayers();
+
+            return res.json(new ResponseObject(layers));
+        } catch (err) {
+            debug(`Error listing layers: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/layer/{name}:
+     *   delete:
+     *     summary: Remove a layer from a context
+     *     tags: [Layers]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *       - in: path
+     *         name: name
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Layer name
+     *     responses:
+     *       200:
+     *         description: Layer removed successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 success:
+     *                   type: boolean
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Layer not found
+     *       500:
+     *         description: Server error
+     */
+    router.delete('/:id/layer/:name', async (req, res) => {
+        try {
+            const { id, name } = req.params;
+            const context = contextManager.getContext(id);
+            const result = context.removeLayer(name);
+
+            if (!result) {
+                return res.status(404).json(new ResponseObject(null, 'Layer not found', 404));
+            }
+
+            return res.json(new ResponseObject({ success: true }));
+        } catch (err) {
+            debug(`Error removing layer: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/document/{documentId}:
+     *   get:
+     *     summary: Get a document from a context
+     *     tags: [Documents]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *       - in: path
+     *         name: documentId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Document ID
+     *       - in: query
+     *         name: features
+     *         schema:
+     *           type: array
+     *           items:
+     *             type: string
+     *         description: Feature array for filtering
+     *       - in: query
+     *         name: filters
+     *         schema:
+     *           type: array
+     *           items:
+     *             type: string
+     *         description: Filter array for filtering
+     *       - in: query
+     *         name: options
+     *         schema:
+     *           type: object
+     *         description: Additional options
+     *     responses:
+     *       200:
+     *         description: Document retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Document'
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Document not found
+     *       500:
+     *         description: Server error
      */
     router.get('/:id/document/:documentId', async (req, res) => {
         try {
@@ -246,8 +901,50 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * List documents in a context
-     * GET /api/v2/context/:id/document
+     * @swagger
+     * /{id}/document:
+     *   get:
+     *     summary: List documents in a context
+     *     tags: [Documents]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *       - in: query
+     *         name: features
+     *         schema:
+     *           type: array
+     *           items:
+     *             type: string
+     *         description: Feature array for filtering
+     *       - in: query
+     *         name: filters
+     *         schema:
+     *           type: array
+     *           items:
+     *             type: string
+     *         description: Filter array for filtering
+     *       - in: query
+     *         name: options
+     *         schema:
+     *           type: object
+     *         description: Additional options
+     *     responses:
+     *       200:
+     *         description: List of documents
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 $ref: '#/components/schemas/Document'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.get('/:id/document', async (req, res) => {
         try {
@@ -272,8 +969,48 @@ export default function contextRoutes(options) {
     });
 
     /**
-     * Insert a document into a context
-     * POST /api/v2/context/:id/document
+     * @swagger
+     * /{id}/document:
+     *   post:
+     *     summary: Insert a document into a context
+     *     tags: [Documents]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - document
+     *             properties:
+     *               document:
+     *                 type: object
+     *                 description: Document to insert
+     *               features:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 description: Feature array for indexing
+     *     responses:
+     *       201:
+     *         description: Document inserted successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/Document'
+     *       400:
+     *         description: Invalid request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
      */
     router.post('/:id/document', async (req, res) => {
         try {
