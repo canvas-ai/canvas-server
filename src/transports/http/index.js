@@ -278,12 +278,33 @@ class HttpRestTransport {
             });
         });
 
-        // Mount auth routes (unprotected)
-        const authBasePath = `${this.#config.basePath}/`;
-        app.use(authBasePath, (await import('./routes/v2/auth.js')).default(authService));
+        // Mount auth routes
+        const authBasePath = `${this.#config.basePath}/v2/auth`;
+        const authRouter = (await import('./routes/v2/auth.js')).default(authService);
 
-        // Protect all other routes with authentication
-        app.use(this.#config.basePath, authService.getAuthMiddleware());
+        // Public auth routes (login, register, logout)
+        app.post(`${authBasePath}/register`, authRouter.stack.find(r => r.route && r.route.path === '/register').route.stack[0].handle);
+        app.post(`${authBasePath}/login`, authRouter.stack.find(r => r.route && r.route.path === '/login').route.stack[0].handle);
+        app.post(`${authBasePath}/logout`, authRouter.stack.find(r => r.route && r.route.path === '/logout').route.stack[0].handle);
+
+        // Protected routes middleware
+        const authMiddleware = authService.getAuthMiddleware();
+
+        // Apply auth middleware to all protected routes
+        app.use([
+            `${this.#config.basePath}/v2/context`,
+            `${this.#config.basePath}/v2/users`,
+            `${this.#config.basePath}/v2/workspaces`,
+            `${this.#config.basePath}/v2/documents`,
+            `${this.#config.basePath}/v2/admin`,
+        ], authMiddleware);
+
+        // Protected auth routes (tokens, password)
+        app.use(`${authBasePath}/tokens`, authMiddleware);
+        app.use(`${authBasePath}/password`, authMiddleware);
+
+        // Mount all auth routes
+        app.use(authBasePath, authRouter);
 
         // Register context routes
         const contextBasePath = `${this.#config.basePath}/v2/context`;

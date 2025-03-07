@@ -13,6 +13,7 @@ import SessionService from './lib/SessionService.js';
 import UserEventHandler from '../events/UserEventHandler.js';
 import User from '@/prisma/models/User.js';
 import Session from '@/prisma/models/Session.js';
+import AuthToken from '@/prisma/models/AuthToken.js';
 
 /**
  * Auth Service
@@ -93,39 +94,63 @@ class AuthService {
     }
 
     /**
+     * Stop the auth service
+     * @returns {Promise<void>}
+     */
+    async stop() {
+        if (!this.#started) {
+            return;
+        }
+
+        debug('Stopping auth service');
+
+        // Clean up resources if needed
+        if (this.#sessionService) {
+            await this.#sessionService.stop();
+        }
+
+        this.#started = false;
+        debug('Auth service stopped');
+    }
+
+    /**
      * Register a new user
      * @param {string} email - User email
      * @param {string} password - User password
-     * @param {string} [userType='user'] - User type ('user' or 'admin')
+     * @param {string} userType - User type (default: 'user')
      * @returns {Promise<Object>} - User and token
      */
     async register(email, password, userType = 'user') {
-        debug(`Registering user with email: ${email}`);
+        debug(`Registering new user: ${email}`);
 
         if (!validator.isEmail(email)) {
             throw new Error('Invalid email format');
         }
 
         // Check if user already exists
-        const existingUser = await User.findByEmail(email);
+        const existingUser = await this.#userManager.getUserByEmail(email);
         if (existingUser) {
-            throw new Error('Email already exists');
+            throw new Error('User already exists');
         }
 
-        // Register user
+        // Create user
         const user = await this.#userManager.registerUser({
             email,
             password,
-            userType,
+            userType
         });
 
-        // Create default session
+        // Create a new session
         const session = await this.#sessionManager.createSession(user.id, {
             initializer: 'registration',
         });
 
         // Generate token
         const token = this.#sessionService.generateToken(user, session);
+
+        // Generate an API token for the user
+        const { tokenValue } = await AuthToken.generateToken(user.id, 'Default API Token');
+        debug(`Generated API token for new user ${email}: ${tokenValue}`);
 
         debug(`User registered: ${email}`);
 
@@ -368,6 +393,94 @@ class AuthService {
 
         debug(`Password updated for user ${updatedUser.email}`);
         return updatedUser;
+    }
+
+    /**
+     * List all auth tokens for a user
+     * @param {string} userId - User ID
+     * @returns {Promise<Array>} - Array of tokens
+     */
+    async listAuthTokens(userId) {
+        debug(`Listing auth tokens for user: ${userId}`);
+
+        const tokens = await AuthToken.prisma.authToken.findMany({
+            where: {
+                userId,
+                revoked: false
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        return tokens.map(token => new AuthToken(token));
+    }
+
+    /**
+     * Generate a new auth token for a user
+     * @param {string} userId - User ID
+     * @param {string} name - Token name
+     * @param {number} expiresInDays - Token expiration in days (null for no expiration)
+     * @returns {Promise<Object>} - Generated token
+     */
+    async generateAuthToken(userId, name = 'API Token', expiresInDays = null) {
+        debug(`Generating auth token for user: ${userId}`);
+
+        const user = await this.#userManager.getUserById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        const { token, tokenValue } = await AuthToken.generateToken(userId, name, expiresInDays);
+
+        debug(`Generated auth token for user ${userId}: ${token.id}`);
+
+        return { token, tokenValue };
+    }
+
+    /**
+     * Revoke an auth token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<Object>} - Revoked token
+     */
+    async revokeAuthToken(userId, tokenId) {
+        debug(`Revoking auth token: ${tokenId} for user: ${userId}`);
+
+        const token = await AuthToken.prisma.authToken.findFirst({
+            where: {
+                id: tokenId,
+                userId
+            }
+        });
+
+        if (!token) {
+            throw new Error('Token not found');
+        }
+
+        const authToken = new AuthToken(token);
+        await authToken.revoke();
+
+        debug(`Revoked auth token: ${tokenId}`);
+
+        return authToken;
+    }
+
+    /**
+     * Verify an auth token
+     * @param {string} tokenValue - Token value
+     * @returns {Promise<Object|null>} - Token verification result
+     */
+    async verifyAuthToken(tokenValue) {
+        return await AuthToken.verifyToken(tokenValue);
+    }
+
+    /**
+     * Get the session service
+     * @returns {SessionService} - Session service instance
+     */
+    get sessionService() {
+        return this.#sessionService;
     }
 }
 
