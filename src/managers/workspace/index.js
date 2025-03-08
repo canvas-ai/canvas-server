@@ -103,9 +103,9 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Create a new workspace
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID (email)
+     * @param {string} workspaceID - Workspace ID
      * @param {Object} options - Workspace options
-     * @param {string} options.owner - User email (required)
      * @param {string} [options.label] - Display label for the workspace
      * @param {string} [options.description] - Workspace description
      * @param {string} [options.color] - Workspace color (hex format)
@@ -114,33 +114,35 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} - Created workspace
      * @throws {Error} If workspace creation fails
      */
-    async createWorkspace(name, options = {}) {
+    async createWorkspace(userID, workspaceID, options = {}) {
         // Validate required parameters
-        if (!name) {
-            throw new Error('Workspace name is required');
+        if (!userID) {
+            throw new Error('User ID is required');
         }
 
-        if (!options.owner) {
-            throw new Error('Workspace owner is required (options.owner)');
-        }
-
-        if (!options.owner.includes('@')) {
-            throw new Error('Invalid owner email format');
+        if (!workspaceID) {
+            throw new Error('Workspace ID is required');
         }
 
         if (options.type && !WORKSPACE_TYPES.includes(options.type)) {
             throw new Error(`Invalid workspace type: ${options.type}`);
         }
 
+        // Create the user directory path
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+
         // Create the workspace path
-        const workspacePath = path.join(this.#rootPath, name);
-        debug(`Creating workspace "${name}" for user ${options.owner} at ${workspacePath}`);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Creating workspace "${workspaceID}" for user ${userID} at ${workspacePath}`);
 
         try {
             // Check if workspace already exists
             if (existsSync(workspacePath)) {
                 throw new Error(`Workspace directory already exists at ${workspacePath}`);
             }
+
+            // Ensure user directory exists
+            await this.#ensureDirectoryExists(userPath);
 
             // Create workspace directory structure
             await this.#ensureDirectoryExists(workspacePath);
@@ -155,12 +157,12 @@ class WorkspaceManager extends EventEmitter {
             const workspaceConfig = {
                 id: options.id || uuidv4(),
                 type: options.type || 'workspace',
-                name: name,
-                label: options.label || name.charAt(0).toUpperCase() + name.slice(1),
-                description: options.description || `My ${name} workspace`,
+                name: workspaceID,
+                label: options.label || workspaceID.charAt(0).toUpperCase() + workspaceID.slice(1),
+                description: options.description || `My ${workspaceID} workspace`,
                 color: options.color || this.#getRandomColor(),
                 locked: options.locked || false,
-                owner: options.owner,
+                owner: userID,
                 acl: options.acl || {},
                 created: new Date().toISOString(),
                 updated: new Date().toISOString(),
@@ -176,15 +178,15 @@ class WorkspaceManager extends EventEmitter {
             // Initialize workspace
             await workspace.initialize();
 
-            // Add to tracked workspaces - use just the name as the ID
-            this.#workspaceIndex.set(name, workspace);
+            // Add to tracked workspaces - use the full path as the key
+            this.#workspaceIndex.set(workspacePath, workspace);
 
             this.emit('workspace:created', workspace.name);
-            debug(`Workspace ${name} created successfully`);
+            debug(`Workspace ${workspaceID} created successfully for user ${userID}`);
 
             return workspace;
         } catch (err) {
-            const error = new Error(`Failed to create workspace "${name}" for user ${options.owner}: ${err.message}`);
+            const error = new Error(`Failed to create workspace "${workspaceID}" for user ${userID}: ${err.message}`);
             debug(error.message);
             throw error;
         }
@@ -192,20 +194,21 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Load a workspace from disk
-     * @param {string} name - Workspace name
+     * @param {string} userID - User ID (email)
+     * @param {string} workspaceID - Workspace ID
      * @returns {Promise<Workspace>} - Loaded workspace
      * @throws {Error} If workspace loading fails
      */
-    async loadWorkspace(name) {
-        debug(`Loading workspace: ${name}`);
+    async loadWorkspace(userID, workspaceID) {
+        const userPath = path.join(this.#rootPath, 'multiverse', userID);
+        const workspacePath = path.join(userPath, workspaceID);
+        debug(`Loading workspace: ${workspacePath}`);
 
         // Check if workspace is already loaded
-        if (this.#workspaceIndex.has(name)) {
-            debug(`Workspace ${name} is already loaded`);
-            return this.#workspaceIndex.get(name);
+        if (this.#workspaceIndex.has(workspacePath)) {
+            debug(`Workspace ${workspacePath} is already loaded`);
+            return this.#workspaceIndex.get(workspacePath);
         }
-
-        const workspacePath = path.join(this.#rootPath, name);
 
         // Check if workspace directory exists
         if (!existsSync(workspacePath)) {
@@ -215,7 +218,7 @@ class WorkspaceManager extends EventEmitter {
         // Check if config directory exists
         const configDir = path.join(workspacePath, 'config');
         if (!existsSync(configDir)) {
-            throw new Error(`No config directory found for workspace ${name}`);
+            throw new Error(`No config directory found for workspace ${workspacePath}`);
         }
 
         try {
@@ -227,7 +230,7 @@ class WorkspaceManager extends EventEmitter {
 
             // Check if the config has the required fields
             if (!configStore.has('owner')) {
-                throw new Error(`Workspace ${name} has no owner defined`);
+                throw new Error(`Workspace ${workspacePath} has no owner defined`);
             }
 
             // Get all config data
@@ -240,13 +243,13 @@ class WorkspaceManager extends EventEmitter {
             });
 
             // Add to workspace index
-            this.#workspaceIndex.set(name, workspace);
-            debug(`Loaded workspace ${name} from ${workspacePath}`);
+            this.#workspaceIndex.set(workspacePath, workspace);
+            debug(`Loaded workspace ${workspacePath} from ${workspacePath}`);
 
             this.emit('workspace:loaded', workspace.name);
             return workspace;
         } catch (err) {
-            const error = new Error(`Failed to load workspace "${name}": ${err.message}`);
+            const error = new Error(`Failed to load workspace "${workspacePath}": ${err.message}`);
             debug(error.message);
             throw error;
         }
@@ -273,7 +276,7 @@ class WorkspaceManager extends EventEmitter {
         // Load the workspace if not already loaded
         let workspace;
         if (!this.#workspaceIndex.has(workspacePath)) {
-            workspace = await this.loadWorkspace(workspacePath);
+            workspace = await this.loadWorkspace(userID, workspaceID);
         } else {
             workspace = this.#workspaceIndex.get(workspacePath);
         }
@@ -381,7 +384,7 @@ class WorkspaceManager extends EventEmitter {
         if (!this.#workspaceIndex.has(workspacePath)) {
             // Try to load it first
             try {
-                await this.loadWorkspace(workspacePath);
+                await this.loadWorkspace(userID, workspaceID);
             } catch (err) {
                 debug(`Workspace ${workspacePath} not found, cannot delete`);
                 return false;
@@ -526,16 +529,17 @@ class WorkspaceManager extends EventEmitter {
             debug(`Found ${userDirs.filter(dir => dir.isDirectory()).length} user directories`);
 
             for (const userDir of userDirs.filter(dir => dir.isDirectory())) {
-                const userPath = path.join(multiversePath, userDir.name);
+                const userID = userDir.name;
+                const userPath = path.join(multiversePath, userID);
                 const workspaceDirs = await fsPromises.readdir(userPath, { withFileTypes: true });
 
                 for (const workspaceDir of workspaceDirs.filter(dir => dir.isDirectory())) {
-                    const workspacePath = path.join(userPath, workspaceDir.name);
+                    const workspaceID = workspaceDir.name;
                     try {
                         // Load the workspace (but don't open it)
-                        await this.loadWorkspace(workspacePath);
+                        await this.loadWorkspace(userID, workspaceID);
                     } catch (err) {
-                        debug(`Error loading workspace ${workspacePath}: ${err.message}`);
+                        debug(`Error loading workspace for user ${userID}, workspace ${workspaceID}: ${err.message}`);
                     }
                 }
             }

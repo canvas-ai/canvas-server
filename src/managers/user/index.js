@@ -114,13 +114,26 @@ class UserManager extends EventEmitter {
         });
 
         // Create user home directory
-        const userHomePath = path.join(this.#userHome, userData.email);
         await this.createUserHomeDirectory(userData.email, userData.userType || 'user');
 
-        // Create default workspace
+        // Create default universe workspace
         if (this.#workspaceManager) {
-            const workspace = await this.#workspaceManager.createWorkspace(userData.email, 'universe');
-            debug(`Created default workspace for user ${userData.email}`);
+            try {
+                const workspace = await this.#workspaceManager.createWorkspace(
+                    userData.email,
+                    'universe',
+                    {
+                        type: 'universe',
+                        label: 'Universe',
+                        description: 'Default universe workspace',
+                    }
+                );
+                debug(`Created default universe workspace for user ${userData.email}`);
+            } catch (err) {
+                debug(`Error creating default universe workspace: ${err.message}`);
+                // Don't fail user registration if workspace creation fails
+                // We'll just log the error and continue
+            }
         }
 
         this.emit('user:created', user);

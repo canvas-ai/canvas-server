@@ -276,39 +276,30 @@ class AuthService {
     }
 
     /**
-     * Create a context for a user
+     * Create a user context
      * @param {Object} user - User object
-     * @param {string} sessionName - Session name
      * @param {string} workspaceName - Workspace name
      * @param {string} contextPath - Context path
      * @returns {Promise<Object>} - Created context
      */
-    async createUserContext(user, sessionName, workspaceName, contextPath = '/') {
-    // Get session
-        const session = await this.#sessionManager.getSession(user, sessionName);
-
-        if (!session) {
-            throw new Error(`Session "${sessionName}" not found`);
-        }
-
+    async createUserContext(user, workspaceName, contextPath = '/') {
         // Get workspace
-        const workspaceId = `${user.email}/${workspaceName}`;
-        const workspace = this.#workspaceManager.getWorkspaceConfig(workspaceId);
+        const workspace = await this.#workspaceManager.getWorkspace(user.email, workspaceName);
 
         if (!workspace) {
-            throw new Error(`Workspace "${workspaceName}" not found`);
+            throw new Error(`Workspace "${workspaceName}" not found for user ${user.email}`);
         }
 
         // Get current device
         const device = this.#deviceManager.getCurrentDevice();
 
-        // Create context URL
-        const contextUrl = `${session.id}@${workspaceId}://${contextPath}`;
+        // Create context URL - format: workspaceId://context-path
+        const contextUrl = `${workspaceName}://${contextPath}`;
+        debug(`Creating context with URL: ${contextUrl}`);
 
         // Create context
         const context = await this.#contextManager.createContext(contextUrl, {
             user,
-            session,
             workspace,
             device,
         });
