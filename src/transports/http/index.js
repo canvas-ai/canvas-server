@@ -189,8 +189,9 @@ class HttpRestTransport {
             app.use(express.static(staticPath));
 
             // Serve index.html for all non-API routes to support client-side routing
+            // But exclude Swagger routes
             app.get('*', (req, res, next) => {
-                if (req.path.startsWith(this.#config.basePath)) {
+                if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
                     return next();
                 }
                 res.sendFile(path.join(staticPath, 'index.html'));
@@ -261,7 +262,8 @@ class HttpRestTransport {
             throw new Error('Auth service not found in Canvas server');
         }
 
-        // Setup Swagger documentation
+        // Setup Swagger documentation BEFORE authentication middleware
+        // This ensures API docs are accessible without authentication
         const swagger = setupSwagger();
         swagger.setupRoutes(app);
 
@@ -278,33 +280,23 @@ class HttpRestTransport {
             });
         });
 
-        // Mount auth routes
-        const authBasePath = `${this.#config.basePath}/v2/auth`;
-        const authRouter = (await import('./routes/v2/auth.js')).default(authService);
+        // Mount auth routes (unprotected)
+        const authBasePath = `${this.#config.basePath}/`;
+        app.use(authBasePath, (await import('./routes/v2/auth.js')).default(authService));
 
-        // Public auth routes (login, register, logout)
-        app.post(`${authBasePath}/register`, authRouter.stack.find(r => r.route && r.route.path === '/register').route.stack[0].handle);
-        app.post(`${authBasePath}/login`, authRouter.stack.find(r => r.route && r.route.path === '/login').route.stack[0].handle);
-        app.post(`${authBasePath}/logout`, authRouter.stack.find(r => r.route && r.route.path === '/logout').route.stack[0].handle);
+        // Create a middleware that excludes Swagger routes from authentication
+        const authMiddleware = (req, res, next) => {
+            // Skip authentication for Swagger routes
+            if (req.path.startsWith('/api-docs')) {
+                return next();
+            }
 
-        // Protected routes middleware
-        const authMiddleware = authService.getAuthMiddleware();
+            // Apply authentication middleware for all other routes
+            return authService.getAuthMiddleware()(req, res, next);
+        };
 
-        // Apply auth middleware to all protected routes
-        app.use([
-            `${this.#config.basePath}/v2/context`,
-            `${this.#config.basePath}/v2/users`,
-            `${this.#config.basePath}/v2/workspaces`,
-            `${this.#config.basePath}/v2/documents`,
-            `${this.#config.basePath}/v2/admin`,
-        ], authMiddleware);
-
-        // Protected auth routes (tokens, password)
-        app.use(`${authBasePath}/tokens`, authMiddleware);
-        app.use(`${authBasePath}/password`, authMiddleware);
-
-        // Mount all auth routes
-        app.use(authBasePath, authRouter);
+        // Protect all other routes with authentication, except Swagger routes
+        app.use(this.#config.basePath, authMiddleware);
 
         // Register context routes
         const contextBasePath = `${this.#config.basePath}/v2/context`;
