@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../ResponseObject.js';
-import AuthService from '@/services/auth/index.js';
 
 const debug = debugInstance('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,20 +23,40 @@ const DEFAULT_CONFIG = {
 class WebSocketTransport {
     #config;
     #io;
-    #parent;
     #isShuttingDown = false;
     #closePromise;
+    #canvasServer;
 
-    constructor(parent, options = {}) {
+    constructor(options = {}) {
         this.#config = { ...DEFAULT_CONFIG, ...options };
-        this.#parent = parent;
         this.ResponseObject = ResponseObject;
         debug('WebSocket Transport initialized with config:', this.#config);
     }
 
-    async start(httpServer) {
+    /**
+     * Set the Canvas server instance
+     * @param {Object} server - Canvas server instance
+     */
+    setCanvasServer(server) {
+        this.#canvasServer = server;
+    }
+
+    async start(httpServer = null) {
         if (this.#isShuttingDown) {
             throw new Error('WebSocket server is currently shutting down');
+        }
+
+        if (!this.#canvasServer) {
+            throw new Error('Canvas server instance not set. Call setCanvasServer() before starting.');
+        }
+
+        // Create HTTP server if not provided
+        if (!httpServer) {
+            const http = await import('http');
+            httpServer = http.createServer();
+            httpServer.listen(this.#config.port, this.#config.host, () => {
+                debug(`WebSocket server listening on ${this.#config.host}:${this.#config.port}`);
+            });
         }
 
         const { Server } = await import('socket.io');
@@ -56,6 +75,10 @@ class WebSocketTransport {
         }
 
         this.#setupConnectionHandler();
+
+        // Register admin routes
+        await this.#setupAdminRoutes();
+
         debug('WebSocket server started');
     }
 
@@ -120,7 +143,11 @@ class WebSocketTransport {
     }
 
     #setupAuthentication() {
-        const authService = new AuthService(this.#config.auth);
+        // Get auth service from the Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        if (!authService) {
+            throw new Error('Auth service not found in Canvas server');
+        }
 
         this.#io.use((socket, next) => {
             const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
@@ -129,7 +156,7 @@ class WebSocketTransport {
                 return next(new Error('Authentication token required'));
             }
 
-            const decoded = authService.sessionService.verifyToken(token);
+            const decoded = authService.verifyToken(token);
             if (!decoded) {
                 return next(new Error('Invalid token'));
             }
@@ -144,9 +171,9 @@ class WebSocketTransport {
             debug(`Client connected: ${socket.id}`);
 
             // Initialize socket state
-            socket.sessionManager = this.#parent.sessionManager;
-            socket.session = this.#parent.session;
-            socket.context = this.#parent.context;
+            socket.sessionManager = this.#canvasServer.sessionManager;
+            socket.session = null; // Will be set by auth middleware
+            socket.context = null; // Will be set when a context is selected
 
             // Load and bind route handlers
             await this.#loadSocketRoutes(socket);
@@ -178,10 +205,10 @@ class WebSocketTransport {
     #injectDependencies(socket) {
         return {
             ResponseObject: this.ResponseObject,
-            sessionManager: this.#parent.sessionManager,
+            canvasServer: this.#canvasServer,
+            sessionManager: this.#canvasServer.sessionManager,
             session: socket.session,
             context: socket.context,
-            db: this.#parent.db,
         };
     }
 
@@ -191,6 +218,22 @@ class WebSocketTransport {
         }
         if (socket.session) {
             socket.session.cleanup?.();
+        }
+    }
+
+    async #setupAdminRoutes() {
+        // Get auth service from the Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        if (!authService) {
+            throw new Error('Auth service not found in Canvas server');
+        }
+
+        try {
+            const adminRoutes = await import('./routes/v2/admin.js');
+            adminRoutes.default(this.#io, authService);
+            debug('Admin routes registered');
+        } catch (error) {
+            debug(`Error loading admin routes: ${error.message}`);
         }
     }
 }

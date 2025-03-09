@@ -4,7 +4,7 @@
 
 - Write clean, simple, readable code (simplicity is the ultimate sophistication)
 - Use the simplest possible solution that meets the requirements
-- Principle: Prefer leveraging existing functionality over writing new code
+- Prefer leveraging existing functionality over writing new code
 - Always check if the required functionality already exists in the codebase before implementing it
 - Consolidate duplicate or similar functionality when found
 - Favor composition over inheritance when reusing code
@@ -13,7 +13,6 @@
 - Provide improvement suggestions or technologies you think would fit better to solve a given problem
 - Put getters/setters on top of the classes after constructor, then public methods, then private methods
 - Create all your tests / ad-hoc test scripts and test-data in the ./tests folder
-
 
 ## Personality
 

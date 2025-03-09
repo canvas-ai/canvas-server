@@ -21,10 +21,15 @@ import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 import passport from 'passport';
 import configurePassport from '@/utils/passport.js';
-import AuthService from '@/services/auth/index.js';
+
+// Swagger documentation
+import setupSwagger from '@/utils/swagger.js';
 
 // Routes
 import contextRoutes from './routes/v2/context.js';
+import usersRoutes from './routes/v2/users.js';
+import workspacesRoutes from './routes/v2/workspaces.js';
+import documentsRoutes from './routes/v2/documents.js';
 
 // Transport config
 const API_VERSIONS = ['v2'];
@@ -43,7 +48,7 @@ const DEFAULT_CONFIG = {
             'https://getcanvas.org'
         ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-app-name'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-device-name', 'x-app-name'],
         credentials: true
     },
     auth: {
@@ -63,6 +68,7 @@ class HttpRestTransport {
     #server;
     #closePromise;
     #isShuttingDown = false;
+    #canvasServer;
 
     constructor(options = {}) {
         debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
@@ -78,9 +84,29 @@ class HttpRestTransport {
         debug(`HTTP Transport initialized with config:`, this.#config);
     }
 
+    /**
+     * Set the Canvas server instance
+     * @param {Object} server - Canvas server instance
+     */
+    setCanvasServer(server) {
+        this.#canvasServer = server;
+    }
+
+    /**
+     * Get the HTTP server instance
+     * @returns {Object} - HTTP server instance
+     */
+    getServer() {
+        return this.#server;
+    }
+
     async start() {
         if (this.#isShuttingDown) {
             throw new Error('Server is currently shutting down');
+        }
+
+        if (!this.#canvasServer) {
+            throw new Error('Canvas server instance not set. Call setCanvasServer() before starting.');
         }
 
         const app = this.#configureExpress();
@@ -163,8 +189,9 @@ class HttpRestTransport {
             app.use(express.static(staticPath));
 
             // Serve index.html for all non-API routes to support client-side routing
+            // But exclude Swagger routes
             app.get('*', (req, res, next) => {
-                if (req.path.startsWith(this.#config.basePath)) {
+                if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
                     return next();
                 }
                 res.sendFile(path.join(staticPath, 'index.html'));
@@ -229,14 +256,16 @@ class HttpRestTransport {
     async #setupRoutes(app) {
         console.log('Setting up routes with base path:', this.#config.basePath);
 
-        // Initialize auth service
-        const authService = new AuthService(this.#config.auth, {
-            userManager: this.canvas.userManager,
-            workspaceManager: this.canvas.workspaceManager,
-            sessionManager: this.canvas.sessionManager,
-            deviceManager: this.canvas.deviceManager,
-            contextManager: this.canvas.contextManager
-        });
+        // Get auth service from the Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        if (!authService) {
+            throw new Error('Auth service not found in Canvas server');
+        }
+
+        // Setup Swagger documentation BEFORE authentication middleware
+        // This ensures API docs are accessible without authentication
+        const swagger = setupSwagger();
+        swagger.setupRoutes(app);
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/ping`, (req, res) => {
@@ -255,17 +284,57 @@ class HttpRestTransport {
         const authBasePath = `${this.#config.basePath}/`;
         app.use(authBasePath, (await import('./routes/v2/auth.js')).default(authService));
 
-        // Protect all other routes with authentication
-        app.use(this.#config.basePath, authService.getAuthMiddleware());
+        // Create a middleware that excludes Swagger routes from authentication
+        const authMiddleware = (req, res, next) => {
+            // Skip authentication for Swagger routes
+            if (req.path.startsWith('/api-docs')) {
+                return next();
+            }
+
+            // Apply authentication middleware for all other routes
+            return authService.getAuthMiddleware()(req, res, next);
+        };
+
+        // Protect all other routes with authentication, except Swagger routes
+        app.use(this.#config.basePath, authMiddleware);
 
         // Register context routes
         const contextBasePath = `${this.#config.basePath}/v2/context`;
         app.use(contextBasePath, contextRoutes({
             auth: authService,
-            contextManager: this.canvas.contextManager,
-            sessionManager: this.canvas.sessionManager,
-            workspaceManager: this.canvas.workspaceManager
+            contextManager: this.#canvasServer.contextManager,
+            sessionManager: this.#canvasServer.sessionManager,
+            workspaceManager: this.#canvasServer.workspaceManager
         }));
+
+        // Register users routes
+        const usersBasePath = `${this.#config.basePath}/v2/users`;
+        app.use(usersBasePath, usersRoutes({
+            auth: authService,
+            userManager: this.#canvasServer.userManager,
+            workspaceManager: this.#canvasServer.workspaceManager,
+            contextManager: this.#canvasServer.contextManager,
+            sessionManager: this.#canvasServer.sessionManager
+        }));
+
+        // Register workspaces routes
+        const workspacesBasePath = `${this.#config.basePath}/v2/workspaces`;
+        app.use(workspacesBasePath, workspacesRoutes({
+            auth: authService,
+            workspaceManager: this.#canvasServer.workspaceManager
+        }));
+
+        // Register documents routes
+        const documentsBasePath = `${this.#config.basePath}/v2/documents`;
+        app.use(documentsBasePath, documentsRoutes({
+            auth: authService,
+            workspaceManager: this.#canvasServer.workspaceManager,
+            contextManager: this.#canvasServer.contextManager
+        }));
+
+        // Register admin routes
+        const adminBasePath = `${this.#config.basePath}/v2/admin`;
+        app.use(adminBasePath, (await import('./routes/v2/admin.js')).default(authService));
 
         // API routes (protected)
         this.#loadApiRoutes(app);
@@ -308,7 +377,7 @@ class HttpRestTransport {
 
     #injectDependencies(req, res, next) {
         req.ResponseObject = this.ResponseObject;
-        req.canvas = this.canvas;
+        req.canvas = this.#canvasServer;
         next();
     }
 }

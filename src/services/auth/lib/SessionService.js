@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
 import passport from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
+import { Strategy as CustomStrategy } from 'passport-custom';
 import logger, { createDebug } from '@/utils/log/index.js';
+import AuthToken from '@/prisma/models/AuthToken.js';
 const debug = createDebug('session-service');
 
 /**
@@ -57,12 +59,63 @@ class SessionService {
 
                 return done(null, payload);
             } catch (err) {
-                debug(`Error authenticating user: ${err.message}`);
+                return done(err, false);
+            }
+        }));
+
+        // Add custom middleware to check for API tokens
+        passport.use('api-token', new CustomStrategy(async (req, done) => {
+            try {
+                // Check for API token in Authorization header
+                const authHeader = req.headers.authorization;
+                if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                    return done(null, false);
+                }
+
+                const token = authHeader.split(' ')[1];
+
+                // First try to verify as JWT token
+                const jwtPayload = this.verifyToken(token);
+                if (jwtPayload) {
+                    return done(null, jwtPayload);
+                }
+
+                // If not a JWT token, try as API token
+                const result = await AuthToken.verifyToken(token);
+                if (!result) {
+                    return done(null, false);
+                }
+
+                // Store the user in the request
+                const user = {
+                    id: result.user.id,
+                    email: result.user.email,
+                    tokenId: result.token.id
+                };
+
+                return done(null, user);
+            } catch (err) {
                 return done(err, false);
             }
         }));
 
         this.#initialized = true;
+    }
+
+    /**
+     * Stop the session service
+     * @returns {Promise<void>}
+     */
+    async stop() {
+        if (!this.#initialized) {
+            return;
+        }
+
+        debug('Stopping session service');
+
+        // No active resources to clean up, but we could add them here if needed
+
+        this.#initialized = false;
     }
 
     /**
@@ -92,7 +145,7 @@ class SessionService {
     }
 
     /**
-   * Verify a JWT token
+   * Verify JWT token
    * @param {string} token - JWT token
    * @returns {Object|null} - Decoded token or null
    */
@@ -100,7 +153,6 @@ class SessionService {
         try {
             return jwt.verify(token, this.#config.jwtSecret);
         } catch (error) {
-            debug(`Error verifying token: ${error.message}`);
             return null;
         }
     }
@@ -110,7 +162,24 @@ class SessionService {
    * @returns {Function} - Authentication middleware
    */
     getAuthMiddleware() {
-        return passport.authenticate('jwt', { session: false });
+        return (req, res, next) => {
+            // Use the api-token strategy which handles both JWT and API tokens
+            passport.authenticate('api-token', { session: false }, (err, user, info) => {
+                if (err) {
+                    return next(err);
+                }
+
+                if (!user) {
+                    return res.status(401).json({
+                        success: false,
+                        message: 'Unauthorized: Invalid token'
+                    });
+                }
+
+                req.user = user;
+                next();
+            })(req, res, next);
+        };
     }
 
     /**

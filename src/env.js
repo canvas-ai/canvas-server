@@ -33,6 +33,11 @@ const envConfig = {
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
     CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
     CANVAS_USER_HOME: process.env.CANVAS_USER_HOME || path.join(SERVER_HOME, 'multiverse'),
+
+    // Admin user creation
+    CANVAS_CREATE_ADMIN_USER: process.env.CANVAS_CREATE_ADMIN_USER === 'true' || false,
+    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
+    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || '',
 };
 
 /**

@@ -25,6 +25,7 @@ class Workspace extends EventEmitter {
     #tree;
     #jim;
 
+    //#data; (storeD)
     //#apps;
     //#roles;
     //#dotfiles;
@@ -81,26 +82,54 @@ class Workspace extends EventEmitter {
 
     // Getters
     get db() { return this.#db; }
-    get tree() { return this.#tree; }
+    get tree() { return this.#tree.toJSON(); }
     get layers() { return this.#tree?.layers; }
     get config() { return this.#configStore?.store || {}; }
     get isConfigLoaded() { return this.#configStore !== null; }
     get isOpen() { return this.#db !== null && this.#tree !== null; }
 
+
     /**
-     * Get the tree instance
-     * @returns {Tree} - The tree instance
+     * Tree methods
      */
+
     getTree() {
-        return this.#tree;
+        return this.#tree.toJSON();
     }
 
-    // Setters and configuration methods
+    insertPath(path, options = {}) {
+        return this.#tree.insert(path, options);
+    }
+
+    removePath(path, options = {}) {
+        return this.#tree.remove(path, options);
+    }
+
+    movePath(pathFrom, pathTo, options = {}) {
+        return this.#tree.move(pathFrom, pathTo, options);
+    }
+
+    copyPath(pathFrom, pathTo, options = {}) {
+        return this.#tree.copy(pathFrom, pathTo, options);
+    }
+
+    pathToIdArray(path) {
+        return this.#tree.pathToIdArray(path);
+    }
+
+
     /**
-     * Set workspace color
-     * @param {string} color - Color in hex format
-     * @returns {boolean} - True if color was set successfully
+     * Document methods
      */
+
+    getSchema(schema) {
+        return this.#db.getSchema(schema);
+    }
+
+    /**
+     * Setters and configuration methods
+     */
+
     setColor(color) {
         if (!this.#validateColor(color)) {
             debug(`Invalid color format: ${color}`);
@@ -111,88 +140,59 @@ class Workspace extends EventEmitter {
         if (this.#configStore) {
             this.#configStore.set('color', color);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:color:changed', { id: this.id, color });
+            this.emit('workspace:color:changed', { name: this.name, color });
         }
         return true;
     }
 
-    /**
-     * Set workspace description
-     * @param {string} description - Workspace description
-     */
     setDescription(description) {
         this.description = description;
         if (this.#configStore) {
             this.#configStore.set('description', description);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:description:changed', { id: this.id, description });
+            this.emit('workspace:description:changed', { name: this.name, description });
         }
     }
 
-    /**
-     * Set workspace label
-     * @param {string} label - Workspace label
-     */
     setLabel(label) {
         this.label = label;
         if (this.#configStore) {
             this.#configStore.set('label', label);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:label:changed', { id: this.id, label });
+            this.emit('workspace:label:changed', { name: this.name, label });
         }
     }
 
-    /**
-     * Lock the workspace
-     */
     lock() {
         this.locked = true;
         if (this.#configStore) {
             this.#configStore.set('locked', true);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:locked', { id: this.id });
+            this.emit('workspace:locked', { name: this.name });
         }
     }
 
-    /**
-     * Unlock the workspace
-     */
     unlock() {
         this.locked = false;
         if (this.#configStore) {
             this.#configStore.set('locked', false);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:unlocked', { id: this.id });
+            this.emit('workspace:unlocked', { name: this.name });
         }
     }
 
-    /**
-     * Get a configuration value
-     * @param {string} key - Configuration key
-     * @param {*} defaultValue - Default value if key doesn't exist
-     * @returns {*} - Configuration value
-     */
     getConfigKey(key, defaultValue) {
         return this.#configStore?.get(key, defaultValue);
     }
 
-    /**
-     * Set a configuration value
-     * @param {string} key - Configuration key
-     * @param {*} value - Configuration value
-     */
     setConfigKey(key, value) {
         if (this.#configStore) {
             this.#configStore.set(key, value);
             this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:config:changed', { id: this.id, key, value });
+            this.emit('workspace:config:changed', { name: this.name, key, value });
         }
     }
 
-    /**
-     * Get all configuration values
-     * @returns {Object} - All configuration values
-     */
     getConfig() {
         return this.#configStore?.store || {};
     }
@@ -203,7 +203,7 @@ class Workspace extends EventEmitter {
      * @internal - Should only be called by WorkspaceManager
      */
     async _initializeConfig() {
-        debug(`Initializing configuration for workspace ${this.id}`);
+        debug(`Initializing configuration for workspace ${this.name}`);
         await this.#initializeConfigStore();
 
         // Update instance properties from config
@@ -215,7 +215,7 @@ class Workspace extends EventEmitter {
         this.acl = config.acl;
         this.meta = config.meta;
 
-        this.emit('workspace:config:initialized', { id: this.id });
+        this.emit('workspace:config:initialized', { id: this.name });
     }
 
     /**
@@ -223,7 +223,7 @@ class Workspace extends EventEmitter {
      * @internal - Should only be called by WorkspaceManager
      */
     async _initializeResources() {
-        debug(`Initializing resources for workspace ${this.id}`);
+        debug(`Initializing resources for workspace ${this.name}`);
 
         if (!this.#configStore) {
             throw new Error('Configuration must be initialized before resources');
@@ -233,7 +233,7 @@ class Workspace extends EventEmitter {
         await this.#initializeJIM();
         await this.#initializeTree();
 
-        this.emit('workspace:resources:initialized', { id: this.id });
+        this.emit('workspace:resources:initialized', { id: this.name });
     }
 
     /**
@@ -241,7 +241,7 @@ class Workspace extends EventEmitter {
      * @internal - Should only be called by WorkspaceManager
      */
     async _shutdownResources() {
-        debug(`Shutting down resources for workspace ${this.id}`);
+        debug(`Shutting down resources for workspace ${this.name}`);
 
         if (this.#db) {
             await this.#db.shutdown();
@@ -251,7 +251,7 @@ class Workspace extends EventEmitter {
         this.#tree = null;
         this.#jim = null;
 
-        this.emit('workspace:resources:shutdown', { id: this.id });
+        this.emit('workspace:resources:shutdown', { id: this.name });
     }
 
     /**
@@ -259,10 +259,10 @@ class Workspace extends EventEmitter {
      * @returns {Promise<void>}
      */
     async initialize() {
-        debug(`Initializing workspace ${this.id}`);
+        debug(`Initializing workspace ${this.name}`);
         await this._initializeConfig();
         await this._initializeResources();
-        debug(`Workspace ${this.id} initialized successfully`);
+        debug(`Workspace ${this.name} initialized successfully`);
     }
 
     /**
@@ -270,9 +270,9 @@ class Workspace extends EventEmitter {
      * @returns {Promise<void>}
      */
     async shutdown() {
-        debug(`Shutting down workspace ${this.id}`);
+        debug(`Shutting down workspace ${this.name}`);
         await this._shutdownResources();
-        debug(`Workspace ${this.id} shutdown successfully`);
+        debug(`Workspace ${this.name} shutdown successfully`);
     }
 
     // Private methods
@@ -322,7 +322,7 @@ class Workspace extends EventEmitter {
             }
         });
 
-        debug(`Initialized configuration store for workspace ${this.id}`);
+        debug(`Initialized configuration store for workspace ${this.name}`);
     }
 
     /**
@@ -340,7 +340,7 @@ class Workspace extends EventEmitter {
         });
 
         await this.#db.start();
-        debug(`Initialized SynapsD database for workspace ${this.id} at ${dbPath}`);
+        debug(`Initialized SynapsD database for workspace ${this.name} at ${dbPath}`);
     }
 
     /**
@@ -386,7 +386,7 @@ class Workspace extends EventEmitter {
             layerIndex.set('layers', layers);
         }
 
-        debug(`Initialized JSON Index Manager for workspace ${this.id}`);
+        debug(`Initialized JSON Index Manager for workspace ${this.name}`);
 
         return { treeIndex, layerIndex };
     }

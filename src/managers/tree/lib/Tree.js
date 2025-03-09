@@ -52,10 +52,11 @@ class Tree extends EventEmitter {
 
     insert(path = '/', node, autoCreateLayers = true) {
         debug(`Inserting path "${path}" to the context tree`);
-        if (path === '/' && !node) { return true; }
+        if (path === '/' && !node) { return []; }
 
         let currentNode = this.root;
         let child;
+        const layerIds = [];
 
         const layerNames = path.split('/').filter(Boolean);
         for (const layerName of layerNames) {
@@ -69,9 +70,11 @@ class Tree extends EventEmitter {
                     layer = this.dblayers.createLayer(layerName);
                 } else {
                     debug(`Layer "${layerName}" not found at path "${path} and autoCreateLayers is disabled"`);
-                    return false;
+                    return [];
                 }
             }
+
+            layerIds.push(layer.id);
 
             child = currentNode.getChild(layer.id);
             if (!child) {
@@ -91,7 +94,7 @@ class Tree extends EventEmitter {
 
         this.save();
         debug(`Path "${path}" inserted successfully.`);
-        return true;
+        return layerIds;
     }
 
     move(pathFrom, pathTo, recursive = false) {
@@ -181,6 +184,20 @@ class Tree extends EventEmitter {
 
     renameLayer(name, newName) {
         return this.dblayers.renameLayer(name, newName);
+    }
+
+    pathToIdArray(path) {
+        const layerNames = path.split('/').filter(Boolean);
+        const idArray = [];
+        for (const layerName of layerNames) {
+            const layer = this.dblayers.getLayerByName(layerName);
+            if (!layer) {
+                throw new Error(`Layer "${layerName}" not found in the layer index`);
+            }
+
+            idArray.push(layer.id);
+        }
+        return idArray;
     }
 
     save() {

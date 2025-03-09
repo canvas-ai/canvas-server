@@ -8,20 +8,23 @@ baseUrl: /rest/v2
 │   ├── /login
 │   ├── /logout
 │   ├── /register
+│   ├── /password [PUT] - Update current user's password
 │   ├── /forgot-password
 │   ├── /reset-password
 │   ├── /verify-email
 │   └── /verify-email/:token
 │
+├── /admin
+│   ├── /users [GET] - Get all users (admin only)
+│   ├── /users/:userId [GET] - Get a specific user (admin only)
+│   ├── /users/:userId [PUT] - Update a user (admin only)
+│   └── /users/:userId/password [PUT] - Update a user's password (admin only)
+│
 ├── /users
 │   ├── /:userId
 │   ├── /:userId/workspaces
-│   ├── /:userId/sessions
-│   └── /:userId/contexts
-│
-├── /sessions
-│   ├── /:sessionId
-│   └── /:sessionId/contexts
+│   ├── /:userId/contexts
+│   └── /:userId/sessions
 │
 ├── /workspaces
 │   ├── /:workspaceId
@@ -32,7 +35,6 @@ baseUrl: /rest/v2
 ├── /contexts
 │   ├── /:contextId
 │   ├── /:contextId/documents
-│   ├── /:contextId/layers
 │   ├── /:contextId/bitmaps
 │   └── /:contextId/query
 │
@@ -57,8 +59,6 @@ baseUrl: /rest/v2
 │   ├── /:roleId/stop
 │   ├── /:roleId/restart
 │   ├── /:roleId/logs
-│   ├── /:roleId/logs/:logId
-│   ├── /:roleId/logs/:logId/follow
 │   └── ... (other role operations)
 │
 ├── /devices

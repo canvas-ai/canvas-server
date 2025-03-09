@@ -3,13 +3,18 @@ import BaseModel from './Base.js';
 import bcrypt from 'bcryptjs';
 
 class User extends BaseModel {
-    static fillable = ['id', 'email', 'password', 'homePath'];
+    static fillable = ['id', 'email', 'password', 'userType'];
     static hidden = [];
     static connections = ['sessions'];
     static modelName = 'user';
 
     async comparePassword(candidatePassword) {
         return bcrypt.compare(candidatePassword, this.password);
+    }
+
+    // Check if user is an admin
+    isAdmin() {
+        return this.userType === 'admin';
     }
 
     // Additional static methods specific to User

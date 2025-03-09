@@ -1,5 +1,5 @@
 /**
- * Canvas server init script
+ * Canvas Server init script
  */
 
 import Server from './Server.js';
@@ -19,7 +19,6 @@ async function main() {
             process.exit(1);
         });
 
-        // TODO: Update logger (singleton, shared instance)
         setupProcessEventListeners(canvas);
         setupServerEventHandlers(canvas);
 

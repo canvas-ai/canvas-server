@@ -12,11 +12,13 @@ class User extends EventEmitter {
     #id;
     #email;
     #homePath;
+    #userType;
     #workspaces = new Map();
     #sessions = new Map();
     #contexts = new Map();
     #devices = new Map();
     #roles = new Map();
+    #timeline;
 
     constructor(options = {}) {
         super();
@@ -24,6 +26,7 @@ class User extends EventEmitter {
         this.#id = options.id;
         this.#email = options.email;
         this.#homePath = options.homePath || path.join(env.CANVAS_USER_HOME, options.email);
+        this.#userType = options.userType || 'user';
 
         debug(`User instance created: ${this.#email}`);
     }
@@ -41,6 +44,7 @@ class User extends EventEmitter {
                 const userConfig = {
                     id: this.#id,
                     email: this.#email,
+                    userType: this.#userType,
                     created: new Date().toISOString(),
                     updated: new Date().toISOString(),
                 };
@@ -68,6 +72,12 @@ class User extends EventEmitter {
     get id() { return this.#id; }
     get email() { return this.#email; }
     get homePath() { return this.#homePath; }
+    get userType() { return this.#userType; }
+
+    // Check if user is an admin
+    isAdmin() {
+        return this.#userType === 'admin';
+    }
 
     // Workspace methods
     async addWorkspace(workspace) {
@@ -144,6 +154,7 @@ class User extends EventEmitter {
             id: this.#id,
             email: this.#email,
             homePath: this.#homePath,
+            userType: this.#userType,
         };
     }
 }
