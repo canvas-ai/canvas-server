@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+
+// Cross-platform script for Workspace CLI
+
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Determine the root directory of the project
+let rootDir = __dirname;
+while (!fs.existsSync(path.join(rootDir, 'package.json'))) {
+  const parentDir = path.dirname(rootDir);
+  if (parentDir === rootDir) {
+    // We've reached the root of the filesystem without finding package.json
+    console.error('Error: Could not find project root directory');
+    process.exit(1);
+  }
+  rootDir = parentDir;
+}
+
+// Path to the CLI script
+const cliScript = path.join(rootDir, 'src', 'ui', 'cli', 'ws.js');
+
+// Check if the script exists
+if (!fs.existsSync(cliScript)) {
+  console.error(`Error: CLI script not found at ${cliScript}`);
+  process.exit(1);
+}
+
+// Import the path resolver to ensure proper module resolution
+try {
+  // Use dynamic import for the path resolver
+  await import(path.join(rootDir, 'src', 'utils', 'path-resolver', 'index.js'));
+} catch (err) {
+  // If path resolver doesn't exist, continue without it
+}
+
+// Run the CLI script using dynamic import
+const cliScriptUrl = new URL(`file://${cliScript}`);
+await import(cliScriptUrl);
