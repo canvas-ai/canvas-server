@@ -28,6 +28,7 @@ export default function(authService) {
             const { user, token } = await authService.login(email, password);
             authService.sessionService.setCookie(res, token);
             const response = new ResponseObject().success({ token }, 'Login successful');
+            debug('Login response:', JSON.stringify(response.getResponse()));
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             const response = new ResponseObject().unauthorized(error.message);
@@ -43,7 +44,7 @@ export default function(authService) {
     });
 
     // Update password (requires authentication)
-    router.put('/password', authService.getAuthMiddleware(), async (req, res) => {
+    router.put('/password', async (req, res) => {
         const { currentPassword, newPassword } = req.body;
 
         if (!currentPassword || !newPassword) {
@@ -52,11 +53,23 @@ export default function(authService) {
         }
 
         try {
-            const user = await authService.getUserFromRequest(req);
-            if (!user) {
-                const response = new ResponseObject().unauthorized('User not authenticated');
+            // Get token from Authorization header
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                const response = new ResponseObject().unauthorized('Authentication required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
+
+            const token = authHeader.split(' ')[1];
+
+            // Verify the token
+            const sessionData = await authService.verifySession(token);
+            if (!sessionData || !sessionData.user) {
+                const response = new ResponseObject().unauthorized('Invalid authentication token');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const user = sessionData.user;
 
             await authService.updatePassword(user.id, currentPassword, newPassword, user);
             const response = new ResponseObject().success({ success: true }, 'Password updated successfully');

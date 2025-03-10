@@ -268,7 +268,7 @@ class HttpRestTransport {
         swagger.setupRoutes(app);
 
         // Health check endpoint (unprotected)
-        app.get(`${this.#config.basePath}/ping`, (req, res) => {
+        app.get(`${this.#config.basePath}/v2/ping`, (req, res) => {
             res.status(200).json({
                 message: 'pong',
                 status: 'ok',
@@ -286,8 +286,10 @@ class HttpRestTransport {
 
         // Create a middleware that excludes Swagger routes from authentication
         const authMiddleware = (req, res, next) => {
-            // Skip authentication for Swagger routes
-            if (req.path.startsWith('/api-docs')) {
+            // Skip authentication for Swagger routes, ping endpoint, and auth routes
+            if (req.path.startsWith('/api-docs') ||
+                req.path.endsWith('/v2/ping') ||
+                req.path.startsWith('/v2/auth/')) {
                 return next();
             }
 
