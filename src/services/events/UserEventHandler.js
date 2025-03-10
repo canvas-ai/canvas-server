@@ -10,8 +10,10 @@ class UserEventHandler {
     }
 
     setupHandlers() {
-        if (this.services.auth) {
+        if (this.services.auth && typeof this.services.auth.on === 'function') {
             this.services.auth.on('user:created', this.handleUserCreated.bind(this));
+        } else {
+            debug('Auth service does not support events, skipping event handlers');
         }
     }
 

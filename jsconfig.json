@@ -9,6 +9,6 @@
       "@stored/*": ["./src/services/stored/src/*"]
     }
   },
-  "include": ["src/**/*", "_SCRATCH_/api/http.v1", "_SCRATCH_/api/http.v2/example.js", "_SCRATCH_/api/http.v2/sessions.js", "_SCRATCH_/api/ws.v2/session.js"],
+  "include": ["src/**/*", "_SCRATCH_/api/http.v1", "_SCRATCH_/api/http.v2/example.js", "_SCRATCH_/api/http.v2/sessions.js", "_SCRATCH_/api/ws.v2/session.js", "_SCRATCH_/oldImplementation.js"],
   "exclude": ["node_modules", "dist", "_SCRATCH_", "_TODO_", "_OLD_", "extensions"]
 }

@@ -14,6 +14,12 @@ class WorkspaceCLI extends BaseCLI {
     this.commandName = 'ws';
   }
 
+  async run() {
+    console.log(this)
+
+    return 0;
+  }
+
   printHelp() {
     console.log(`
 ${chalk.bold('USAGE')}

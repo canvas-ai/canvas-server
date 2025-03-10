@@ -5,8 +5,9 @@
  * It verifies the session token and attaches user and session data to the request
  */
 
+import passport from 'passport';
 import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('transport:auth');
+const debug = createDebug('canvas:transport:auth');
 
 /**
  * Create authentication middleware
@@ -14,6 +15,8 @@ const debug = createDebug('transport:auth');
  * @returns {Function} - Authentication middleware function
  */
 export default function createAuthMiddleware(server) {
+  const authService = server.services.get('auth');
+
   /**
    * Authentication middleware
    * @param {Object} req - Request object
@@ -21,36 +24,50 @@ export default function createAuthMiddleware(server) {
    * @param {Function} next - Next middleware function
    */
   return async (req, res, next) => {
-    // Get the session token from the Authorization header or cookie
-    const sessionToken = req.headers.authorization?.replace('Bearer ', '') ||
-                         req.cookies?.sessionToken;
+    debug('Authentication middleware called');
 
-    if (!sessionToken) {
-      // For public routes, just continue
-      req.isAuthenticated = false;
-      return next();
-    }
+    // Try JWT authentication first
+    passport.authenticate(['jwt', 'api-token'], { session: false }, async (err, user, info) => {
+      if (err) {
+        debug(`Authentication error: ${err.message}`);
+        req.isAuthenticated = false;
+        return next(err);
+      }
 
-    try {
-      // Verify the session using auth service
-      const authService = server.services.get('auth');
-      const sessionData = await authService.verifySession(sessionToken);
-
-      if (!sessionData) {
+      if (!user) {
+        debug('No authenticated user found');
         req.isAuthenticated = false;
         return next();
       }
 
-      // Attach session and user data to request
-      req.session = sessionData.session;
-      req.user = sessionData.user;
-      req.isAuthenticated = true;
+      try {
+        debug(`User authenticated: ${user.email}`);
 
-      next();
-    } catch (error) {
-      debug(`Authentication error: ${error.message}`);
-      req.isAuthenticated = false;
-      next();
-    }
+        // Get session data if needed
+        if (user.tokenPayload && user.tokenPayload.sessionId) {
+          const sessionManager = server.services.get('session');
+          const session = await sessionManager.getSession(user.tokenPayload.sessionId);
+
+          if (session) {
+            debug(`Session found: ${session.id}`);
+            req.session = session;
+
+            // Update last active time
+            await sessionManager.touchSession(session.id);
+          }
+        }
+
+        // Attach user to request
+        req.user = user;
+        req.isAuthenticated = true;
+
+        debug('Authentication successful');
+        next();
+      } catch (error) {
+        debug(`Error processing authenticated user: ${error.message}`);
+        req.isAuthenticated = false;
+        next();
+      }
+    })(req, res, next);
   };
 }

@@ -28,14 +28,8 @@ export const DEFAULT_CONFIG = {
     context: {
       machineId: '',
       id: '',
-      url: '/',
       name: 'CLI Context',
       description: 'Automatically created context for Canvas CLI'
-    },
-    session: {
-      id: '',
-      name: 'CLI Session',
-      description: 'Automatically created session for Canvas CLI'
     }
   },
   paths: {
@@ -47,6 +41,7 @@ export const DEFAULT_CONFIG = {
     }
   },
   endpoints: {
+    context: '/context',
     contexts: '/contexts',
     sessions: '/sessions',
     users: '/users',
@@ -56,7 +51,38 @@ export const DEFAULT_CONFIG = {
   }
 };
 
+// Define the list of available Canvas modules
+const CANVAS_MODULES = [
+  'apps',
+  'roles',
+  'users',
+  'identities',
+  'documents',
+  'notes', // alias for documents with feature data/abstr/notes
+  'tabs',
+  'files',
+  'todo',
+  'emails',
+  'ws',     // workspace module
+  'context', // context module
+  'canvas'  // canvas module
+];
+
+// Define standard actions and their corresponding HTTP methods
+const ACTION_HTTP_METHODS = {
+  'list': 'GET',
+  'get': 'GET',
+  'set': 'PATCH',
+  'update': 'PUT',
+  'add': 'POST',
+  'create': 'POST',
+  'rm': 'DELETE',
+  'del': 'DELETE',
+  'delete': 'DELETE'
+};
+
 class BaseCLI {
+
   constructor() {
     this.configPath = this.getConfigPath();
     this.config = this.loadConfig();
@@ -72,6 +98,19 @@ class BaseCLI {
       }
     });
 
+    // Initialize input parameters
+    this.module = null;
+    this.action = null;
+    this.contextArray = [];
+    this.featureArray = [];
+    this.filterArray = [];
+    this.inputArgs = [];
+    this.opts = {};
+    this.data = null;
+
+    // Parse input parameters
+    this.parseInput();
+
     this.api = axios.create({
       baseURL: this.config.server?.url || DEFAULT_CONFIG.server.url,
       headers: {
@@ -79,6 +118,11 @@ class BaseCLI {
         'Authorization': `Bearer ${this.config.auth?.token || ''}`
       }
     });
+  }
+
+  async run() {
+    console.log('Do not call the Base CLI method directly.');
+    return 1;
   }
 
   getConfigPath() {
@@ -96,7 +140,7 @@ class BaseCLI {
       fs.mkdirSync(configDir, { recursive: true });
     }
 
-    return path.join(configDir, 'cli.json');
+    return path.join(configDir, 'canvas-cli.json');
   }
 
   loadConfig() {
@@ -171,284 +215,135 @@ class BaseCLI {
   }
 
   async generateAuthToken() {
+    debug('Generating auth token');
     try {
-      if (!this.config.auth.token) {
-        const credentials = await this.promptForCredentials();
-
-        try {
-          // Step 1: Login with credentials to get a session token
-          const authEndpoint = '/auth/login';
-          debug(`Attempting login with endpoint: ${this.config.server.url}${authEndpoint}`);
-          debug(`Using credentials for email: ${credentials.email}`);
-
-          const requestData = {
-            email: credentials.email,
-            password: credentials.password
-          };
-
-          debug('Login request data:', JSON.stringify(requestData));
-          const fullUrl = `${this.config.server.url}${authEndpoint}`;
-          debug(`Making direct POST request to ${fullUrl}`);
-
-          // Login to get the session token
-          const loginResponse = await axios.post(fullUrl, requestData, {
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-
-          debug('Login response status:', loginResponse.status);
-          debug('Login response data:', JSON.stringify(loginResponse.data));
-
-          if (!loginResponse.data || !loginResponse.data.data || !loginResponse.data.data.token) {
-            console.error(chalk.red('Login failed: Invalid response from server'));
-            debug('Server response:', JSON.stringify(loginResponse.data));
-            return false;
-          }
-
-          // Extract the token from the login response
-          const sessionToken = loginResponse.data.data.token;
-          debug('Session token:', sessionToken);
-
-          console.log(chalk.green('Login successful! Generating API token...'));
-
-          // Step 2: Use the session token to generate an API token
-          try {
-            const tokenResponse = await axios.post(
-              `${this.config.server.url}/auth/tokens`,
-              {
-                name: 'CLI Token',
-                expiresInDays: 30
-              },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${sessionToken}`
-                }
-              }
-            );
-
-            debug('Token generation response:', JSON.stringify(tokenResponse.data));
-
-            if (tokenResponse.data && tokenResponse.data.data && tokenResponse.data.data.value) {
-              // Store the token value
-              this.config.auth.token = tokenResponse.data.data.value;
-              this.saveConfig();
-
-              // Step 3: Logout to clean up the session (optional)
-              try {
-                await axios.post(
-                  `${this.config.server.url}/auth/logout`,
-                  {},
-                  {
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${sessionToken}`
-                    }
-                  }
-                );
-                debug('Logout successful');
-              } catch (logoutErr) {
-                debug('Logout error (non-critical):', logoutErr.message);
-                // We don't need to fail if logout fails
-              }
-
-              // Update API client with new token
-              this.api = axios.create({
-                baseURL: this.config.server.url,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${this.config.auth.token}`
-                }
-              });
-
-              console.log(chalk.green('API token generated and stored successfully!'));
-              return true;
-            } else {
-              console.error(chalk.red('Failed to generate API token: Invalid response from server'));
-              debug('Token response:', JSON.stringify(tokenResponse.data));
-              return false;
-            }
-          } catch (tokenErr) {
-            console.error(chalk.red(`Failed to generate API token: ${tokenErr.message}`));
-            debug('Token error:', tokenErr);
-
-            if (tokenErr.response) {
-              debug('Token error response:', JSON.stringify(tokenErr.response.data));
-
-              if (tokenErr.response.status === 401) {
-                console.error(chalk.yellow('Session expired or invalid. Please try logging in again.'));
-              } else if (tokenErr.response.status === 404) {
-                console.error(chalk.yellow('Token generation endpoint not found. Your server may not support API tokens.'));
-                console.error(chalk.yellow('Using session token as fallback...'));
-
-                // Use the session token as fallback
-                this.config.auth.token = sessionToken;
-                this.saveConfig();
-
-                // Update API client with session token
-                this.api = axios.create({
-                  baseURL: this.config.server.url,
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${sessionToken}`
-                  }
-                });
-
-                console.log(chalk.green('Session token stored successfully!'));
-                return true;
-              }
-            }
-
-            return false;
-          }
-        } catch (loginErr) {
-          console.error(chalk.red(`Authentication failed: ${loginErr.message}`));
-
-          // Log more details about the error for debugging
-          if (loginErr.response) {
-            debug('Error response data:', JSON.stringify(loginErr.response.data));
-            debug('Error response status:', loginErr.response.status);
-            debug('Error response headers:', JSON.stringify(loginErr.response.headers));
-
-            // Provide more specific error messages based on status code
-            if (loginErr.response.status === 401) {
-              console.error(chalk.yellow('Invalid credentials. Please check your email and password.'));
-
-              // Check if there's a specific error message from the server
-              if (loginErr.response.data && loginErr.response.data.message) {
-                console.error(chalk.yellow(`Server message: ${loginErr.response.data.message}`));
-              }
-            } else if (loginErr.response.status === 404) {
-              console.error(chalk.yellow('Authentication endpoint not found. Please check the server URL.'));
-            } else if (loginErr.response.status >= 500) {
-              console.error(chalk.yellow('Server error. Please try again later.'));
-            }
-          } else if (loginErr.request) {
-            debug('Error request:', loginErr.request);
-            console.error(chalk.yellow('No response from server. Please check if the server is running.'));
-          }
-
-          return false;
-        }
+      // Prompt for credentials
+      const credentials = await this.promptForCredentials();
+      if (!credentials) {
+        return false;
       }
-      return true;
+
+      // Generate token
+      const response = await this.api.post('/auth/token', {
+        email: credentials.email,
+        password: credentials.password,
+        name: 'Canvas CLI Token'
+      });
+
+      if (response.data && response.data.data && response.data.data.token) {
+        this.config.auth.token = response.data.data.token;
+        this.config.auth.email = credentials.email;
+        await this.saveConfig();
+        debug('Auth token generated and saved');
+        return true;
+      } else {
+        console.error(chalk.red('Error: Failed to generate auth token.'));
+        return false;
+      }
     } catch (err) {
-      console.error(chalk.red(`Authentication failed: ${err.message}`));
+      console.error(chalk.red(`Error: ${err.message}`));
       return false;
-    }
-  }
-
-  async initializeContext() {
-    // Generate machine ID if not present
-    if (!this.config.cli.context.machineId) {
-      this.config.cli.context.machineId = machineIdSync(true).substr(0, 11);
-      this.saveConfig();
-    }
-
-    // Create a dedicated context for the CLI app if no contextId is present
-    if (!this.config.cli.context.id) {
-      try {
-        const contextId = `cli-${this.config.cli.context.machineId}`;
-        const contextUrl = this.config.cli.context.url || DEFAULT_CONFIG.cli.context.url;
-        const contextName = this.config.cli.context.name || DEFAULT_CONFIG.cli.context.name;
-        const contextDescription = this.config.cli.context.description || DEFAULT_CONFIG.cli.context.description;
-
-        const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-        const response = await this.api.post(contextEndpoint, {
-          url: contextUrl,
-          options: {
-            name: `${contextName} (${this.config.cli.context.machineId})`,
-            description: contextDescription
-          }
-        });
-
-        if (response.data && response.data.data) {
-          this.config.cli.context.id = response.data.data.id;
-          this.saveConfig();
-        }
-      } catch (err) {
-        debug(`Error creating context: ${err.message}`);
-        console.error(chalk.red(`Error creating context: ${err.message}`));
-      }
-    }
-  }
-
-  async ensureSession() {
-    if (!this.config.cli.session.id) {
-      try {
-        const sessionName = this.config.cli.session.name || DEFAULT_CONFIG.cli.session.name;
-        const sessionDescription = this.config.cli.session.description || DEFAULT_CONFIG.cli.session.description;
-
-        const sessionsEndpoint = DEFAULT_CONFIG.endpoints.sessions;
-        const response = await this.api.post(sessionsEndpoint, {
-          name: `${sessionName} (${this.config.cli.context.machineId})`,
-          description: sessionDescription
-        });
-
-        if (response.data && response.data.data) {
-          this.config.cli.session.id = response.data.data.id;
-          this.saveConfig();
-        }
-      } catch (err) {
-        debug(`Error creating session: ${err.message}`);
-        console.error(chalk.red(`Error creating session: ${err.message}`));
-      }
     }
   }
 
   async checkServerConnection() {
+    debug('Checking server connection');
     try {
-      // Create a new axios instance without auth headers
-      const pingClient = axios.create({
-        baseURL: this.config.server.url,
-        timeout: 3000 // 3 second timeout
-      });
-
-      try {
-        // Try the ping endpoint first
-        await pingClient.get('ping');
+      const pingEndpoint = DEFAULT_CONFIG.endpoints.ping;
+      const response = await this.api.get(pingEndpoint);
+      if (response.status === 200) {
+        debug('Server is running');
         return true;
-      } catch (pingErr) {
-        // If ping fails with 401 or 400, server is still running
-        if (pingErr.response && (pingErr.response.status === 401 || pingErr.response.status === 400)) {
-          return true;
-        }
-
-        // Try the auth endpoint as fallback
-        try {
-          await pingClient.get('auth/login');
-          return true;
-        } catch (authErr) {
-          // If auth fails with 401 or 400, server is still running
-          if (authErr.response && (authErr.response.status === 401 || authErr.response.status === 400)) {
-            return true;
-          }
-
-          // If we get here, server is probably not running
-          return false;
-        }
       }
     } catch (err) {
-      return false;
+      debug(`Server connection error: ${err.message}`);
+    }
+    return false;
+  }
+
+  async getContext() {
+    debug('Getting context');
+
+    // Check if we have a context ID in the config
+    if (this.config.cli.context.id) {
+      debug(`Found context ID in config: ${this.config.cli.context.id}`);
+    } else {
+      // Generate a context ID based on machine ID
+      const machineId = this.getMachineId();
+      this.config.cli.context.id = `cli-${machineId}`;
+      await this.saveConfig();
+      debug(`Generated new context ID: ${this.config.cli.context.id}`);
+    }
+
+    try {
+      // Use the contexts/:id endpoint with autoCreate=true
+      let contextEndpoint = `${DEFAULT_CONFIG.endpoints.contexts}/${this.config.cli.context.id}?autoCreate=true`;
+
+      // Add context name and description if available
+      if (this.config.cli.context.name) {
+        contextEndpoint += `&name=${encodeURIComponent(this.config.cli.context.name)}`;
+      } else {
+        contextEndpoint += `&name=${encodeURIComponent('CLI Context')}`;
+      }
+
+      if (this.config.cli.context.description) {
+        contextEndpoint += `&description=${encodeURIComponent(this.config.cli.context.description)}`;
+      } else {
+        contextEndpoint += `&description=${encodeURIComponent('Automatically created context for Canvas CLI')}`;
+      }
+
+      debug(`Getting context from endpoint: ${contextEndpoint}`);
+      const response = await this.api.get(contextEndpoint);
+
+      if (response.data && response.data.data) {
+        debug('Context retrieved successfully');
+        return response.data.data;
+      } else {
+        debug('Invalid response format from context endpoint');
+        return null;
+      }
+    } catch (error) {
+      debug(`Error getting context: ${error.message}`);
+      return null;
     }
   }
 
+  // Helper method to get machine ID
+  getMachineId() {
+    if (!this.config.cli.context.machineId) {
+      this.config.cli.context.machineId = machineIdSync(true).substr(0, 11);
+      this.saveConfig();
+    }
+    return this.config.cli.context.machineId;
+  }
+
   async initialize() {
-    // Check if server is running before proceeding
+    debug('Initializing CLI');
+
+    // Check if server is running
     const serverRunning = await this.checkServerConnection();
     if (!serverRunning) {
-      throw new Error(`Cannot connect to server at ${this.config.server.url}. Please check if the server is running.`);
+      console.error(chalk.red('Error: Canvas server is not running or not accessible.'));
+      console.error(chalk.yellow(`Make sure the server is running at ${this.config.server.url}`));
+      return false;
     }
 
-    // Ensure we have an auth token
-    const authSuccess = await this.generateAuthToken();
-    if (!authSuccess) {
-      throw new Error('Authentication required to use the CLI');
+    // Check if we have an auth token
+    if (!this.config.auth.token) {
+      const tokenGenerated = await this.generateAuthToken();
+      if (!tokenGenerated) {
+        return false;
+      }
     }
 
-    await this.initializeContext();
-    await this.ensureSession();
+    // Get or create context
+    const context = await this.getContext();
+    if (!context) {
+      debug('Failed to get or create context');
+      return false;
+    }
+
+    return true;
   }
 
   printHelp() {
@@ -472,8 +367,32 @@ ${chalk.bold('OPTIONS')}
   }
 
   parseInput(input) {
-    // Parse the args array "_" to get the CLI "action"
-    const action = this.args['_'][0] || 'help';
+    // Get the raw arguments
+    const rawArgs = this.args['_'].slice(0);
+
+    // Initialize module and action
+    let module = null;
+    let action = null;
+
+    // If we have at least one argument
+    if (rawArgs.length > 0) {
+      // Check if the first argument is a known module
+      if (CANVAS_MODULES.includes(rawArgs[0])) {
+        module = rawArgs[0];
+        // If we have a second argument, it's the action
+        action = rawArgs.length > 1 ? rawArgs[1] : 'list'; // Default action is list
+        // Remove module and action from args
+        rawArgs.splice(0, 2);
+      } else {
+        // If not a module, it's just an action on the default module
+        action = rawArgs[0];
+        // Remove action from args
+        rawArgs.splice(0, 1);
+      }
+    } else {
+      // Default to help action if no arguments provided
+      action = 'help';
+    }
 
     // Parse the context array
     const contextArray = Array.isArray(this.args.context)
@@ -499,46 +418,42 @@ ${chalk.bold('OPTIONS')}
       : (this.args.filter ? [this.args.filter] : []);
 
     // Parse the rest of the supplied arguments
-    const args = this.args['_'].slice(1);
+    const args = rawArgs;
     const opts = { ...this.args };
     delete opts['_'];
 
+    // Handle special case for notes (alias for documents with notes feature)
+    if (module === 'notes') {
+      module = 'documents';
+      if (!combinedFeatures.includes('data/abstr/notes')) {
+        combinedFeatures.push('data/abstr/notes');
+      }
+    }
+
+    // Get the data from input if provided
+    const data = input || null;
+
+    // Bind the parsed input to the class instance
+    this.module = module;
+    this.action = action;
+    this.contextArray = contextArray;
+    this.featureArray = combinedFeatures;
+    this.filterArray = filterArray;
+    this.inputArgs = args;
+    this.opts = opts;
+    this.data = data;
+
+    // Also return the parsed input for backward compatibility
     return {
+      module,
       action,
       contextArray,
       featureArray: combinedFeatures,
       filterArray,
       args,
-      opts
+      opts,
+      data
     };
-  }
-
-  async run() {
-    if (this.args.v || this.args.version) {
-      this.printVersion();
-      return 0;
-    }
-
-    if (this.args.h || this.args.help) {
-      this.printHelp();
-      return 0;
-    }
-
-    try {
-      await this.initialize();
-      const { action, args } = this.parseInput();
-
-      if (typeof this[action] === 'function') {
-        return await this[action](args);
-      } else {
-        console.error(chalk.red(`Unknown command: ${action}`));
-        this.printHelp();
-        return 1;
-      }
-    } catch (err) {
-      console.error(chalk.red(`Error: ${err.message}`));
-      return 1;
-    }
   }
 
   createTable(headers) {

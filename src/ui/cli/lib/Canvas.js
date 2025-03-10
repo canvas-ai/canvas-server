@@ -2,12 +2,26 @@
 
 'use strict';
 
-import chalk from 'chalk';
-import BaseCLI from './Base.js';
 import axios from 'axios';
+import chalk from 'chalk';
+import debugInstance from 'debug';
+import { v4 as uuidv4 } from 'uuid';
+import BaseCLI, { DEFAULT_CONFIG } from './Base.js';
 
-// Import DEFAULT_CONFIG from BaseCLI
-import { DEFAULT_CONFIG } from './Base.js';
+const debug = debugInstance('canvas:cli:canvas');
+
+// Define standard actions and their corresponding HTTP methods
+const ACTION_HTTP_METHODS = {
+  'list': 'GET',
+  'get': 'GET',
+  'set': 'PATCH',
+  'update': 'PUT',
+  'add': 'POST',
+  'create': 'POST',
+  'rm': 'DELETE',
+  'del': 'DELETE',
+  'delete': 'DELETE'
+};
 
 class CanvasCLI extends BaseCLI {
   constructor() {
@@ -15,36 +29,129 @@ class CanvasCLI extends BaseCLI {
     this.commandName = 'canvas';
   }
 
+  async run() {
+    if (this.args.v || this.args.version) {
+      this.printVersion();
+      return 0;
+    }
+
+    if (!this.args || this.args.h || this.args.help) {
+      this.printHelp();
+      return 0;
+    }
+
+    try {
+      // parseInput is already called in the constructor, so we can use the class properties directly
+      const { module, action, inputArgs } = this;
+
+      // Commands that don't require server connection or authentication
+      if (action === 'help') {
+        this.printHelp();
+        return 0;
+      }
+
+      if (action === 'ping') {
+        return await this.ping();
+      }
+
+      // Login command requires server connection but not authentication
+      if (action === 'login') {
+        return await this.login(inputArgs);
+      }
+
+      // Version command doesn't require authentication
+      if (action === 'version') {
+        this.printVersion();
+        return 0;
+      }
+
+      // All other commands require server connection and authentication
+      try {
+        await this.initialize();
+
+        // Check if we have a specific method for this action
+        if (typeof this[action] === 'function') {
+          return await this[action](inputArgs);
+        }
+
+        // Check if we have a specific method for this module and action
+        const moduleActionMethod = `${module}${action.charAt(0).toUpperCase() + action.slice(1)}`;
+        if (module && typeof this[moduleActionMethod] === 'function') {
+          return await this[moduleActionMethod](inputArgs);
+        }
+
+        // If no specific method, use the generic module action handler
+        return await this.executeModuleAction();
+      } catch (err) {
+        // If the error is about authentication and the action is help, show help anyway
+        if (err.message.includes('authentication') && action === 'help') {
+          this.printHelp();
+          return 0;
+        }
+
+        console.error(chalk.red(`Error: ${err.message}`));
+        return 1;
+      }
+    } catch (err) {
+      console.error(chalk.red(`Error: ${err.message}`));
+      return 1;
+    }
+  }
+
   printHelp() {
     console.log(`
 ${chalk.bold('Canvas CLI')} - Command-line interface for Canvas
 
 ${chalk.bold('Usage:')}
-  ${this.commandName} [command] [options]
+  ${this.commandName} [module] [action] [options]
+  ${this.commandName} [action] [options]
 
-${chalk.bold('Commands:')}
+${chalk.bold('Modules:')}
+  ${chalk.cyan('apps')}                   Application management
+  ${chalk.cyan('roles')}                  Role management
+  ${chalk.cyan('users')}                  User management
+  ${chalk.cyan('identities')}             User identity management
+  ${chalk.cyan('documents')}              Document management
+  ${chalk.cyan('notes')}                  Notes management (alias for documents with notes feature)
+  ${chalk.cyan('tabs')}                   Tab management
+  ${chalk.cyan('files')}                  File management
+  ${chalk.cyan('todo')}                   Todo management
+  ${chalk.cyan('emails')}                 Email management
+  ${chalk.cyan('ws')}                     Workspace management
+  ${chalk.cyan('context')}                Context management
+  ${chalk.cyan('canvas')}                 Canvas system management
+
+${chalk.bold('Common Actions:')}
+  ${chalk.cyan('list')}                   List items (default action)
+  ${chalk.cyan('get <id>')}               Get item by ID
+  ${chalk.cyan('add')}                    Add new item
+  ${chalk.cyan('set <id>')}               Update item by ID
+  ${chalk.cyan('rm <id>')}                Remove item by ID from context
+  ${chalk.cyan('del <id>')}               Delete item by ID
+
+${chalk.bold('Special Commands:')}
   ${chalk.cyan('status')}                 Show server status
   ${chalk.cyan('login')}                  Authenticate with Canvas server (generates API token)
   ${chalk.cyan('login <token>')}          Set authentication token directly
   ${chalk.cyan('ping')}                   Check server connection
-  ${chalk.cyan('users')}                  List all users
-  ${chalk.cyan('roles')}                  List all roles
   ${chalk.cyan('config')}                 Show current configuration
   ${chalk.cyan('config set <key> <val>')} Set configuration value
 
+${chalk.bold('Options:')}
+  ${chalk.cyan('-c, --context <ctx>')}    Specify context
+  ${chalk.cyan('-f, --feature <feat>')}   Filter by feature
+  ${chalk.cyan('-s, --filter <filter>')}  Apply filter
+  ${chalk.cyan('-t, --tag <tag>')}        Filter by tag
+  ${chalk.cyan('-h, --help')}             Show help
+  ${chalk.cyan('-v, --version')}          Show version
+
 ${chalk.bold('Examples:')}
-  ${chalk.gray('# Check server status')}
-  ${this.commandName} status
-
-  ${chalk.gray('# Authenticate with Canvas server')}
-  ${this.commandName} login
-
-  ${chalk.gray('# Set authentication token directly')}
-  ${this.commandName} login YOUR_TOKEN
-
-  ${chalk.gray('# Set server URL')}
-  ${this.commandName} config set server.url http://localhost:8001/rest/v2
-    `);
+  ${this.commandName} users list
+  ${this.commandName} documents list -c work/project1
+  ${this.commandName} notes list -t important
+  ${this.commandName} documents get 123456
+  ${this.commandName} config set server.url http://localhost:3000
+`);
   }
 
   async login(args) {
@@ -101,23 +208,56 @@ ${chalk.bold('Examples:')}
 
   async status() {
     try {
-      const statusEndpoint = DEFAULT_CONFIG.endpoints.status;
-      const response = await this.api.get(statusEndpoint);
+      const table = this.createTable(['Property', 'Value']);
 
-      if (response.data) {
-        const status = response.data.data || response.data;
+      // Create a new axios instance without auth headers
+      const pingClient = axios.create({
+        baseURL: this.config.server.url,
+        timeout: 5000
+      });
 
-        const table = this.createTable(['Property', 'Value']);
+      try {
+        // Try to ping the server using the configured endpoint
+        const response = await pingClient.get('ping');
 
-        table.push(['Status', status.status || 'Unknown']);
-        table.push(['Version', status.version || 'Unknown']);
-        table.push(['Uptime', status.uptime || 'Unknown']);
+        if (response.data) {
+          table.push(['Status', response.data.status || 'Unknown']);
+          table.push(['Version', response.data.version || 'Unknown']);
+          table.push(['Product', response.data.productName || 'Unknown']);
+          table.push(['Platform', response.data.platform || 'Unknown']);
+          table.push(['Architecture', response.data.architecture || 'Unknown']);
 
-        console.log(table.toString());
+          if (response.data.serverIp) {
+            table.push(['Server IP', response.data.serverIp]);
+          }
+
+          if (response.data.serverHost && response.data.serverPort) {
+            table.push(['Server Host:Port', `${response.data.serverHost}:${response.data.serverPort}`]);
+          }
+
+          table.push(['Timestamp', response.data.timestamp || new Date().toISOString()]);
+        } else {
+          table.push(['Status', 'Unknown']);
+          table.push(['Version', 'Unknown']);
+          table.push(['Product', 'Unknown']);
+          table.push(['Platform', 'Unknown']);
+          table.push(['Architecture', 'Unknown']);
+          table.push(['Timestamp', new Date().toISOString()]);
+        }
+      } catch (err) {
+        debug(`Error getting server status: ${err.message}`);
+        table.push(['Status', 'Unknown']);
+        table.push(['Version', 'Unknown']);
+        table.push(['Product', 'Unknown']);
+        table.push(['Platform', 'Unknown']);
+        table.push(['Architecture', 'Unknown']);
+        table.push(['Timestamp', new Date().toISOString()]);
       }
+
+      console.log(table.toString());
       return 0;
     } catch (err) {
-      console.error(chalk.red(`Error getting server status: ${err.message}`));
+      console.error(chalk.red(`Error: ${err.message}`));
       return 1;
     }
   }
@@ -234,12 +374,12 @@ ${chalk.bold('Examples:')}
 
   async ping() {
     try {
-      console.log(chalk.yellow(`Pinging server at ${this.config.server.url}...`));
+      console.log(chalk.yellow(`Pinging server at ${this.config.server.url}`));
 
       // Create a new axios instance without auth headers
       const pingClient = axios.create({
         baseURL: this.config.server.url,
-        timeout: 5000 // 5 second timeout
+        timeout: 5000
       });
 
       try {
@@ -254,6 +394,14 @@ ${chalk.bold('Examples:')}
           console.log(chalk.cyan('Timestamp:'), response.data.timestamp || new Date().toISOString());
           console.log(chalk.cyan('Platform:'), response.data.platform || process.platform);
           console.log(chalk.cyan('Architecture:'), response.data.architecture || process.arch);
+
+          // Display server IP information if available
+          if (response.data.serverIp) {
+            console.log(chalk.cyan('Server IP:'), response.data.serverIp);
+          }
+          if (response.data.serverHost && response.data.serverPort) {
+            console.log(chalk.cyan('Server Host:Port:'), `${response.data.serverHost}:${response.data.serverPort}`);
+          }
         }
 
         return 0;
@@ -301,49 +449,162 @@ ${chalk.bold('Examples:')}
     }
   }
 
-  async run() {
-    if (this.args.v || this.args.version) {
-      this.printVersion();
-      return 0;
+  /**
+   * Get the API endpoint for a given module and context
+   * @param {string} module - The module name
+   * @param {Array} contextArray - Array of context identifiers
+   * @returns {string} - The API endpoint
+   */
+  getModuleEndpoint(module, contextArray) {
+    // Default endpoints based on module name
+    const moduleEndpoints = {
+      'apps': '/apps',
+      'roles': '/roles',
+      'users': '/users',
+      'identities': '/user/identities',
+      'documents': '/documents',
+      'tabs': '/tabs',
+      'files': '/files',
+      'todo': '/todo',
+      'emails': '/emails',
+      'ws': '/workspaces',
+      'context': '/context',
+      'canvas': '/sessions'
+    };
+
+    // If no module specified, return null
+    if (!module) return null;
+
+    // Get the base endpoint for the module
+    let endpoint = moduleEndpoints[module] || `/${module}`;
+
+    // If we have context(s) and the module supports context scoping
+    if (contextArray && contextArray.length > 0 &&
+        ['documents', 'tabs', 'files', 'todo', 'emails'].includes(module)) {
+      // Use the first context in the array
+      const contextId = contextArray[0];
+
+      // Check if it's a full context URL or just an ID
+      if (contextId.includes('@') && contextId.includes('://')) {
+        // It's a full context URL, use the /context endpoint
+        endpoint = `/context${endpoint}`;
+      } else {
+        // It's just an ID, use the /contexts/:id endpoint
+        endpoint = `/contexts/${contextId}${endpoint}`;
+      }
     }
 
-    if (this.args.h || this.args.help) {
+    return endpoint;
+  }
+
+  /**
+   * Execute an API request based on module, action, and other parameters
+   * @returns {Promise<any>} - The API response
+   */
+  async executeModuleAction() {
+    const { module, action, contextArray, featureArray, filterArray, inputArgs, opts, data } = this;
+
+    // Get the API endpoint
+    const endpoint = this.getModuleEndpoint(module, contextArray);
+
+    // If no endpoint, return error
+    if (!endpoint) {
+      console.error(chalk.red(`Unknown module: ${module}`));
       this.printHelp();
-      return 0;
+      return 1;
+    }
+
+    // Determine the HTTP method based on the action
+    let method = 'GET';
+    if (ACTION_HTTP_METHODS[action]) {
+      method = ACTION_HTTP_METHODS[action];
+    }
+
+    // Build the query parameters
+    const queryParams = {};
+
+    // Add features if any
+    if (featureArray && featureArray.length > 0) {
+      queryParams.features = featureArray;
+    }
+
+    // Add filters if any
+    if (filterArray && filterArray.length > 0) {
+      queryParams.filters = filterArray;
+    }
+
+    // Add context if any and not already in the endpoint
+    if (contextArray && contextArray.length > 0 && !endpoint.includes('/context') && !endpoint.includes('/contexts/')) {
+      queryParams.context = contextArray[0];
+    }
+
+    // Add any additional options
+    if (opts) {
+      Object.keys(opts).forEach(key => {
+        // Skip already processed options
+        if (!['context', 'feature', 'filter', 'tag'].includes(key)) {
+          queryParams[key] = opts[key];
+        }
+      });
     }
 
     try {
-      const { action, args } = this.parseInput();
+      // Make the API request
+      const response = await this.api.request({
+        method,
+        url: endpoint,
+        params: method === 'GET' ? queryParams : undefined,
+        data: method !== 'GET' ? (data || queryParams) : undefined
+      });
 
-      // Commands that don't require server connection or authentication
-      if (action === 'ping') {
-        return await this.ping();
-      }
-
-      // Login command requires server connection but not authentication
-      if (action === 'login') {
-        return await this.login(args);
-      }
-
-      // All other commands require server connection and authentication
-      try {
-        await this.initialize();
-
-        if (typeof this[action] === 'function') {
-          return await this[action](args);
-        } else {
-          console.error(chalk.red(`Unknown command: ${action}`));
-          this.printHelp();
-          return 1;
-        }
-      } catch (err) {
-        console.error(chalk.red(`Error: ${err.message}`));
-        return 1;
-      }
-    } catch (err) {
-      console.error(chalk.red(`Error: ${err.message}`));
+      // Format and return the response
+      return this.formatResponse(response.data);
+    } catch (error) {
+      console.error(chalk.red(`Error executing ${action} on ${module}: ${error.message}`));
       return 1;
     }
+  }
+
+  /**
+   * Format the API response for display
+   * @param {any} data - The API response data
+   * @returns {any} - The formatted response
+   */
+  formatResponse(data) {
+    // If data is an array, create a table
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        console.log(chalk.yellow('No results found.'));
+        return 0;
+      }
+
+      // Create a table with the data
+      const headers = Object.keys(data[0]);
+      const table = this.createTable(headers);
+
+      // Add rows to the table
+      data.forEach(item => {
+        const row = headers.map(header => {
+          const value = item[header];
+          return typeof value === 'object' ? JSON.stringify(value) : value;
+        });
+        table.push(row);
+      });
+
+      // Print the table
+      console.log(table.toString());
+      return 0;
+    }
+
+    // If data is an object, print it as JSON
+    if (typeof data === 'object') {
+      console.log(JSON.stringify(data, null, 2));
+      return 0;
+    }
+
+    // Otherwise, just print the data
+    console.log(data);
+    return 0;
   }
 }
 

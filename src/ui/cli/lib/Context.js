@@ -14,6 +14,10 @@ class ContextCLI extends BaseCLI {
     this.commandName = 'context';
   }
 
+  async run() {
+
+  }
+
   printHelp() {
     console.log(`
 ${chalk.bold('USAGE')}
@@ -256,6 +260,8 @@ ${chalk.bold('OPTIONS')}
 
   async documents() {
     try {
+      await this.initialize();
+
       const contextId = this.config.cli.context.id;
 
       if (!contextId) {
@@ -263,12 +269,13 @@ ${chalk.bold('OPTIONS')}
         return 1;
       }
 
-      const { featureArray } = this.parseInput();
+      // Use the class property instead of calling parseInput
+      const { featureArray } = this;
 
       const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
       const response = await this.api.get(`${contextEndpoint}/${contextId}/documents`, {
         params: {
-          features: featureArray.length > 0 ? featureArray : undefined
+          features: featureArray
         }
       });
 
@@ -406,21 +413,7 @@ ${chalk.bold('OPTIONS')}
 
   async noteAdd(args) {
     try {
-      let content = args.join(' ');
-
-      // Check if we have data from stdin
-      if (!process.stdin.isTTY) {
-        const chunks = [];
-        for await (const chunk of process.stdin) {
-          chunks.push(chunk);
-        }
-        content = chunks.join('');
-      }
-
-      if (!content) {
-        console.error(chalk.red('Note content is required'));
-        return 1;
-      }
+      await this.initialize();
 
       const contextId = this.config.cli.context.id;
 
@@ -429,7 +422,15 @@ ${chalk.bold('OPTIONS')}
         return 1;
       }
 
-      const { featureArray } = this.parseInput();
+      // Use the class property instead of calling parseInput
+      const { featureArray } = this;
+
+      let content = args.join(' ');
+
+      if (!content) {
+        console.error(chalk.red('Note content is required'));
+        return 1;
+      }
 
       // Add the note feature if not already present
       if (!featureArray.includes('data/abstraction/note')) {
@@ -481,43 +482,24 @@ ${chalk.bold('OPTIONS')}
 
   async tabAdd(args) {
     try {
-      const url = args[0];
+      await this.initialize();
 
-      if (!url) {
-        console.error(chalk.red('Tab URL is required'));
-        return 1;
-      }
-
-      // Determine which context to use
-      let contextId = this.config.cli.context.id;
-
-      // If a specific context is provided, use that instead
-      if (this.args.context) {
-        // Check if it's a context ID or URL
-        if (this.args.context.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-          // It's a UUID
-          contextId = this.args.context;
-        } else {
-          // It's a URL, need to find the context
-          try {
-            const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-            const response = await this.api.get(`${contextEndpoint}/url/${this.args.context}`);
-            if (response.data && response.data.data) {
-              contextId = response.data.data.id;
-            }
-          } catch (err) {
-            console.error(chalk.red(`Error finding context by URL: ${err.message}`));
-            return 1;
-          }
-        }
-      }
+      const contextId = this.config.cli.context.id;
 
       if (!contextId) {
         console.error(chalk.red('No active context'));
         return 1;
       }
 
-      const { featureArray } = this.parseInput();
+      // Use the class property instead of calling parseInput
+      const { featureArray } = this;
+
+      const url = args[0];
+
+      if (!url) {
+        console.error(chalk.red('URL is required'));
+        return 1;
+      }
 
       // Add the tab feature if not already present
       if (!featureArray.includes('data/abstraction/tab')) {

@@ -121,58 +121,417 @@ export default function contextRoutes(options) {
     router.use(auth.getAuthMiddleware());
     router.use(getUserMiddleware);
 
-    /**
-     * @swagger
-     * /:
-     *   post:
-     *     summary: Create a new context
-     *     tags: [Contexts]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - url
-     *             properties:
-     *               url:
-     *                 type: string
-     *                 description: The context URL
-     *               options:
-     *                 type: object
-     *                 description: Additional options for context creation
-     *     responses:
-     *       201:
-     *         description: Context created successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/Context'
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
-    router.post('/', async (req, res) => {
+    // Middleware to get context from request
+    const getContextMiddleware = async (req, res, next) => {
         try {
-            const { url, options = {} } = req.body;
-
-            if (!url) {
-                return res.status(400).json(new ResponseObject(null, 'URL is required', 400));
+            const contextId = req.params.contextId;
+            if (!contextId) {
+                const response = new ResponseObject().badRequest('Context ID is required');
+                return res.status(response.statusCode).json(response.getResponse());
             }
 
-            const context = await contextManager.createContext(url, {
-                ...options,
-                user: req.user,
-            });
+            const context = await contextManager.getContext(contextId);
+            if (!context) {
+                const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
 
-            return res.status(201).json(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error creating context: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            req.context = context;
+            next();
+        } catch (error) {
+            debug(`Error getting context: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    };
+
+    // Get current context (from user's session or create a default one for API tokens)
+    router.get('/', async (req, res) => {
+        try {
+            let context = null;
+            const userId = req.user.id;
+
+            // First check if a specific context ID was requested
+            if (req.query.id) {
+                debug(`Specific context ID requested: ${req.query.id}`);
+                try {
+                    context = await contextManager.getContext(req.query.id);
+                    if (context) {
+                        debug(`Found requested context: ${context.id}`);
+                        const response = new ResponseObject().success(context, 'Requested context retrieved successfully');
+                        return res.status(response.statusCode).json(response.getResponse());
+                    }
+                } catch (err) {
+                    debug(`Error finding requested context: ${err.message}`);
+                    // Continue to other methods
+                }
+            }
+
+            // Next check if user has a session with a context
+            if (req.user.sessionId) {
+                debug('User has a session, getting context from session');
+                const session = await sessionManager.getSession(req.user.sessionId);
+                if (session && session.contextId) {
+                    context = await contextManager.getContext(session.contextId);
+                }
+            }
+
+            // If no context found via session, look for a default context for this user
+            if (!context) {
+                debug('No context found via session, looking for default context');
+                try {
+                    // Try to find a default context for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    if (userContexts && userContexts.length > 0) {
+                        // Use the first context as default
+                        context = userContexts[0];
+                        debug(`Found default context: ${context.id}`);
+                    }
+                } catch (err) {
+                    debug(`Error finding default context: ${err.message}`);
+                }
+            }
+
+            // If still no context, create a default one for API token users
+            if (!context) {
+                debug('No context found, creating default context for API token user');
+                try {
+                    const defaultUrl = '/';
+                    const workspaceId = 'universe';
+                    const userEmail = req.user.email;
+
+                    // Check if the workspace exists in memory
+                    let hasWorkspace = workspaceManager.hasWorkspace(userEmail, workspaceId);
+
+                    // If not in memory, check if it exists on disk
+                    if (!hasWorkspace) {
+                        const existsOnDisk = workspaceManager.hasWorkspaceOnDisk(userEmail, workspaceId);
+
+                        if (existsOnDisk) {
+                            // Workspace exists on disk but not in memory, load it
+                            debug(`Workspace exists on disk, loading it: ${workspaceId}`);
+                            try {
+                                await workspaceManager.loadWorkspace(userEmail, workspaceId);
+                                hasWorkspace = true;
+                            } catch (loadErr) {
+                                debug(`Error loading workspace: ${loadErr.message}`);
+                                // Continue to create it if loading fails
+                            }
+                        }
+                    }
+
+                    // If still not found, create it
+                    if (!hasWorkspace) {
+                        debug(`Creating default workspace "${workspaceId}" for user ${userEmail}`);
+                        try {
+                            await workspaceManager.createWorkspace(userEmail, workspaceId, {
+                                label: 'Universe',
+                                description: 'Default workspace for API token access',
+                                color: '#3498db',
+                                type: 'universe'
+                            });
+
+                            debug(`Default workspace created for user ${userEmail}`);
+                        } catch (workspaceErr) {
+                            debug(`Error creating workspace: ${workspaceErr.message}`);
+                            throw workspaceErr;
+                        }
+                    }
+
+                    // Open the workspace (this will initialize it if not already open)
+                    const workspace = await workspaceManager.getWorkspace(userEmail, workspaceId);
+                    debug(`Using workspace: ${workspace.name}`);
+
+                    // Now create the context
+                    const options = {
+                        name: 'Default API Context',
+                        description: 'Automatically created context for API token access',
+                        user: req.user
+                    };
+
+                    context = await contextManager.createContext(defaultUrl, options, userId);
+                    debug(`Created default context: ${context.id}`);
+                } catch (err) {
+                    debug(`Error creating default context: ${err.message}`);
+                    const response = new ResponseObject().serverError(`Failed to create default context: ${err.message}`);
+                    return res.status(response.statusCode).json(response.getResponse());
+                }
+            }
+
+            const response = new ResponseObject().success(context, 'Context retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error getting current context: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    // Create a new context
+    router.post('/', async (req, res) => {
+        try {
+            const { url, options } = req.body;
+            const userId = req.user.id;
+
+            if (!url) {
+                const response = new ResponseObject().badRequest('Context URL is required');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Check if this is a CLI context with a specific ID
+            if (options && options.id && options.id.startsWith('cli-')) {
+                debug(`Request for CLI context with ID: ${options.id}`);
+
+                // Try to find existing context with this ID
+                try {
+                    // Look for existing contexts for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    const existingContext = userContexts.find(ctx => ctx.id === options.id);
+
+                    if (existingContext) {
+                        debug(`Found existing CLI context: ${existingContext.id}`);
+                        const response = new ResponseObject().success(existingContext, 'Existing CLI context retrieved');
+                        return res.status(response.statusCode).json(response.getResponse());
+                    }
+                } catch (err) {
+                    debug(`Error finding existing CLI context: ${err.message}`);
+                    // Continue to create a new one
+                }
+
+                // No existing context found, create a new one with the specified ID
+                debug(`Creating new CLI context with ID: ${options.id}`);
+                options.id = options.id; // Ensure ID is passed to context creation
+            }
+
+            const context = await contextManager.createContext(url, options, userId);
+
+            const response = new ResponseObject().created(context, 'Context created successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error creating context: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    // Get workspace associated with the current context
+    router.get('/workspace', async (req, res) => {
+        try {
+            let contextId = null;
+            const userId = req.user.id;
+
+            // First check if user has a session with a context
+            if (req.user.sessionId) {
+                debug('User has a session, getting context from session');
+                const session = await sessionManager.getSession(req.user.sessionId);
+                if (session && session.contextId) {
+                    contextId = session.contextId;
+                }
+            }
+
+            // If no context ID found via session, look for a default context for this user
+            if (!contextId) {
+                debug('No context found via session, looking for default context');
+                try {
+                    // Try to find a default context for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    if (userContexts && userContexts.length > 0) {
+                        // Use the first context as default
+                        contextId = userContexts[0].id;
+                        debug(`Found default context: ${contextId}`);
+                    }
+                } catch (err) {
+                    debug(`Error finding default context: ${err.message}`);
+                }
+            }
+
+            // If still no context ID, return an error
+            if (!contextId) {
+                const response = new ResponseObject().notFound('No active context found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const context = await contextManager.getContext(contextId);
+            if (!context) {
+                const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Get the workspace associated with the context
+            const workspace = await workspaceManager.getWorkspaceById(context.workspaceId);
+            if (!workspace) {
+                const response = new ResponseObject().notFound(`Workspace for context ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const response = new ResponseObject().success(workspace, 'Context workspace retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error getting context workspace: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    // Get documents in the current context
+    router.get('/documents', async (req, res) => {
+        try {
+            let contextId = null;
+            const userId = req.user.id;
+
+            // First check if user has a session with a context
+            if (req.user.sessionId) {
+                debug('User has a session, getting context from session');
+                const session = await sessionManager.getSession(req.user.sessionId);
+                if (session && session.contextId) {
+                    contextId = session.contextId;
+                }
+            }
+
+            // If no context ID found via session, look for a default context for this user
+            if (!contextId) {
+                debug('No context found via session, looking for default context');
+                try {
+                    // Try to find a default context for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    if (userContexts && userContexts.length > 0) {
+                        // Use the first context as default
+                        contextId = userContexts[0].id;
+                        debug(`Found default context: ${contextId}`);
+                    }
+                } catch (err) {
+                    debug(`Error finding default context: ${err.message}`);
+                }
+            }
+
+            // If still no context ID, return an error
+            if (!contextId) {
+                const response = new ResponseObject().notFound('No active context found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const context = await contextManager.getContext(contextId);
+            if (!context) {
+                const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Get documents in the context
+            const documents = await contextManager.getContextDocuments(contextId);
+
+            const response = new ResponseObject().success(documents, 'Context documents retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error getting context documents: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    // Get URL of the current context
+    router.get('/url', async (req, res) => {
+        try {
+            let contextId = null;
+            const userId = req.user.id;
+
+            // First check if user has a session with a context
+            if (req.user.sessionId) {
+                debug('User has a session, getting context from session');
+                const session = await sessionManager.getSession(req.user.sessionId);
+                if (session && session.contextId) {
+                    contextId = session.contextId;
+                }
+            }
+
+            // If no context ID found via session, look for a default context for this user
+            if (!contextId) {
+                debug('No context found via session, looking for default context');
+                try {
+                    // Try to find a default context for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    if (userContexts && userContexts.length > 0) {
+                        // Use the first context as default
+                        contextId = userContexts[0].id;
+                        debug(`Found default context: ${contextId}`);
+                    }
+                } catch (err) {
+                    debug(`Error finding default context: ${err.message}`);
+                }
+            }
+
+            // If still no context ID, return an error
+            if (!contextId) {
+                const response = new ResponseObject().notFound('No active context found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const context = await contextManager.getContext(contextId);
+            if (!context) {
+                const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const response = new ResponseObject().success({ url: context.url }, 'Context URL retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error getting context URL: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    // Get path of the current context
+    router.get('/path', async (req, res) => {
+        try {
+            let contextId = null;
+            const userId = req.user.id;
+
+            // First check if user has a session with a context
+            if (req.user.sessionId) {
+                debug('User has a session, getting context from session');
+                const session = await sessionManager.getSession(req.user.sessionId);
+                if (session && session.contextId) {
+                    contextId = session.contextId;
+                }
+            }
+
+            // If no context ID found via session, look for a default context for this user
+            if (!contextId) {
+                debug('No context found via session, looking for default context');
+                try {
+                    // Try to find a default context for this user
+                    const userContexts = await contextManager.getUserContexts(userId);
+                    if (userContexts && userContexts.length > 0) {
+                        // Use the first context as default
+                        contextId = userContexts[0].id;
+                        debug(`Found default context: ${contextId}`);
+                    }
+                } catch (err) {
+                    debug(`Error finding default context: ${err.message}`);
+                }
+            }
+
+            // If still no context ID, return an error
+            if (!contextId) {
+                const response = new ResponseObject().notFound('No active context found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const context = await contextManager.getContext(contextId);
+            if (!context) {
+                const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Get the filesystem path for the context
+            const path = await contextManager.getContextPath(contextId);
+
+            const response = new ResponseObject().success({ path }, 'Context path retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error getting context path: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 
@@ -206,12 +565,28 @@ export default function contextRoutes(options) {
     router.get('/:id', async (req, res) => {
         try {
             const { id } = req.params;
-            const context = contextManager.getContext(id);
+            const autoCreate = req.query.autoCreate === 'true';
+
+            let context;
+            try {
+                // If autoCreate is true, pass the user for auto-creation
+                const options = autoCreate ? {
+                    autoCreate,
+                    user: req.user,
+                    name: req.query.name || `Context ${id}`,
+                    description: req.query.description || 'Auto-created context'
+                } : {};
+
+                context = await contextManager.getContext(id, options);
+            } catch (err) {
+                debug(`Error getting context: ${err.message}`);
+                return res.status(404).json(new ResponseObject(null, err.message, 404));
+            }
 
             return res.json(new ResponseObject(context));
         } catch (err) {
             debug(`Error getting context: ${err.message}`);
-            return res.status(404).json(new ResponseObject(null, err.message, 404));
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
         }
     });
 

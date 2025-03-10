@@ -4,34 +4,12 @@ A command-line interface for interacting with the Canvas server.
 
 ## Installation
 
-The CLI is included with the Canvas server. You can run it using npm scripts:
-
-```bash
-npm run canvas
-npm run ws
-npm run context
-```
-
-Or you can use the bin scripts directly:
+The CLI is included with the Canvas server. You can run it using npm scripts or directly from the bin directory:
 
 ```bash
 ./bin/canvas
 ./bin/ws
 ./bin/context
-```
-
-You can also install the package globally to make the commands available system-wide:
-
-```bash
-npm install -g
-```
-
-After global installation, you can use the commands from anywhere:
-
-```bash
-canvas
-ws
-context
 ```
 
 Alternatively, you can create symlinks to make the commands available globally:

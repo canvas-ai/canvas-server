@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ResponseObject from '../ResponseObject.js';
+import { Server } from 'socket.io';
+import http from 'http';
 
 const debug = debugInstance('canvas:transport:ws');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,25 +14,28 @@ const DEFAULT_CONFIG = {
     protocol: process.env.CANVAS_TRANSPORT_WS_PROTOCOL || 'ws',
     host: process.env.CANVAS_TRANSPORT_WS_HOST || '0.0.0.0',
     port: process.env.CANVAS_TRANSPORT_WS_PORT || 8002,
+    cors: {
+        origins: process.env.CANVAS_TRANSPORT_WS_CORS_ORIGINS?.split(',') || ['*'],
+        methods: ['GET', 'POST'],
+    },
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_WS_AUTH_ENABLED || false,
-        accessToken: process.env.CANVAS_TRANSPORT_WS_ACCESS_TOKEN || 'canvas-server-token',
-        jwtSecret: process.env.CANVAS_TRANSPORT_WS_JWT_SECRET || 'canvas-jwt-secret',
-        jwtLifetime: process.env.CANVAS_TRANSPORT_WS_JWT_LIFETIME || '48h',
     },
 };
 
 class WebSocketTransport {
     #config;
     #io;
-    #isShuttingDown = false;
+    #httpServer;
     #closePromise;
+    #isShuttingDown = false;
     #canvasServer;
 
     constructor(options = {}) {
+        debug(`Initializing WebSocket Transport with options: ${JSON.stringify(options)}`);
         this.#config = { ...DEFAULT_CONFIG, ...options };
         this.ResponseObject = ResponseObject;
-        debug('WebSocket Transport initialized with config:', this.#config);
+        debug(`WebSocket Transport initialized with config:`, this.#config);
     }
 
     /**
@@ -83,44 +88,32 @@ class WebSocketTransport {
     }
 
     async stop() {
-        if (!this.#io) {
-            debug('No WebSocket server instance to stop');
-            return Promise.resolve();
-        }
-
         if (this.#isShuttingDown) {
-            debug('WebSocket server is already shutting down, waiting for existing shutdown to complete');
             return this.#closePromise;
         }
 
         this.#isShuttingDown = true;
         debug('Shutting down WebSocket server...');
 
-        this.#closePromise = new Promise((resolve) => {
-            // Close all existing connections
-            const sockets = Array.from(this.#io.sockets.sockets.values());
-            sockets.forEach(socket => {
-                this.#handleDisconnect(socket);
-                socket.disconnect(true);
-            });
+        this.#closePromise = new Promise((resolve, reject) => {
+            if (!this.#io) {
+                debug('WebSocket server not running');
+                this.#isShuttingDown = false;
+                return resolve();
+            }
 
-            // Close the server
-            this.#io.close(() => {
-                debug('WebSocket server gracefully shut down');
+            this.#io.close((err) => {
+                if (err) {
+                    debug(`Error closing WebSocket server: ${err.message}`);
+                    this.#isShuttingDown = false;
+                    return reject(err);
+                }
+
+                debug('WebSocket server closed');
                 this.#io = null;
                 this.#isShuttingDown = false;
                 resolve();
             });
-
-            // Force close after timeout
-            setTimeout(() => {
-                if (this.#io) {
-                    debug('Force closing remaining WebSocket connections');
-                    this.#io = null;
-                    this.#isShuttingDown = false;
-                    resolve();
-                }
-            }, 5000);
         });
 
         return this.#closePromise;
@@ -132,11 +125,16 @@ class WebSocketTransport {
     }
 
     status() {
-        if (!this.#io) { return { listening: false }; }
+        if (!this.#io) {
+            return {
+                running: false,
+                listening: false,
+                connections: 0,
+            };
+        }
+
         return {
-            protocol: this.#config.protocol,
-            host: this.#config.host,
-            port: this.#config.port,
+            running: true,
             listening: true,
             connections: this.#io.sockets.sockets.size,
         };
@@ -149,20 +147,44 @@ class WebSocketTransport {
             throw new Error('Auth service not found in Canvas server');
         }
 
-        this.#io.use((socket, next) => {
-            const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
+        debug('Setting up WebSocket authentication');
 
-            if (!token) {
-                return next(new Error('Authentication token required'));
-            }
+        this.#io.use(async (socket, next) => {
+            try {
+                // Get token from handshake auth or headers
+                const token = socket.handshake.auth.token ||
+                              socket.handshake.headers['authorization']?.replace('Bearer ', '');
 
-            const decoded = authService.verifyToken(token);
-            if (!decoded) {
+                if (!token) {
+                    debug('No authentication token provided');
+                    return next(new Error('Authentication token required'));
+                }
+
+                debug(`Verifying token: ${token.substring(0, 10)}...`);
+
+                // First try JWT token
+                const decoded = authService.verifyToken(token);
+                if (decoded) {
+                    debug(`JWT token verified for user ID: ${decoded.id}`);
+                    socket.user = decoded;
+                    return next();
+                }
+
+                // Then try API token
+                const apiTokenResult = await authService.verifyAuthToken(token);
+                if (apiTokenResult) {
+                    debug(`API token verified for user: ${apiTokenResult.user.email}`);
+                    socket.user = apiTokenResult.user;
+                    socket.tokenId = apiTokenResult.token.id;
+                    return next();
+                }
+
+                debug('Invalid token');
                 return next(new Error('Invalid token'));
+            } catch (error) {
+                debug(`Authentication error: ${error.message}`);
+                return next(new Error(`Authentication error: ${error.message}`));
             }
-
-            socket.user = decoded;
-            next();
         });
     }
 
@@ -178,63 +200,53 @@ class WebSocketTransport {
             // Load and bind route handlers
             await this.#loadSocketRoutes(socket);
 
+            // Handle disconnect
             socket.on('disconnect', () => {
                 debug(`Client disconnected: ${socket.id}`);
-                this.#handleDisconnect(socket);
             });
         });
     }
 
     async #loadSocketRoutes(socket) {
-        for (const version of API_VERSIONS) {
-            const versionPath = path.join(__dirname, 'routes', version);
-            const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
+        // Import and initialize route handlers
+        const routeHandlers = [
+            (await import('./routes/context.js')).default,
+            (await import('./routes/documents.js')).default,
+            (await import('./routes/workspaces.js')).default,
+        ];
 
-            for (const file of routeFiles) {
-                try {
-                    const route = await import(path.join(versionPath, file));
-                    debug(`Loading socket route: ${file}`);
-                    route.default(socket, this.#injectDependencies(socket));
-                } catch (error) {
-                    debug(`Error loading route ${file}:`, error);
-                }
+        // Initialize each route handler with the socket
+        routeHandlers.forEach(handler => {
+            if (typeof handler === 'function') {
+                handler(socket, this.#canvasServer);
             }
-        }
-    }
-
-    #injectDependencies(socket) {
-        return {
-            ResponseObject: this.ResponseObject,
-            canvasServer: this.#canvasServer,
-            sessionManager: this.#canvasServer.sessionManager,
-            session: socket.session,
-            context: socket.context,
-        };
-    }
-
-    #handleDisconnect(socket) {
-        if (socket.context) {
-            socket.context.cleanup?.();
-        }
-        if (socket.session) {
-            socket.session.cleanup?.();
-        }
+        });
     }
 
     async #setupAdminRoutes() {
-        // Get auth service from the Canvas server
-        const authService = this.#canvasServer.services.get('auth');
-        if (!authService) {
-            throw new Error('Auth service not found in Canvas server');
-        }
+        // Admin namespace for monitoring and management
+        const admin = this.#io.of('/admin');
 
-        try {
-            const adminRoutes = await import('./routes/v2/admin.js');
-            adminRoutes.default(this.#io, authService);
-            debug('Admin routes registered');
-        } catch (error) {
-            debug(`Error loading admin routes: ${error.message}`);
-        }
+        // Protect admin namespace
+        admin.use((socket, next) => {
+            // TODO: Implement admin authentication
+            next();
+        });
+
+        admin.on('connection', (socket) => {
+            debug('Admin connected');
+
+            socket.on('status', (callback) => {
+                callback({
+                    connections: this.#io.sockets.sockets.size,
+                    uptime: process.uptime(),
+                });
+            });
+
+            socket.on('disconnect', () => {
+                debug('Admin disconnected');
+            });
+        });
     }
 }
 
