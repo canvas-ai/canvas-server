@@ -20,6 +20,8 @@ class Context extends EventEmitter {
     #name;
     #baseUrl; // With workspace support we need to change the format to workspace://baseUrl/path
     #url;
+    #path;
+    #pathArray;
 
     // Workspace references
     #db; // workspace.db
@@ -97,6 +99,8 @@ class Context extends EventEmitter {
     get name() { return this.#name; }
     get baseUrl() { return this.#baseUrl; }
     get url() { return this.#url; }
+    get path() { return this.#path; }
+    get pathArray() { return this.#pathArray; }
     get workspace() { return this.#workspace.id; }
     get device() { return this.#device.id; }
     get app() { return this.#device.app; }
@@ -104,6 +108,20 @@ class Context extends EventEmitter {
     get identity() { return this.#user.identity; }
     get tree() { return this.#tree.toJSON(); } // Legacy
     get pendingUrl() { return this.#pendingUrl; } // Check if there's a pending URL switch
+    get bitmapArrays() {
+        return {
+            system: this.#systemBitmapArray,
+            context: this.#contextBitmapArray,
+            feature: this.#featureBitmapArray,
+            filter: this.#filterBitmapArray,
+        };
+    }
+
+    get contextBitmapArray() { return this.#contextBitmapArray; }
+    get featureBitmapArray() { return this.#featureBitmapArray; }
+    get filterBitmapArray() { return this.#filterBitmapArray; }
+
+    get status() { return this.toJSON(); }
 
     /**
      * Context API
@@ -131,6 +149,8 @@ class Context extends EventEmitter {
 
         // Update the URL
         this.#url = parsed.url;
+        this.#path = parsed.path;
+        this.#pathArray = parsed.pathArray;
 
         // Update the updated timestamp
         this.#updated = new Date().toISOString();
@@ -254,6 +274,42 @@ class Context extends EventEmitter {
             return this.setUrl(pendingUrl);
         }
         return Promise.resolve(this);
+    }
+
+    /**
+     * Bitmaps
+     */
+
+    setFeatureBitmaps(featureArray) {
+        this.#featureBitmapArray = featureArray;
+    }
+
+    appendFeatureBitmaps(featureArray) {
+        this.#featureBitmapArray.push(...featureArray);
+    }
+
+    removeFeatureBitmaps(featureArray) {
+        this.#featureBitmapArray = this.#featureBitmapArray.filter(feature => !featureArray.includes(feature));
+    }
+
+    clearFeatureBitmaps() {
+        this.#featureBitmapArray = [];
+    }
+
+    setFilterBitmaps(filterArray) {
+        this.#filterBitmapArray = filterArray;
+    }
+
+    appendFilterBitmaps(filterArray) {
+        this.#filterBitmapArray.push(...filterArray);
+    }
+
+    removeFilterBitmaps(filterArray) {
+        this.#filterBitmapArray = this.#filterBitmapArray.filter(filter => !filterArray.includes(filter));
+    }
+
+    clearFilterBitmaps() {
+        this.#filterBitmapArray = [];
     }
 
     /**
@@ -431,34 +487,6 @@ class Context extends EventEmitter {
     }
 
     /**
-     * Document Feature API
-     */
-
-    addDocumentFeature(feature) {
-        // Implementation needed
-        this.emit('feature:add', feature);
-    }
-
-    removeDocumentFeature(feature) {
-        // Implementation needed
-        this.emit('feature:remove', feature);
-    }
-
-    listDocumentFeatures() {
-        // Implementation needed
-        const features = []; // Placeholder for actual implementation
-        this.emit('features:list', features.length);
-        return features;
-    }
-
-    hasDocumentFeature(feature) {
-        // Implementation needed
-        const hasFeature = false; // Placeholder for actual implementation
-        this.emit('feature:check', { feature, exists: hasFeature });
-        return hasFeature;
-    }
-
-    /**
      * Utils
      */
 
@@ -471,6 +499,10 @@ class Context extends EventEmitter {
             created: this.#created,
             updated: this.#updated,
             locked: this.#isLocked,
+            systemBitmapArray: this.#systemBitmapArray,
+            contextBitmapArray: this.#contextBitmapArray,
+            featureBitmapArray: this.#featureBitmapArray,
+            filterBitmapArray: this.#filterBitmapArray,
         };
 
         // Include pendingUrl if it exists

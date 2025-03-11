@@ -4,7 +4,6 @@ import randomcolor from 'randomcolor';
 import path from 'path';
 import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 import Conf from 'conf';
 
 // Logging

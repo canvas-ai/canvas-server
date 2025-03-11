@@ -196,23 +196,6 @@ class HttpRestTransport {
             }));
         }
 
-        // Configure static file serving
-        const staticPath = path.resolve(this.#config.staticPath);
-        if (fs.existsSync(staticPath)) {
-            debug(`Serving static files from: ${staticPath}`);
-            app.use(express.static(staticPath));
-
-            // Serve index.html for all non-API routes to support client-side routing
-            app.get('*', (req, res, next) => {
-                if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
-                    return next();
-                }
-                res.sendFile(path.join(staticPath, 'index.html'));
-            });
-        } else {
-            debug(`Static path not found: ${staticPath}`);
-        }
-
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/v2/ping`, (req, res) => {
             res.status(200).json({
@@ -233,7 +216,7 @@ class HttpRestTransport {
             // Get services from canvas server
             const authService = this.#canvasServer.services.get('auth');
             const sessionManager = this.#canvasServer.sessionManager;
-            const contextManager = this.#canvasServer.services.get('context');
+            const userManager = this.#canvasServer.userManager;
 
             // Dynamically import and register routes
             if (authService) {
@@ -251,16 +234,36 @@ class HttpRestTransport {
                 }));
             }
 
-            if (contextManager) {
+            if (userManager) {
                 debug('Registering contexts routes');
                 const contextsRoutesModule = await import('./routes/v2/contexts.js');
-                app.use(`${this.#config.basePath}/v2/contexts`, contextsRoutesModule.default({ contextManager }));
+                app.use(`${this.#config.basePath}/v2/contexts`, contextsRoutesModule.default({
+                    auth: authService,
+                    userManager
+                }));
             }
 
             debug('API routes registered successfully');
         } catch (error) {
             debug(`Error registering API routes: ${error.message}`);
             console.error('Failed to register API routes:', error);
+        }
+
+        // Configure static file serving AFTER API routes
+        const staticPath = path.resolve(this.#config.staticPath);
+        if (fs.existsSync(staticPath)) {
+            debug(`Serving static files from: ${staticPath}`);
+            app.use(express.static(staticPath));
+
+            // Serve index.html for all non-API routes to support client-side routing
+            app.get('*', (req, res, next) => {
+                if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
+                    return next();
+                }
+                res.sendFile(path.join(staticPath, 'index.html'));
+            });
+        } else {
+            debug(`Static path not found: ${staticPath}`);
         }
 
         // Create HTTP server

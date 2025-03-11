@@ -102,7 +102,7 @@ export function requireWorkspaceManager(options = {}) {
     const middleware = createUserManagersMiddleware(options);
 
     return async (req, res, next) => {
-        await middleware(req, res, (err) => {
+        await middleware(req, res, async (err) => {
             if (err) return next(err);
 
             if (!req.workspaceManager) {
@@ -147,7 +147,7 @@ export function requireContextManager(options = {}) {
     const middleware = createUserManagersMiddleware(options);
 
     return async (req, res, next) => {
-        await middleware(req, res, (err) => {
+        await middleware(req, res, async (err) => {
             if (err) return next(err);
 
             if (!req.contextManager) {

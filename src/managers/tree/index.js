@@ -28,25 +28,29 @@ class TreeManager extends EventEmitter {
         return this.#tree;
     }
 
-    deleteContextTree() {
+    deleteContextTree(id) {
         throw new Error('Not implemented');
     }
 
-    saveContextTree() {
-        this.#tree.save(); // TODO: Refactor
+    saveContextTree(id) {
+        throw new Error('Not implemented');
     }
 
-    loadContextTree() {
-        this.#tree.load(); // TODO: Refactor
+    loadContextTree(id) {
+        throw new Error('Not implemented');
     }
 
-    nextContextTreeVersion() {}
+    nextContextTreeVersion(id) {
+        throw new Error('Not implemented');
+    }
 
-    previousContextTreeVersion() {}
+    previousContextTreeVersion(id) {
+        throw new Error('Not implemented');
+    }
 
-    listContextTreeVersions() {}
-
-    diffContextTree(vID1, vID2) {}
+    listContextTreeVersions(id) {
+        throw new Error('Not implemented');
+    }
 
 }
 

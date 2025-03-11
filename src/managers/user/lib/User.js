@@ -2,15 +2,11 @@
 
 import path from 'path';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('user');
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 import Conf from 'conf';
-
-// Singletons
-import sessionManager from '@/Server.js';
 
 // Managers
 import WorkspaceManager from '@/managers/workspace/index.js';
@@ -18,7 +14,6 @@ import ContextManager from '@/managers/context/index.js';
 
 /**
  * User Class
- * Acts as the PID1 process for the user environment
  * Manages workspaces, contexts, and other user-specific resources
  */
 class User extends EventEmitter {
@@ -127,7 +122,8 @@ class User extends EventEmitter {
             }
 
             // Create universe workspace if it doesn't exist
-            if (!this.#workspaceManager.hasWorkspace('universe')) {
+            // Check both in-memory index and on disk
+            if (!this.#workspaceManager.hasWorkspace('universe') && !this.#workspaceManager.hasWorkspaceOnDisk('universe')) {
                 await this.#workspaceManager.createWorkspace('universe', {
                     type: 'universe',
                     label: 'Universe',
@@ -135,6 +131,10 @@ class User extends EventEmitter {
                     owner: this.#id
                 });
                 debug(`Created universe workspace for user: ${this.#id}`);
+            } else if (this.#workspaceManager.hasWorkspaceOnDisk('universe') && !this.#workspaceManager.hasWorkspace('universe')) {
+                // If workspace exists on disk but not in memory, load it
+                await this.#workspaceManager.loadWorkspace('universe');
+                debug(`Loaded existing universe workspace for user: ${this.#id}`);
             }
 
             // Activate universe workspace
@@ -416,23 +416,6 @@ class User extends EventEmitter {
     }
 
     /**
-     * Initialize the token store
-     * @private
-     */
-    #initializeTokenStore() {
-        // Create a Conf instance for API tokens
-        this.#tokenStore = new Conf({
-            configName: 'tokens',
-            cwd: this.#homePath,
-            defaults: {
-                tokens: {}
-            }
-        });
-
-        debug(`Token store initialized with ${Object.keys(this.#tokenStore.get('tokens')).length} tokens`);
-    }
-
-    /**
      * Create a new API token
      * @param {Object} options - Token options
      * @param {string} options.name - Token name
@@ -686,6 +669,23 @@ class User extends EventEmitter {
                 isOpen: this.#workspaceManager.isOpen(w.id)
             })) : []
         };
+    }
+
+    /**
+     * Initialize the token store
+     * @private
+     */
+    #initializeTokenStore() {
+        // Create a Conf instance for API tokens
+        this.#tokenStore = new Conf({
+            configName: 'tokens',
+            cwd: this.#homePath,
+            defaults: {
+                tokens: {}
+            }
+        });
+
+        debug(`Token store initialized with ${Object.keys(this.#tokenStore.get('tokens')).length} tokens`);
     }
 
     /**

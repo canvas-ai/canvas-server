@@ -4,10 +4,9 @@ const debug = debugMessage('canvas:context:layer');
 import { uuid12 } from '@/utils/common.js';
 
 const LAYER_TYPES = [
-    'universe',
-    'root',         // Root layer for a workspace
-    'system',
-    'workspace',    // Collection of canvases, has additional parameters (color, description ..)
+    'universe',     // Root layer for a workspace
+    'system',       // System layers (canvas, device, user, session)
+    'workspace',    // "Mountpoint" to a workspace
     'canvas',       // Can store context, feature and filter bitmaps + dashboard / UI layouts
     'context',      // Has context bitmaps only
     'label',        // Label only (no associated bitmaps)
@@ -33,7 +32,6 @@ class Layer {
             throw new Error('Layer name must be a non-empty String');
         }
 
-
         // TODO: This constructor needs a proper cleanup!
         this.id =  options.id;
         this.type = this.#validateType(options.type); // TODO: Move to LayerManager/dedicated file
@@ -42,24 +40,7 @@ class Layer {
         this.description = (options.description) ? this.#sanitizeDescription(options.description) : 'Canvas layer';
         this.color = options?.color;
         this.locked = options?.locked || false;
-
-        this.featureBitmaps = [];
-        this.filterBitmaps = [];
-
         this.metadata = options.metadata || {};
-    }
-
-
-    /**
-     * Getters
-     */
-
-    get featureBitmapArray() {
-        return this.featureBitmaps;
-    }
-
-    get filterBitmapArray() {
-        return this.filterBitmaps;
     }
 
     /**
@@ -83,10 +64,6 @@ class Layer {
         this.description = this.#sanitizeDescription(description);
         return this;
     }
-
-
-    // TODO: Implement the rest of the setters (featureBitmaps, filterBitmaps, metadata)
-
 
     /**
      * Validators
@@ -137,6 +114,10 @@ class Layer {
         return description;
     }
 
+    /**
+     * JSON
+     */
+
     toJSON() {
         // TODO: Maybe we should use JSON.stringify to return a valid JSON directly
         return {
@@ -148,8 +129,6 @@ class Layer {
             description: this.description,
             color: this.color,
             locked: this.locked,
-            featureBitmaps: this.featureBitmaps,
-            filterBitmaps: this.filterBitmaps,
             metadata: this.metadata,
         };
     }
@@ -165,8 +144,6 @@ class Layer {
             description: json.description,
             color: json.color,
             locked: json.locked,
-            featureBitmaps: json.featureBitmaps,
-            filterBitmaps: json.filterBitmaps,
             metadata: json.metadata,
         });
         return layer;

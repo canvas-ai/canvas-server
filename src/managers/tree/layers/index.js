@@ -145,6 +145,12 @@ class LayerIndex extends EventEmitter {
     #initBuiltInLayers() {
         // Check if a root layer already exists in the index
         const rootExists = this.hasLayerName('/');
+        if (!rootExists) {
+            this.createLayer(builtInLayers[0]);
+        }
+
+        // TODO: Builtin layers should not be added to the index
+        return;
 
         for (const layer of builtInLayers) {
             // Skip the root layer if it already exists
