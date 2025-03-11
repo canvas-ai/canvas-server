@@ -29,6 +29,10 @@ baseUrl: /rest/v2
 ├── /workspaces
 │   ├── /:id
 │   ├── /:id/documents
+│   ├── /:id/documents/by-id/:id
+│   ├── /:id/documents/by-abstraction/:abstraction
+│   ├── /:id/documents/by-hash/:hashString
+│   ├── /:id/documents/query
 │   ├── /:id/tree
 │   ├── /:id/tree/layers
 │   └── /:id/tree/layers/:layerId

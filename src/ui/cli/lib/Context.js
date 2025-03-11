@@ -76,12 +76,13 @@ ${chalk.bold('COMMANDS')}
   ${chalk.yellow('note add <content>')}       Add a new note
   ${chalk.yellow('tab add <url>')}            Add a new tab
   ${chalk.yellow('tab list')}                 List all tabs in the context
+  ${chalk.yellow('query <query>')}            Execute a natural language query in the current context
 
 ${chalk.bold('OPTIONS')}
   ${chalk.yellow('-h, --help')}               Show this help message
   ${chalk.yellow('-v, --version')}            Show version information
   ${chalk.yellow('-f, --feature <feature>')}  Specify document feature(s)
-  ${chalk.yellow('-t, --tag <tag>')}          Add tag(s) to document
+  ${chalk.yellow('--filter <filter>')}         Specify filter(s) for the query
   ${chalk.yellow('--title <title>')}          Set document title
   ${chalk.yellow('--context <context>')}      Specify context URL
     `);
@@ -727,6 +728,50 @@ ${chalk.bold('OPTIONS')}
       if (err.response && err.response.data && err.response.data.message) {
         console.error(chalk.red(`Server message: ${err.response.data.message}`));
       }
+      return 1;
+    }
+  }
+
+  async query(args) {
+    try {
+      await this.initialize();
+      const contextId = this.getContextId();
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      // Combine all positional arguments as the query string
+      const queryString = args.join(' ');
+      let featureArray = [];
+      if (this.args.feature) {
+        featureArray = [].concat(this.args.feature);
+      }
+      let filterArray = [];
+      if (this.args.filter) {
+        filterArray = [].concat(this.args.filter);
+      }
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}/query`, {
+        params: { query: queryString, featureArray, filterArray }
+      });
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const results = response.data.payload;
+        if (results.length === 0) {
+          console.log(chalk.yellow('No results found.'));
+        } else {
+          const table = this.createTable(['ID', 'Title', 'Created']);
+          results.forEach(result => {
+            table.push([
+              chalk.white(result.id || 'N/A'),
+              chalk.white(result.content && result.content.title ? result.content.title : 'Untitled'),
+              chalk.white(result.created || '')
+            ]);
+          });
+          console.log(table.toString());
+        }
+        return 0;
+      } else {
+        console.error(chalk.red('Error: ' + (response.data ? response.data.message : 'Query failed')));
+        return 1;
+      }
+    } catch (err) {
+      console.error(chalk.red('Error querying context: ' + err.message));
       return 1;
     }
   }

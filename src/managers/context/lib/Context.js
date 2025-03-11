@@ -127,6 +127,15 @@ class Context extends EventEmitter {
      * Context API
      */
 
+
+    query(featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        // NLP query
+    }
+
     setUrl(url) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
@@ -315,6 +324,7 @@ class Context extends EventEmitter {
     /**
      * Document API
      */
+
 
     getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
