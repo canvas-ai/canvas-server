@@ -144,10 +144,6 @@ update_canvas() {
         handle_error "$?" "Failed to install dependencies"
     fi
 
-    if ! npm run db:migrate; then
-        handle_error "$?" "Failed to update the database"
-    fi
-
     if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
         handle_error "$?" "Failed to set permissions"
     fi
@@ -172,10 +168,6 @@ install_canvas() {
 
     if ! npm install; then
         handle_error "$?" "Failed to install dependencies"
-    fi
-
-    if ! npm run db:setup; then
-        handle_error "$?" "Failed to setup the database"
     fi
 
     if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then

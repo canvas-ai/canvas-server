@@ -117,10 +117,6 @@ run_as_canvas_user "/usr/bin/git submodule update --init --remote"
 log_message "Installing dependencies..."
 run_as_canvas_user "/usr/bin/npm install"
 
-# Run database migrations
-log_message "Running database migrations..."
-run_as_canvas_user "/usr/bin/npm run db:migrate"
-
 # Start the application
 log_message "Starting canvas-server..."
 if ! systemctl start canvas-server; then
