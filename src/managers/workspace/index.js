@@ -100,13 +100,16 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} The created workspace
      */
     async createWorkspace(workspaceID, options = {}) {
-        // Validate required parameters
-        if (!workspaceID) {
-            throw new Error('Workspace ID is required');
+        if (!workspaceID) { throw new Error('Workspace ID is required'); }
+
+        // Check if workspace already exists
+        if (this.#workspaceIndex.has(workspaceID)) {
+            debug(`Workspace "${workspaceID}" already exists, returning existing workspace`);
+            return this.openWorkspace(workspaceID);
         }
 
-        // Create the workspace directory path
-        const workspacePath = options.path || path.join(this.#rootPath, workspaceID);
+        // Create the workspace directory path - ensure it's a string
+        const workspacePath = typeof options.path === 'string' ? options.path : path.join(this.#rootPath, workspaceID);
         debug(`Creating workspace "${workspaceID}" at ${workspacePath}`);
 
         try {
@@ -154,16 +157,16 @@ class WorkspaceManager extends EventEmitter {
                 configStore: configStore,
             });
 
-            // Initialize workspace
-            if (options.autoInitialize) {
-                await this.openWorkspace(workspaceID);
-            }
-
             // Add to tracked workspaces - use the workspaceID as the key
             this.#workspaceIndex.set(workspaceID, workspace);
 
             this.emit('workspace:created', workspace);
             debug(`Workspace ${workspaceID} created successfully`);
+
+            // Initialize workspace
+            if (options.autoInitialize) {
+                await workspace.initialize();
+            }
 
             return workspace;
         } catch (err) {

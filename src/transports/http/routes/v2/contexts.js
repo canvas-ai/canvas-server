@@ -68,7 +68,10 @@ export default function contextsRoutes(options) {
                 return res.status(response.statusCode).json(response.getResponse());
             }
 
-            const context = await req.contextManager.getContext(contextId);
+            const context = await req.contextManager.getContext(contextId, {
+                autoCreate: true
+            });
+
             if (!context) {
                 const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
                 return res.status(response.statusCode).json(response.getResponse());

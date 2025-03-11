@@ -188,20 +188,22 @@ export default function workspacesRoutes(options) {
             const { name, description } = req.body;
 
             if (!name) {
-                return res.status(400).json(new ResponseObject(null, 'Workspace name is required', 400));
+                return res.status(400).json(new ResponseObject().badRequest('Workspace name is required'));
             }
 
-            const workspaceData = {
-                name,
+            // Use name as the workspaceID and pass description as an option
+            const workspace = await req.workspaceManager.createWorkspace(name, {
                 description,
                 owner: req.user.id
-            };
+            });
 
-            const workspace = await req.workspaceManager.createWorkspace(workspaceData);
-            return res.status(201).json(new ResponseObject(workspace));
-        } catch (err) {
-            debug(`Error creating workspace: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            debug(`Created workspace: ${workspace.id} for user: ${req.user.id}`);
+            const response = new ResponseObject().created(workspace, 'Workspace created successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error creating workspace: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 

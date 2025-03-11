@@ -23,6 +23,7 @@
     "pm2:logs": "PM2_HOME=../var/pm2 pm2 logs ecosystem.config.js",
     "pm2:kill": "PM2_HOME=../var/pm2 pm2 kill",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
+    "build": "npm run build -w src/ui/web",
     "postinstall": "npm run build -w src/ui/web"
   },
   "workspaces": [

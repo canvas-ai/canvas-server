@@ -111,7 +111,13 @@ export default function sessionsRoutes(options) {
 
             const sessions = await sessionManager.getUserSessions(userId);
 
-            const response = new ResponseObject().success(sessions, 'Sessions retrieved successfully');
+            const response = new ResponseObject().success({
+                sessions,
+                total: sessions.length,
+                limit: sessions.length,
+                offset: 0
+            }, 'Sessions retrieved successfully');
+
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error listing sessions: ${error.message}`);

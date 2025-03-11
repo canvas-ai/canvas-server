@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-
+import os from 'os';
 // Transport dependencies
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -24,17 +24,21 @@ const DEFAULT_CONFIG = {
     port: process.env.CANVAS_TRANSPORT_HTTP_PORT || 8001,
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     cors: {
-        origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
-            'http://127.0.0.1',
-            'http://localhost',
-            'https://*.cnvs.ai',
-            'https://cnvs.ai',
-            'https://*.getcanvas.org',
-            'https://getcanvas.org'
-        ],
+        origin: true, // Allow all origins
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-device-name', 'x-app-name'],
-        credentials: true
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization',
+            'x-device-id',
+            'x-device-name',
+            'x-app-name',
+            'x-selected-session',
+            'x-workspace-id',
+            'x-context-id'
+        ],
+        exposedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true,
+        maxAge: 86400 // 24 hours
     },
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false,
@@ -51,6 +55,7 @@ class HttpRestTransport {
     #isShuttingDown = false;
     #canvasServer;
     #app;
+    #connections = new Set();
 
     constructor(options = {}) {
         debug('Initializing HTTP Transport');
@@ -110,14 +115,17 @@ class HttpRestTransport {
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
-        // For API endpoints, don't set CSP to avoid blocking requests
-        if (req.path.startsWith(this.#config.basePath)) {
+        // For API endpoints and API docs, use a more permissive CSP
+        if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
+            res.setHeader(
+                'Content-Security-Policy',
+                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`
+            );
             next();
             return;
         }
 
-        // Content Security Policy - Allow connections to the API endpoints
-        // Include both localhost and 127.0.0.1 with and without the port
+        // Content Security Policy for other routes
         res.setHeader(
             'Content-Security-Policy',
             `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`
@@ -156,45 +164,9 @@ class HttpRestTransport {
         app.use(cookieParser());
         app.use(this.#setSecurityHeaders.bind(this));
 
-        // Set up CORS
-        if (this.#config.cors === false) {
-            debug('CORS is disabled');
-        } else {
-            debug('Setting up CORS');
-            app.use(cors({
-                origin: (origin, callback) => {
-                    debug(`Checking CORS for origin: ${origin}`);
-
-                    // Allow requests with no origin, empty origin, or 'null' origin
-                    // - null/undefined: Server-to-server requests
-                    // - empty string: Some proxy configurations
-                    // - 'null' string: Requests from file:// URLs or sandboxed contexts
-                    if (!origin || origin === '' || origin === 'null') {
-                        debug('Allowing request with absent/empty/null origin');
-                        callback(null, true);
-                        return;
-                    }
-
-                    // Check if origin matches any of our allowed patterns
-                    const isAllowed =
-                        this.#config.cors.origins?.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
-                        /^https?:\/\/localhost(:[0-9]+)?$/.test(origin) || // Match localhost with optional port
-                        /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(origin) || // Match 127.0.0.1 with optional port
-                        /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:[0-9]+)?$/.test(origin); // Match IP addresses with optional port
-
-                    if (isAllowed) {
-                        debug(`Origin ${origin} is allowed`);
-                        callback(null, origin);  // Return the actual origin instead of true
-                    } else {
-                        debug(`Origin ${origin} is not allowed`);
-                        callback(new Error(`CORS policy: ${origin} not allowed`));
-                    }
-                },
-                methods: this.#config.cors?.methods || DEFAULT_CONFIG.cors.methods,
-                allowedHeaders: this.#config.cors?.allowedHeaders || DEFAULT_CONFIG.cors.allowedHeaders,
-                credentials: this.#config.cors?.credentials || DEFAULT_CONFIG.cors.credentials
-            }));
-        }
+        // Set up CORS - simplified and permissive
+        debug('Setting up CORS');
+        app.use(cors(this.#config.cors));
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/v2/ping`, (req, res) => {
@@ -204,8 +176,11 @@ class HttpRestTransport {
                 timestamp: new Date().toISOString(),
                 version: version,
                 name: productName,
+                productName: productName,
                 description: description,
-                license: license
+                license: license,
+                architecture: os.arch(),
+                platform: os.platform(),
             });
         });
 
@@ -241,6 +216,21 @@ class HttpRestTransport {
                     auth: authService,
                     userManager
                 }));
+
+                debug('Registering workspaces routes');
+                const workspacesRoutesModule = await import('./routes/v2/workspaces.js');
+                app.use(`${this.#config.basePath}/v2/workspaces`, workspacesRoutesModule.default({
+                    auth: authService,
+                    userManager
+                }));
+
+                debug('Registering users routes');
+                const usersRoutesModule = await import('./routes/v2/users.js');
+                app.use(`${this.#config.basePath}/v2/users`, usersRoutesModule.default({
+                    auth: authService,
+                    userManager,
+                    sessionManager
+                }));
             }
 
             debug('API routes registered successfully');
@@ -269,6 +259,20 @@ class HttpRestTransport {
         // Create HTTP server
         this.#server = http.createServer(app);
 
+        // Track connections
+        this.#server.on('connection', (connection) => {
+            debug('New connection established');
+            this.#connections.add(connection);
+            connection.on('close', () => {
+                debug('Connection closed');
+                this.#connections.delete(connection);
+            });
+        });
+
+        // Handle process signals
+        process.on('SIGTERM', () => this.stop());
+        process.on('SIGINT', () => this.stop());
+
         // Start listening
         await new Promise((resolve, reject) => {
             this.#server.listen(this.#config.port, this.#config.host, () => {
@@ -288,10 +292,12 @@ class HttpRestTransport {
     async stop() {
         debug('Stopping HTTP transport');
         if (this.#isShuttingDown) {
+            debug('Already shutting down, waiting for existing shutdown to complete');
             return this.#closePromise;
         }
 
         this.#isShuttingDown = true;
+        debug('Starting graceful shutdown');
 
         this.#closePromise = new Promise((resolve, reject) => {
             if (!this.#server) {
@@ -301,16 +307,37 @@ class HttpRestTransport {
                 return;
             }
 
+            // Close all existing connections
+            debug(`Closing ${this.#connections.size} active connections`);
+            for (const connection of this.#connections) {
+                connection.end();
+                this.#connections.delete(connection);
+            }
+
+            // Set a timeout for forceful shutdown
+            const forceShutdown = setTimeout(() => {
+                debug('Forcing shutdown after timeout');
+                for (const connection of this.#connections) {
+                    connection.destroy();
+                }
+                if (this.#server) {
+                    this.#server.close();
+                }
+            }, 5000); // 5 seconds timeout
+
+            // Attempt graceful shutdown
             this.#server.close((err) => {
+                clearTimeout(forceShutdown);
                 if (err) {
-                    debug(`Error closing HTTP server: ${err.message}`);
+                    debug(`Error during graceful shutdown: ${err.message}`);
                     this.#isShuttingDown = false;
                     reject(err);
                     return;
                 }
 
-                debug('HTTP server closed');
+                debug('HTTP server closed successfully');
                 this.#server = null;
+                this.#connections.clear();
                 this.#isShuttingDown = false;
                 resolve();
             });

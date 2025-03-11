@@ -17,7 +17,12 @@ export default function(authService) {
     router.get('/users', async (req, res) => {
         try {
             const users = await req.app.locals.userManager.getAllUsers();
-            const response = new ResponseObject().success(users, 'Users retrieved successfully');
+            const response = new ResponseObject().success({
+                users,
+                total: users.length,
+                limit: users.length,
+                offset: 0
+            }, 'Users retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             const response = new ResponseObject().error(error.message);

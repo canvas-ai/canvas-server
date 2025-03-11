@@ -33,12 +33,7 @@ class ContextManager extends EventEmitter {
         }
 
         const parsed = new Url(url);
-        const userID = options.user?.email;
-        debug(`Creating context with URL: ${parsed.url} for user: ${userID}`);
-
-        if (!userID) {
-            throw new Error('User is required to create a context');
-        }
+        debug(`Creating context with URL: ${parsed.url} for user: ${this.#user.email}`);
 
         // If URL is relative (no workspace specified), default to universe workspace
         if (!parsed.workspaceID) {
@@ -47,11 +42,14 @@ class ContextManager extends EventEmitter {
         }
 
         // Check if the workspace exists for the user
-        if (!this.#workspaceManager.hasWorkspace(userID, parsed.workspaceID)) {
+        if (!this.#workspaceManager.hasWorkspace(parsed.workspaceID)) {
             throw new Error(`Workspace not found: ${parsed.workspaceID}`);
         }
 
-        const workspace = await this.#workspaceManager.openWorkspace(userID, parsed.workspaceID);
+        const workspace = await this.#workspaceManager.openWorkspace(parsed.workspaceID);
+        if (!workspace) {
+            throw new Error(`Workspace not found: ${parsed.workspaceID}`);
+        }
         debug(`Opened workspace: ${workspace.name}`);
 
         // Create the context with a specific ID if provided
@@ -110,7 +108,19 @@ class ContextManager extends EventEmitter {
      * @returns {Array<Context>} - Array of context instances
      */
     listContexts() {
-        return Array.from(this.#activeContexts.values());
+        debug(`Listing ${this.#activeContexts.size} active contexts`);
+        let contexts = [];
+        Array.from(this.#activeContexts.values()).forEach(context => {
+            contexts.push({
+                id: context.id,
+                url: context.url,
+                workspace: context.workspace,
+                created: context.created,
+                updated: context.updated
+            });
+        });
+
+        return contexts;
     }
 
     /**

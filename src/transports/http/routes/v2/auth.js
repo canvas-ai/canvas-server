@@ -337,10 +337,16 @@ export default function(authService) {
         debug('List tokens endpoint called');
 
         try {
-            const tokens = await authService.listAuthTokens(req.user.id);
+            const tokens = await authService.listApiTokens(req.user.id);
 
             debug(`Retrieved ${tokens.length} tokens for user: ${req.user.email}`);
-            const response = new ResponseObject().success(tokens, 'API tokens retrieved successfully');
+            const response = new ResponseObject().success({
+                tokens,
+                total: tokens.length,
+                limit: tokens.length,
+                offset: 0
+            }, 'API tokens retrieved successfully');
+
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`List tokens error: ${error.message}`);
@@ -395,7 +401,7 @@ export default function(authService) {
         }
 
         try {
-            const { token, tokenValue } = await authService.generateAuthToken(
+            const { token, tokenValue } = await authService.createApiToken(
                 req.user.id,
                 name || 'API Token',
                 expiresInDays || null

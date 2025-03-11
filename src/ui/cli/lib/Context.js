@@ -97,7 +97,7 @@ ${chalk.bold('OPTIONS')}
       const response = await this.api.get(contextsEndpoint);
 
       if (response.data && response.data.status === 'success' && response.data.payload) {
-        const contexts = response.data.payload;
+        const contexts = response.data.payload.contexts;
 
         if (contexts.length === 0) {
           console.log(chalk.yellow('No contexts found.'));

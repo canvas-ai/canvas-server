@@ -121,6 +121,8 @@ class Context extends EventEmitter {
     get featureBitmapArray() { return this.#featureBitmapArray; }
     get filterBitmapArray() { return this.#filterBitmapArray; }
 
+    get created() { return this.#created; }
+    get updated() { return this.#updated; }
     get status() { return this.toJSON(); }
 
     /**
@@ -290,14 +292,23 @@ class Context extends EventEmitter {
      */
 
     setFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
         this.#featureBitmapArray = featureArray;
     }
 
     appendFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
         this.#featureBitmapArray.push(...featureArray);
     }
 
     removeFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
         this.#featureBitmapArray = this.#featureBitmapArray.filter(feature => !featureArray.includes(feature));
     }
 
@@ -306,14 +317,23 @@ class Context extends EventEmitter {
     }
 
     setFilterBitmaps(filterArray) {
+        if (!Array.isArray(filterArray)) {
+            filterArray = [filterArray];
+        }
         this.#filterBitmapArray = filterArray;
     }
 
     appendFilterBitmaps(filterArray) {
+        if (!Array.isArray(filterArray)) {
+            filterArray = [filterArray];
+        }
         this.#filterBitmapArray.push(...filterArray);
     }
 
     removeFilterBitmaps(filterArray) {
+        if (!Array.isArray(filterArray)) {
+            filterArray = [filterArray];
+        }
         this.#filterBitmapArray = this.#filterBitmapArray.filter(filter => !filterArray.includes(filter));
     }
 
