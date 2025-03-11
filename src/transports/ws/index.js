@@ -33,9 +33,23 @@ class WebSocketTransport {
 
     constructor(options = {}) {
         debug(`Initializing WebSocket Transport with options: ${JSON.stringify(options)}`);
+
+        // Remove timestamp field if present
+        if (options.timestamp) {
+            delete options.timestamp;
+        }
+
         this.#config = { ...DEFAULT_CONFIG, ...options };
         this.ResponseObject = ResponseObject;
-        debug(`WebSocket Transport initialized with config:`, this.#config);
+        debug(`WebSocket Transport initialized with config:`, {
+            protocol: this.#config.protocol,
+            host: this.#config.host,
+            port: this.#config.port,
+            auth: {
+                enabled: this.#config.auth.enabled,
+                jwtSecret: this.#config.auth.jwtSecret ? 'provided' : 'missing'
+            }
+        });
     }
 
     /**
@@ -95,18 +109,21 @@ class WebSocketTransport {
         this.#isShuttingDown = true;
         debug('Shutting down WebSocket server...');
 
-        this.#closePromise = new Promise((resolve, reject) => {
+        this.#closePromise = new Promise((resolve) => {
             if (!this.#io) {
                 debug('WebSocket server not running');
                 this.#isShuttingDown = false;
-                return resolve();
+                resolve();
+                return;
             }
 
             this.#io.close((err) => {
                 if (err) {
                     debug(`Error closing WebSocket server: ${err.message}`);
                     this.#isShuttingDown = false;
-                    return reject(err);
+                    // Log the error but still resolve the promise
+                    resolve();
+                    return;
                 }
 
                 debug('WebSocket server closed');
@@ -147,44 +164,22 @@ class WebSocketTransport {
             throw new Error('Auth service not found in Canvas server');
         }
 
+        // Get JWT secret from auth service
+        const jwtSecret = authService.sessionService.getJwtSecret();
+        if (!jwtSecret) {
+            throw new Error('JWT secret is required for WebSocket authentication');
+        }
+
         debug('Setting up WebSocket authentication');
 
-        this.#io.use(async (socket, next) => {
-            try {
-                // Get token from handshake auth or headers
-                const token = socket.handshake.auth.token ||
-                              socket.handshake.headers['authorization']?.replace('Bearer ', '');
-
-                if (!token) {
-                    debug('No authentication token provided');
-                    return next(new Error('Authentication token required'));
-                }
-
-                debug(`Verifying token: ${token.substring(0, 10)}...`);
-
-                // First try JWT token
-                const decoded = authService.verifyToken(token);
-                if (decoded) {
-                    debug(`JWT token verified for user ID: ${decoded.id}`);
-                    socket.user = decoded;
-                    return next();
-                }
-
-                // Then try API token
-                const apiTokenResult = await authService.verifyAuthToken(token);
-                if (apiTokenResult) {
-                    debug(`API token verified for user: ${apiTokenResult.user.email}`);
-                    socket.user = apiTokenResult.user;
-                    socket.tokenId = apiTokenResult.token.id;
-                    return next();
-                }
-
-                debug('Invalid token');
-                return next(new Error('Invalid token'));
-            } catch (error) {
-                debug(`Authentication error: ${error.message}`);
-                return next(new Error(`Authentication error: ${error.message}`));
-            }
+        // Import and use the WebSocket auth middleware
+        import('./middleware/auth.js').then(({ default: createAuthMiddleware }) => {
+            const authMiddleware = createAuthMiddleware(this.#canvasServer);
+            this.#io.use(authMiddleware);
+            debug('WebSocket authentication middleware configured');
+        }).catch(error => {
+            debug(`Error loading WebSocket auth middleware: ${error.message}`);
+            throw error;
         });
     }
 
@@ -224,29 +219,108 @@ class WebSocketTransport {
     }
 
     async #setupAdminRoutes() {
-        // Admin namespace for monitoring and management
-        const admin = this.#io.of('/admin');
+        debug('Setting up WebSocket admin routes');
 
-        // Protect admin namespace
-        admin.use((socket, next) => {
-            // TODO: Implement admin authentication
-            next();
+        // Get services from Canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        const userManager = this.#canvasServer.userManager;
+        const sessionManager = this.#canvasServer.sessionManager;
+        const contextManager = this.#canvasServer.contextManager;
+
+        if (!authService) {
+            debug('Auth service not available, skipping admin routes');
+            return;
+        }
+
+        // Get JWT secret from auth service
+        const jwtSecret = authService.sessionService.getJwtSecret();
+        if (!jwtSecret) {
+            debug('JWT secret not available, skipping admin routes');
+            return;
+        }
+
+        // Create admin namespace
+        const adminNamespace = this.#io.of('/admin');
+
+        // Apply authentication middleware to admin namespace
+        adminNamespace.use(async (socket, next) => {
+            try {
+                // Get token from handshake auth or headers
+                const token = socket.handshake.auth.token ||
+                              socket.handshake.headers['authorization']?.replace('Bearer ', '');
+
+                if (!token) {
+                    debug('No authentication token provided for admin namespace');
+                    return next(new Error('Authentication token required'));
+                }
+
+                // Verify token
+                const decoded = authService.verifyToken(token);
+                if (!decoded) {
+                    debug('Invalid token for admin namespace');
+                    return next(new Error('Invalid token'));
+                }
+
+                // Get user
+                const user = await userManager.getUserById(decoded.id);
+                if (!user) {
+                    debug('User not found for admin namespace');
+                    return next(new Error('User not found'));
+                }
+
+                // Check if user is admin
+                if (user.role !== 'admin') {
+                    debug('User is not an admin');
+                    return next(new Error('Unauthorized: Admin access required'));
+                }
+
+                // Attach user to socket
+                socket.user = user;
+                next();
+            } catch (error) {
+                debug(`Admin authentication error: ${error.message}`);
+                next(new Error(`Authentication error: ${error.message}`));
+            }
         });
 
-        admin.on('connection', (socket) => {
-            debug('Admin connected');
+        // Handle admin connections
+        adminNamespace.on('connection', (socket) => {
+            debug(`Admin connected: ${socket.user.email}`);
 
-            socket.on('status', (callback) => {
-                callback({
-                    connections: this.#io.sockets.sockets.size,
-                    uptime: process.uptime(),
-                });
+            // Register admin event handlers
+            socket.on('server:status', async (data, callback) => {
+                try {
+                    const status = {
+                        server: this.#canvasServer.status,
+                        users: {
+                            count: await userManager.countUsers()
+                        },
+                        sessions: {
+                            count: await sessionManager.countSessions()
+                        }
+                    };
+
+                    // Add context stats if available
+                    if (contextManager) {
+                        status.contexts = {
+                            count: await contextManager.countContexts()
+                        };
+                    }
+
+                    callback({ success: true, data: status });
+                } catch (error) {
+                    debug(`Error getting server status: ${error.message}`);
+                    callback({ success: false, error: error.message });
+                }
             });
 
+            // Handle disconnection
             socket.on('disconnect', () => {
-                debug('Admin disconnected');
+                debug(`Admin disconnected: ${socket.user.email}`);
             });
         });
+
+        debug('WebSocket admin routes setup complete');
     }
 }
 

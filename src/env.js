@@ -37,7 +37,7 @@ const envConfig = {
     // Admin user creation
     CANVAS_CREATE_ADMIN_USER: process.env.CANVAS_CREATE_ADMIN_USER === 'true' || false,
     CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
-    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || '',
+    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || 'password',
 };
 
 /**

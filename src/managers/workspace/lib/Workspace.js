@@ -10,15 +10,24 @@ import { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('workspace');
 
 // Includes
-import SynapsD from '@/services/synapsd/src/index.js';
+import Db from '@/services/synapsd/src/index.js';
 import Tree from '../../tree/lib/Tree.js';
 import JsonIndexManager from '@/utils/jim/index.js';
+
+// Constants
+const WORKSPACE_STATUS = {
+    INITIALIZED: 'initialized',
+    ACTIVE: 'active',
+    INACTIVE: 'inactive',
+    DELETED: 'deleted'
+};
 
 /**
  * Canvas Workspace
  * Represents a workspace with configuration and resources
  */
 class Workspace extends EventEmitter {
+
     // Private properties
     #configStore;
     #db;
@@ -45,14 +54,6 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace name is required');
         }
 
-        if (!options.type) {
-            throw new Error('Workspace type is required');
-        }
-
-        if (!options.owner) {
-            throw new Error('Workspace owner is required');
-        }
-
         if (options.color && !this.#validateColor(options.color)) {
             throw new Error('Invalid color format');
         }
@@ -61,9 +62,13 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace path is required');
         }
 
+        if (!options.configStore) {
+            throw new Error('Config store is required');
+        }
+
         this.id = options.id;
         this.name = options.name;
-        this.type = options.type;
+        this.type = options.type ?? 'workspace';
         this.owner = options.owner;
         this.path = options.path;
         this.color = options.color;
@@ -74,10 +79,14 @@ class Workspace extends EventEmitter {
         this.created = options.created || new Date().toISOString();
         this.updated = options.updated || new Date().toISOString();
         this.acl = options.acl || {};
-        this.meta = options.meta || {};
 
         // Initialize config store to null, will be set by WorkspaceManager
-        this.#configStore = null;
+        this.#configStore = options.configStore || null;
+
+        // Set initial status in the config store if provided
+        if (this.#configStore && options.status) {
+            this.#configStore.set('status', options.status);
+        }
     }
 
     // Getters
@@ -87,7 +96,36 @@ class Workspace extends EventEmitter {
     get config() { return this.#configStore?.store || {}; }
     get isConfigLoaded() { return this.#configStore !== null; }
     get isOpen() { return this.#db !== null && this.#tree !== null; }
+    get isDeleted() { return this.status === WORKSPACE_STATUS.DELETED; }
+    get isActive() { return this.status === WORKSPACE_STATUS.ACTIVE; }
+    get status() { return this.#configStore?.get('status', WORKSPACE_STATUS.INITIALIZED); }
 
+    // Status methods
+    setStatus(status) {
+        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
+            debug(`Invalid status: ${status}`);
+            return false;
+        }
+
+        if (this.#configStore) {
+            this.#configStore.set('status', status);
+            this.#configStore.set('updated', new Date().toISOString());
+            this.emit('workspace:status:changed', { name: this.name, status });
+        }
+        return true;
+    }
+
+    markAsActive() {
+        return this.setStatus(WORKSPACE_STATUS.ACTIVE);
+    }
+
+    markAsInactive() {
+        return this.setStatus(WORKSPACE_STATUS.INACTIVE);
+    }
+
+    markAsDeleted() {
+        return this.setStatus(WORKSPACE_STATUS.DELETED);
+    }
 
     /**
      * Tree methods
@@ -115,15 +153,6 @@ class Workspace extends EventEmitter {
 
     pathToIdArray(path) {
         return this.#tree.pathToIdArray(path);
-    }
-
-
-    /**
-     * Document methods
-     */
-
-    getSchema(schema) {
-        return this.#db.getSchema(schema);
     }
 
     /**
@@ -197,27 +226,6 @@ class Workspace extends EventEmitter {
         return this.#configStore?.store || {};
     }
 
-    // Internal methods for WorkspaceManager to use
-    /**
-     * Initialize the configuration store
-     * @internal - Should only be called by WorkspaceManager
-     */
-    async _initializeConfig() {
-        debug(`Initializing configuration for workspace ${this.name}`);
-        await this.#initializeConfigStore();
-
-        // Update instance properties from config
-        const config = this.#configStore.store;
-        this.color = this.#validateColor(config.color) ? config.color : '#4285F4';
-        this.label = config.label;
-        this.description = config.description;
-        this.locked = config.locked;
-        this.acl = config.acl;
-        this.meta = config.meta;
-
-        this.emit('workspace:config:initialized', { id: this.name });
-    }
-
     /**
      * Initialize the database and resources
      * @internal - Should only be called by WorkspaceManager
@@ -260,7 +268,6 @@ class Workspace extends EventEmitter {
      */
     async initialize() {
         debug(`Initializing workspace ${this.name}`);
-        await this._initializeConfig();
         await this._initializeResources();
         debug(`Workspace ${this.name} initialized successfully`);
     }
@@ -273,6 +280,24 @@ class Workspace extends EventEmitter {
         debug(`Shutting down workspace ${this.name}`);
         await this._shutdownResources();
         debug(`Workspace ${this.name} shutdown successfully`);
+    }
+
+    toJSON() {
+        return {
+            id: this.id,
+            name: this.name,
+            type: this.type,
+            label: this.label,
+            description: this.description,
+            color: this.color,
+            locked: this.locked,
+            created: this.created,
+            updated: this.updated,
+            acl: this.acl,
+            path: this.path,
+            status: this.status
+
+        };
     }
 
     // Private methods
@@ -292,47 +317,13 @@ class Workspace extends EventEmitter {
     }
 
     /**
-     * Initialize the configuration store using Conf
-     * @private
-     */
-    async #initializeConfigStore() {
-        // Create a Conf instance for workspace configuration with all properties from this instance
-        this.#configStore = new Conf({
-            configName: 'workspace',
-            cwd: this.path,
-            // Use all properties from this instance as defaults
-            defaults: {
-                // Core properties
-                id: this.id,
-                name: this.name,
-                type: this.type,
-                owner: this.owner,
-
-                // Display properties
-                label: this.label,
-                description: this.description,
-                color: this.color,
-                locked: this.locked,
-
-                // Metadata
-                created: this.created,
-                updated: this.updated,
-                acl: this.acl,
-                meta: this.meta
-            }
-        });
-
-        debug(`Initialized configuration store for workspace ${this.name}`);
-    }
-
-    /**
      * Initialize the database
      * @private
      */
     async #initializeDatabase() {
         const dbPath = path.join(this.path, 'db');
 
-        this.#db = new SynapsD({
+        this.#db = new Db({
             path: dbPath,
             backupOnOpen: false,
             backupOnClose: true,
@@ -340,7 +331,7 @@ class Workspace extends EventEmitter {
         });
 
         await this.#db.start();
-        debug(`Initialized SynapsD database for workspace ${this.name} at ${dbPath}`);
+        debug(`Initialized database for workspace ${this.name} at ${dbPath}`);
     }
 
     /**

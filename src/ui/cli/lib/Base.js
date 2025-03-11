@@ -48,6 +48,11 @@ export const DEFAULT_CONFIG = {
     roles: '/roles',
     workspaces: '/workspaces',
     ping: '/ping',
+    auth: {
+      login: '/auth/login',
+      tokens: '/auth/tokens',
+      verify: '/auth/token/verify'
+    }
   }
 };
 
@@ -111,13 +116,32 @@ class BaseCLI {
     // Parse input parameters
     this.parseInput();
 
+    // Get the auth token from config
+    const token = this.config.auth?.token || '';
+
+    // Initialize API client
     this.api = axios.create({
       baseURL: this.config.server?.url || DEFAULT_CONFIG.server.url,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.auth?.token || ''}`
+        'Authorization': token ? `Bearer ${token}` : ''
       }
     });
+
+    // Add request interceptor to handle authentication
+    this.api.interceptors.request.use(
+      (config) => {
+        // Update token on each request in case it changed
+        const currentToken = this.config.auth?.token || '';
+        if (currentToken) {
+          config.headers['Authorization'] = `Bearer ${currentToken}`;
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
   }
 
   async run() {
@@ -223,25 +247,98 @@ class BaseCLI {
         return false;
       }
 
-      // Generate token
-      const response = await this.api.post('/auth/token', {
+      // Step 1: Login to get a session
+      debug('Logging in with credentials');
+      const loginResponse = await this.api.post(DEFAULT_CONFIG.endpoints.auth.login, {
         email: credentials.email,
-        password: credentials.password,
-        name: 'Canvas CLI Token'
+        password: credentials.password
       });
 
-      if (response.data && response.data.data && response.data.data.token) {
-        this.config.auth.token = response.data.data.token;
-        this.config.auth.email = credentials.email;
+      debug(`Login response: ${JSON.stringify(loginResponse.data)}`);
+
+      // Check if login was successful
+      if (!loginResponse.data || loginResponse.data.status !== 'success') {
+        console.error(chalk.red('Error: Login failed.'));
+        if (loginResponse.data && loginResponse.data.message) {
+          console.error(chalk.red(`Reason: ${loginResponse.data.message}`));
+        }
+        return false;
+      }
+
+      debug('Login successful');
+
+      // Store the email in the config
+      this.config.auth.email = credentials.email;
+      await this.saveConfig();
+      debug('Email saved to config');
+
+      // If the login response already contains a token, use it
+      if (loginResponse.data.payload && loginResponse.data.payload.token) {
+        debug('Using token from login response');
+        this.config.auth.token = loginResponse.data.payload.token;
         await this.saveConfig();
-        debug('Auth token generated and saved');
+        debug('Auth token saved');
         return true;
+      }
+
+      // Step 2: Generate API token
+      debug('Generating API token');
+
+      // Log the current headers
+      debug(`Request headers for token generation: ${JSON.stringify(this.api.defaults.headers)}`);
+
+      const tokenResponse = await this.api.post(DEFAULT_CONFIG.endpoints.auth.tokens, {
+        name: 'Canvas CLI Token',
+        expiresInDays: null // No expiration
+      });
+
+      debug(`Token response: ${JSON.stringify(tokenResponse.data)}`);
+
+      if (tokenResponse.data && tokenResponse.data.status === 'success' &&
+          tokenResponse.data.payload) {
+
+        // Extract the token value from the response
+        let tokenValue = null;
+
+        if (tokenResponse.data.payload.value) {
+          // Direct value
+          tokenValue = tokenResponse.data.payload.value;
+        } else if (tokenResponse.data.payload.token && tokenResponse.data.payload.token.value) {
+          // Nested in token object
+          tokenValue = tokenResponse.data.payload.token.value;
+        } else if (tokenResponse.data.payload.token) {
+          // The token itself
+          tokenValue = tokenResponse.data.payload.token;
+        }
+
+        if (tokenValue) {
+          this.config.auth.token = tokenValue;
+          this.config.auth.email = credentials.email;
+          await this.saveConfig();
+          debug('Auth token generated and saved');
+          return true;
+        }
+
+        console.error(chalk.red('Error: Could not extract token value from response.'));
+        debug(`Token response payload: ${JSON.stringify(tokenResponse.data.payload)}`);
+        return false;
       } else {
         console.error(chalk.red('Error: Failed to generate auth token.'));
+        if (tokenResponse.data && tokenResponse.data.message) {
+          console.error(chalk.red(`Reason: ${tokenResponse.data.message}`));
+        }
         return false;
       }
     } catch (err) {
       console.error(chalk.red(`Error: ${err.message}`));
+      if (err.response) {
+        debug(`Response status: ${err.response.status}`);
+        debug(`Response data: ${JSON.stringify(err.response.data)}`);
+
+        if (err.response.data && err.response.data.message) {
+          console.error(chalk.red(`Server message: ${err.response.data.message}`));
+        }
+      }
       return false;
     }
   }
@@ -250,15 +347,30 @@ class BaseCLI {
     debug('Checking server connection');
     try {
       const pingEndpoint = DEFAULT_CONFIG.endpoints.ping;
+      debug(`Pinging server at ${this.config.server.url}${pingEndpoint}`);
+
       const response = await this.api.get(pingEndpoint);
+      debug(`Ping response: ${JSON.stringify(response.data)}`);
+
       if (response.status === 200) {
         debug('Server is running');
         return true;
       }
+
+      debug(`Unexpected ping response status: ${response.status}`);
+      return false;
     } catch (err) {
       debug(`Server connection error: ${err.message}`);
+      if (err.response) {
+        debug(`Response status: ${err.response.status}`);
+        debug(`Response data: ${JSON.stringify(err.response.data)}`);
+      } else if (err.request) {
+        debug('No response received from server');
+      } else {
+        debug('Error setting up the request');
+      }
+      return false;
     }
-    return false;
   }
 
   async getContext() {
@@ -328,8 +440,20 @@ class BaseCLI {
       return false;
     }
 
-    // Check if we have an auth token
-    if (!this.config.auth.token) {
+    // Check if we have a valid auth token
+    if (this.config.auth.token) {
+      const isAuthenticated = await this.isAuthenticated();
+      if (!isAuthenticated) {
+        debug('Auth token is invalid or expired');
+        console.log(chalk.yellow('Your authentication token is invalid or expired.'));
+        const tokenGenerated = await this.generateAuthToken();
+        if (!tokenGenerated) {
+          return false;
+        }
+      }
+    } else {
+      // No token, generate one
+      debug('No auth token found');
       const tokenGenerated = await this.generateAuthToken();
       if (!tokenGenerated) {
         return false;
@@ -458,14 +582,44 @@ ${chalk.bold('OPTIONS')}
 
   createTable(headers) {
     return new Table({
-      head: headers.map(header => chalk.cyan(header)),
+      head: headers.map(header => chalk.cyan.bold(header)),
       chars: {
         'top': '═', 'top-mid': '╤', 'top-left': '╔', 'top-right': '╗',
         'bottom': '═', 'bottom-mid': '╧', 'bottom-left': '╚', 'bottom-right': '╝',
         'left': '║', 'left-mid': '╟', 'mid': '─', 'mid-mid': '┼',
         'right': '║', 'right-mid': '╢', 'middle': '│'
+      },
+      style: {
+        head: ['cyan', 'bold'],
+        border: ['white'],
+        compact: false
       }
     });
+  }
+
+  async isAuthenticated() {
+    debug('Checking if user is authenticated');
+    if (!this.config.auth?.token) {
+      debug('No auth token found');
+      return false;
+    }
+
+    try {
+      const response = await this.api.post(DEFAULT_CONFIG.endpoints.auth.verify, {
+        token: this.config.auth.token
+      });
+
+      debug(`Token verification response: ${JSON.stringify(response.data)}`);
+
+      return response.data && response.data.status === 'success';
+    } catch (err) {
+      debug(`Authentication check failed: ${err.message}`);
+      if (err.response) {
+        debug(`Response status: ${err.response.status}`);
+        debug(`Response data: ${JSON.stringify(err.response.data)}`);
+      }
+      return false;
+    }
   }
 }
 

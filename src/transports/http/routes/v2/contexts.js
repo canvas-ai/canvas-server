@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('http:routes:contexts');
 import ResponseObject from '@/transports/ResponseObject.js';
+import { requireContextManager } from '../../middleware/userManagers.js';
 
 /**
  * @swagger
@@ -33,25 +34,30 @@ import ResponseObject from '@/transports/ResponseObject.js';
  *           description: The last update timestamp
  */
 
+/**
+ * Contexts routes
+ * @param {Object} options - Route options
+ * @param {Object} options.auth - Auth service
+ * @param {Object} options.userManager - User manager
+ * @returns {express.Router} - Express router
+ */
 export default function contextsRoutes(options) {
     const router = express.Router();
-    const { auth, contextManager, sessionManager, workspaceManager } = options;
+    const { auth, userManager } = options;
 
     if (!auth) {
         throw new Error('Auth service is required');
     }
 
-    if (!contextManager) {
-        throw new Error('Context manager is required');
+    if (!userManager) {
+        throw new Error('User manager is required');
     }
 
-    if (!sessionManager) {
-        throw new Error('Session manager is required');
-    }
+    // Apply auth middleware to all routes
+    router.use(auth.getAuthMiddleware());
 
-    if (!workspaceManager) {
-        throw new Error('Workspace manager is required');
-    }
+    // Apply context manager middleware to all routes
+    router.use(requireContextManager({ userManager }));
 
     // Middleware to get context from request
     const getContextMiddleware = async (req, res, next) => {
@@ -62,7 +68,7 @@ export default function contextsRoutes(options) {
                 return res.status(response.statusCode).json(response.getResponse());
             }
 
-            const context = await contextManager.getContext(contextId);
+            const context = await req.contextManager.getContext(contextId);
             if (!context) {
                 const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
                 return res.status(response.statusCode).json(response.getResponse());
@@ -81,7 +87,7 @@ export default function contextsRoutes(options) {
      * @swagger
      * /:
      *   get:
-     *     summary: List all contexts for the current user
+     *     summary: List all contexts
      *     tags: [Contexts]
      *     responses:
      *       200:
@@ -93,17 +99,21 @@ export default function contextsRoutes(options) {
      */
     router.get('/', async (req, res) => {
         try {
-            const userId = req.query.userId || req.user.id;
+            const { limit = 50, offset = 0 } = req.query;
+            debug(`Listing contexts for user: ${req.user.id}`);
 
-            // Check if the user is requesting contexts for another user
-            if (userId !== req.user.id && !req.user.isAdmin) {
-                const response = new ResponseObject().forbidden('You do not have permission to view contexts for other users');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
+            const contexts = await req.contextManager.listContexts({
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
 
-            const contexts = await contextManager.getUserContexts(userId);
+            const response = new ResponseObject().success({
+                contexts,
+                total: contexts.length,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
 
-            const response = new ResponseObject().success(contexts, 'Contexts retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error listing contexts: ${error.message}`);
@@ -171,7 +181,11 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/documents', getContextMiddleware, async (req, res) => {
         try {
-            const documents = await contextManager.getContextDocuments(req.context.id);
+
+            const context = req.contextManager.getContext(req.params.contextId, { autoCreate: true });
+            const featureArray = req.params.featureArray || req.query.featureArray || [];
+            const filterArray = req.params.filterArray || req.query.filterArray || [];
+            const documents = await context.listDocuments(featureArray, filterArray);
 
             const response = new ResponseObject().success(documents, 'Context documents retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());

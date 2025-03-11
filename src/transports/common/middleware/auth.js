@@ -16,6 +16,26 @@ const debug = createDebug('canvas:transport:auth');
  */
 export default function createAuthMiddleware(server) {
   const authService = server.services.get('auth');
+  const userManager = server.userManager;
+  const sessionManager = server.sessionManager;
+
+  if (!authService) {
+    throw new Error('Auth service is required for authentication middleware');
+  }
+
+  if (!userManager) {
+    throw new Error('User manager is required for authentication middleware');
+  }
+
+  if (!sessionManager) {
+    throw new Error('Session manager is required for authentication middleware');
+  }
+
+  // Get JWT secret from auth service
+  const jwtSecret = authService.sessionService.getJwtSecret();
+  if (!jwtSecret) {
+    throw new Error('JWT secret is required for authentication middleware');
+  }
 
   /**
    * Authentication middleware
@@ -26,28 +46,40 @@ export default function createAuthMiddleware(server) {
   return async (req, res, next) => {
     debug('Authentication middleware called');
 
-    // Try JWT authentication first
-    passport.authenticate(['jwt', 'api-token'], { session: false }, async (err, user, info) => {
-      if (err) {
-        debug(`Authentication error: ${err.message}`);
-        req.isAuthenticated = false;
-        return next(err);
-      }
+    // Extract token from request
+    const authHeader = req.headers?.authorization;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : req.cookies?.token;
 
-      if (!user) {
-        debug('No authenticated user found');
-        req.isAuthenticated = false;
-        return next();
-      }
+    if (!token) {
+      debug('No authentication token found');
+      req.isAuthenticated = false;
+      return next();
+    }
 
-      try {
-        debug(`User authenticated: ${user.email}`);
+    try {
+      // First try JWT token
+      const jwtPayload = authService.verifyToken(token);
+      if (jwtPayload) {
+        debug(`JWT token verified for user ID: ${jwtPayload.id}`);
 
-        // Get session data if needed
-        if (user.tokenPayload && user.tokenPayload.sessionId) {
-          const sessionManager = server.services.get('session');
-          const session = await sessionManager.getSession(user.tokenPayload.sessionId);
+        // Get user from user manager
+        const user = await userManager.getUserById(jwtPayload.id);
+        if (!user) {
+          debug(`User not found for JWT token: ${jwtPayload.id}`);
+          req.isAuthenticated = false;
+          return next();
+        }
 
+        // Attach user to request
+        req.user = user;
+        req.user.tokenPayload = jwtPayload;
+        req.isAuthenticated = true;
+
+        // Get session if available
+        if (jwtPayload.sessionId) {
+          const session = await sessionManager.getSession(jwtPayload.sessionId);
           if (session) {
             debug(`Session found: ${session.id}`);
             req.session = session;
@@ -57,17 +89,44 @@ export default function createAuthMiddleware(server) {
           }
         }
 
-        // Attach user to request
+        debug('JWT authentication successful');
+        return next();
+      }
+
+      // Then try API token
+      const apiTokenResult = await authService.validateApiToken(token);
+      if (apiTokenResult) {
+        const { userId, tokenId } = apiTokenResult;
+
+        // Get user from user manager
+        const user = await userManager.getUserById(userId);
+        if (!user) {
+          debug(`User not found for API token: ${userId}`);
+          req.isAuthenticated = false;
+          return next();
+        }
+
+        // Get token details
+        const tokenDetails = await userManager.getApiToken(userId, tokenId);
+
+        // Attach user and token info to request
         req.user = user;
+        req.user.tokenId = tokenId;
+        req.user.tokenName = tokenDetails?.name || 'API Token';
         req.isAuthenticated = true;
 
-        debug('Authentication successful');
-        next();
-      } catch (error) {
-        debug(`Error processing authenticated user: ${error.message}`);
-        req.isAuthenticated = false;
-        next();
+        debug('API token authentication successful');
+        return next();
       }
-    })(req, res, next);
+
+      // No valid authentication found
+      debug('Invalid authentication token');
+      req.isAuthenticated = false;
+      next();
+    } catch (error) {
+      debug(`Authentication error: ${error.message}`);
+      req.isAuthenticated = false;
+      next();
+    }
   };
 }

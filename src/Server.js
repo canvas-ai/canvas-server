@@ -8,29 +8,43 @@ import env from './env.js';
 // Utils
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-
-// Config
 import { defaultConfig as config } from '@/utils/config/index.js';
-
-// Logging
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('server');
-
-// Events
 import EventEmitter from 'eventemitter2';
 
 // Package info
 import pkg from '../package.json' assert { type: 'json' };
 const { productName, version, description, license } = pkg;
 
-// Core managers
-import WorkspaceManager from '@/managers/workspace/index.js';
-import UserManager from '@/managers/user/index.js';
-import SessionManager from '@/managers/session/index.js';
-import ContextManager from '@/managers/context/index.js';
-
-// Services
+// Database
 import AuthService from '@/services/auth/index.js';
+import Db from '@/services/synapsd/src/backends/lmdb/index.js'
+
+// Create the main server database
+const db = new Db({
+    path: env.CANVAS_SERVER_DB
+});
+
+// Global Managers
+import UserManager from '@/managers/user/index.js';
+const userManager = new UserManager({
+    rootPath: env.CANVAS_USER_HOME,
+    db: db.createDataset('users')
+});
+
+import SessionManager from '@/managers/session/index.js';
+const sessionManager = new SessionManager(
+    db.createDataset('sessions'),
+    // TODO: Move to config
+    { sessionTimeout: 1000 * 60 * 60 * 24 * 7 } // 7 days
+);
+
+// Event Handlers
+import UserEventHandler from '@/services/events/UserEventHandler.js';
+const userEventHandler = new UserEventHandler({
+    userManager: userManager
+});
 
 /**
  * Canvas Server
@@ -40,20 +54,19 @@ import AuthService from '@/services/auth/index.js';
  * - Loading and managing transports
  * - Providing access to core managers and services
  */
+
 class Server extends EventEmitter {
+
     // Runtime state
     #mode;                  // user, standalone
     #status = 'stopped';    // initialized, running, stopping, stopped
 
-    // Collections
+    // Internals
     #services = new Map();
     #transports = new Map();
 
-    // Core managers
-    #workspaceManager;
-    #userManager;
-    #sessionManager;
-    #contextManager;
+    // Database
+    #db;
 
     /**
      * Create a new Canvas Server instance
@@ -64,6 +77,7 @@ class Server extends EventEmitter {
         super();
         debug('Canvas server options:', options);
         this.#mode = options.mode;
+        this.#db = db;
     }
 
     // Getters
@@ -72,14 +86,15 @@ class Server extends EventEmitter {
     get license() { return license; }
     get status() { return this.#status; }
 
-    // Core manager getters
-    get workspaceManager() { return this.#workspaceManager; }
-    get userManager() { return this.#userManager; }
-    get sessionManager() { return this.#sessionManager; }
-    get contextManager() { return this.#contextManager; }
-
     // Service getters
     get services() { return this.#services; }
+
+    // Manager getters
+    get userManager() { return userManager; }
+    get sessionManager() { return sessionManager; }
+
+    // Database getter
+    get db() { return this.#db; }
 
     /**
      * Initialize the server
@@ -90,9 +105,16 @@ class Server extends EventEmitter {
         this.emit('before-init');
 
         try {
-            await this.#initializeCoreManagers();
+            // Initialize managers
+            await this.#initializeManagers();
+
+            // Initialize services
             await this.#initializeServices();
+
+            // Initialize transports
             await this.#initializeTransports();
+
+            // Create initial admin user if needed
             await this.#createInitialAdminUser();
 
             this.#status = 'initialized';
@@ -194,44 +216,35 @@ class Server extends EventEmitter {
             },
             mode: this.#mode,
             status: this.#status,
+            users: {
+                count: userManager.users.size
+            },
+            sessions: {
+                count: sessionManager.sessions.size
+            }
         };
     }
 
     /**
-     * Initialize core managers
+     * Initialize managers
      * @private
      */
-    async #initializeCoreManagers() {
-        debug('Initializing core managers');
-        logger.info('Initializing core managers');
+    async #initializeManagers() {
+        debug('Initializing managers');
+        logger.info('Initializing managers');
 
         try {
-            // Initialize workspace manager
-            this.#workspaceManager = new WorkspaceManager({
-                rootPath: env.CANVAS_USER_HOME,
-            });
-            debug('Workspace manager initialized');
-
             // Initialize user manager
-            this.#userManager = new UserManager();
+            await userManager.initialize();
             debug('User manager initialized');
 
             // Initialize session manager
-            this.#sessionManager = SessionManager();
-            await this.#sessionManager.initialize();
+            await sessionManager.initialize();
             debug('Session manager initialized');
 
-            // Initialize the context manager with dependencies
-            this.#contextManager = new ContextManager({
-                workspaceManager: this.#workspaceManager,
-                sessionManager: this.#sessionManager
-            });
-            debug('Context manager initialized');
-
-            debug('Core managers initialized');
-            logger.info('Core managers initialized');
+            logger.info('Managers initialized');
         } catch (error) {
-            logger.error(`Core manager initialization failed: ${error.message}`);
+            logger.error(`Manager initialization failed: ${error.message}`);
             throw error;
         }
     }
@@ -248,14 +261,13 @@ class Server extends EventEmitter {
             // Initialize auth service
             const authConfig = {
                 ...config,
-                jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret-dev-only',
+                jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret',
                 jwtLifetime: process.env.CANVAS_JWT_LIFETIME || '7d'
             };
 
             const authService = new AuthService(authConfig, {
-                sessionManager: this.#sessionManager,
-                userManager: this.#userManager,
-                workspaceManager: this.#workspaceManager
+                sessionManager: sessionManager,
+                userManager: userManager
             });
 
             await authService.initialize();
@@ -282,7 +294,6 @@ class Server extends EventEmitter {
         try {
             const transportConfig = config.require('transports', 'server').get();
             debug('Transports config loaded');
-
             for (const [transportName, transportOptions] of Object.entries(transportConfig)) {
                 try {
                     const instance = await this.#loadModule('transports', transportName, transportOptions);
@@ -428,9 +439,14 @@ class Server extends EventEmitter {
                 await transport.stop();
                 debug(`${name} transport stopped`);
             } catch (error) {
-                const msg = `Error shutting down ${name} transport: ${error.message}`;
-                logger.error(msg);
-                errors.push(msg);
+                // If the error is just that the server is not running, log it but don't treat it as an error
+                if (error.message === 'Server is not running') {
+                    debug(`${name} transport was not running`);
+                } else {
+                    const msg = `Error shutting down ${name} transport: ${error.message}`;
+                    logger.error(msg);
+                    errors.push(msg);
+                }
             }
         }
 
@@ -485,11 +501,11 @@ class Server extends EventEmitter {
         debug('Checking for admin user...');
 
         try {
-            // Check if any admin users exist
-            const adminExists = await this.#userManager.adminExists();
+            // Check if any users exist
+            const users = await userManager.listUsers({ includeInactive: true });
 
-            if (adminExists) {
-                debug('Admin user already exists, skipping creation');
+            if (users.length > 0) {
+                debug('Users already exist, skipping admin creation');
                 return;
             }
 
@@ -512,12 +528,16 @@ class Server extends EventEmitter {
             }
 
             // Create the admin user
-            const adminUser = await this.#userManager.createInitialAdminUser({
+            const adminUser = await userManager.createUser({
                 email,
-                password
+                userType: 'admin'
             });
 
-            if (adminUser) {
+            // Store the password in the auth service
+            if (adminUser && this.#services.has('auth')) {
+                const authService = this.#services.get('auth');
+                await authService.setPassword(adminUser.id, password);
+
                 if (isRandomPassword) {
                     // Display the credentials prominently in the console
                     console.log('\n' + '='.repeat(80));
@@ -566,5 +586,14 @@ class Server extends EventEmitter {
     }
 }
 
+// Create server instance
+const server = new Server();
+
 // Export Server
-export default Server;
+export default server;
+
+// Export managers for convenience
+export {
+    userManager,
+    sessionManager
+};

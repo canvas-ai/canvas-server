@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import debugInstance from 'debug';
 import { v4 as uuidv4 } from 'uuid';
 import BaseCLI, { DEFAULT_CONFIG } from './Base.js';
+import readline from 'readline';
 
 const debug = debugInstance('canvas:cli:canvas');
 
@@ -54,15 +55,24 @@ class CanvasCLI extends BaseCLI {
         return await this.ping();
       }
 
-      // Login command requires server connection but not authentication
+      // Login and register commands require server connection but not authentication
       if (action === 'login') {
         return await this.login(inputArgs);
+      }
+
+      if (action === 'register') {
+        return await this.register(inputArgs);
       }
 
       // Version command doesn't require authentication
       if (action === 'version') {
         this.printVersion();
         return 0;
+      }
+
+      // Config command doesn't require authentication
+      if (action === 'config') {
+        return await this.configCmd(inputArgs);
       }
 
       // All other commands require server connection and authentication
@@ -133,9 +143,15 @@ ${chalk.bold('Special Commands:')}
   ${chalk.cyan('status')}                 Show server status
   ${chalk.cyan('login')}                  Authenticate with Canvas server (generates API token)
   ${chalk.cyan('login <token>')}          Set authentication token directly
+  ${chalk.cyan('register')}               Register a new user account
   ${chalk.cyan('ping')}                   Check server connection
   ${chalk.cyan('config')}                 Show current configuration
   ${chalk.cyan('config set <key> <val>')} Set configuration value
+
+${chalk.bold('Configuration Keys:')}
+  ${chalk.cyan('server.url')}             Server URL (e.g., http://localhost:8001/rest/v2)
+  ${chalk.cyan('auth.token')}             Authentication token
+  ${chalk.cyan('auth.email')}             User email address
 
 ${chalk.bold('Options:')}
   ${chalk.cyan('-c, --context <ctx>')}    Specify context
@@ -150,7 +166,7 @@ ${chalk.bold('Examples:')}
   ${this.commandName} documents list -c work/project1
   ${this.commandName} notes list -t important
   ${this.commandName} documents get 123456
-  ${this.commandName} config set server.url http://localhost:3000
+  ${this.commandName} config set server.url http://localhost:8001/rest/v2
 `);
   }
 
@@ -162,7 +178,24 @@ ${chalk.bold('Examples:')}
         console.log(chalk.yellow(`Setting authentication token manually...`));
         this.config.auth.token = token;
         this.saveConfig();
+
+        // Update the API client with the new token
+        this.api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
         console.log(chalk.green('Token set successfully!'));
+
+        // Verify the token works
+        try {
+          const isAuthenticated = await this.isAuthenticated();
+          if (isAuthenticated) {
+            console.log(chalk.green('Token verified successfully!'));
+          } else {
+            console.log(chalk.yellow('Warning: Token could not be verified. It may be invalid.'));
+          }
+        } catch (err) {
+          console.log(chalk.yellow(`Warning: Could not verify token: ${err.message}`));
+        }
+
         return 0;
       }
 
@@ -176,6 +209,7 @@ ${chalk.bold('Examples:')}
 
       // Clear existing token to force re-authentication
       this.config.auth.token = '';
+      this.api.defaults.headers.common['Authorization'] = '';
       this.saveConfig();
 
       console.log(chalk.cyan('Starting authentication process:'));
@@ -184,8 +218,19 @@ ${chalk.bold('Examples:')}
       console.log(chalk.cyan('3. Storing token and logging out session'));
       console.log('');
 
+      // Enable debug mode for this operation
+      const originalDebugLevel = process.env.DEBUG;
+      process.env.DEBUG = 'canvas:*';
+
       const success = await this.generateAuthToken();
+
+      // Restore original debug level
+      process.env.DEBUG = originalDebugLevel;
+
       if (success) {
+        // Update the API client with the new token
+        this.api.defaults.headers.common['Authorization'] = `Bearer ${this.config.auth.token}`;
+
         console.log(chalk.green('Authentication workflow completed successfully!'));
         console.log(chalk.green('You can now use the CLI with your API token.'));
         return 0;
@@ -201,7 +246,132 @@ ${chalk.bold('Examples:')}
         return 1;
       }
     } catch (err) {
-      console.error(chalk.red(`Error: ${err.message}`));
+      console.error(chalk.red(`Error during login: ${err.message}`));
+      if (err.response) {
+        console.error(chalk.red(`Response status: ${err.response.status}`));
+        if (err.response.data && err.response.data.message) {
+          console.error(chalk.red(`Server message: ${err.response.data.message}`));
+        }
+      }
+      console.log(chalk.yellow('For debugging, try running with debug enabled:'));
+      console.log(chalk.cyan('  DEBUG=canvas:* ./bin/canvas login'));
+      return 1;
+    }
+  }
+
+  /**
+   * Register a new user
+   * @param {Array} args - Command line arguments
+   * @returns {Promise<number>} - Exit code
+   */
+  async register(args) {
+    try {
+      // Check if server is running before proceeding
+      const serverRunning = await this.checkServerConnection();
+      if (!serverRunning) {
+        console.error(chalk.red(`Cannot connect to server at ${this.config.server.url}`));
+        console.error(chalk.yellow('Please check if the server is running.'));
+        return 1;
+      }
+
+      console.log(chalk.cyan('Starting user registration process:'));
+
+      // Prompt for email and password with a clearer message
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+
+      const credentials = await new Promise((resolve) => {
+        console.log(chalk.yellow('Please enter your details to create a new account:'));
+
+        rl.question('Email: ', (email) => {
+          rl.stdoutMuted = true;
+          rl.question('Password: ', (password) => {
+            rl.stdoutMuted = false;
+            rl.close();
+            console.log(''); // Add a newline after password input
+            resolve({ email, password });
+          });
+
+          // Handle password masking
+          rl._writeToOutput = function _writeToOutput(stringToWrite) {
+            if (rl.stdoutMuted && stringToWrite.trim() !== '\n')
+              rl.output.write('*');
+            else
+              rl.output.write(stringToWrite);
+          };
+        });
+      });
+
+      if (!credentials) {
+        console.error(chalk.red('Registration cancelled.'));
+        return 1;
+      }
+
+      const { email, password } = credentials;
+
+      // Validate email and password
+      if (!email || !email.includes('@')) {
+        console.error(chalk.red('Invalid email address.'));
+        return 1;
+      }
+
+      if (!password || password.length < 8) {
+        console.error(chalk.red('Password must be at least 8 characters long.'));
+        return 1;
+      }
+
+      console.log(chalk.cyan(`Registering user with email: ${email}`));
+
+      try {
+        // Make the registration request
+        const response = await axios.post(`${this.config.server.url}/auth/register`, {
+          email,
+          password
+        });
+
+        if (response.data && response.data.status === 'success') {
+          console.log(chalk.green('Registration successful!'));
+          console.log(chalk.green('You can now log in with your credentials:'));
+          console.log(chalk.cyan(`  ${this.commandName} login`));
+
+          // Store the email in the config
+          this.config.auth.email = email;
+          this.saveConfig();
+
+          // If the response includes a token, we can set it directly
+          if (response.data.payload && response.data.payload.token) {
+            console.log(chalk.green('Authentication token received. Setting it automatically...'));
+            this.config.auth.token = response.data.payload.token;
+            this.saveConfig();
+
+            // Update the API client with the new token
+            this.api.defaults.headers.common['Authorization'] = `Bearer ${response.data.payload.token}`;
+
+            console.log(chalk.green('Token set successfully! You are now logged in.'));
+          }
+
+          return 0;
+        } else {
+          console.error(chalk.red('Registration failed.'));
+          if (response.data && response.data.message) {
+            console.error(chalk.red(`Server message: ${response.data.message}`));
+          }
+          return 1;
+        }
+      } catch (err) {
+        console.error(chalk.red(`Registration error: ${err.message}`));
+        if (err.response) {
+          console.error(chalk.red(`Response status: ${err.response.status}`));
+          if (err.response.data && err.response.data.message) {
+            console.error(chalk.red(`Server message: ${err.response.data.message}`));
+          }
+        }
+        return 1;
+      }
+    } catch (err) {
+      console.error(chalk.red(`Error during registration: ${err.message}`));
       return 1;
     }
   }
@@ -328,7 +498,10 @@ ${chalk.bold('Examples:')}
     }
   }
 
-  async config(args) {
+  async configCmd(args) {
+    // Reset module to null to avoid confusion with the config command
+    this.module = null;
+
     if (args.length > 0 && args[0] === 'set') {
       return await this.configSet(args.slice(1));
     }
@@ -337,6 +510,8 @@ ${chalk.bold('Examples:')}
     const table = this.createTable(['Property', 'Value']);
 
     table.push(['Server URL', this.config.server?.url || DEFAULT_CONFIG.server.url]);
+    table.push(['Auth Token', this.config.auth?.token ? '********' : 'Not set']);
+    table.push(['Auth Email', this.config.auth?.email || 'Not set']);
     table.push(['Machine ID', this.config.cli?.context?.machineId || 'Not set']);
     table.push(['Context ID', this.config.cli?.context?.id || 'Not set']);
     table.push(['Session ID', this.config.cli?.session?.id || 'Not set']);
@@ -361,6 +536,10 @@ ${chalk.bold('Examples:')}
       case 'auth.token':
         this.config.auth = this.config.auth || {};
         this.config.auth.token = value;
+        break;
+      case 'auth.email':
+        this.config.auth = this.config.auth || {};
+        this.config.auth.email = value;
         break;
       default:
         console.error(chalk.red(`Unknown configuration key: ${key}`));
@@ -557,10 +736,20 @@ ${chalk.bold('Examples:')}
         data: method !== 'GET' ? (data || queryParams) : undefined
       });
 
-      // Format and return the response
-      return this.formatResponse(response.data);
+      // Check if the response was successful
+      if (response.data && response.data.status === 'success') {
+        // Format and return the response
+        return this.formatResponse(response.data);
+      } else {
+        // Handle error response
+        console.error(chalk.red(`Error: ${response.data?.message || 'Unknown error'}`));
+        return 1;
+      }
     } catch (error) {
       console.error(chalk.red(`Error executing ${action} on ${module}: ${error.message}`));
+      if (error.response && error.response.data && error.response.data.message) {
+        console.error(chalk.red(`Server message: ${error.response.data.message}`));
+      }
       return 1;
     }
   }
@@ -571,22 +760,29 @@ ${chalk.bold('Examples:')}
    * @returns {any} - The formatted response
    */
   formatResponse(data) {
+    // Extract payload if it exists
+    let responseData = data;
+    if (data && data.payload) {
+      responseData = data.payload;
+    }
+
     // If data is an array, create a table
-    if (Array.isArray(data)) {
-      if (data.length === 0) {
+    if (Array.isArray(responseData)) {
+      if (responseData.length === 0) {
         console.log(chalk.yellow('No results found.'));
         return 0;
       }
 
       // Create a table with the data
-      const headers = Object.keys(data[0]);
+      const headers = Object.keys(responseData[0]);
       const table = this.createTable(headers);
 
       // Add rows to the table
-      data.forEach(item => {
+      responseData.forEach(item => {
         const row = headers.map(header => {
           const value = item[header];
-          return typeof value === 'object' ? JSON.stringify(value) : value;
+          const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value || '');
+          return chalk.white(stringValue);
         });
         table.push(row);
       });
@@ -597,13 +793,13 @@ ${chalk.bold('Examples:')}
     }
 
     // If data is an object, print it as JSON
-    if (typeof data === 'object') {
-      console.log(JSON.stringify(data, null, 2));
+    if (typeof responseData === 'object') {
+      console.log(JSON.stringify(responseData, null, 2));
       return 0;
     }
 
     // Otherwise, just print the data
-    console.log(data);
+    console.log(responseData);
     return 0;
   }
 }

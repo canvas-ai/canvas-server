@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('http:routes:documents');
 import ResponseObject from '@/transports/ResponseObject.js';
+import { requireAllManagers } from '../../middleware/userManagers.js';
 
 /**
  * @swagger
@@ -42,49 +43,32 @@ import ResponseObject from '@/transports/ResponseObject.js';
  * Documents routes
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
- * @param {Object} options.workspaceManager - Workspace manager
- * @param {Object} options.contextManager - Context manager
+ * @param {Object} options.userManager - User manager
  * @returns {express.Router} - Express router
  */
 export default function documentsRoutes(options) {
     const router = express.Router();
-    const { auth, workspaceManager, contextManager } = options;
+    const { auth, userManager } = options;
 
     if (!auth) {
         throw new Error('Auth service is required');
     }
 
-    if (!workspaceManager) {
-        throw new Error('Workspace manager is required');
+    if (!userManager) {
+        throw new Error('User manager is required');
     }
-
-    if (!contextManager) {
-        throw new Error('Context manager is required');
-    }
-
-    // Middleware to get user from request
-    const getUserMiddleware = async (req, res, next) => {
-        try {
-            req.user = await auth.getUserFromRequest(req);
-            if (!req.user) {
-                return res.status(401).json(new ResponseObject(null, 'Unauthorized', 401));
-            }
-            next();
-        } catch (err) {
-            debug(`Error getting user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
-        }
-    };
 
     // Apply auth middleware to all routes
     router.use(auth.getAuthMiddleware());
-    router.use(getUserMiddleware);
+
+    // Apply both workspace and context manager middleware to all routes
+    router.use(requireAllManagers({ userManager }));
 
     /**
      * @swagger
      * /:
      *   get:
-     *     summary: List documents
+     *     summary: List all documents
      *     tags: [Documents]
      *     parameters:
      *       - in: query
@@ -148,37 +132,36 @@ export default function documentsRoutes(options) {
      */
     router.get('/', async (req, res) => {
         try {
-            const { workspaceId, limit = 50, offset = 0 } = req.query;
-            const { contextArray = [], featureArray = [], filterArray = [] } = req.body;
+            const { limit = 50, offset = 0, workspace } = req.query;
+            debug(`Listing documents for user: ${req.user.id}`);
 
-            if (!workspaceId) {
-                return res.status(400).json(new ResponseObject(null, 'Workspace ID is required', 400));
+            let documents;
+            if (workspace) {
+                // Get documents from specific workspace
+                documents = await req.workspaceManager.listWorkspaceDocuments(workspace, {
+                    limit: parseInt(limit),
+                    offset: parseInt(offset)
+                });
+            } else {
+                // Get documents from all workspaces
+                documents = await req.workspaceManager.listAllDocuments({
+                    limit: parseInt(limit),
+                    offset: parseInt(offset)
+                });
             }
 
-            // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
-            if (!workspace) {
-                return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
-            }
+            const response = new ResponseObject().success({
+                documents,
+                total: documents.length,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
 
-            // Check if user has access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user)) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
-            }
-
-            const options = {
-                limit: parseInt(limit, 10),
-                offset: parseInt(offset, 10),
-                contextArray,
-                featureArray,
-                filterArray
-            };
-
-            const documents = await workspaceManager.listDocuments(workspaceId, options);
-            return res.json(new ResponseObject(documents));
-        } catch (err) {
-            debug(`Error listing documents: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error listing documents: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 
@@ -253,13 +236,13 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has write access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user, 'write')) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
@@ -275,7 +258,7 @@ export default function documentsRoutes(options) {
                 filterArray
             };
 
-            const document = await workspaceManager.createDocument(workspaceId, documentData, options);
+            const document = await req.workspaceManager.createDocument(workspaceId, documentData, options);
             return res.status(201).json(new ResponseObject(document));
         } catch (err) {
             debug(`Error creating document: ${err.message}`);
@@ -352,13 +335,13 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user)) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user)) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
@@ -368,7 +351,7 @@ export default function documentsRoutes(options) {
                 filterArray
             };
 
-            const document = await workspaceManager.getDocumentById(workspaceId, id, options);
+            const document = await req.workspaceManager.getDocumentById(workspaceId, id, options);
 
             if (!document) {
                 return res.status(404).json(new ResponseObject(null, 'Document not found', 404));
@@ -456,13 +439,13 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user)) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user)) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
@@ -472,7 +455,7 @@ export default function documentsRoutes(options) {
                 filterArray
             };
 
-            const document = await workspaceManager.getDocumentByHash(workspaceId, hash, checksum, options);
+            const document = await req.workspaceManager.getDocumentByHash(workspaceId, hash, checksum, options);
 
             if (!document) {
                 return res.status(404).json(new ResponseObject(null, 'Document not found', 404));
@@ -564,18 +547,18 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has write access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user, 'write')) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             // Check if document exists
-            const existingDocument = await workspaceManager.getDocumentById(workspaceId, id);
+            const existingDocument = await req.workspaceManager.getDocumentById(workspaceId, id);
             if (!existingDocument) {
                 return res.status(404).json(new ResponseObject(null, 'Document not found', 404));
             }
@@ -592,7 +575,7 @@ export default function documentsRoutes(options) {
                 filterArray
             };
 
-            const document = await workspaceManager.updateDocument(workspaceId, id, documentData, options);
+            const document = await req.workspaceManager.updateDocument(workspaceId, id, documentData, options);
             return res.json(new ResponseObject(document));
         } catch (err) {
             debug(`Error updating document: ${err.message}`);
@@ -674,18 +657,18 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has write access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user, 'write')) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             // Check if document exists
-            const existingDocument = await workspaceManager.getDocumentById(workspaceId, id);
+            const existingDocument = await req.workspaceManager.getDocumentById(workspaceId, id);
             if (!existingDocument) {
                 return res.status(404).json(new ResponseObject(null, 'Document not found', 404));
             }
@@ -702,7 +685,7 @@ export default function documentsRoutes(options) {
             if (featureArray) options.featureArray = featureArray;
             if (filterArray) options.filterArray = filterArray;
 
-            const document = await workspaceManager.updateDocument(workspaceId, id, documentData, options);
+            const document = await req.workspaceManager.updateDocument(workspaceId, id, documentData, options);
             return res.json(new ResponseObject(document));
         } catch (err) {
             debug(`Error updating document: ${err.message}`);
@@ -760,23 +743,23 @@ export default function documentsRoutes(options) {
             }
 
             // Check if workspace exists and user has access
-            const workspace = await workspaceManager.getWorkspace(workspaceId);
+            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
             // Check if user has write access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
+            if (!req.workspaceManager.hasAccess(workspace, req.user, 'write')) {
                 return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             // Check if document exists
-            const existingDocument = await workspaceManager.getDocumentById(workspaceId, id);
+            const existingDocument = await req.workspaceManager.getDocumentById(workspaceId, id);
             if (!existingDocument) {
                 return res.status(404).json(new ResponseObject(null, 'Document not found', 404));
             }
 
-            const result = await workspaceManager.deleteDocument(workspaceId, id);
+            const result = await req.workspaceManager.deleteDocument(workspaceId, id);
             return res.json(new ResponseObject({ success: true }));
         } catch (err) {
             debug(`Error deleting document: ${err.message}`);

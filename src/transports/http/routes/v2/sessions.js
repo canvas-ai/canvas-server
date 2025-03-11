@@ -1,8 +1,10 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('http:routes:sessions');
+import passport from 'passport';
 import ResponseObject from '@/transports/ResponseObject.js';
+
+const debug = createDebug('http:routes:sessions');
 
 /**
  * @swagger
@@ -87,6 +89,8 @@ export default function sessionsRoutes(options) {
      *   get:
      *     summary: List all sessions for the current user
      *     tags: [Sessions]
+     *     security:
+     *       - bearerAuth: []
      *     responses:
      *       200:
      *         description: Sessions retrieved successfully
@@ -95,7 +99,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/', async (req, res) => {
+    router.get('/', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
         try {
             const userId = req.query.userId || req.user.id;
 
@@ -122,6 +126,8 @@ export default function sessionsRoutes(options) {
      *   post:
      *     summary: Create a new session
      *     tags: [Sessions]
+     *     security:
+     *       - bearerAuth: []
      *     requestBody:
      *       required: true
      *       content:
@@ -145,7 +151,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.post('/', async (req, res) => {
+    router.post('/', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
         try {
             const { name, description } = req.body;
 
@@ -170,6 +176,8 @@ export default function sessionsRoutes(options) {
      *   get:
      *     summary: Get a specific session by ID
      *     tags: [Sessions]
+     *     security:
+     *       - bearerAuth: []
      *     parameters:
      *       - in: path
      *         name: sessionId
@@ -187,7 +195,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:sessionId', getSessionMiddleware, async (req, res) => {
+    router.get('/:sessionId', passport.authenticate(['jwt', 'api-token'], { session: false }), getSessionMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(req.session, 'Session retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
@@ -204,6 +212,8 @@ export default function sessionsRoutes(options) {
      *   delete:
      *     summary: End a session
      *     tags: [Sessions]
+     *     security:
+     *       - bearerAuth: []
      *     parameters:
      *       - in: path
      *         name: sessionId
@@ -221,7 +231,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.delete('/:sessionId', getSessionMiddleware, async (req, res) => {
+    router.delete('/:sessionId', passport.authenticate(['jwt', 'api-token'], { session: false }), getSessionMiddleware, async (req, res) => {
         try {
             await sessionManager.endSession(req.session.id);
 

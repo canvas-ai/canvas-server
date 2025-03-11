@@ -14,19 +14,15 @@ import Url from './lib/Url.js';
 
 class ContextManager extends EventEmitter {
 
-    #activeContexts = new Map();
+    #user;
     #workspaceManager;
+    #activeContexts = new Map();
 
     constructor(options = {}) {
         super(); // EventEmitter
-
-        debug('Initializing context manager');
-        this.#workspaceManager = options.workspaceManager;
-        if (!this.#workspaceManager) {
-            throw new Error('WorkspaceManager is required');
-        }
-
         debug('Context manager initialized');
+        this.#user = options.user;
+        this.#workspaceManager = options.workspaceManager;
     }
 
     async createContext(url = '/', options = {}) {
@@ -85,11 +81,12 @@ class ContextManager extends EventEmitter {
      * @returns {Context} - Context instance
      */
     getContext(id, options = {}) {
+        debug(`Getting context with id "${id}", options: ${JSON.stringify(options)}`);
         const context = this.#activeContexts.get(id);
 
         if (!context) {
             // If auto-create is enabled and we have a user, create the context
-            if (options.autoCreate && options.user) {
+            if (options.autoCreate) {
                 debug(`Context with id "${id}" not found, auto-creating`);
 
                 // Use the provided options for creation, but ensure the ID is set
@@ -133,22 +130,6 @@ class ContextManager extends EventEmitter {
 
         this.emit('context:removed', id);
         return true;
-    }
-
-    /**
-     * Get all contexts for a user
-     * @param {string} userId - User ID
-     * @returns {Array<Context>} - Array of context instances
-     */
-    async getUserContexts(userId) {
-        debug(`Getting contexts for user: ${userId}`);
-
-        // Filter contexts by user ID
-        const userContexts = Array.from(this.#activeContexts.values())
-            .filter(context => context.userId === userId);
-
-        debug(`Found ${userContexts.length} contexts for user ${userId}`);
-        return userContexts;
     }
 
 }

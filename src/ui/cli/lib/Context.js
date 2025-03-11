@@ -4,9 +4,12 @@
 
 import chalk from 'chalk';
 import BaseCLI from './Base.js';
+import debugInstance from 'debug';
 
 // Import DEFAULT_CONFIG from BaseCLI
 import { DEFAULT_CONFIG } from './Base.js';
+
+const debug = debugInstance('canvas:cli:context');
 
 class ContextCLI extends BaseCLI {
   constructor() {
@@ -15,7 +18,43 @@ class ContextCLI extends BaseCLI {
   }
 
   async run() {
+    if (this.args.v || this.args.version) {
+      this.printVersion();
+      return 0;
+    }
 
+    if (!this.args || this.args.h || this.args.help || !this.action) {
+      this.printHelp();
+      return 0;
+    }
+
+    try {
+      // Commands that don't require server connection or authentication
+      if (this.action === 'help') {
+        this.printHelp();
+        return 0;
+      }
+
+      // All other commands require server connection and authentication
+      try {
+        await this.initialize();
+
+        // Check if we have a specific method for this action
+        if (typeof this[this.action] === 'function') {
+          return await this[this.action](this.inputArgs);
+        } else {
+          console.error(chalk.red(`Unknown command: ${this.action}`));
+          this.printHelp();
+          return 1;
+        }
+      } catch (err) {
+        console.error(chalk.red(`Error: ${err.message}`));
+        return 1;
+      }
+    } catch (err) {
+      console.error(chalk.red(`Error: ${err.message}`));
+      return 1;
+    }
   }
 
   printHelp() {
@@ -50,11 +89,14 @@ ${chalk.bold('OPTIONS')}
 
   async list() {
     try {
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(contextEndpoint);
+      await this.initialize();
 
-      if (response.data && response.data.data) {
-        const contexts = response.data.data;
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(contextsEndpoint);
+
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const contexts = response.data.payload;
 
         if (contexts.length === 0) {
           console.log(chalk.yellow('No contexts found.'));
@@ -65,24 +107,36 @@ ${chalk.bold('OPTIONS')}
 
         contexts.forEach(context => {
           table.push([
-            context.id,
-            context.url,
-            context.workspace || 'N/A',
-            context.created || 'N/A'
+            chalk.white(context.id || 'N/A'),
+            chalk.white(context.url || 'N/A'),
+            chalk.white(context.workspace || 'N/A'),
+            chalk.white(context.created || 'N/A')
           ]);
         });
 
         console.log(table.toString());
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve contexts.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error listing contexts: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async set(args) {
     try {
+      await this.initialize();
+
       const url = args[0];
 
       if (!url) {
@@ -90,46 +144,75 @@ ${chalk.bold('OPTIONS')}
         return 1;
       }
 
+      const contextId = this.getContextId();
+
       // Check if the URL contains a workspace ID
       if (url.includes('://')) {
         const [workspaceId, path] = url.split('://');
 
         // First, switch to the workspace
         try {
-          const contextId = this.config.cli.context.id;
-          const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-          await this.api.put(`${contextEndpoint}/${contextId}/workspace`, {
+          // Use the contexts endpoint instead of context
+          const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+          const response = await this.api.put(`${contextsEndpoint}/${contextId}/workspace`, {
             workspace: workspaceId,
             url: path
           });
 
-          console.log(chalk.green(`Switched to workspace ${workspaceId} with path ${path}`));
-          return 0;
+          if (response.data && response.data.status === 'success') {
+            console.log(chalk.green(`Switched to workspace ${workspaceId} with path ${path}`));
+            return 0;
+          } else {
+            console.error(chalk.red('Error: Failed to switch workspace.'));
+            if (response.data && response.data.message) {
+              console.error(chalk.red(`Reason: ${response.data.message}`));
+            }
+            return 1;
+          }
         } catch (err) {
           console.error(chalk.red(`Error switching workspace: ${err.message}`));
+          if (err.response && err.response.data && err.response.data.message) {
+            console.error(chalk.red(`Server message: ${err.response.data.message}`));
+          }
           return 1;
         }
       } else {
         // Just update the URL path
-        const contextId = this.config.cli.context.id;
-        const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-        const response = await this.api.put(`${contextEndpoint}/${contextId}/url`, {
-          url
-        });
+        try {
+          // Use the contexts endpoint instead of context
+          const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+          const response = await this.api.put(`${contextsEndpoint}/${contextId}/url`, {
+            url: url
+          });
 
-        if (response.data && response.data.data) {
-          console.log(chalk.green(`Context URL set to: ${url}`));
+          if (response.data && response.data.status === 'success') {
+            console.log(chalk.green(`Updated context URL to ${url}`));
+            return 0;
+          } else {
+            console.error(chalk.red('Error: Failed to update context URL.'));
+            if (response.data && response.data.message) {
+              console.error(chalk.red(`Reason: ${response.data.message}`));
+            }
+            return 1;
+          }
+        } catch (err) {
+          console.error(chalk.red(`Error updating context URL: ${err.message}`));
+          if (err.response && err.response.data && err.response.data.message) {
+            console.error(chalk.red(`Server message: ${err.response.data.message}`));
+          }
+          return 1;
         }
-        return 0;
       }
     } catch (err) {
-      console.error(chalk.red(`Error setting context URL: ${err.message}`));
+      console.error(chalk.red(`Error setting context: ${err.message}`));
       return 1;
     }
   }
 
   async switch(args) {
     try {
+      await this.initialize();
+
       const contextId = args[0];
 
       if (!contextId) {
@@ -138,57 +221,70 @@ ${chalk.bold('OPTIONS')}
       }
 
       // Get the context to verify it exists and get its details
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}`);
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}`);
 
-      if (response.data && response.data.data) {
-        const context = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const context = response.data.payload;
 
         // Update the CLI config to use this context
         this.config.cli.context.id = contextId;
         this.saveConfig();
 
         console.log(chalk.green(`Switched to context ${contextId} at ${context.workspace || 'unknown'}://${context.url}`));
+        return 0;
+      } else {
+        console.error(chalk.red('Error: Failed to switch context.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
-      return 0;
     } catch (err) {
       console.error(chalk.red(`Error switching context: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async url() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}`);
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}`);
 
-      if (response.data && response.data.data) {
-        const context = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const context = response.data.payload;
         console.log(`${context.workspace || 'unknown'}://${context.url}`);
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve context URL.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error getting context URL: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async id() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
-
+      const contextId = this.getContextId();
       console.log(contextId);
       return 0;
     } catch (err) {
@@ -199,41 +295,46 @@ ${chalk.bold('OPTIONS')}
 
   async path() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}`);
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}`);
 
-      if (response.data && response.data.data) {
-        const context = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const context = response.data.payload;
         console.log(context.url);
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve context path.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error getting context path: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async bitmaps() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}/bitmaps`);
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}/bitmaps`);
 
-      if (response.data && response.data.data) {
-        const bitmaps = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const bitmaps = response.data.payload;
 
         if (bitmaps.length === 0) {
           console.log(chalk.yellow('No bitmaps found.'));
@@ -244,16 +345,26 @@ ${chalk.bold('OPTIONS')}
 
         bitmaps.forEach(bitmap => {
           table.push([
-            bitmap.key,
-            bitmap.size || 'N/A'
+            chalk.white(bitmap.key || 'N/A'),
+            chalk.white(bitmap.size?.toString() || 'N/A')
           ]);
         });
 
         console.log(table.toString());
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve bitmaps.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
-      console.error(chalk.red(`Error getting context bitmaps: ${err.message}`));
+      console.error(chalk.red(`Error getting bitmaps: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
@@ -262,25 +373,21 @@ ${chalk.bold('OPTIONS')}
     try {
       await this.initialize();
 
-      const contextId = this.config.cli.context.id;
-
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
       // Use the class property instead of calling parseInput
       const { featureArray } = this;
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}/documents`, {
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}/documents`, {
         params: {
           features: featureArray
         }
       });
 
-      if (response.data && response.data.data) {
-        const documents = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const documents = response.data.payload;
 
         if (documents.length === 0) {
           console.log(chalk.yellow('No documents found.'));
@@ -291,40 +398,48 @@ ${chalk.bold('OPTIONS')}
 
         documents.forEach(doc => {
           table.push([
-            doc.id,
-            doc.content?.title || 'Untitled',
-            doc.content?.type || 'Unknown',
-            doc.created || 'N/A'
+            chalk.white(doc.id || 'N/A'),
+            chalk.white(doc.content?.title || 'Untitled'),
+            chalk.white(doc.content?.type || 'Unknown'),
+            chalk.white(doc.created || 'N/A')
           ]);
         });
 
         console.log(table.toString());
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve documents.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
-      console.error(chalk.red(`Error listing documents: ${err.message}`));
+      console.error(chalk.red(`Error getting documents: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async notes() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}/documents`, {
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}/documents`, {
         params: {
           features: ['data/abstraction/note']
         }
       });
 
-      if (response.data && response.data.data) {
-        const notes = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const notes = response.data.payload;
 
         if (notes.length === 0) {
           console.log(chalk.yellow('No notes found.'));
@@ -335,17 +450,27 @@ ${chalk.bold('OPTIONS')}
 
         notes.forEach(note => {
           table.push([
-            note.id,
-            note.content?.title || 'Untitled',
-            note.created || 'N/A'
+            chalk.white(note.id || 'N/A'),
+            chalk.white(note.content?.title || 'Untitled'),
+            chalk.white(note.created || 'N/A')
           ]);
         });
 
         console.log(table.toString());
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve notes.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
-      console.error(chalk.red(`Error listing notes: ${err.message}`));
+      console.error(chalk.red(`Error getting notes: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
@@ -366,6 +491,8 @@ ${chalk.bold('OPTIONS')}
 
   async noteGet(args) {
     try {
+      await this.initialize();
+
       const idOrHash = args[0];
 
       if (!idOrHash) {
@@ -373,40 +500,46 @@ ${chalk.bold('OPTIONS')}
         return 1;
       }
 
-      const contextId = this.config.cli.context.id;
-
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
       let response;
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
 
       // Check if it's a hash or ID
       if (idOrHash.includes('/')) {
         // It's a hash
-        response = await this.api.get(`${contextEndpoint}/${contextId}/document/hash/${idOrHash}`);
+        response = await this.api.get(`${contextsEndpoint}/${contextId}/document/hash/${idOrHash}`);
       } else if (!isNaN(parseInt(idOrHash))) {
         // It's an ID
-        response = await this.api.get(`${contextEndpoint}/${contextId}/document/${idOrHash}`);
+        response = await this.api.get(`${contextsEndpoint}/${contextId}/document/${idOrHash}`);
       } else {
         console.error(chalk.red('Invalid note ID or hash format'));
         return 1;
       }
 
-      if (response.data && response.data.data) {
-        const note = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const note = response.data.payload;
 
         console.log(chalk.cyan(`Title: ${note.content?.title || 'Untitled'}`));
         console.log(chalk.cyan(`ID: ${note.id}`));
         console.log(chalk.cyan(`Created: ${note.created || 'N/A'}`));
         console.log(chalk.cyan(`Updated: ${note.updated || 'N/A'}`));
         console.log('\n' + (note.content?.text || 'No content'));
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve note.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error getting note: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
@@ -415,12 +548,7 @@ ${chalk.bold('OPTIONS')}
     try {
       await this.initialize();
 
-      const contextId = this.config.cli.context.id;
-
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
       // Use the class property instead of calling parseInput
       const { featureArray } = this;
@@ -445,23 +573,34 @@ ${chalk.bold('OPTIONS')}
         }
       };
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.post(`${contextEndpoint}/${contextId}/documents`, {
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.post(`${contextsEndpoint}/${contextId}/documents`, {
         documents: [noteData],
         features: featureArray
       });
 
-      if (response.data && response.data.data) {
+      if (response.data && response.data.status === 'success' && response.data.payload) {
         console.log(chalk.green('Note added successfully'));
 
-        if (response.data.data.inserted && response.data.data.inserted.length > 0) {
-          const noteId = response.data.data.inserted[0];
+        if (response.data.payload.inserted && response.data.payload.inserted.length > 0) {
+          const noteId = response.data.payload.inserted[0];
           console.log(chalk.green(`Note ID: ${noteId}`));
         }
+      } else {
+        console.error(chalk.red('Error: Failed to add note.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error adding note: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
@@ -484,12 +623,7 @@ ${chalk.bold('OPTIONS')}
     try {
       await this.initialize();
 
-      const contextId = this.config.cli.context.id;
-
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
       // Use the class property instead of calling parseInput
       const { featureArray } = this;
@@ -514,45 +648,54 @@ ${chalk.bold('OPTIONS')}
         }
       };
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.post(`${contextEndpoint}/${contextId}/documents`, {
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.post(`${contextsEndpoint}/${contextId}/documents`, {
         documents: [tabData],
         features: featureArray
       });
 
-      if (response.data && response.data.data) {
+      if (response.data && response.data.status === 'success' && response.data.payload) {
         console.log(chalk.green('Tab added successfully'));
 
-        if (response.data.data.inserted && response.data.data.inserted.length > 0) {
-          const tabId = response.data.data.inserted[0];
+        if (response.data.payload.inserted && response.data.payload.inserted.length > 0) {
+          const tabId = response.data.payload.inserted[0];
           console.log(chalk.green(`Tab ID: ${tabId}`));
         }
+      } else {
+        console.error(chalk.red('Error: Failed to add tab.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
       console.error(chalk.red(`Error adding tab: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
   }
 
   async tabList() {
     try {
-      const contextId = this.config.cli.context.id;
+      await this.initialize();
 
-      if (!contextId) {
-        console.error(chalk.red('No active context'));
-        return 1;
-      }
+      const contextId = this.getContextId();
 
-      const contextEndpoint = DEFAULT_CONFIG.endpoints.context;
-      const response = await this.api.get(`${contextEndpoint}/${contextId}/documents`, {
+      // Use the contexts endpoint instead of context
+      const contextsEndpoint = DEFAULT_CONFIG.endpoints.contexts;
+      const response = await this.api.get(`${contextsEndpoint}/${contextId}/documents`, {
         params: {
           features: ['data/abstraction/tab']
         }
       });
 
-      if (response.data && response.data.data) {
-        const tabs = response.data.data;
+      if (response.data && response.data.status === 'success' && response.data.payload) {
+        const tabs = response.data.payload;
 
         if (tabs.length === 0) {
           console.log(chalk.yellow('No tabs found.'));
@@ -563,19 +706,52 @@ ${chalk.bold('OPTIONS')}
 
         tabs.forEach(tab => {
           table.push([
-            tab.id,
-            tab.content?.title || 'Untitled',
-            tab.content?.url || 'N/A'
+            chalk.white(tab.id || 'N/A'),
+            chalk.white(tab.content?.title || 'Untitled'),
+            chalk.white(tab.content?.url || 'N/A')
           ]);
         });
 
         console.log(table.toString());
+      } else {
+        console.error(chalk.red('Error: Failed to retrieve tabs.'));
+        if (response.data && response.data.message) {
+          console.error(chalk.red(`Reason: ${response.data.message}`));
+        }
+        return 1;
       }
+
       return 0;
     } catch (err) {
-      console.error(chalk.red(`Error listing tabs: ${err.message}`));
+      console.error(chalk.red(`Error getting tabs: ${err.message}`));
+      if (err.response && err.response.data && err.response.data.message) {
+        console.error(chalk.red(`Server message: ${err.response.data.message}`));
+      }
       return 1;
     }
+  }
+
+  /**
+   * Get the current context ID or generate a default one based on machine ID
+   * @returns {string} The context ID
+   */
+  getContextId() {
+    // Check if we have a context ID in the config
+    if (this.config.cli.context.id) {
+      debug(`Using context ID from config: ${this.config.cli.context.id}`);
+      return this.config.cli.context.id;
+    }
+
+    // Generate a context ID based on machine ID
+    const machineId = this.getMachineId();
+    const contextId = `cli-${machineId}`;
+
+    // Save the generated ID to config
+    this.config.cli.context.id = contextId;
+    this.saveConfig();
+
+    debug(`Generated new context ID: ${contextId}`);
+    return contextId;
   }
 }
 

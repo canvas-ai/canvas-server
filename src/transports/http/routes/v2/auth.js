@@ -72,28 +72,54 @@ export default function(authService) {
      *         description: User already exists
      */
     router.post('/register', async (req, res) => {
-        debug('Register endpoint called');
-        const { email, password } = req.body;
+        const { email, password, name } = req.body;
+        debug(`Registration attempt for email: ${email}`);
 
-        // Validate input
+        // Validate credentials
         const validation = validateCredentials(email, password);
         if (!validation.isValid) {
             debug(`Registration validation failed: ${JSON.stringify(validation.errors)}`);
-            const response = new ResponseObject().badRequest('Validation failed', validation.errors);
+            const response = new ResponseObject().badRequest('Invalid credentials', validation.errors);
             return res.status(response.statusCode).json(response.getResponse());
         }
 
         try {
-            const { user, token } = await authService.register(email, password);
-            authService.sessionService.setCookie(res, token);
+            // Attempt registration
+            const result = await authService.register(email, password, 'user');
+            debug(`Registration successful for user: ${email}`);
 
-            debug(`User registered successfully: ${email}`);
-            const response = new ResponseObject().created({ token }, 'User registered successfully');
-            res.status(response.statusCode).json(response.getResponse());
+            // Set JWT token as cookie
+            authService.sessionService.setCookie(res, result.token, {
+                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                sameSite: 'lax'
+            });
+
+            // Return success response with user data
+            const response = new ResponseObject().created({
+                user: {
+                    id: result.user.id,
+                    email: result.user.email,
+                    name: result.user.name || name,
+                    role: result.user.role,
+                    createdAt: result.user.createdAt,
+                    updatedAt: result.user.updatedAt
+                },
+                token: result.token,
+                session: result.session
+            }, 'Registration successful');
+
+            return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            debug(`Registration error: ${error.message}`);
-            const response = new ResponseObject().conflict(error.message);
-            res.status(response.statusCode).json(response.getResponse());
+            debug(`Registration failed: ${error.message}`);
+
+            // Check for duplicate email
+            if (error.message.includes('already exists')) {
+                const response = new ResponseObject().conflict('Email already registered');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const response = new ResponseObject().error(error.message);
+            return res.status(response.statusCode).json(response.getResponse());
         }
     });
 
@@ -126,59 +152,49 @@ export default function(authService) {
      *       401:
      *         description: Invalid credentials
      */
-    router.post('/login', (req, res, next) => {
-        debug('Login endpoint called');
+    router.post('/login', async (req, res) => {
         const { email, password } = req.body;
+        debug(`Login attempt for email: ${email}`);
 
-        // Validate input
+        // Validate credentials
         const validation = validateCredentials(email, password);
         if (!validation.isValid) {
             debug(`Login validation failed: ${JSON.stringify(validation.errors)}`);
-            const response = new ResponseObject().badRequest('Validation failed', validation.errors);
+            const response = new ResponseObject().badRequest('Invalid credentials', validation.errors);
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        passport.authenticate('local', async (err, user, info) => {
-            if (err) {
-                debug(`Login error: ${err.message}`);
-                const response = new ResponseObject().serverError(err.message);
-                return res.status(response.statusCode).json(response.getResponse());
-            }
+        try {
+            // Attempt login
+            const result = await authService.login(email, password);
+            debug(`Login successful for user: ${email}`);
 
-            if (!user) {
-                debug('Login failed: Invalid credentials');
-                const response = new ResponseObject().unauthorized(info?.message || 'Invalid credentials');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
+            // Set JWT token as cookie
+            authService.sessionService.setCookie(res, result.token, {
+                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                sameSite: 'lax'
+            });
 
-            try {
-                // Create a new session
-                const session = await authService.sessionManager.createSession(user.id, {
-                    initializer: 'login',
-                });
+            // Return success response with user data
+            const response = new ResponseObject().success({
+                user: {
+                    id: result.user.id,
+                    email: result.user.email,
+                    name: result.user.name,
+                    role: result.user.role,
+                    createdAt: result.user.createdAt,
+                    updatedAt: result.user.updatedAt
+                },
+                token: result.token,
+                session: result.session
+            }, 'Login successful');
 
-                // Generate token
-                const token = authService.sessionService.generateToken(user, session);
-
-                // Set cookie
-                authService.sessionService.setCookie(res, token);
-
-                debug(`User logged in successfully: ${email}`);
-                const response = new ResponseObject().success({
-                    token,
-                    user: {
-                        id: user.id,
-                        email: user.email,
-                        userType: user.userType
-                    }
-                }, 'Login successful');
-                res.status(response.statusCode).json(response.getResponse());
-            } catch (error) {
-                debug(`Session creation error: ${error.message}`);
-                const response = new ResponseObject().serverError(error.message);
-                res.status(response.statusCode).json(response.getResponse());
-            }
-        })(req, res, next);
+            return res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Login failed: ${error.message}`);
+            const response = new ResponseObject().unauthorized(error.message);
+            return res.status(response.statusCode).json(response.getResponse());
+        }
     });
 
     /**
@@ -191,21 +207,26 @@ export default function(authService) {
      *       200:
      *         description: Logged out successfully
      */
-    router.post('/logout', (req, res) => {
+    router.post('/logout', async (req, res) => {
         debug('Logout endpoint called');
 
-        // End the session if available
-        if (req.session && req.session.id) {
-            debug(`Ending session: ${req.session.id}`);
-            authService.sessionManager.endSession(req.session.id);
+        try {
+            // Clear the auth cookie
+            authService.sessionService.clearCookie(res);
+
+            // If user is authenticated, invalidate the session
+            if (req.isAuthenticated && req.user && req.session) {
+                debug(`Invalidating session for user: ${req.user.email || req.user.id}`);
+                await authService.sessionManager.invalidateSession(req.session.id);
+            }
+
+            const response = new ResponseObject().success(null, 'Logout successful');
+            return res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Logout error: ${error.message}`);
+            const response = new ResponseObject().error(error.message);
+            return res.status(response.statusCode).json(response.getResponse());
         }
-
-        // Clear the cookie
-        authService.sessionService.clearCookie(res);
-
-        debug('User logged out successfully');
-        const response = new ResponseObject().success(null, 'Logged out successfully');
-        res.status(response.statusCode).json(response.getResponse());
     });
 
     /**
@@ -480,17 +501,26 @@ export default function(authService) {
             }
 
             // Then try as API token
-            const apiTokenResult = await authService.verifyAuthToken(token);
+            const apiTokenResult = await authService.validateApiToken(token);
             if (apiTokenResult) {
-                debug('API token verified successfully');
-                const response = new ResponseObject().success({
-                    valid: true,
-                    type: 'api',
-                    userId: apiTokenResult.user.id,
-                    tokenId: apiTokenResult.token.id,
-                    tokenName: apiTokenResult.token.name
-                }, 'Token is valid');
-                return res.status(response.statusCode).json(response.getResponse());
+                const { userId, tokenId } = apiTokenResult;
+
+                // Get user and token details
+                const userManager = req.app.get('userManager');
+                const user = await userManager.getUserById(userId);
+                const tokenDetails = await userManager.getApiToken(userId, tokenId);
+
+                if (user && tokenDetails) {
+                    debug('API token verified successfully');
+                    const response = new ResponseObject().success({
+                        valid: true,
+                        type: 'api',
+                        userId: userId,
+                        tokenId: tokenId,
+                        tokenName: tokenDetails.name
+                    }, 'Token is valid');
+                    return res.status(response.statusCode).json(response.getResponse());
+                }
             }
 
             // Token is invalid
@@ -498,9 +528,9 @@ export default function(authService) {
             const response = new ResponseObject().unauthorized('Invalid token');
             return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            debug(`Token verify error: ${error.message}`);
-            const response = new ResponseObject().error(error.message);
-            res.status(response.statusCode).json(response.getResponse());
+            debug(`Token verification error: ${error.message}`);
+            const response = new ResponseObject().error(`Token verification error: ${error.message}`);
+            return res.status(response.statusCode).json(response.getResponse());
         }
     });
 

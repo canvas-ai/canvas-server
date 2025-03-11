@@ -4,6 +4,7 @@ import fs from 'fs';
 import util from 'util';
 import path from 'path';
 
+// TODO: Use https://www.npmjs.com/package/write-file-atomic
 const writeFile = util.promisify(fs.writeFile);
 const readFile = util.promisify(fs.readFile);
 const writeFileSync = fs.writeFileSync;
@@ -49,7 +50,7 @@ class JsonMap extends Map {
     deleteSync(key) {
         super.delete(key);
         this.saveSync();
-        return true;  
+        return true;
     }
 
     async clear() {

@@ -25,7 +25,7 @@ export default function(server) {
       // Create mock request object with headers from socket handshake
       const mockReq = {
         headers: socket.handshake.headers,
-        cookies: socket.handshake.cookies
+        cookies: socket.handshake.cookies || {}
       };
 
       // Create mock response object
@@ -42,6 +42,11 @@ export default function(server) {
         socket.isAuthenticated = mockReq.isAuthenticated;
         socket.user = mockReq.user;
         socket.session = mockReq.session;
+
+        debug(`WebSocket authenticated: ${socket.isAuthenticated ? 'Yes' : 'No'}`);
+        if (socket.user) {
+          debug(`WebSocket user: ${socket.user.email || socket.user.id}`);
+        }
 
         next();
       });

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('http:routes:workspaces');
 import ResponseObject from '@/transports/ResponseObject.js';
+import { requireWorkspaceManager } from '../../middleware/userManagers.js';
 
 /**
  * @swagger
@@ -60,38 +61,26 @@ import ResponseObject from '@/transports/ResponseObject.js';
  * Workspaces routes
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
- * @param {Object} options.workspaceManager - Workspace manager
+ * @param {Object} options.userManager - User manager
  * @returns {express.Router} - Express router
  */
 export default function workspacesRoutes(options) {
     const router = express.Router();
-    const { auth, workspaceManager } = options;
+    const { auth, userManager } = options;
 
     if (!auth) {
         throw new Error('Auth service is required');
     }
 
-    if (!workspaceManager) {
-        throw new Error('Workspace manager is required');
+    if (!userManager) {
+        throw new Error('User manager is required');
     }
-
-    // Middleware to get user from request
-    const getUserMiddleware = async (req, res, next) => {
-        try {
-            req.user = await auth.getUserFromRequest(req);
-            if (!req.user) {
-                return res.status(401).json(new ResponseObject(null, 'Unauthorized', 401));
-            }
-            next();
-        } catch (err) {
-            debug(`Error getting user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
-        }
-    };
 
     // Apply auth middleware to all routes
     router.use(auth.getAuthMiddleware());
-    router.use(getUserMiddleware);
+
+    // Apply workspace manager middleware to all routes
+    router.use(requireWorkspaceManager({ userManager }));
 
     /**
      * @swagger
@@ -135,18 +124,27 @@ export default function workspacesRoutes(options) {
     router.get('/', async (req, res) => {
         try {
             const { limit = 50, offset = 0, status } = req.query;
-            const options = {
-                limit: parseInt(limit, 10),
-                offset: parseInt(offset, 10),
-                status,
-                user: req.user
-            };
+            debug(`Listing workspaces for user: ${req.user.id}`);
 
-            const workspaces = await workspaceManager.listWorkspaces(options);
-            return res.json(new ResponseObject(workspaces));
-        } catch (err) {
-            debug(`Error listing workspaces: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            // Get workspaces from the user's workspace manager
+            const workspaces = req.workspaceManager.listWorkspaces({
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                status
+            });
+
+            const response = new ResponseObject().success({
+                workspaces,
+                total: workspaces.length,
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
+
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error listing workspaces: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
         }
     });
 
@@ -199,7 +197,7 @@ export default function workspacesRoutes(options) {
                 owner: req.user.id
             };
 
-            const workspace = await workspaceManager.createWorkspace(workspaceData);
+            const workspace = await req.workspaceManager.createWorkspace(workspaceData);
             return res.status(201).json(new ResponseObject(workspace));
         } catch (err) {
             debug(`Error creating workspace: ${err.message}`);
@@ -237,15 +235,10 @@ export default function workspacesRoutes(options) {
     router.get('/:id', async (req, res) => {
         try {
             const { id } = req.params;
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
 
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
-            }
-
-            // Check if user has access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user)) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             return res.json(new ResponseObject(workspace));
@@ -308,14 +301,9 @@ export default function workspacesRoutes(options) {
             const { id } = req.params;
             const { name, description, status } = req.body;
 
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
-            }
-
-            // Check if user has access to update this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             const workspaceData = {
@@ -324,7 +312,7 @@ export default function workspacesRoutes(options) {
                 status
             };
 
-            const updatedWorkspace = await workspaceManager.updateWorkspace(id, workspaceData);
+            const updatedWorkspace = await req.workspaceManager.updateWorkspace(id, workspaceData);
             return res.json(new ResponseObject(updatedWorkspace));
         } catch (err) {
             debug(`Error updating workspace: ${err.message}`);
@@ -385,17 +373,12 @@ export default function workspacesRoutes(options) {
             const { id } = req.params;
             const updateData = req.body;
 
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
-            // Check if user has access to update this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
-            }
-
-            const updatedWorkspace = await workspaceManager.updateWorkspace(id, updateData);
+            const updatedWorkspace = await req.workspaceManager.updateWorkspace(id, updateData);
             return res.json(new ResponseObject(updatedWorkspace));
         } catch (err) {
             debug(`Error updating workspace: ${err.message}`);
@@ -439,17 +422,12 @@ export default function workspacesRoutes(options) {
         try {
             const { id } = req.params;
 
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
-            // Check if user has access to delete this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'admin')) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
-            }
-
-            const result = await workspaceManager.deleteWorkspace(id);
+            const result = await req.workspaceManager.deleteWorkspace(id);
             return res.json(new ResponseObject({ success: true }));
         } catch (err) {
             debug(`Error deleting workspace: ${err.message}`);
@@ -505,14 +483,9 @@ export default function workspacesRoutes(options) {
             const { id } = req.params;
             const { limit = 50, offset = 0 } = req.query;
 
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
-            }
-
-            // Check if user has access to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user)) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
             }
 
             const options = {
@@ -520,7 +493,7 @@ export default function workspacesRoutes(options) {
                 offset: parseInt(offset, 10)
             };
 
-            const documents = await workspaceManager.listWorkspaceDocuments(id, options);
+            const documents = await req.workspaceManager.listWorkspaceDocuments(id, options);
             return res.json(new ResponseObject(documents));
         } catch (err) {
             debug(`Error listing workspace documents: ${err.message}`);
@@ -580,17 +553,12 @@ export default function workspacesRoutes(options) {
                 return res.status(400).json(new ResponseObject(null, 'Document content is required', 400));
             }
 
-            const workspace = await workspaceManager.getWorkspace(id);
+            const workspace = await req.workspaceManager.getWorkspace(id);
             if (!workspace) {
                 return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
             }
 
-            // Check if user has access to write to this workspace
-            if (!workspaceManager.hasAccess(workspace, req.user, 'write')) {
-                return res.status(403).json(new ResponseObject(null, 'Access denied', 403));
-            }
-
-            const document = await workspaceManager.createWorkspaceDocument(id, { content });
+            const document = await req.workspaceManager.createWorkspaceDocument(id, { content });
             return res.status(201).json(new ResponseObject(document));
         } catch (err) {
             debug(`Error creating workspace document: ${err.message}`);

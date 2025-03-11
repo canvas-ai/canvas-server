@@ -1,43 +1,59 @@
-import debugInstance from 'debug';
-import WorkspaceManager from '@/managers/workspace/index.js';
-const debug = debugInstance('canvas:events:user');
+import logger, { createDebug } from '@/utils/log/index.js';
+const debug = createDebug('canvas:events:user');
 
+/**
+ * User Event Handler
+ *
+ * Handles user-related events like user creation, deletion, etc.
+ */
 class UserEventHandler {
-    constructor(config, services = {}) {
-        this.config = config;
-        this.services = services;
-        this.setupHandlers();
+    #userManager;
+
+    /**
+     * Create a new UserEventHandler
+     * @param {Object} options - Options
+     * @param {Object} options.userManager - User manager instance
+     */
+    constructor(options = {}) {
+        this.#userManager = options.userManager;
+
+        if (!this.#userManager) {
+            debug('User manager not provided, event handler will be limited');
+        } else {
+            this.setupHandlers();
+        }
+
+        debug('User event handler created');
     }
+
+    /**
+     * Set up event handlers
+     */
 
     setupHandlers() {
-        if (this.services.auth && typeof this.services.auth.on === 'function') {
-            this.services.auth.on('user:created', this.handleUserCreated.bind(this));
+        if (this.#userManager && typeof this.#userManager.on === 'function') {
+            this.#userManager.on('user:created', this.handleUserCreated.bind(this));
+            this.#userManager.on('user:deleted', this.handleUserDeleted.bind(this));
+            debug('User event handlers set up');
         } else {
-            debug('Auth service does not support events, skipping event handlers');
+            debug('User manager does not support events, skipping event handlers');
         }
     }
 
+    /**
+     * Handle user creation event
+     * @param {Object} user - Created user
+     */
     async handleUserCreated(user) {
-        debug('New user created:', user.email);
+        debug(`User created: ${user.email} (${user.id})`);
+    }
 
-        try {
-            if (!user.email) {
-                throw new Error('User email is required');
-            }
-
-            // Create default workspace for new user using their email as ID
-            const workspaceManager = new WorkspaceManager({
-                rootPath: this.config.dataPath,
-            });
-
-            // This will create /data/multiverse/user@email.tld/universe
-            await workspaceManager.createWorkspace(user.email);
-
-            debug(`Created default workspace for user: ${user.email}`);
-        } catch (error) {
-            console.error('Error handling user creation:', error);
-            throw error;
-        }
+    /**
+     * Handle user deletion event
+     * @param {string} userId - Deleted user ID
+     */
+    async handleUserDeleted(userId) {
+        debug(`User deleted: ${userId}`);
     }
 }
 

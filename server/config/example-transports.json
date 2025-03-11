@@ -5,11 +5,23 @@
     "host": "0.0.0.0",
     "port": 8001,
     "basePath": "/rest",
-    "cors": false,
+    "cors": {
+      "origins": [
+        "http://127.0.0.1",
+        "http://localhost",
+        "https://*.cnvs.ai",
+        "https://cnvs.ai",
+        "https://*.getcanvas.org",
+        "https://getcanvas.org"
+      ],
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      "allowedHeaders": ["Content-Type", "Authorization", "x-device-id", "x-device-name", "x-app-name"],
+      "credentials": true
+    },
     "auth": {
       "enabled": true,
       "jwtLifetime": "48h",
-      "jwtSecret": "changeme-canvas-4xyg%CpJ+V7"
+      "jwtSecret": "canvas-jwt-secret"
     }
   },
   "ws": {
@@ -20,7 +32,7 @@
     "auth": {
       "enabled": true,
       "jwtLifetime": "48h",
-      "jwtSecret": "changeme-canvas-4xyg%CpJ+V7"
+      "jwtSecret": "canvas-jwt-secret"
     }
   }
 }

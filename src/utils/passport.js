@@ -1,12 +1,9 @@
 import passport from 'passport';
-import { Strategy as LocalStrategy } from 'passport-local';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { Strategy as CustomStrategy } from 'passport-custom';
-import User from '@/prisma/models/User.js';
-import AuthToken from '@/prisma/models/AuthToken.js';
 import logger, { createDebug } from '@/utils/log/index.js';
 
-const debug = createDebug('canvas:auth:passport');
+const debug = createDebug('auth:passport');
 
 /**
  * Extract JWT token from cookie
@@ -25,38 +22,17 @@ const cookieExtractor = (req) => {
 /**
  * Configure passport strategies
  * @param {string} jwtSecret - JWT secret
+ * @param {Object} options - Options
+ * @param {Object} options.userManager - User manager instance
+ * @param {Object} options.authService - Auth service instance
  * @returns {Object} - Configured passport instance
  */
-export default function configurePassport(jwtSecret) {
+export default function configurePassport(jwtSecret, options = {}) {
     debug('Configuring passport strategies');
 
-    // Local Strategy for username/password authentication
-    passport.use('local', new LocalStrategy({
-        usernameField: 'email',
-        passwordField: 'password',
-    }, async (email, password, done) => {
-        try {
-            debug(`Local strategy authentication attempt for: ${email}`);
-            const user = await User.findByEmail(email);
-
-            if (!user) {
-                debug(`User not found: ${email}`);
-                return done(null, false, { message: 'Incorrect email or password.' });
-            }
-
-            const isValid = await user.comparePassword(password);
-            if (!isValid) {
-                debug(`Invalid password for user: ${email}`);
-                return done(null, false, { message: 'Incorrect email or password.' });
-            }
-
-            debug(`User authenticated successfully: ${email}`);
-            return done(null, user);
-        } catch (error) {
-            debug(`Error in local strategy: ${error.message}`);
-            return done(error);
-        }
-    }));
+    // Store dependencies for later use
+    let userManager = options.userManager;
+    let authService = options.authService;
 
     // JWT Strategy for token-based authentication
     passport.use('jwt', new JwtStrategy({
@@ -70,17 +46,37 @@ export default function configurePassport(jwtSecret) {
         try {
             debug(`JWT strategy verification for user ID: ${payload.id}`);
 
-            const user = await User.findById(payload.id);
-            if (!user) {
-                debug(`User not found for JWT payload ID: ${payload.id}`);
+            // Lazy-load userManager if not provided
+            if (!userManager && req.app && req.app.get('userManager')) {
+                userManager = req.app.get('userManager');
+            }
+
+            if (!userManager) {
+                debug('User manager not available');
                 return done(null, false);
             }
 
-            // Attach the original token payload to the user object
-            user.tokenPayload = payload;
+            // Get user from UserManager
+            try {
+                const user = await userManager.getUserById(payload.id);
 
-            debug(`JWT authentication successful for user: ${user.email}`);
-            return done(null, user);
+                if (!user) {
+                    debug(`User not found for JWT payload ID: ${payload.id}`);
+                    return done(null, false);
+                }
+
+                // Attach the original token payload to the user object
+                const userWithPayload = {
+                    ...user.toJSON(),
+                    tokenPayload: payload
+                };
+
+                debug(`JWT authentication successful for user: ${user.email}`);
+                return done(null, userWithPayload);
+            } catch (error) {
+                debug(`User not found for JWT payload ID: ${payload.id}: ${error.message}`);
+                return done(null, false);
+            }
         } catch (error) {
             debug(`Error in JWT strategy: ${error.message}`);
             return done(error);
@@ -97,24 +93,57 @@ export default function configurePassport(jwtSecret) {
                 return done(null, false);
             }
 
-            const token = authHeader.split(' ')[1];
-            debug(`API token authentication attempt: ${token.substring(0, 10)}...`);
+            const tokenValue = authHeader.split(' ')[1];
+            debug(`API token authentication attempt: ${tokenValue.substring(0, 10)}...`);
+
+            // Lazy-load dependencies if not provided
+            if (!authService && req.app && req.app.get('authService')) {
+                authService = req.app.get('authService');
+            }
+
+            if (!userManager && req.app && req.app.get('userManager')) {
+                userManager = req.app.get('userManager');
+            }
+
+            if (!authService || !userManager) {
+                debug('Auth service or User manager not available');
+                return done(null, false);
+            }
 
             // Try to verify as API token
-            const result = await AuthToken.verifyToken(token);
+            const result = await authService.validateApiToken(tokenValue);
             if (!result) {
                 debug('Invalid API token');
                 return done(null, false);
             }
 
-            debug(`API token authentication successful for user: ${result.user.email}`);
+            const { userId, tokenId } = result;
 
-            // Return the user with token info attached
-            const user = result.user;
-            user.tokenId = result.token.id;
-            user.tokenName = result.token.name;
+            // Get user from UserManager
+            try {
+                const user = await userManager.getUserById(userId);
 
-            return done(null, user);
+                if (!user) {
+                    debug(`User not found for API token: ${userId}`);
+                    return done(null, false);
+                }
+
+                // Get token details
+                const token = await authService.getApiToken(userId, tokenId);
+
+                // Return the user with token info attached
+                const userWithToken = {
+                    ...user.toJSON(),
+                    tokenId: tokenId,
+                    tokenName: token ? token.name : 'Unknown Token'
+                };
+
+                debug(`API token authentication successful for user: ${user.email}`);
+                return done(null, userWithToken);
+            } catch (error) {
+                debug(`User not found for API token: ${error.message}`);
+                return done(null, false);
+            }
         } catch (err) {
             debug(`Error in API token strategy: ${err.message}`);
             return done(err);

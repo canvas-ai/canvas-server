@@ -5,82 +5,48 @@ import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 
 // Includes
-import Session from '@/prisma/models/Session.js';
+import Session from './lib/Session.js';
 
-// Environment
-import env from '@/env.js';
 
 /**
  * Session Manager
  * Handles user sessions and authentication
- * Implemented as a singleton
  */
 
-// Singleton instance
-let instance = null;
 
 class SessionManager extends EventEmitter {
 
+    #sessionStore;
+    #sessionOptions;
     #sessions = new Map();
-    #config;
     #initialized = false;
 
-    /**
-     * Get the singleton instance
-     * @param {Object} config - Configuration options
-     * @returns {SessionManager} Singleton instance
-     */
-    static getInstance(config = {}) {
-        if (!instance) {
-            instance = new SessionManager(config);
-        }
-        return instance;
-    }
-
-    constructor(config = {}) {
+    constructor(sessionStore, sessionOptions = {}) {
         super();
-        this.#config = {
-            sessionTimeout: 24 * 60 * 60 * 1000, // Default 24 hours
-            ...config
-        };
-        debug('Session Manager initialized');
-    }
 
-    /**
-     * Initialize the session manager
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-        if (this.#initialized) {
-            return;
+        if (!sessionStore) {
+            throw new Error('Session store is required');
         }
 
+        this.#sessionStore = sessionStore;
+        this.#sessionOptions = {
+            sessionTimeout: 7 * 24 * 60 * 60 * 1000, // Default 7 days
+            ...sessionOptions
+        };
+
+        debug('Session Manager options', this.#sessionOptions);
+    }
+
+
+    async initialize() {
+        if (this.#initialized) { return; }
         debug('Initializing session manager');
 
         // Load active sessions from database
-        await this.#loadActiveSessions();
+        await this.#loadSessionsFromStore();
 
         this.#initialized = true;
         debug('Session manager initialized');
-    }
-
-    /**
-     * Load active sessions from database
-     * @private
-     */
-    async #loadActiveSessions() {
-        try {
-            const activeSessions = await Session.findMany({ isActive: true });
-
-            if (activeSessions && activeSessions.length > 0) {
-                activeSessions.forEach(session => {
-                    this.#sessions.set(session.id, session);
-                });
-                debug(`Loaded ${activeSessions.length} active sessions from database`);
-            }
-        } catch (error) {
-            debug(`Error loading active sessions: ${error.message}`);
-        }
     }
 
     /**
@@ -90,11 +56,15 @@ class SessionManager extends EventEmitter {
      * @returns {Promise<Object>} Session object
      */
     async createSession(userId, metadata = {}) {
+        if (!userId) {
+            throw new Error('User ID is required to create a session');
+        }
+
         const sessionId = uuidv4();
         const sessionData = {
             id: sessionId,
             userId,
-            metadata: JSON.stringify(metadata),
+            metadata,
             createdAt: new Date(),
             lastActiveAt: new Date(),
             isActive: true
@@ -102,7 +72,8 @@ class SessionManager extends EventEmitter {
 
         try {
             // Create session in database
-            const session = await Session.create(sessionData);
+            const session = new Session(this.#sessionStore, sessionData);
+            await session.save();
 
             // Add to in-memory cache
             this.#sessions.set(sessionId, session);
@@ -123,17 +94,40 @@ class SessionManager extends EventEmitter {
      * @returns {Promise<Object|null>} Session object or null if not found
      */
     async getSession(sessionId) {
+        if (!sessionId) {
+            return null;
+        }
+
         // Check cache first
         if (this.#sessions.has(sessionId)) {
-            return this.#sessions.get(sessionId);
+            const cachedSession = this.#sessions.get(sessionId);
+
+            // Validate the session is still active
+            if (this.#isSessionValid(cachedSession)) {
+                return cachedSession;
+            } else {
+                // Remove invalid session from cache
+                this.#sessions.delete(sessionId);
+            }
         }
 
         // Try to fetch from database
         try {
-            const session = await Session.findById(sessionId);
-            if (session && session.isActive) {
-                this.#sessions.set(sessionId, session);
-                return session;
+            const sessionData = await this.#sessionStore.get(sessionId);
+            if (sessionData) {
+                const session = new Session(this.#sessionStore, sessionData);
+
+                // Only cache active sessions
+                if (session.isActive) {
+                    // Validate the session hasn't expired
+                    if (this.#isSessionValid(session)) {
+                        this.#sessions.set(sessionId, session);
+                        return session;
+                    } else {
+                        // End the session if it's expired
+                        await this.endSession(sessionId);
+                    }
+                }
             }
         } catch (error) {
             debug(`Error fetching session ${sessionId}: ${error.message}`);
@@ -148,17 +142,27 @@ class SessionManager extends EventEmitter {
      * @returns {Promise<Array>} Array of session objects
      */
     async getUserSessions(userId) {
+        if (!userId) {
+            return [];
+        }
+
         try {
-            const sessions = await Session.findByUserId(userId);
+            const allSessions = [];
+            // Get all sessions from the store
+            for (const entry of this.#sessionStore.getRange()) {
+                const sessionData = entry.value;
+                if (sessionData && sessionData.userId === userId) {
+                    const session = new Session(this.#sessionStore, sessionData);
+                    allSessions.push(session);
 
-            // Update cache with any active sessions
-            sessions.forEach(session => {
-                if (session.isActive) {
-                    this.#sessions.set(session.id, session);
+                    // Update cache with active sessions
+                    if (session.isActive && this.#isSessionValid(session)) {
+                        this.#sessions.set(session.id, session);
+                    }
                 }
-            });
+            }
 
-            return sessions;
+            return allSessions;
         } catch (error) {
             debug(`Error fetching sessions for user ${userId}: ${error.message}`);
             return [];
@@ -175,13 +179,8 @@ class SessionManager extends EventEmitter {
             const session = await this.getSession(sessionId);
             if (!session) return false;
 
-            const lastActiveAt = new Date();
-
-            // Update in database
-            await Session.update(sessionId, { lastActiveAt });
-
-            // Update in cache
-            session.lastActiveAt = lastActiveAt;
+            session.touch();
+            await session.save();
 
             return true;
         } catch (error) {
@@ -200,13 +199,8 @@ class SessionManager extends EventEmitter {
             const session = await this.getSession(sessionId);
             if (!session) return false;
 
-            const endedAt = new Date();
-
-            // Update in database
-            await Session.update(sessionId, {
-                isActive: false,
-                endedAt
-            });
+            session.end();
+            await session.save();
 
             // Remove from cache
             this.#sessions.delete(sessionId);
@@ -226,22 +220,22 @@ class SessionManager extends EventEmitter {
      * @param {String} userId - User ID
      * @returns {Promise<Number>} Number of sessions ended
      */
-    async endUserSessions(userId) {
-        try {
-            const sessions = await this.getUserSessions(userId);
-            let count = 0;
+    async endAllUserSessions(userId) {
+        if (!userId) {
+            return 0;
+        }
 
-            for (const session of sessions) {
-                if (session.isActive) {
-                    await this.endSession(session.id);
-                    count++;
-                }
+        try {
+            const userSessions = await this.getUserSessions(userId);
+            const activeSessions = userSessions.filter(session => session.isActive);
+
+            for (const session of activeSessions) {
+                await this.endSession(session.id);
             }
 
-            debug(`Ended ${count} sessions for user ${userId}`);
-            return count;
+            return activeSessions.length;
         } catch (error) {
-            debug(`Error ending sessions for user ${userId}: ${error.message}`);
+            debug(`Error ending all sessions for user ${userId}: ${error.message}`);
             return 0;
         }
     }
@@ -252,16 +246,23 @@ class SessionManager extends EventEmitter {
      */
     async cleanupExpiredSessions() {
         const now = new Date();
-        const sessionTimeout = this.#config.sessionTimeout;
+        const sessionTimeout = this.#sessionOptions.sessionTimeout;
         let count = 0;
 
         try {
             // Find all active sessions
-            const activeSessions = await Session.findMany({ isActive: true });
+            const activeSessions = [];
+
+            for (const entry of this.#sessionStore.getRange()) {
+                const sessionData = entry.value;
+                if (sessionData && sessionData.isActive) {
+                    const session = new Session(this.#sessionStore, sessionData);
+                    activeSessions.push(session);
+                }
+            }
 
             for (const session of activeSessions) {
-                const lastActive = new Date(session.lastActiveAt);
-
+                const lastActive = session.lastActiveAt;
                 if (now - lastActive > sessionTimeout) {
                     await this.endSession(session.id);
                     count++;
@@ -275,7 +276,57 @@ class SessionManager extends EventEmitter {
             return 0;
         }
     }
+
+    /**
+     * Check if a session is valid (not expired)
+     * @param {Session} session - Session object
+     * @returns {Boolean} Whether the session is valid
+     * @private
+     */
+    #isSessionValid(session) {
+        if (!session || !session.isActive) {
+            return false;
+        }
+
+        const now = new Date();
+        const lastActive = session.lastActiveAt;
+        const sessionTimeout = this.#sessionOptions.sessionTimeout;
+
+        return (now - lastActive) <= sessionTimeout;
+    }
+
+    /**
+     * Load active sessions from database
+     * @private
+     */
+    async #loadSessionsFromStore() {
+        try {
+            const activeSessions = [];
+
+            // Iterate through all entries in the store
+            for (const entry of this.#sessionStore.getRange()) {
+                const sessionData = entry.value;
+                if (sessionData && sessionData.isActive) {
+                    const session = new Session(this.#sessionStore, sessionData);
+
+                    // Only load valid sessions
+                    if (this.#isSessionValid(session)) {
+                        activeSessions.push(session);
+                        this.#sessions.set(session.id, session);
+                    } else {
+                        // End expired sessions
+                        session.end();
+                        await session.save();
+                    }
+                }
+            }
+
+            debug(`Loaded ${activeSessions.length} active sessions from database`);
+        } catch (error) {
+            debug(`Error loading sessions from database: ${error.message}`);
+        }
+    }
 }
 
 // Export the singleton getter
-export default SessionManager.getInstance;
+export default SessionManager;

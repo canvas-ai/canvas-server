@@ -19,12 +19,12 @@ export function setupSwagger() {
             description: 'Canvas Server API Documentation',
             license: {
                 name: 'Proprietary',
-                url: 'https://canvas.io/license',
+                url: 'https://getcanvas.org/license',
             },
             contact: {
                 name: 'Canvas Support',
-                url: 'https://canvas.io/support',
-                email: 'support@canvas.io',
+                url: 'https://getcanvas.org/support',
+                email: 'support@getcanvas.org',
             },
         },
         servers: [

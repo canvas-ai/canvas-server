@@ -9,6 +9,7 @@ const debug = createDebug('canvas:auth:session');
  */
 class SessionService {
     #config;
+    #sessionManager;
     #initialized = false;
 
     /**
@@ -17,6 +18,7 @@ class SessionService {
      * @param {string} config.jwtSecret - JWT secret
      * @param {string|number} config.jwtLifetime - JWT lifetime (e.g. '7d', 3600)
      * @param {boolean} config.secureCookies - Whether to use secure cookies
+     * @param {Object} config.sessionManager - Session manager instance
      */
     constructor(config) {
         this.#config = config;
@@ -28,6 +30,12 @@ class SessionService {
         if (!config.jwtLifetime) {
             config.jwtLifetime = '7d'; // Default to 7 days
         }
+
+        if (!config.sessionManager) {
+            throw new Error('Session manager is required');
+        }
+
+        this.#sessionManager = config.sessionManager;
 
         debug('Session service created');
         this.#initialized = true;
@@ -44,6 +52,14 @@ class SessionService {
 
         debug('Stopping session service');
         this.#initialized = false;
+    }
+
+    /**
+     * Get JWT secret
+     * @returns {string} - JWT secret
+     */
+    getJwtSecret() {
+        return this.#config.jwtSecret;
     }
 
     /**
@@ -83,11 +99,38 @@ class SessionService {
         try {
             const decoded = jwt.verify(token, this.#config.jwtSecret);
             debug(`Token verified for user ID: ${decoded.id}`);
+
+            // If token has a session ID, verify the session is still valid
+            if (decoded.sessionId) {
+                this.#verifySession(decoded.sessionId);
+            }
+
             return decoded;
         } catch (error) {
             debug(`Token verification failed: ${error.message}`);
             return null;
         }
+    }
+
+    /**
+     * Verify a session is valid
+     * @param {string} sessionId - Session ID
+     * @returns {Promise<boolean>} - Whether the session is valid
+     * @private
+     */
+    async #verifySession(sessionId) {
+        try {
+            const session = await this.#sessionManager.getSession(sessionId);
+            if (session && session.isActive) {
+                // Touch the session to update last active time
+                await this.#sessionManager.touchSession(sessionId);
+                return true;
+            }
+        } catch (error) {
+            debug(`Error verifying session: ${error.message}`);
+        }
+
+        return false;
     }
 
     /**
