@@ -1,4 +1,5 @@
-module.exports = {
+// WebSocket route constants
+export const routes = {
     // Context events
     EVENT_CONTEXT_URL: 'context:url',
     EVENT_CONTEXT_DATA: 'context:data',
@@ -92,5 +93,4 @@ module.exports = {
     FEATURE_REMOVE: 'feature:remove',
     FEATURE_UPDATE: 'feature:update',
     FEATURE_DELETE: 'feature:delete',
-
 };

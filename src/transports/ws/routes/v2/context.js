@@ -2,7 +2,7 @@
 
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('ws:routes:context');
-import routes from '@/transports/ws/routes.js';
+import { routes } from '@/transports/ws/routes.js';
 
 /**
  * Context WebSocket routes

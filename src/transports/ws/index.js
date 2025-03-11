@@ -205,15 +205,21 @@ class WebSocketTransport {
     async #loadSocketRoutes(socket) {
         // Import and initialize route handlers
         const routeHandlers = [
-            (await import('./routes/context.js')).default,
-            (await import('./routes/documents.js')).default,
-            (await import('./routes/workspaces.js')).default,
+            (await import('./routes/v2/context.js')).default,
+            (await import('./routes/v2/documents.js')).default,
+            (await import('./routes/v2/workspaces.js')).default,
         ];
 
-        // Initialize each route handler with the socket
+        // Initialize each route handler with the socket and dependencies
+        const deps = {
+            ResponseObject: this.ResponseObject,
+            sessionManager: this.#canvasServer.sessionManager,
+            context: this.#canvasServer.contextManager
+        };
+
         routeHandlers.forEach(handler => {
             if (typeof handler === 'function') {
-                handler(socket, this.#canvasServer);
+                handler(socket, deps);
             }
         });
     }
