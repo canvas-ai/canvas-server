@@ -1,0 +1,105 @@
+# API Documentation
+
+## REST API
+
+baseUrl: /rest/v2
+
+├── /auth
+│   ├── /login
+│   ├── /logout
+│   ├── /register
+│   ├── /password [PUT] - Update current user's password
+│   ├── /forgot-password
+│   ├── /reset-password
+│   ├── /verify-email
+│   └── /verify-email/:token
+│
+├── /admin
+│   ├── /users [GET] - Get all users (admin only)
+│   ├── /users/:id [GET] - Get a specific user (admin only)
+│   ├── /users/:id [PUT] - Update a user (admin only)
+│   └── /users/:id/password [PUT] - Update a user's password (admin only)
+│
+├── /users
+│   ├── /:id
+│   ├── /:id/workspaces
+│   ├── /:id/contexts
+│   └── /:id/sessions
+│
+├── /workspaces
+│   ├── /:id
+│   ├── /:id/documents
+│   ├── /:id/documents/by-id/:id
+│   ├── /:id/documents/by-abstraction/:abstraction
+│   ├── /:id/documents/by-hash/:hashString
+│   ├── /:id/documents/query
+│   ├── /:id/tree
+│   ├── /:id/tree/layers
+│   └── /:id/tree/layers/:layerId
+│   └── /:id/tree/copy
+│   └── /:id/tree/move
+│   └── /:id/tree/remove
+│   └── /:id/tree/merge
+│   └── /:id/tree/subtract
+│
+├── /contexts
+│   ├── / [GET] - List all contexts
+│   ├── /:id [GET] - Get context by ID
+│   ├── /:id/url [GET] - Get context URL
+│   ├── /:id/url [POST] - Set context URL
+│   ├── /:id/base_url [GET] - Get context base URL
+│   ├── /:id/base_url [POST] - Set context base URL
+│   ├── /:id/path [GET] - Get context path (read-only)
+│   ├── /:id/path_array [GET] - Get context path array (read-only)
+│   ├── /:id/device [GET] - Get context device (read-only)
+│   ├── /:id/app [GET] - Get context app (read-only)
+│   ├── /:id/user [GET] - Get context user (read-only)
+│   ├── /:id/identity [GET] - Get context identity (read-only)
+│   ├── /:id/tree [GET] - Get context tree (read-only)
+│   ├── /:id/status [GET] - Get context status (read-only)
+│   ├── /:id/workspace [GET] - Get context workspace (read-only)
+│   ├── /:id/bitmaps [GET] - Get bitmaps (read-only)
+│   ├── /:id/system_bitmap_array [GET] - Get system bitmap array (read-only)
+│   ├── /:id/context_bitmap_array [GET] - Get context bitmap array (read-only)
+│   ├── /:id/feature_bitmap_array [GET] - Get feature bitmap array
+│   ├── /:id/feature_bitmap_array [PUT] - Set feature bitmap array
+│   ├── /:id/feature_bitmap_array [POST] - Append to feature bitmap array
+│   ├── /:id/feature_bitmap_array [DELETE] - Remove from feature bitmap array
+│   ├── /:id/feature_bitmap_array/clear [DELETE] - Clear feature bitmap array
+│   ├── /:id/filter_bitmap_array [GET] - Get filter bitmap array
+│   ├── /:id/filter_bitmap_array [PUT] - Set filter bitmap array
+│   ├── /:id/filter_bitmap_array [POST] - Append to filter bitmap array
+│   ├── /:id/filter_bitmap_array [DELETE] - Remove from filter bitmap array
+│   ├── /:id/filter_bitmap_array/clear [DELETE] - Clear filter bitmap array
+│   ├── /:id/documents [GET] - List documents in context
+│   ├── /:id/documents [POST] - Insert documents into context
+│   ├── /:id/documents [PUT] - Update documents in context
+│   ├── /:id/documents [DELETE] - Delete documents from database
+│   ├── /:id/documents/remove [DELETE] - Remove documents from context
+│   ├── /:id/documents/by-id/:id [GET] - Get document by ID
+│   ├── /:id/documents/by-abstraction/:abstraction [GET] - Get documents by abstraction
+│   ├── /:id/documents/by-hash/:hashString [GET] - Get documents by hash string
+│   └── /:id/query [GET] - Natural language query for context information
+│
+├── /documents
+│   ├── /schemas
+│   ├── /by-id/:id
+│   ├── /by-abstraction/:abstraction
+│   └── /by-hash/:hashString
+│
+├── /roles
+│   ├── /:id
+│   ├── /:id/status
+│   ├── /:id/start
+│   ├── /:id/stop
+│   ├── /:id/restart
+│   ├── /:id/logs
+│   └── ... (other role operations)
+│
+├── /devices
+│   ├── /:id
+│   └── ... (other device operations)
+|
+└── /ping
+
+
