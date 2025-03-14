@@ -31,7 +31,6 @@ class Workspace extends EventEmitter {
     // Private properties
     #configStore;
     #db;
-    #tree;
     #jim;
 
     //#data; (storeD)
@@ -91,11 +90,11 @@ class Workspace extends EventEmitter {
 
     // Getters
     get db() { return this.#db; }
-    get tree() { return this.#tree.toJSON(); }
-    get layers() { return this.#tree?.layers; }
+    get tree() { return this.tree.toJSON(); }
+    get layers() { return this.tree?.layers; }
     get config() { return this.#configStore?.store || {}; }
     get isConfigLoaded() { return this.#configStore !== null; }
-    get isOpen() { return this.#db !== null && this.#tree !== null; }
+    get isOpen() { return this.#db !== null && this.tree !== null; }
     get isDeleted() { return this.status === WORKSPACE_STATUS.DELETED; }
     get isActive() { return this.status === WORKSPACE_STATUS.ACTIVE; }
     get status() { return this.#configStore?.get('status', WORKSPACE_STATUS.INITIALIZED); }
@@ -132,27 +131,27 @@ class Workspace extends EventEmitter {
      */
 
     getTree() {
-        return this.#tree.toJSON();
+        return this.tree.toJSON();
     }
 
     insertPath(path, options = {}) {
-        return this.#tree.insert(path, options);
+        return this.tree.insert(path, options);
     }
 
     removePath(path, options = {}) {
-        return this.#tree.remove(path, options);
+        return this.tree.remove(path, options);
     }
 
     movePath(pathFrom, pathTo, options = {}) {
-        return this.#tree.move(pathFrom, pathTo, options);
+        return this.tree.move(pathFrom, pathTo, options);
     }
 
     copyPath(pathFrom, pathTo, options = {}) {
-        return this.#tree.copy(pathFrom, pathTo, options);
+        return this.tree.copy(pathFrom, pathTo, options);
     }
 
     pathToIdArray(path) {
-        return this.#tree.pathToIdArray(path);
+        return this.tree.pathToIdArray(path);
     }
 
     /**
@@ -256,7 +255,7 @@ class Workspace extends EventEmitter {
             this.#db = null;
         }
 
-        this.#tree = null;
+        this.tree = null;
         this.#jim = null;
 
         this.emit('workspace:resources:shutdown', { id: this.name });
@@ -394,13 +393,13 @@ class Workspace extends EventEmitter {
         const treeIndex = this.#jim.getIndex('tree');
         const layerIndex = this.#jim.getIndex('layers');
 
-        this.#tree = new Tree({
+        this.tree = new Tree({
             treeIndexStore: treeIndex,
             layerIndexStore: layerIndex
         });
 
         debug(`Context tree initialized for workspace ${this.name}`);
-        return this.#tree;
+        return this.tree;
     }
 }
 

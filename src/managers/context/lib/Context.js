@@ -57,7 +57,7 @@ class Context extends EventEmitter {
 
         // Context properties
         this.#id = options.id || uuidv4();
-        this.#name = options.name || '';
+        this.#name = options.name ?? this.#id;
         this.#baseUrl = options.baseUrl || '/';
         this.#isLocked = options.locked || false;
 
@@ -328,14 +328,6 @@ class Context extends EventEmitter {
         }
 
         // FTS query
-    }
-
-    nlpQuery(query, featureArray = [], filterArray = [], options = {}) {
-        if (!this.#workspace || !this.#workspace.db) {
-            throw new Error('Workspace or database not available');
-        }
-
-        // NLP query
     }
 
     /**

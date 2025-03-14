@@ -127,6 +127,62 @@ export default function contextsRoutes(options) {
 
     /**
      * @swagger
+     * /:
+     *   post:
+     *     summary: Create a new context
+     *     tags: [Contexts]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               url:
+     *                 type: string
+     *                 description: The context URL (e.g., "workspace://path/to/context")
+     *               id:
+     *                 type: string
+     *                 description: Optional id for the context
+     *               baseUrl:
+     *                 type: string
+     *                 description: Optional base URL for the context
+     *     responses:
+     *       201:
+     *         description: Context created successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.post('/', async (req, res) => {
+        try {
+            const { url, id, baseUrl } = req.body;
+
+            const options = {
+                id: id,
+                baseUrl: baseUrl
+            };
+
+            debug(`Creating context with URL: ${url}`);
+            const context = await req.contextManager.createContext(url, options);
+
+            // Initialize the context if needed (handles workspace switching)
+            await context.initialize();
+
+            const response = new ResponseObject().success(context, 'Context created successfully');
+            res.status(201).json(response.getResponse());
+        } catch (error) {
+            debug(`Error creating context: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
      * /:contextId:
      *   get:
      *     summary: Get a specific context by ID
@@ -273,7 +329,7 @@ export default function contextsRoutes(options) {
                 const response = new ResponseObject().badRequest("URL is required");
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            req.context.url = url;
+            req.context.setUrl(url);
             if (typeof req.context.save === 'function') {
                 await req.context.save();
             }
@@ -714,39 +770,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/system_bitmap_array:
-     *   get:
-     *     summary: Get system bitmap array (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: System bitmap array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
-    router.get('/:contextId/system_bitmap_array', getContextMiddleware, async (req, res) => {
-        try {
-            const response = new ResponseObject().success({ systemBitmapArray: req.context.systemBitmapArray }, 'Context system bitmap array retrieved successfully');
-            res.status(response.statusCode).json(response.getResponse());
-        } catch (error) {
-            debug(`Error retrieving system bitmap array: ${error.message}`);
-            const response = new ResponseObject().serverError(error.message);
-            res.status(response.statusCode).json(response.getResponse());
-        }
-    });
 
     /**
      * @swagger
@@ -816,17 +839,55 @@ export default function contextsRoutes(options) {
         }
     });
 
+    /**
+     * @swagger
+     * /:contextId/feature_bitmap_array:
+     *   put:
+     *     summary: Set the feature bitmap array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               featureArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Feature bitmap array updated successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
     router.put('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
-            const { featureBitmapArray } = req.body;
-            if (!Array.isArray(featureBitmapArray)) {
-                const response = new ResponseObject().badRequest('featureBitmapArray must be an array');
+            const { featureArray } = req.body;
+            if (!featureArray) {
+                const response = new ResponseObject().badRequest('featureArray is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            req.context.featureBitmapArray = featureBitmapArray;
+
+            req.context.setFeatureBitmaps(featureArray);
             if (typeof req.context.save === 'function') {
                 await req.context.save();
             }
+
             const response = new ResponseObject().success(req.context, 'Feature bitmap array updated successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
@@ -836,42 +897,117 @@ export default function contextsRoutes(options) {
         }
     });
 
-    router.post('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
+    /**
+     * @swagger
+     * /:contextId/feature_bitmap_array/append:
+     *   post:
+     *     summary: Append to the feature bitmap array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               featureArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Feature bitmap array appended successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.post('/:contextId/feature_bitmap_array/append', getContextMiddleware, async (req, res) => {
         try {
-            const { featureBitmap } = req.body;
-            if (featureBitmap === undefined) {
-                const response = new ResponseObject().badRequest('featureBitmap is required');
+            const { featureArray } = req.body;
+            if (!featureArray) {
+                const response = new ResponseObject().badRequest('featureArray is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            req.context.featureBitmapArray = req.context.featureBitmapArray || [];
-            req.context.featureBitmapArray.push(featureBitmap);
+
+            req.context.appendFeatureBitmaps(featureArray);
             if (typeof req.context.save === 'function') {
                 await req.context.save();
             }
-            const response = new ResponseObject().success(req.context, 'Feature bitmap appended successfully');
+
+            const response = new ResponseObject().success(req.context, 'Feature bitmap array appended successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            debug(`Error appending feature bitmap: ${error.message}`);
+            debug(`Error appending feature bitmap array: ${error.message}`);
             const response = new ResponseObject().serverError(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
     });
 
-    router.delete('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
+    /**
+     * @swagger
+     * /:contextId/feature_bitmap_array/remove:
+     *   post:
+     *     summary: Remove from the feature bitmap array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               featureArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Feature bitmap array removed successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.post('/:contextId/feature_bitmap_array/remove', getContextMiddleware, async (req, res) => {
         try {
-            const { featureBitmap } = req.body;
-            if (featureBitmap === undefined) {
-                const response = new ResponseObject().badRequest('featureBitmap is required');
+            const { featureArray } = req.body;
+            if (!featureArray) {
+                const response = new ResponseObject().badRequest('featureArray is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            req.context.featureBitmapArray = (req.context.featureBitmapArray || []).filter(item => item !== featureBitmap);
+
+            req.context.removeFeatureBitmaps(featureArray);
             if (typeof req.context.save === 'function') {
                 await req.context.save();
             }
-            const response = new ResponseObject().success(req.context, 'Feature bitmap removed successfully');
+
+            const response = new ResponseObject().success(req.context, 'Feature bitmap array removed successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            debug(`Error removing feature bitmap: ${error.message}`);
+            debug(`Error removing feature bitmap array: ${error.message}`);
             const response = new ResponseObject().serverError(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
@@ -997,6 +1133,400 @@ export default function contextsRoutes(options) {
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error clearing filter bitmap array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/query:
+     *   post:
+     *     summary: Execute a query in the context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               query:
+     *                 type: string
+     *                 description: The query to execute
+     *               featureArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 description: Array of features to include in the query
+     *               filterArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 description: Array of filters to apply to the query
+     *               options:
+     *                 type: object
+     *                 description: Additional query options
+     *     responses:
+     *       200:
+     *         description: Query executed successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.post('/:contextId/query', getContextMiddleware, async (req, res) => {
+        try {
+            const { query, featureArray = [], filterArray = [], options = {} } = req.body;
+            if (!query) {
+                const response = new ResponseObject().badRequest('Query is required');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const results = await req.context.query(query, featureArray, filterArray, options);
+            const response = new ResponseObject().success(results, 'Query executed successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error executing query: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/fts_query:
+     *   post:
+     *     summary: Execute a full-text search query in the context
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               query:
+     *                 type: string
+     *                 description: The FTS query to execute
+     *               featureArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 description: Array of features to include in the query
+     *               filterArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *                 description: Array of filters to apply to the query
+     *               options:
+     *                 type: object
+     *                 description: Additional query options
+     *     responses:
+     *       200:
+     *         description: FTS query executed successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.post('/:contextId/fts_query', getContextMiddleware, async (req, res) => {
+        try {
+            const { query, featureArray = [], filterArray = [], options = {} } = req.body;
+            if (!query) {
+                const response = new ResponseObject().badRequest('Query is required');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const results = await req.context.ftsQuery(query, featureArray, filterArray, options);
+            const response = new ResponseObject().success(results, 'FTS query executed successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error executing FTS query: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/client_context:
+     *   get:
+     *     summary: Get the client context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     responses:
+     *       200:
+     *         description: Client context array retrieved successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.get('/:contextId/client_context', getContextMiddleware, async (req, res) => {
+        try {
+            const response = new ResponseObject().success({ clientContextArray: req.context.clientContextArray }, 'Client context array retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error retrieving client context array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/client_context:
+     *   put:
+     *     summary: Set the client context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               clientContextArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Client context array updated successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.put('/:contextId/client_context', getContextMiddleware, async (req, res) => {
+        try {
+            const { clientContextArray } = req.body;
+            if (!clientContextArray) {
+                const response = new ResponseObject().badRequest('clientContextArray is required');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            req.context.setClientContextArray(clientContextArray);
+            if (typeof req.context.save === 'function') {
+                await req.context.save();
+            }
+
+            const response = new ResponseObject().success(req.context, 'Client context array updated successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error updating client context array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/client_context/clear:
+     *   delete:
+     *     summary: Clear the client context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     responses:
+     *       200:
+     *         description: Client context array cleared successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.delete('/:contextId/client_context/clear', getContextMiddleware, async (req, res) => {
+        try {
+            req.context.clearClientContextArray();
+            if (typeof req.context.save === 'function') {
+                await req.context.save();
+            }
+
+            const response = new ResponseObject().success(req.context, 'Client context array cleared successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error clearing client context array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/server_context:
+     *   get:
+     *     summary: Get the server context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     responses:
+     *       200:
+     *         description: Server context array retrieved successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.get('/:contextId/server_context', getContextMiddleware, async (req, res) => {
+        try {
+            const response = new ResponseObject().success({ serverContextArray: req.context.serverContextArray }, 'Server context array retrieved successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error retrieving server context array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/server_context:
+     *   put:
+     *     summary: Set the server context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               serverContextArray:
+     *                 type: array
+     *                 items:
+     *                   type: string
+     *     responses:
+     *       200:
+     *         description: Server context array updated successfully
+     *       400:
+     *         description: Bad request
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.put('/:contextId/server_context', getContextMiddleware, async (req, res) => {
+        try {
+            const { serverContextArray } = req.body;
+            if (!serverContextArray) {
+                const response = new ResponseObject().badRequest('serverContextArray is required');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            req.context.setServerContextArray(serverContextArray);
+            if (typeof req.context.save === 'function') {
+                await req.context.save();
+            }
+
+            const response = new ResponseObject().success(req.context, 'Server context array updated successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error updating server context array: ${error.message}`);
+            const response = new ResponseObject().serverError(error.message);
+            res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /:contextId/server_context/clear:
+     *   delete:
+     *     summary: Clear the server context array
+     *     tags: [Contexts]
+     *     parameters:
+     *       - in: path
+     *         name: contextId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: The context ID
+     *     responses:
+     *       200:
+     *         description: Server context array cleared successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: Context not found
+     *       500:
+     *         description: Server error
+     */
+    router.delete('/:contextId/server_context/clear', getContextMiddleware, async (req, res) => {
+        try {
+            req.context.clearServerContextArray();
+            if (typeof req.context.save === 'function') {
+                await req.context.save();
+            }
+
+            const response = new ResponseObject().success(req.context, 'Server context array cleared successfully');
+            res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Error clearing server context array: ${error.message}`);
             const response = new ResponseObject().serverError(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
