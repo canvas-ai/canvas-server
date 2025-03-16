@@ -17,7 +17,7 @@ class Tree extends EventEmitter {
 
         // TODO: Refactor, load/save ops should be handled by the treeManager
         this.dbtree = options.treeIndexStore;
-        this.dblayers = new LayerIndex(options.layerIndexStore);
+        this.dblayers = new LayerIndex(options.layerIndexStore, options.rootLayerOptions);
 
         this.showHidden = false;
 

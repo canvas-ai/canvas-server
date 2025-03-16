@@ -124,7 +124,7 @@ class Context extends EventEmitter {
     get pathArray() { return this.#pathArray; }
     get workspace() { return this.#workspace.id; }
     get device() { return this.#device.id; }
-    get app() { return this.#device.app; }
+    get apps() { return this.#device.apps; }
     get user() { return this.#user; }
     get identity() { return this.#user.identity; }
     get tree() { return this.#tree.toJSON(); } // Legacy
@@ -446,7 +446,7 @@ class Context extends EventEmitter {
         contextArray.push(this.#clientContextArray);
 
         // Insert the documents
-        const result = this.#db.insertDocuments(documentArray, contextArray, featureArray);
+        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
         this.emit('documents:insert', documentArray.length);
         return result;
     }
@@ -487,7 +487,7 @@ class Context extends EventEmitter {
         contextArray.push(this.#clientContextArray);
 
         // Update the documents
-        const result = this.#db.updateDocuments(documentArray, contextArray, featureArray);
+        const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
 
         this.emit('documents:update', documentArray.length);
         return result;
@@ -514,7 +514,7 @@ class Context extends EventEmitter {
         }
 
         // We remove documents from the current context not from the database
-        const result = this.#db.removeDocuments(documentIdArray, this.#contextBitmapArray, featureArray, options);
+        const result = this.#db.removeDocumentArray(documentIdArray, this.#contextBitmapArray, featureArray, options);
         this.emit('documents:remove', documentIdArray.length);
         return result;
     }
@@ -540,7 +540,7 @@ class Context extends EventEmitter {
         }
 
         // Completely delete the documents from the database
-        const result = this.#db.deleteDocuments(documentIdArray, featureArray, options);
+        const result = this.#db.deleteDocumentArray(documentIdArray, featureArray, options);
         this.emit('documents:delete', documentIdArray.length);
         return result;
     }

@@ -45,7 +45,6 @@ class WorkspaceManager extends EventEmitter {
      */
     constructor(options = {}) {
         super(); // EventEmitter
-        debug('Initializing workspace manager');
 
         if (!options.rootPath) {
             throw new Error('Workspace root path is required');
@@ -88,6 +87,18 @@ class WorkspaceManager extends EventEmitter {
 
         // Scan for existing workspaces
         await this.#scanWorkspaces();
+
+        // Autoload the universe workspace
+        if (!this.hasWorkspace('universe')) {
+            debug('Universe workspace not found, creating it');
+            await this.createWorkspace('universe', {
+                type: 'universe',
+                autoInitialize: true,
+            });
+        }
+
+        // Open the universe workspace
+        await this.openWorkspace('universe'); // TODO: Remove
 
         this.#initialized = true;
         debug('Workspace manager initialized successfully');
@@ -183,15 +194,8 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} The loaded workspace
      */
     async loadWorkspace(workspaceID, workspacePath = null) {
-        if (!workspaceID) {
-            throw new Error('Workspace ID is required');
-        }
-
-        // If no path is provided, use the default path
-        if (!workspacePath) {
-            workspacePath = path.join(this.#rootPath, workspaceID);
-        }
-
+        if (!workspaceID) { throw new Error('Workspace ID is required'); }
+        if (!workspacePath) { throw new Error('Workspace path rquired'); }
         debug(`Loading workspace ${workspaceID} from ${workspacePath}`);
 
         // Check if workspace is already loaded
@@ -211,7 +215,7 @@ class WorkspaceManager extends EventEmitter {
         // Check if workspace directory exists
         if (!existsSync(workspacePath)) {
             debug(`Workspace directory does not exist at ${workspacePath}`);
-            return null;
+            return null; // TODO: Should we throw an error here?
         }
 
         try {
@@ -245,7 +249,7 @@ class WorkspaceManager extends EventEmitter {
 
             // Add to workspace index
             this.#workspaceIndex.set(workspaceID, workspace);
-            debug(`Loaded workspace ${workspaceID} from ${workspacePath}`);
+            debug(`Successfully loaded workspace ${workspaceID} from ${workspacePath}`);
             this.emit('workspace:loaded', workspace);
             return workspace;
         } catch (err) {
@@ -506,13 +510,24 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} workspaceID - Workspace ID/name
      * @returns {Promise<Workspace|null>} Workspace instance or null
      */
-    async getWorkspace(workspaceID) {
+    async getWorkspace(workspaceID, initialize = true) {
         if (this.#workspaceIndex.has(workspaceID)) {
             return this.#workspaceIndex.get(workspaceID);
         }
 
         // Try to load the workspace
-        return await this.loadWorkspace(workspaceID);
+        const workspace = await this.loadWorkspace(workspaceID);
+        if (!workspace) {
+            debug(`Workspace ${workspaceID} not found, cannot get`);
+            return null;
+        }
+
+        // Initialize the workspace if requested
+        if (initialize) {
+            await workspace.initialize();
+        }
+
+        return workspace;
     }
 
     /**
@@ -570,23 +585,26 @@ class WorkspaceManager extends EventEmitter {
 
             for (const entry of entries) {
                 if (entry.isDirectory()) {
+                    debug(`Found workspace directory: ${entry.name}`);
                     const workspaceID = entry.name;
-                    const workspacePath = path.join(this.#rootPath, workspaceID);
+                    const workspacePath = path.join(entry.path, workspaceID);
 
                     // Check if it's a valid workspace (has a config file)
-                    const configPath = path.join(workspacePath, 'config', 'workspace.json');
+                    const configPath = path.join(workspacePath, 'workspace.json');
                     if (existsSync(configPath)) {
+                        debug(`Found workspace config file: ${configPath}`);
                         try {
                             await this.loadWorkspace(workspaceID, workspacePath);
-                            debug(`Found workspace: ${workspaceID}`);
                         } catch (err) {
                             debug(`Failed to load workspace ${workspaceID}: ${err.message}`);
                         }
+                    } else {
+                        debug(`Workspace ${workspaceID} has no config file, skipping`);
                     }
                 }
             }
 
-            debug(`Found ${this.#workspaceIndex.size} workspaces`);
+            debug(`Found ${this.#workspaceIndex.size} valid workspaces in ${this.#rootPath}`);
         } catch (err) {
             debug(`Error scanning workspaces: ${err.message}`);
         }

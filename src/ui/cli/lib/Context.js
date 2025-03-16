@@ -28,6 +28,8 @@ class ContextCLI extends BaseCLI {
       return 0;
     }
 
+    await this.printParsedInput();
+
     try {
       // Commands that don't require server connection or authentication
       if (this.action === 'help') {
@@ -373,7 +375,6 @@ ${chalk.bold('OPTIONS')}
   async documents() {
     try {
       await this.initialize();
-
       const contextId = this.getContextId();
 
       // Use the class property instead of calling parseInput
@@ -428,7 +429,6 @@ ${chalk.bold('OPTIONS')}
   async notes() {
     try {
       await this.initialize();
-
       const contextId = this.getContextId();
 
       // Use the contexts endpoint instead of context
@@ -548,7 +548,6 @@ ${chalk.bold('OPTIONS')}
   async noteAdd(args) {
     try {
       await this.initialize();
-
       const contextId = this.getContextId();
 
       // Use the class property instead of calling parseInput
@@ -567,11 +566,9 @@ ${chalk.bold('OPTIONS')}
       }
 
       const noteData = {
-        content: {
-          type: 'note',
-          title: this.args.title || 'Note from CLI',
-          text: content
-        }
+        schema: 'data/abstraction/note',
+        title: this.args.title || null,
+        content: content
       };
 
       // Use the contexts endpoint instead of context

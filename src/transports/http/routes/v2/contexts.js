@@ -101,10 +101,9 @@ export default function contextsRoutes(options) {
      *         description: Server error
      */
     router.get('/', async (req, res) => {
+        debug(`Listing contexts for user: ${req.user.email}`);
         try {
             const { limit = 50, offset = 0 } = req.query;
-            debug(`Listing contexts for user: ${req.user.id}`);
-
             const contexts = await req.contextManager.listContexts({
                 limit: parseInt(limit),
                 offset: parseInt(offset)
@@ -158,6 +157,7 @@ export default function contextsRoutes(options) {
      *         description: Server error
      */
     router.post('/', async (req, res) => {
+        debug(`Creating context for user: ${req.user.email}`);
         try {
             const { url, id, baseUrl } = req.body;
 
@@ -205,6 +205,7 @@ export default function contextsRoutes(options) {
      *         description: Server error
      */
     router.get('/:contextId', getContextMiddleware, async (req, res) => {
+        debug(`Getting context ID "${req.params.contextId}" for user "${req.user.email}"`);
         try {
             const response = new ResponseObject().success(req.context, 'Context retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
@@ -239,6 +240,7 @@ export default function contextsRoutes(options) {
      *         description: Server error
      */
     router.get('/:contextId/documents', getContextMiddleware, async (req, res) => {
+        debug(`Getting context documents for contextID "${req.params.contextId}", user "${req.user.email}"`);
         try {
             // Use the context loaded by getContextMiddleware
             const featureArray = req.query.featureArray ? [].concat(req.query.featureArray) : [];
@@ -555,12 +557,12 @@ export default function contextsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:contextId/app', getContextMiddleware, async (req, res) => {
+    router.get('/:contextId/apps', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ app: req.context.app }, 'Context app retrieved successfully');
+            const response = new ResponseObject().success({ apps: req.context.apps }, 'Context apps retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
-            debug(`Error retrieving context app: ${error.message}`);
+            debug(`Error retrieving context apps: ${error.message}`);
             const response = new ResponseObject().serverError(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
@@ -658,6 +660,8 @@ export default function contextsRoutes(options) {
      *         description: Server error
      */
     router.get('/:contextId/tree', getContextMiddleware, async (req, res) => {
+        debug(`Getting context tree for contextID "${req.params.contextId}", user "${req.user.email}"`);
+        debug('Legacy route, will be removed in the upcomming update')
         try {
             const response = new ResponseObject().success({ tree: req.context.tree }, 'Context tree retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
@@ -1536,43 +1540,20 @@ export default function contextsRoutes(options) {
 
     // POST /:contextId/documents - Create a new document in the context
     router.post('/:contextId/documents', getContextMiddleware, async (req, res) => {
+        debug(`Creating document in contextID "${req.params.contextId}", user "${req.user.email}"`);
         try {
-            const { content, metadata = {}, contextArray, featureArray = [], filterArray = [] } = req.body;
-            if (!content) {
-                const response = new ResponseObject().badRequest('Document content is required');
+            console.log(JSON.stringify(req.body, null, 2));
+            const { documents, clientContextArray, featureArray = [] } = req.body;
+            if (!documents) {
+                const response = new ResponseObject().badRequest('documents array missing');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            // Ensure the contextArray includes the current context id
-            let updatedContextArray = contextArray || [];
-            if (!updatedContextArray.includes(req.context.id)) {
-                updatedContextArray.push(req.context.id);
+            if (!Array.isArray(documents)) {
+                documents = [documents];
             }
-            const workspaceId = req.context.workspace;
-            if (!workspaceId) {
-                const response = new ResponseObject().serverError('Workspace not found in context');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-            const workspace = await req.workspaceManager.getWorkspace(workspaceId);
-            if (!workspace) {
-                const response = new ResponseObject().notFound('Workspace not found');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-            if (!req.workspaceManager.hasAccess(workspace, req.user, 'write')) {
-                const response = new ResponseObject().forbidden('Access denied');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-            const documentData = {
-                content,
-                metadata,
-                createdBy: req.user.id
-            };
-            const options = {
-                contextArray: updatedContextArray,
-                featureArray,
-                filterArray
-            };
-            const document = await req.workspaceManager.createDocument(workspaceId, documentData, options);
-            const response = new ResponseObject().success(document, 'Document created successfully');
+
+            const result = await req.context.insertDocuments(documents, featureArray, {clientContextArray: clientContextArray});
+            const response = new ResponseObject().success(result, 'Documents created successfully');
             return res.status(201).json(response.getResponse());
         } catch (error) {
             debug(`Error creating document in context: ${error.message}`);

@@ -144,6 +144,19 @@ class BaseCLI {
     );
   }
 
+  async printParsedInput() {
+    console.log(JSON.stringify({
+      module: this.module,
+      action: this.action,
+      contextArray: this.contextArray,
+      featureArray: this.featureArray,
+      filterArray: this.filterArray,
+      inputArgs: this.inputArgs,
+      opts: this.opts,
+      data: this.data
+    }, null, 2));
+  }
+
   async run() {
     console.log('Do not call the Base CLI method directly.');
     return 1;

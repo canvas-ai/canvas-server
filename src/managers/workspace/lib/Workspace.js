@@ -90,7 +90,7 @@ class Workspace extends EventEmitter {
 
     // Getters
     get db() { return this.#db; }
-    get tree() { return this.tree.toJSON(); }
+    get jsonTree() { return this.tree.toJSON(); }
     get layers() { return this.tree?.layers; }
     get config() { return this.#configStore?.store || {}; }
     get isConfigLoaded() { return this.#configStore !== null; }
@@ -349,35 +349,7 @@ class Workspace extends EventEmitter {
         const treeIndex = this.#jim.createIndex('tree');
         const layerIndex = this.#jim.createIndex('layers');
 
-        // Initialize the layer index with a root layer if it doesn't exist
-        if (!layerIndex.has('layers')) {
-            debug('Initializing layer index with root layer');
-            layerIndex.set('layers', []);
-
-            // Create root layer with workspace ID
-            const rootLayer = {
-                id: this.id, // Use workspace ID for root layer
-                type: 'root',
-                name: '/',  // Keep as '/' for compatibility with Tree class
-                label: this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Workspace'),
-                description: this.description || (this.name ? `Root layer for ${this.name}` : 'Root layer'),
-                color: '#fff',
-                locked: true,
-                update: true,  // Set update option to true
-                created: new Date().toISOString(),
-                updated: new Date().toISOString()
-            };
-
-            layerIndex.set('root', rootLayer);
-
-            // Add to layers array
-            const layers = layerIndex.get('layers', []);
-            layers.push(rootLayer);
-            layerIndex.set('layers', layers);
-        }
-
         debug(`Initialized JSON Index Manager for workspace ${this.name}`);
-
         return { treeIndex, layerIndex };
     }
 
@@ -386,16 +358,26 @@ class Workspace extends EventEmitter {
      * @private
      */
     async #initializeTree() {
-        if (!this.#jim) {
-            await this.#initializeJIM();
-        }
+        if (!this.#jim) { await this.#initializeJIM(); }
 
         const treeIndex = this.#jim.getIndex('tree');
         const layerIndex = this.#jim.getIndex('layers');
 
         this.tree = new Tree({
             treeIndexStore: treeIndex,
-            layerIndexStore: layerIndex
+            layerIndexStore: layerIndex,
+            rootLayerOptions: {
+                id: this.id, // Use workspace ID for root layer
+                type: 'universe',
+                name: '/',  // Keep as '/' for compatibility with Tree class
+                label: this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Universe Workspace'),
+                description: this.description || (this.name ? `Root layer for ${this.name}` : 'And then there was geometry'),
+                color: '#fff',
+                locked: true,
+                update: true,
+                created: new Date().toISOString(),
+                updated: new Date().toISOString()
+            }
         });
 
         debug(`Context tree initialized for workspace ${this.name}`);

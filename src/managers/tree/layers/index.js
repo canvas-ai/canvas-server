@@ -12,7 +12,7 @@ import builtInLayers from './lib/builtinLayers.js';
  */
 class LayerIndex extends EventEmitter {
 
-    constructor(index) {
+    constructor(index, rootLayerOptions = {}) {
         super(); // EventEmitter
 
         if (!index ||
@@ -23,7 +23,7 @@ class LayerIndex extends EventEmitter {
         this.index = index;
 
         this.nameToLayerMap = new Map();
-        this.#initBuiltInLayers();
+        this.#initBuiltInLayers(rootLayerOptions);
         this.#initNameToLayerMap();
         debug(`Layer index initialized with ${this.index.size} layers`);
     }
@@ -142,11 +142,15 @@ class LayerIndex extends EventEmitter {
         this.nameToLayerMap.set(layer.name, layer);
     }
 
-    #initBuiltInLayers() {
+    #initBuiltInLayers(rootLayerOptions = {}) {
         // Check if a root layer already exists in the index
         const rootExists = this.hasLayerName('/');
         if (!rootExists) {
-            this.createLayer(builtInLayers[0]);
+            if (rootLayerOptions.name) {
+                this.createLayer(rootLayerOptions.name, rootLayerOptions);
+            } else {
+                this.createLayer(builtInLayers[0]);
+            }
         }
 
         // TODO: Builtin layers should not be added to the index
