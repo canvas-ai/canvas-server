@@ -56,23 +56,6 @@ export const DEFAULT_CONFIG = {
   }
 };
 
-// Define the list of available Canvas modules
-const CANVAS_MODULES = [
-  'apps',
-  'roles',
-  'users',
-  'identities',
-  'documents',
-  'notes', // alias for documents with feature data/abstr/notes
-  'tabs',
-  'files',
-  'todo',
-  'emails',
-  'ws',     // workspace module
-  'context', // context module
-  'canvas'  // canvas module
-];
-
 // Define standard actions and their corresponding HTTP methods
 const ACTION_HTTP_METHODS = {
   'list': 'GET',
