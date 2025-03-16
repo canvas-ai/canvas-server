@@ -12,12 +12,13 @@ const writeFileSync = fs.writeFileSync;
 const readFileSync = fs.readFileSync;
 
 class JsonSet {
-
     constructor(filePath) {
-        if (!filePath || typeof filePath !== 'string') {throw new Error('File path must be a string');}
+        if (!filePath || typeof filePath !== 'string') {
+            throw new Error('File path must be a string');
+        }
         this.filePath = path.extname(filePath) === '.json' ? filePath : filePath + '.json';
-        this.dataRoot =  path.dirname(this.filePath);
-        if (!fs.existsSync(this.dataRoot)){
+        this.dataRoot = path.dirname(this.filePath);
+        if (!fs.existsSync(this.dataRoot)) {
             fs.mkdirSync(this.dataRoot, { recursive: true });
         }
         this.set = this.loadSync();
@@ -48,7 +49,6 @@ class JsonSet {
             const data = await readFile(this.filePath, 'utf-8');
             const items = JSON.parse(data);
             return new Set(items);
-
         } catch (error) {
             console.error(`Error loading file: ${error.message}`);
             return new Set();
@@ -60,11 +60,9 @@ class JsonSet {
             const data = readFileSync(this.filePath, 'utf-8');
             const items = JSON.parse(data);
             return new Set(items);
-
         } catch (error) {
             console.error(`Error loading file: ${error.message}`);
             return new Set();
-
         }
     }
 
@@ -81,7 +79,6 @@ class JsonSet {
     toArray() {
         return [...this.set];
     }
-
 }
 
 export default JsonSet;

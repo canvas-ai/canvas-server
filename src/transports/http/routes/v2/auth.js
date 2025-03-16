@@ -26,11 +26,11 @@ function validateCredentials(email, password) {
 
     return {
         isValid: Object.keys(errors).length === 0,
-        errors
+        errors,
     };
 }
 
-export default function(authService) {
+export default function (authService) {
     if (!authService) {
         throw new Error('Auth service is required');
     }
@@ -91,22 +91,25 @@ export default function(authService) {
             // Set JWT token as cookie
             authService.sessionService.setCookie(res, result.token, {
                 secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-                sameSite: 'lax'
+                sameSite: 'lax',
             });
 
             // Return success response with user data
-            const response = new ResponseObject().created({
-                user: {
-                    id: result.user.id,
-                    email: result.user.email,
-                    name: result.user.name || name,
-                    role: result.user.role,
-                    createdAt: result.user.createdAt,
-                    updatedAt: result.user.updatedAt
+            const response = new ResponseObject().created(
+                {
+                    user: {
+                        id: result.user.id,
+                        email: result.user.email,
+                        name: result.user.name || name,
+                        role: result.user.role,
+                        createdAt: result.user.createdAt,
+                        updatedAt: result.user.updatedAt,
+                    },
+                    token: result.token,
+                    session: result.session,
                 },
-                token: result.token,
-                session: result.session
-            }, 'Registration successful');
+                'Registration successful',
+            );
 
             return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
@@ -172,22 +175,25 @@ export default function(authService) {
             // Set JWT token as cookie
             authService.sessionService.setCookie(res, result.token, {
                 secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-                sameSite: 'lax'
+                sameSite: 'lax',
             });
 
             // Return success response with user data
-            const response = new ResponseObject().success({
-                user: {
-                    id: result.user.id,
-                    email: result.user.email,
-                    name: result.user.name,
-                    role: result.user.role,
-                    createdAt: result.user.createdAt,
-                    updatedAt: result.user.updatedAt
+            const response = new ResponseObject().success(
+                {
+                    user: {
+                        id: result.user.id,
+                        email: result.user.email,
+                        name: result.user.name,
+                        role: result.user.role,
+                        createdAt: result.user.createdAt,
+                        updatedAt: result.user.updatedAt,
+                    },
+                    token: result.token,
+                    session: result.session,
                 },
-                token: result.token,
-                session: result.session
-            }, 'Login successful');
+                'Login successful',
+            );
 
             return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
@@ -246,12 +252,15 @@ export default function(authService) {
     router.get('/me', passport.authenticate(['jwt', 'api-token'], { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
-        const response = new ResponseObject().success({
-            id: req.user.id,
-            email: req.user.email,
-            userType: req.user.userType,
-            tokenId: req.user.tokenId, // Will be present if authenticated with API token
-        }, 'User information retrieved successfully');
+        const response = new ResponseObject().success(
+            {
+                id: req.user.id,
+                email: req.user.email,
+                userType: req.user.userType,
+                tokenId: req.user.tokenId, // Will be present if authenticated with API token
+            },
+            'User information retrieved successfully',
+        );
 
         res.status(response.statusCode).json(response.getResponse());
     });
@@ -340,12 +349,15 @@ export default function(authService) {
             const tokens = await authService.listApiTokens(req.user.id);
 
             debug(`Retrieved ${tokens.length} tokens for user: ${req.user.email}`);
-            const response = new ResponseObject().success({
-                tokens,
-                total: tokens.length,
-                limit: tokens.length,
-                offset: 0
-            }, 'API tokens retrieved successfully');
+            const response = new ResponseObject().success(
+                {
+                    tokens,
+                    total: tokens.length,
+                    limit: tokens.length,
+                    offset: 0,
+                },
+                'API tokens retrieved successfully',
+            );
 
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
@@ -388,13 +400,22 @@ export default function(authService) {
         const { name, expiresInDays } = req.body;
 
         // Validate input
-        if (name && (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))) {
+        if (
+            name &&
+            (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))
+        ) {
             debug('Generate token validation failed: Invalid token name');
-            const response = new ResponseObject().badRequest('Token name must be 1-100 alphanumeric characters, spaces, hyphens, or underscores');
+            const response = new ResponseObject().badRequest(
+                'Token name must be 1-100 alphanumeric characters, spaces, hyphens, or underscores',
+            );
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        if (expiresInDays !== null && expiresInDays !== undefined && (!validator.isInt(String(expiresInDays)) || expiresInDays < 1)) {
+        if (
+            expiresInDays !== null &&
+            expiresInDays !== undefined &&
+            (!validator.isInt(String(expiresInDays)) || expiresInDays < 1)
+        ) {
             debug('Generate token validation failed: Invalid expiration days');
             const response = new ResponseObject().badRequest('Expiration days must be a positive integer');
             return res.status(response.statusCode).json(response.getResponse());
@@ -404,14 +425,11 @@ export default function(authService) {
             const { token, tokenValue } = await authService.createApiToken(
                 req.user.id,
                 name || 'API Token',
-                expiresInDays || null
+                expiresInDays || null,
             );
 
             debug(`Generated new API token for user: ${req.user.email}, name: ${token.name}`);
-            const response = new ResponseObject().created(
-                { token, value: tokenValue },
-                'API token generated successfully'
-            );
+            const response = new ResponseObject().created({ token, value: tokenValue }, 'API token generated successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Generate token error: ${error.message}`);
@@ -498,11 +516,14 @@ export default function(authService) {
             const jwtPayload = authService.verifyToken(token);
             if (jwtPayload) {
                 debug('JWT token verified successfully');
-                const response = new ResponseObject().success({
-                    valid: true,
-                    type: 'jwt',
-                    userId: jwtPayload.id
-                }, 'Token is valid');
+                const response = new ResponseObject().success(
+                    {
+                        valid: true,
+                        type: 'jwt',
+                        userId: jwtPayload.id,
+                    },
+                    'Token is valid',
+                );
                 return res.status(response.statusCode).json(response.getResponse());
             }
 
@@ -518,13 +539,16 @@ export default function(authService) {
 
                 if (user && tokenDetails) {
                     debug('API token verified successfully');
-                    const response = new ResponseObject().success({
-                        valid: true,
-                        type: 'api',
-                        userId: userId,
-                        tokenId: tokenId,
-                        tokenName: tokenDetails.name
-                    }, 'Token is valid');
+                    const response = new ResponseObject().success(
+                        {
+                            valid: true,
+                            type: 'api',
+                            userId: userId,
+                            tokenId: tokenId,
+                            tokenName: tokenDetails.name,
+                        },
+                        'Token is valid',
+                    );
                     return res.status(response.statusCode).json(response.getResponse());
                 }
             }

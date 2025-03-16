@@ -1,7 +1,6 @@
 import Layer from './Layer.js';
 
 export default class Canvas extends Layer {
-
     constructor(options = {}) {
         super(options);
         this.type = 'canvas';
@@ -36,7 +35,7 @@ export default class Canvas extends Layer {
     }
 
     removeFeatureBitmap(bitmap) {
-        this.featureBitmaps = this.featureBitmaps.filter(b => b !== bitmap);
+        this.featureBitmaps = this.featureBitmaps.filter((b) => b !== bitmap);
     }
 
     clearFeatureBitmaps() {
@@ -48,7 +47,7 @@ export default class Canvas extends Layer {
     }
 
     removeFilterBitmap(bitmap) {
-        this.filterBitmaps = this.filterBitmaps.filter(b => b !== bitmap);
+        this.filterBitmaps = this.filterBitmaps.filter((b) => b !== bitmap);
     }
 
     clearFilterBitmaps() {
@@ -64,7 +63,7 @@ export default class Canvas extends Layer {
     }
 
     removeUser(user) {
-        this.acl.users = this.acl.users.filter(u => u.user !== user);
+        this.acl.users = this.acl.users.filter((u) => u.user !== user);
     }
 
     /**
@@ -109,5 +108,4 @@ export default class Canvas extends Layer {
         });
         return layer;
     }
-
 }

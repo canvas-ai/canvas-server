@@ -69,7 +69,7 @@ export default function contextsRoutes(options) {
             }
 
             const context = await req.contextManager.getContext(contextId, {
-                autoCreate: true
+                autoCreate: true,
             });
 
             if (!context) {
@@ -106,14 +106,14 @@ export default function contextsRoutes(options) {
             const { limit = 50, offset = 0 } = req.query;
             const contexts = await req.contextManager.listContexts({
                 limit: parseInt(limit),
-                offset: parseInt(offset)
+                offset: parseInt(offset),
             });
 
             const response = new ResponseObject().success({
                 contexts,
                 total: contexts.length,
                 limit: parseInt(limit),
-                offset: parseInt(offset)
+                offset: parseInt(offset),
             });
 
             res.status(response.statusCode).json(response.getResponse());
@@ -163,7 +163,7 @@ export default function contextsRoutes(options) {
 
             const options = {
                 id: id,
-                baseUrl: baseUrl
+                baseUrl: baseUrl,
             };
 
             debug(`Creating context with URL: ${url}`);
@@ -328,7 +328,7 @@ export default function contextsRoutes(options) {
         try {
             const { url } = req.body;
             if (!url) {
-                const response = new ResponseObject().badRequest("URL is required");
+                const response = new ResponseObject().badRequest('URL is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
             req.context.setUrl(url);
@@ -369,7 +369,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/base_url', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ baseUrl: req.context.baseUrl }, 'Context base URL retrieved successfully');
+            const response = new ResponseObject().success(
+                { baseUrl: req.context.baseUrl },
+                'Context base URL retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context base URL: ${error.message}`);
@@ -416,7 +419,7 @@ export default function contextsRoutes(options) {
         try {
             const { baseUrl } = req.body;
             if (!baseUrl) {
-                const response = new ResponseObject().badRequest("Base URL is required");
+                const response = new ResponseObject().badRequest('Base URL is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
             req.context.baseUrl = baseUrl;
@@ -491,7 +494,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/path_array', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ pathArray: req.context.pathArray }, 'Context path array retrieved successfully');
+            const response = new ResponseObject().success(
+                { pathArray: req.context.pathArray },
+                'Context path array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context path array: ${error.message}`);
@@ -525,7 +531,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/device', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ device: req.context.device }, 'Context device retrieved successfully');
+            const response = new ResponseObject().success(
+                { device: req.context.device },
+                'Context device retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context device: ${error.message}`);
@@ -627,7 +636,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/identity', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ identity: req.context.identity }, 'Context identity retrieved successfully');
+            const response = new ResponseObject().success(
+                { identity: req.context.identity },
+                'Context identity retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context identity: ${error.message}`);
@@ -661,7 +673,7 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/tree', getContextMiddleware, async (req, res) => {
         debug(`Getting context tree for contextID "${req.params.contextId}", user "${req.user.email}"`);
-        debug('Legacy route, will be removed in the upcomming update')
+        debug('Legacy route, will be removed in the upcomming update');
         try {
             const response = new ResponseObject().success({ tree: req.context.tree }, 'Context tree retrieved successfully');
             res.status(response.statusCode).json(response.getResponse());
@@ -697,7 +709,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/status', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ status: req.context.status }, 'Context status retrieved successfully');
+            const response = new ResponseObject().success(
+                { status: req.context.status },
+                'Context status retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context status: ${error.message}`);
@@ -731,7 +746,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/workspace', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ workspace: req.context.workspace }, 'Context workspace retrieved successfully');
+            const response = new ResponseObject().success(
+                { workspace: req.context.workspace },
+                'Context workspace retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context workspace: ${error.message}`);
@@ -765,7 +783,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/bitmaps', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ bitmaps: req.context.bitmaps }, 'Context bitmaps retrieved successfully');
+            const response = new ResponseObject().success(
+                { bitmaps: req.context.bitmaps },
+                'Context bitmaps retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context bitmaps: ${error.message}`);
@@ -773,7 +794,6 @@ export default function contextsRoutes(options) {
             res.status(response.statusCode).json(response.getResponse());
         }
     });
-
 
     /**
      * @swagger
@@ -800,7 +820,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/context_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ contextBitmapArray: req.context.contextBitmapArray }, 'Context bitmap array retrieved successfully');
+            const response = new ResponseObject().success(
+                { contextBitmapArray: req.context.contextBitmapArray },
+                'Context bitmap array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving context bitmap array: ${error.message}`);
@@ -834,7 +857,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ featureBitmapArray: req.context.featureBitmapArray }, 'Feature bitmap array retrieved successfully');
+            const response = new ResponseObject().success(
+                { featureBitmapArray: req.context.featureBitmapArray },
+                'Feature bitmap array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving feature bitmap array: ${error.message}`);
@@ -1057,7 +1083,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/filter_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ filterBitmapArray: req.context.filterBitmapArray }, 'Filter bitmap array retrieved successfully');
+            const response = new ResponseObject().success(
+                { filterBitmapArray: req.context.filterBitmapArray },
+                'Filter bitmap array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving filter bitmap array: ${error.message}`);
@@ -1114,7 +1143,7 @@ export default function contextsRoutes(options) {
                 const response = new ResponseObject().badRequest('filterBitmap is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            req.context.filterBitmapArray = (req.context.filterBitmapArray || []).filter(item => item !== filterBitmap);
+            req.context.filterBitmapArray = (req.context.filterBitmapArray || []).filter((item) => item !== filterBitmap);
             if (typeof req.context.save === 'function') {
                 await req.context.save();
             }
@@ -1299,7 +1328,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/client_context', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ clientContextArray: req.context.clientContextArray }, 'Client context array retrieved successfully');
+            const response = new ResponseObject().success(
+                { clientContextArray: req.context.clientContextArray },
+                'Client context array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving client context array: ${error.message}`);
@@ -1430,7 +1462,10 @@ export default function contextsRoutes(options) {
      */
     router.get('/:contextId/server_context', getContextMiddleware, async (req, res) => {
         try {
-            const response = new ResponseObject().success({ serverContextArray: req.context.serverContextArray }, 'Server context array retrieved successfully');
+            const response = new ResponseObject().success(
+                { serverContextArray: req.context.serverContextArray },
+                'Server context array retrieved successfully',
+            );
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Error retrieving server context array: ${error.message}`);
@@ -1552,7 +1587,9 @@ export default function contextsRoutes(options) {
                 documents = [documents];
             }
 
-            const result = await req.context.insertDocuments(documents, featureArray, {clientContextArray: clientContextArray});
+            const result = await req.context.insertDocuments(documents, featureArray, {
+                clientContextArray: clientContextArray,
+            });
             const response = new ResponseObject().success(result, 'Documents created successfully');
             return res.status(201).json(response.getResponse());
         } catch (error) {
@@ -1641,7 +1678,7 @@ export default function contextsRoutes(options) {
                 const response = new ResponseObject().badRequest('Document content is required');
                 return res.status(response.statusCode).json(response.getResponse());
             }
-            let updatedContextArray = contextArray || [];
+            const updatedContextArray = contextArray || [];
             if (!updatedContextArray.includes(req.context.id)) {
                 updatedContextArray.push(req.context.id);
             }
@@ -1667,7 +1704,7 @@ export default function contextsRoutes(options) {
             const documentData = {
                 content,
                 metadata,
-                updatedBy: req.user.id
+                updatedBy: req.user.id,
             };
             const options = { contextArray: updatedContextArray, featureArray, filterArray };
             const document = await req.workspaceManager.updateDocument(workspaceId, id, documentData, options);

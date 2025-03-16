@@ -12,7 +12,9 @@ const debug = createDebug('middleware:common:admin');
  * @returns {boolean} - True if user is an admin, false otherwise
  */
 export function isAdmin(user) {
-    if (!user) return false;
+    if (!user) {
+        return false;
+    }
     return user.userType === 'admin';
 }
 

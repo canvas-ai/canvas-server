@@ -13,10 +13,7 @@ const cli = rl.createInterface({
 
 cli.prompt();
 cli.on('line', (input) => {
-
-
     switch (input) {
-
         case 'list':
             console.log(server.getClients());
             break;
@@ -24,16 +21,14 @@ cli.on('line', (input) => {
             server.req(input, (rep) => {
                 console.log('Mame reply');
                 console.log(rep);
-            });    
+            });
             break;
-        default:  
+        default:
             server.send(input);
             break;
-
     }
 
     cli.prompt();
-
 });
 
 server.on('data', (d) => {
@@ -48,10 +43,14 @@ server.on('req', (data, cb) => {
     const reply = 'ak toto bude fungovat tak pecka!';
 
     cb(reply);
-
 });
 
-
-server.on('connect', (e) => { console.log(e); });
-server.on('disconnect', (r) => { console.log(r); });
-server.on('errror', (e) => { console.log(e); });
+server.on('connect', (e) => {
+    console.log(e);
+});
+server.on('disconnect', (r) => {
+    console.log(r);
+});
+server.on('errror', (e) => {
+    console.log(e);
+});

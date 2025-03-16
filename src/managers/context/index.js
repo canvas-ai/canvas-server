@@ -13,7 +13,6 @@ import Url from './lib/Url.js';
  */
 
 class ContextManager extends EventEmitter {
-
     #user;
     #workspaceManager;
     #activeContexts = new Map();
@@ -90,7 +89,7 @@ class ContextManager extends EventEmitter {
                 // Use the provided options for creation, but ensure the ID is set
                 const createOptions = {
                     ...options,
-                    id: id
+                    id: id,
                 };
 
                 // Create the context with the provided URL or default to '/'
@@ -109,14 +108,14 @@ class ContextManager extends EventEmitter {
      */
     listContexts() {
         debug(`Listing ${this.#activeContexts.size} active contexts`);
-        let contexts = [];
-        Array.from(this.#activeContexts.values()).forEach(context => {
+        const contexts = [];
+        Array.from(this.#activeContexts.values()).forEach((context) => {
             contexts.push({
                 id: context.id,
                 url: context.url,
                 workspace: context.workspace,
                 created: context.created,
-                updated: context.updated
+                updated: context.updated,
             });
         });
 
@@ -141,7 +140,6 @@ class ContextManager extends EventEmitter {
         this.emit('context:removed', id);
         return true;
     }
-
 }
 
 export default ContextManager;

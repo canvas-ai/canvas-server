@@ -180,7 +180,7 @@ export default function usersRoutes(options) {
             const options = {
                 limit: parseInt(limit, 10),
                 offset: parseInt(offset, 10),
-                status
+                status,
             };
 
             const users = await userManager.listUsers(options);
@@ -251,7 +251,7 @@ export default function usersRoutes(options) {
                 email,
                 firstName,
                 lastName,
-                password
+                password,
             };
 
             const user = await userManager.createUser(userData);
@@ -368,7 +368,7 @@ export default function usersRoutes(options) {
                 email,
                 firstName,
                 lastName,
-                status
+                status,
             };
 
             const user = await userManager.updateUser(id, userData);

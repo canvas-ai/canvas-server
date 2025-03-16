@@ -103,7 +103,9 @@ export function requireWorkspaceManager(options = {}) {
 
     return async (req, res, next) => {
         await middleware(req, res, async (err) => {
-            if (err) return next(err);
+            if (err) {
+                return next(err);
+            }
 
             if (!req.workspaceManager) {
                 debug('Workspace manager not available');
@@ -148,7 +150,9 @@ export function requireContextManager(options = {}) {
 
     return async (req, res, next) => {
         await middleware(req, res, async (err) => {
-            if (err) return next(err);
+            if (err) {
+                return next(err);
+            }
 
             if (!req.contextManager) {
                 debug('Context manager not available');
@@ -196,7 +200,9 @@ export function requireAllManagers(options = {}) {
     return async (req, res, next) => {
         // First ensure workspace manager is available
         await workspaceMiddleware(req, res, (err) => {
-            if (err) return next(err);
+            if (err) {
+                return next(err);
+            }
 
             // Then ensure context manager is available
             contextMiddleware(req, res, next);

@@ -1,8 +1,7 @@
 'use strict';
 
-
 /**
- * net.IPC 
+ * net.IPC
  */
 
 module.exports = {

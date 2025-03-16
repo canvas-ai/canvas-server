@@ -81,13 +81,9 @@ class SessionService {
             payload.sessionId = session.id;
         }
 
-        return jwt.sign(
-            payload,
-            this.#config.jwtSecret,
-            {
-                expiresIn: this.#config.jwtLifetime,
-            },
-        );
+        return jwt.sign(payload, this.#config.jwtSecret, {
+            expiresIn: this.#config.jwtLifetime,
+        });
     }
 
     /**
@@ -185,12 +181,18 @@ class SessionService {
         const unit = match[2];
 
         switch (unit) {
-            case 's': return value * 1000; // seconds
-            case 'm': return value * 60 * 1000; // minutes
-            case 'h': return value * 60 * 60 * 1000; // hours
-            case 'd': return value * 24 * 60 * 60 * 1000; // days
-            case 'w': return value * 7 * 24 * 60 * 60 * 1000; // weeks
-            default: return 7 * 24 * 60 * 60 * 1000; // Default to 7 days
+            case 's':
+                return value * 1000; // seconds
+            case 'm':
+                return value * 60 * 1000; // minutes
+            case 'h':
+                return value * 60 * 60 * 1000; // hours
+            case 'd':
+                return value * 24 * 60 * 60 * 1000; // days
+            case 'w':
+                return value * 7 * 24 * 60 * 60 * 1000; // weeks
+            default:
+                return 7 * 24 * 60 * 60 * 1000; // Default to 7 days
         }
     }
 }

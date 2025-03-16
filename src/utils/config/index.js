@@ -25,12 +25,12 @@ import logger from '@/utils/log/index.js';
 class Config {
     constructor(options = {}) {
         // Use environment variables with fallbacks
-        this.serverConfigDir = options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
+        this.serverConfigDir =
+            options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
         this.userConfigDir = this.serverConfigDir; //options.userConfigDir || env.CANVAS_USER_CONFIG || path.join(env.CANVAS_USER_HOME, 'config');
 
         // Set configPriority based on server mode
-        this.configPriority = options.configPriority ||
-            (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
+        this.configPriority = options.configPriority || (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
 
         this.versioning = options.versioning ?? true;
         this.device = dm.getCurrentDevice();
@@ -68,11 +68,13 @@ class Config {
                 path.join(dir, `${baseName}.${this.device.os.platform}.json`),
                 path.join(dir, `${baseName}.json`),
                 // Nested config paths (if applicable)
-                ...(parts.length > 1 ? [
-                    path.join(dir, `${configPath}.${this.device.id}.json`),
-                    path.join(dir, `${configPath}.${this.device.os.platform}.json`),
-                    path.join(dir, `${configPath}.json`),
-                ] : []),
+                ...(parts.length > 1
+                    ? [
+                          path.join(dir, `${configPath}.${this.device.id}.json`),
+                          path.join(dir, `${configPath}.${this.device.os.platform}.json`),
+                          path.join(dir, `${configPath}.json`),
+                      ]
+                    : []),
             ];
             return devicePaths;
         };
@@ -81,9 +83,7 @@ class Config {
         const serverPaths = generatePaths(this.serverConfigDir);
 
         // Order paths based on configPriority
-        const orderedPaths = this.configPriority === 'user'
-            ? [...userPaths, ...serverPaths]
-            : [...serverPaths, ...userPaths];
+        const orderedPaths = this.configPriority === 'user' ? [...userPaths, ...serverPaths] : [...serverPaths, ...userPaths];
 
         logger.debug(`Config search paths for ${configPath}: ${JSON.stringify(orderedPaths)}`);
         return orderedPaths;
@@ -94,8 +94,9 @@ class Config {
     }
 
     require(configName, configType = 'server') {
-        const configPath = configType === 'server' ? path.join(this.serverConfigDir, configName) : path.join(this.userConfigDir, configName);
-        if(!fs.existsSync(`${configPath}.json`)) {
+        const configPath =
+            configType === 'server' ? path.join(this.serverConfigDir, configName) : path.join(this.userConfigDir, configName);
+        if (!fs.existsSync(`${configPath}.json`)) {
             const errorMsg = `Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`;
             logger.error(errorMsg);
             throw new Error(errorMsg);
@@ -193,7 +194,7 @@ class Config {
 
     clear() {
         logger.debug('Clearing all config stores');
-        this.stores.forEach(conf => conf.clear());
+        this.stores.forEach((conf) => conf.clear());
         this.stores.clear();
         return true;
     }

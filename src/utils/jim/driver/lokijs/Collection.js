@@ -1,5 +1,4 @@
 class Collection {
-
     constructor(db, collection) {
         this.db = db;
         this.collection = collection;
@@ -37,11 +36,19 @@ class Collection {
     }
 
     list() {
-        return this.collection.chain().simplesort('key').data().map(item => item.key);
+        return this.collection
+            .chain()
+            .simplesort('key')
+            .data()
+            .map((item) => item.key);
     }
 
     entries() {
-        return this.collection.chain().simplesort('key').data().map(item => [item.key, item.value]);
+        return this.collection
+            .chain()
+            .simplesort('key')
+            .data()
+            .map((item) => [item.key, item.value]);
     }
 
     async clear() {
@@ -55,9 +62,12 @@ class Collection {
 
     save() {
         return new Promise((resolve, reject) => {
-            this.db.saveDatabase(err => {
-                if (err) {reject(err);}
-                else {resolve();}
+            this.db.saveDatabase((err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
             });
         });
     }

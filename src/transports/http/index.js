@@ -34,11 +34,11 @@ const DEFAULT_CONFIG = {
             'x-app-name',
             'x-selected-session',
             'x-workspace-id',
-            'x-context-id'
+            'x-context-id',
         ],
         exposedHeaders: ['Content-Type', 'Authorization'],
         credentials: true,
-        maxAge: 86400 // 24 hours
+        maxAge: 86400, // 24 hours
     },
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false,
@@ -68,7 +68,7 @@ class HttpRestTransport {
             basePath = DEFAULT_CONFIG.basePath,
             cors: corsOptions,
             auth: authOptions,
-            staticPath = DEFAULT_CONFIG.staticPath
+            staticPath = DEFAULT_CONFIG.staticPath,
         } = options;
 
         // Handle CORS configuration
@@ -80,14 +80,14 @@ class HttpRestTransport {
         } else {
             corsConfig = {
                 ...DEFAULT_CONFIG.cors,
-                ...corsOptions
+                ...corsOptions,
             };
         }
 
         // Handle auth configuration
         const authConfig = {
             ...DEFAULT_CONFIG.auth,
-            ...(authOptions || {})
+            ...(authOptions || {}),
         };
 
         this.#config = {
@@ -97,7 +97,7 @@ class HttpRestTransport {
             basePath,
             cors: corsConfig,
             auth: authConfig,
-            staticPath
+            staticPath,
         };
 
         this.ResponseObject = ResponseObject;
@@ -119,7 +119,7 @@ class HttpRestTransport {
         if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
             res.setHeader(
                 'Content-Security-Policy',
-                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`
+                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
             );
             next();
             return;
@@ -128,7 +128,7 @@ class HttpRestTransport {
         // Content Security Policy for other routes
         res.setHeader(
             'Content-Security-Policy',
-            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`
+            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
         );
 
         next();
@@ -170,18 +170,21 @@ class HttpRestTransport {
 
         // Health check endpoint (unprotected)
         app.get(`${this.#config.basePath}/v2/ping`, (req, res) => {
-            res.status(200).json({
-                message: 'pong',
-                status: 'ok',
-                timestamp: new Date().toISOString(),
-                version: version,
-                name: productName,
-                productName: productName,
-                description: description,
-                license: license,
-                architecture: os.arch(),
-                platform: os.platform(),
-            });
+            const response = new ResponseObject().success(
+                {
+                    message: 'pong',
+                    timestamp: new Date().toISOString(),
+                    version: version,
+                    name: productName,
+                    productName: productName,
+                    description: description,
+                    license: license,
+                    architecture: os.arch(),
+                    platform: os.platform(),
+                },
+                'Context created successfully',
+            );
+            res.status(200).json(response);
         });
 
         // Register API routes
@@ -203,34 +206,46 @@ class HttpRestTransport {
             if (sessionManager) {
                 debug('Registering sessions routes');
                 const sessionsRoutesModule = await import('./routes/v2/sessions.js');
-                app.use(`${this.#config.basePath}/v2/sessions`, sessionsRoutesModule.default({
-                    auth: authService,
-                    sessionManager
-                }));
+                app.use(
+                    `${this.#config.basePath}/v2/sessions`,
+                    sessionsRoutesModule.default({
+                        auth: authService,
+                        sessionManager,
+                    }),
+                );
             }
 
             if (userManager) {
                 debug('Registering contexts routes');
                 const contextsRoutesModule = await import('./routes/v2/contexts.js');
-                app.use(`${this.#config.basePath}/v2/contexts`, contextsRoutesModule.default({
-                    auth: authService,
-                    userManager
-                }));
+                app.use(
+                    `${this.#config.basePath}/v2/contexts`,
+                    contextsRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                    }),
+                );
 
                 debug('Registering workspaces routes');
                 const workspacesRoutesModule = await import('./routes/v2/workspaces.js');
-                app.use(`${this.#config.basePath}/v2/workspaces`, workspacesRoutesModule.default({
-                    auth: authService,
-                    userManager
-                }));
+                app.use(
+                    `${this.#config.basePath}/v2/workspaces`,
+                    workspacesRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                    }),
+                );
 
                 debug('Registering users routes');
                 const usersRoutesModule = await import('./routes/v2/users.js');
-                app.use(`${this.#config.basePath}/v2/users`, usersRoutesModule.default({
-                    auth: authService,
-                    userManager,
-                    sessionManager
-                }));
+                app.use(
+                    `${this.#config.basePath}/v2/users`,
+                    usersRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                        sessionManager,
+                    }),
+                );
             }
 
             debug('API routes registered successfully');
@@ -357,7 +372,7 @@ class HttpRestTransport {
         return {
             running: !!this.#server,
             port: this.#config.port,
-            host: this.#config.host
+            host: this.#config.host,
         };
     }
 }

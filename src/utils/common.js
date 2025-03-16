@@ -16,7 +16,7 @@ import { ensureDirSync } from 'fs-extra';
  *    debug: 4
  *    silly: 5
  * Logger needs to implement at least the 4 methods below
-*/
+ */
 // TODO: Replace logger with canvas-utils-logger
 const debug = debugInstance('canvas:utils:common');
 const logger = {};
@@ -48,32 +48,42 @@ function uuid12(delimiter = true) {
     return delimiter ? id : id.replace(/-/g, '');
 }
 
-const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
-    if (!o[n.id]) {o[n.id] = {};}
-    if (!o[n[p]]) {o[n[p]] = {};}
-    if (!o[n[p]].children) {o[n[p]].children= [];}
-    if (o[n.id].children) {n.children= o[n.id].children;}
+const arrayToTree = (arr, p = 'parent_id') =>
+    arr.reduce((o, n) => {
+        if (!o[n.id]) {
+            o[n.id] = {};
+        }
+        if (!o[n[p]]) {
+            o[n[p]] = {};
+        }
+        if (!o[n[p]].children) {
+            o[n[p]].children = [];
+        }
+        if (o[n.id].children) {
+            n.children = o[n.id].children;
+        }
 
-    o[n[p]].children.push(n);
-    o[n.id] = n;
+        o[n[p]].children.push(n);
+        o[n.id] = n;
 
-    return o;
-
-}, {});
+        return o;
+    }, {});
 
 function pathsToTree(paths) {
     const result = [];
-    const level = {result};
+    const level = { result };
 
-    paths.forEach(path => {
-        path.replace(/^universe:\/\//, '').split('/').reduce((r, name, i, a) => {
-            if(!r[name]) {
-                r[name] = {result: []};
-                r.result.push({name, children: r[name].result});
-            }
+    paths.forEach((path) => {
+        path.replace(/^universe:\/\//, '')
+            .split('/')
+            .reduce((r, name, i, a) => {
+                if (!r[name]) {
+                    r[name] = { result: [] };
+                    r.result.push({ name, children: r[name].result });
+                }
 
-            return r[name];
-        }, level);
+                return r[name];
+            }, level);
     });
 
     return result;
@@ -85,7 +95,7 @@ function pathsToTree2(paths) {
 
     // loop through the paths
     for (const path of paths) {
-    // split the path into its components
+        // split the path into its components
         const components = path.split('/').filter(Boolean);
 
         // create a reference to the current level of the tree

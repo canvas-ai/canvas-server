@@ -40,9 +40,19 @@ export default function contextRoutes(socket, deps) {
             };
 
             // Forward relevant context events to the client
-            ['change:url', 'change:baseUrl', 'locked', 'unlocked',
-             'document:insert', 'document:update', 'document:remove', 'document:delete',
-             'documents:insert', 'documents:update', 'documents:remove', 'documents:delete'
+            [
+                'change:url',
+                'change:baseUrl',
+                'locked',
+                'unlocked',
+                'document:insert',
+                'document:update',
+                'document:remove',
+                'document:delete',
+                'documents:insert',
+                'documents:update',
+                'documents:remove',
+                'documents:delete',
             ].forEach(forwardEvent);
 
             callback(new ResponseObject({ message: 'Subscribed to context events' }));

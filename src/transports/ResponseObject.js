@@ -1,5 +1,4 @@
 export default class ResponseObject {
-
     constructor() {
         this.status = 'error'; // Default to error to ensure explicit success setting
         this.statusCode = 500; // Default to 500 Internal Server Error
@@ -124,4 +123,3 @@ export default class ResponseObject {
         };
     }
 }
-

@@ -23,7 +23,7 @@ async function main() {
 }
 
 // Run the main function
-main().catch(err => {
+main().catch((err) => {
     console.error('Fatal error:', err);
     process.exit(1);
 });
@@ -68,7 +68,9 @@ function setupProcessEventListeners() {
     });
 
     process.on('beforeExit', async (code) => {
-        if (code !== 0) {return;}
+        if (code !== 0) {
+            return;
+        }
         logger.info('Process beforeExit:', code);
         await server.stop();
     });

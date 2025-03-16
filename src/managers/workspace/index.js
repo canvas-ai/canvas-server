@@ -14,10 +14,7 @@ const debug = createDebug('workspace-manager');
 import Workspace from './lib/Workspace.js';
 
 // Constants
-const WORKSPACE_TYPES = [
-    'universe',
-    'workspace',
-]
+const WORKSPACE_TYPES = ['universe', 'workspace'];
 
 const WORKSPACE_DIRECTORIES = {
     db: 'db',
@@ -25,14 +22,13 @@ const WORKSPACE_DIRECTORIES = {
     data: 'data',
     cache: 'cache',
     dotfiles: 'dotfiles',
-}
+};
 
 /**
  * Workspace Manager
  * Manages workspaces for a single user
  */
 class WorkspaceManager extends EventEmitter {
-
     #rootPath;
     #workspaceIndex = new Map(); // Map of workspaceID -> Workspace
     #openWorkspaces = new Map(); // Map of workspaceID -> Workspace
@@ -58,9 +54,15 @@ class WorkspaceManager extends EventEmitter {
      * Getters
      */
 
-    get rootPath() { return this.#rootPath; }
-    get workspaces() { return Array.from(this.#workspaceIndex.values()); }
-    get openWorkspaces() { return Array.from(this.#openWorkspaces.values()); }
+    get rootPath() {
+        return this.#rootPath;
+    }
+    get workspaces() {
+        return Array.from(this.#workspaceIndex.values());
+    }
+    get openWorkspaces() {
+        return Array.from(this.#openWorkspaces.values());
+    }
 
     /**
      * Initialize the workspace manager
@@ -111,7 +113,9 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} The created workspace
      */
     async createWorkspace(workspaceID, options = {}) {
-        if (!workspaceID) { throw new Error('Workspace ID is required'); }
+        if (!workspaceID) {
+            throw new Error('Workspace ID is required');
+        }
 
         // Check if workspace already exists
         if (this.#workspaceIndex.has(workspaceID)) {
@@ -139,7 +143,7 @@ class WorkspaceManager extends EventEmitter {
             // Create a Conf instance for workspace config
             const configStore = new Conf({
                 configName: 'workspace',
-                cwd: workspacePath
+                cwd: workspacePath,
             });
 
             // Create workspace configuration
@@ -194,8 +198,12 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace>} The loaded workspace
      */
     async loadWorkspace(workspaceID, workspacePath = null) {
-        if (!workspaceID) { throw new Error('Workspace ID is required'); }
-        if (!workspacePath) { throw new Error('Workspace path rquired'); }
+        if (!workspaceID) {
+            throw new Error('Workspace ID is required');
+        }
+        if (!workspacePath) {
+            throw new Error('Workspace path rquired');
+        }
         debug(`Loading workspace ${workspaceID} from ${workspacePath}`);
 
         // Check if workspace is already loaded
@@ -222,7 +230,7 @@ class WorkspaceManager extends EventEmitter {
             // Create a Conf instance to read the workspace config
             const configStore = new Conf({
                 configName: 'workspace',
-                cwd: workspacePath
+                cwd: workspacePath,
             });
 
             // Check if the config has the required fields
@@ -554,7 +562,7 @@ class WorkspaceManager extends EventEmitter {
     #getRandomColor() {
         return randomcolor({
             luminosity: 'light',
-            format: 'hex'
+            format: 'hex',
         });
     }
 

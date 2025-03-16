@@ -10,11 +10,10 @@
 
 // Constants
 // TODO: Remove these, the only exception may be to validate a URL against a base URL
-const DEFAULT_PATH = '/'
-const DEFAULT_WORKSPACE_ID = 'universe'
+const DEFAULT_PATH = '/';
+const DEFAULT_WORKSPACE_ID = 'universe';
 
 class Url {
-
     #raw;
     #url;
     #workspaceID;
@@ -27,12 +26,24 @@ class Url {
         this.setUrl(url);
     }
 
-    get raw() { return this.#raw; } // Unparsed URL
-    get url() { return this.#url; } // Full URL string
-    get workspaceID() { return this.#workspaceID; }
-    get path() { return this.#path; }
-    get pathArray() { return this.#pathArray; }
-    get isValid() { return this.#valid; }
+    get raw() {
+        return this.#raw;
+    } // Unparsed URL
+    get url() {
+        return this.#url;
+    } // Full URL string
+    get workspaceID() {
+        return this.#workspaceID;
+    }
+    get path() {
+        return this.#path;
+    }
+    get pathArray() {
+        return this.#pathArray;
+    }
+    get isValid() {
+        return this.#valid;
+    }
 
     setUrl(url) {
         try {
@@ -57,7 +68,7 @@ class Url {
             this.#url = this.formatUrl();
 
             // Set the URL path array
-            this.#pathArray = this.#path.split('/').filter(segment => segment.length > 0);
+            this.#pathArray = this.#path.split('/').filter((segment) => segment.length > 0);
 
             this.#valid = true;
         } catch (error) {
@@ -71,7 +82,9 @@ class Url {
         }
     }
 
-    validate(url) { return Url.validate(url); }
+    validate(url) {
+        return Url.validate(url);
+    }
     static validate(url) {
         if (!url || typeof url !== 'string') {
             throw new Error('Invalid URL: URL must be a string');
@@ -115,7 +128,7 @@ class Url {
         const workspaceMatch = url.match(workspaceRegex);
 
         if (workspaceMatch && workspaceMatch.length >= 3) {
-            let path = workspaceMatch[2];
+            const path = workspaceMatch[2];
             return path.startsWith('/') ? path : '/' + path;
         }
 

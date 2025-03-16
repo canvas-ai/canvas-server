@@ -8,12 +8,15 @@ import LayerIndex from '../layers/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 class Tree extends EventEmitter {
-
     constructor(options = {}) {
         super();
 
-        if (!options.treeIndexStore) { throw new Error('Tree index not provided'); }
-        if (!options.layerIndexStore) { throw new Error('Layer index not provided'); }
+        if (!options.treeIndexStore) {
+            throw new Error('Tree index not provided');
+        }
+        if (!options.layerIndexStore) {
+            throw new Error('Layer index not provided');
+        }
 
         // TODO: Refactor, load/save ops should be handled by the treeManager
         this.dbtree = options.treeIndexStore;
@@ -29,7 +32,9 @@ class Tree extends EventEmitter {
         }
 
         this.root = new TreeNode(this.rootLayer.id, this.rootLayer);
-        debug(`Root node created with layer ID "${this.rootLayer.id}", name "${this.rootLayer.name}" of type "${this.rootLayer.type}"`);
+        debug(
+            `Root node created with layer ID "${this.rootLayer.id}", name "${this.rootLayer.name}" of type "${this.rootLayer.type}"`,
+        );
 
         if (this.load()) {
             debug('Context tree loaded from database');
@@ -43,8 +48,12 @@ class Tree extends EventEmitter {
         this.emit('ready');
     }
 
-    get paths() { return this.#buildPathArray(); }
-    get layers() { return this.dblayers; }
+    get paths() {
+        return this.#buildPathArray();
+    }
+    get layers() {
+        return this.dblayers;
+    }
 
     pathExists(path) {
         return this.getNode(path) ? true : false;
@@ -52,7 +61,9 @@ class Tree extends EventEmitter {
 
     insert(path = '/', node, autoCreateLayers = true) {
         debug(`Inserting path "${path}" to the context tree`);
-        if (path === '/' && !node) { return []; }
+        if (path === '/' && !node) {
+            return [];
+        }
 
         let currentNode = this.root;
         let child;
@@ -87,7 +98,7 @@ class Tree extends EventEmitter {
 
         if (node) {
             child = currentNode.getChild(node.id);
-            if (child && (child instanceof TreeNode)) {
+            if (child && child instanceof TreeNode) {
                 currentNode.addChild(child);
             }
         }
@@ -98,7 +109,9 @@ class Tree extends EventEmitter {
     }
 
     move(pathFrom, pathTo, recursive = false) {
-        if (recursive) {return this.moveRecursive(pathFrom, pathTo);}
+        if (recursive) {
+            return this.moveRecursive(pathFrom, pathTo);
+        }
         debug(`Moving layer from "${pathFrom}" to "${pathTo}"`);
 
         const node = this.getNode(pathFrom);
@@ -109,7 +122,9 @@ class Tree extends EventEmitter {
 
         const parentPath = pathFrom.split('/').slice(0, -1).join('/');
         const parentNode = this.getNode(parentPath);
-        if (!parentNode) { return false; }
+        if (!parentNode) {
+            return false;
+        }
 
         const layer = node.payload;
         const targetNode = new TreeNode(layer.id, layer);
@@ -168,7 +183,9 @@ class Tree extends EventEmitter {
 
         const parentPath = path.split('/').slice(0, -1).join('/');
         const parentNode = this.getNode(parentPath);
-        if (!parentNode) {throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);}
+        if (!parentNode) {
+            throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);
+        }
 
         if (!recursive && node.hasChildren) {
             for (const [key, value] of node.children.values()) {
@@ -224,11 +241,21 @@ class Tree extends EventEmitter {
         return true;
     }
 
-    fromJSON(json) { return this.load(json); }
-    toJSON() { return this.#buildJsonTree(); }
-    getJsonIndexTree() { return this.#buildJsonIndexTree(); }
-    getJsonTree() { return this.#buildJsonTree(); }
-    loadJsonTree(json) { return this.#buildTreeFromJson(json); }
+    fromJSON(json) {
+        return this.load(json);
+    }
+    toJSON() {
+        return this.#buildJsonTree();
+    }
+    getJsonIndexTree() {
+        return this.#buildJsonIndexTree();
+    }
+    getJsonTree() {
+        return this.#buildJsonTree();
+    }
+    loadJsonTree(json) {
+        return this.#buildTreeFromJson(json);
+    }
     clear() {
         debug('Clearing context tree');
         this.root = new TreeNode(this.rootLayer.id, this.rootLayer);
@@ -236,7 +263,9 @@ class Tree extends EventEmitter {
     }
 
     getNode(path) {
-        if (path === '/' || !path) {return this.root;}
+        if (path === '/' || !path) {
+            return this.root;
+        }
         const layerNames = path.split('/').filter(Boolean);
         let currentNode = this.root;
 
@@ -288,7 +317,9 @@ class Tree extends EventEmitter {
 
         const parentPath = path.split('/').slice(0, -1).join('/');
         const parentNode = this.getNode(parentPath);
-        if (!parentNode) {throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);}
+        if (!parentNode) {
+            throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);
+        }
 
         if (!recursive && node.hasChildren) {
             for (const [key, value] of node.children.values()) {
@@ -302,9 +333,9 @@ class Tree extends EventEmitter {
         return true;
     }
 
-    moveNode(pathFrom, pathTo, recursive = false) { }
+    moveNode(pathFrom, pathTo, recursive = false) {}
 
-    moveNodeRecursive(pathFrom, pathTo) { }
+    moveNodeRecursive(pathFrom, pathTo) {}
 
     #buildTreeFromJson(rootNode = this.root, autoCreateLayers = true) {
         const buildTree = (nodeData) => {
@@ -336,11 +367,15 @@ class Tree extends EventEmitter {
     #buildJsonIndexTree(node = this.root) {
         const buildTree = (currentNode) => {
             const children = Array.from(currentNode.children.values())
-                .filter(child => child instanceof TreeNode)
-                .map(child => child.hasChildren ? buildTree(child) : {
-                    id: child.id,
-                    children: [],
-                });
+                .filter((child) => child instanceof TreeNode)
+                .map((child) =>
+                    child.hasChildren
+                        ? buildTree(child)
+                        : {
+                              id: child.id,
+                              children: [],
+                          },
+                );
 
             return {
                 id: currentNode.id,
@@ -354,8 +389,8 @@ class Tree extends EventEmitter {
     #buildJsonTree(node = this.root) {
         const buildTree = (currentNode) => {
             const children = Array.from(currentNode.children.values())
-                .filter(child => child instanceof TreeNode)
-                .map(child => child.hasChildren ? buildTree(child) : createLayerInfo(child.payload));
+                .filter((child) => child instanceof TreeNode)
+                .map((child) => (child.hasChildren ? buildTree(child) : createLayerInfo(child.payload)));
 
             return createLayerInfo(this.dblayers.getLayerByID(currentNode.id) || this.rootLayer, children);
         };
@@ -377,7 +412,7 @@ class Tree extends EventEmitter {
     #buildPathArray(sort = true) {
         const paths = [];
         const traverseTree = (node, parentPath) => {
-            const path = (!parentPath || parentPath === '') ? '/' : `${parentPath}/${node.name}`;
+            const path = !parentPath || parentPath === '' ? '/' : `${parentPath}/${node.name}`;
             if (node.children.size > 0) {
                 for (const child of node.children.values()) {
                     traverseTree(child, path);

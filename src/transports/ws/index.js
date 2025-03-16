@@ -57,7 +57,7 @@ class WebSocketTransport {
 
         // Initialize Socket.IO server
         this.#io = new Server(this.#httpServer, {
-            cors: this.#config.cors
+            cors: this.#config.cors,
         });
 
         // Set max listeners
@@ -142,7 +142,7 @@ class WebSocketTransport {
             contextRoutes(socket, {
                 ResponseObject: this.ResponseObject,
                 sessionManager: this.#canvasServer.sessionManager,
-                context: this.#canvasServer.contextManager
+                context: this.#canvasServer.contextManager,
             });
 
             socket.on('disconnect', () => {

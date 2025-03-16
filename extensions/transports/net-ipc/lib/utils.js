@@ -1,6 +1,5 @@
 'use strict';
 
-
 // Utils
 const crypto = require('crypto');
 const Packer = require('amp-message');
@@ -20,7 +19,7 @@ function xpipe(path) {
 }
 
 function msgPack(msg) {
-    const packer = new Packer;
+    const packer = new Packer();
     packer.push(msg);
     return packer.toBuffer();
 }
@@ -31,11 +30,11 @@ function msgUnpack(msg) {
 }
 
 function uuid() {
-    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16));
+    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (b) => (b ^ (crypto.rng(1)[0] % 16 >> (b / 4))).toString(16));
 }
 
 function uuid12() {
-    return ([1e3]+-1e3+-1e3).replace(/[018]/g,b=>(b^crypto.rng(1)[0]%16>>b/4).toString(16));
+    return ([1e3] + -1e3 + -1e3).replace(/[018]/g, (b) => (b ^ (crypto.rng(1)[0] % 16 >> (b / 4))).toString(16));
 }
 
 function genUUID() {

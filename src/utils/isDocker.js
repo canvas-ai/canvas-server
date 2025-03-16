@@ -30,4 +30,3 @@ module.exports = function isDocker() {
     }
     return isDockerCached;
 };
-

@@ -130,14 +130,14 @@ export default function workspacesRoutes(options) {
             const workspaces = req.workspaceManager.listWorkspaces({
                 limit: parseInt(limit),
                 offset: parseInt(offset),
-                status
+                status,
             });
 
             const response = new ResponseObject().success({
                 workspaces,
                 total: workspaces.length,
                 limit: parseInt(limit),
-                offset: parseInt(offset)
+                offset: parseInt(offset),
             });
 
             res.status(response.statusCode).json(response.getResponse());
@@ -194,7 +194,7 @@ export default function workspacesRoutes(options) {
             // Use name as the workspaceID and pass description as an option
             const workspace = await req.workspaceManager.createWorkspace(name, {
                 description,
-                owner: req.user.id
+                owner: req.user.id,
             });
 
             debug(`Created workspace: ${workspace.id} for user: ${req.user.id}`);
@@ -311,7 +311,7 @@ export default function workspacesRoutes(options) {
             const workspaceData = {
                 name,
                 description,
-                status
+                status,
             };
 
             const updatedWorkspace = await req.workspaceManager.updateWorkspace(id, workspaceData);
@@ -492,7 +492,7 @@ export default function workspacesRoutes(options) {
 
             const options = {
                 limit: parseInt(limit, 10),
-                offset: parseInt(offset, 10)
+                offset: parseInt(offset, 10),
             };
 
             const documents = await req.workspaceManager.listWorkspaceDocuments(id, options);

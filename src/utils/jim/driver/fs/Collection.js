@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 
 class Collection {
-
     constructor(filePath) {
         this.filePath = filePath;
         this.data = {};

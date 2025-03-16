@@ -1,0 +1,14 @@
+**/_test*.js
+**/_test/
+**/_old_/
+**/_SCRATCH_/
+**/extensions/**
+**/src/ui/web/**
+**/src/services/neurald/**
+**/src/services/stored/**
+**/src/services/synapsd/**
+**/node_modules/**
+**/*.json
+**/*.md
+**/*.css
+**/*.html

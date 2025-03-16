@@ -4,7 +4,6 @@ import { promises as fs } from 'fs';
 import Collection from './Collection.js';
 
 class PersistentIndex {
-
     constructor(configRootPath) {
         this.configRootPath = configRootPath;
         this.db = null;
@@ -31,7 +30,8 @@ class PersistentIndex {
                 autoload: true, // cspell:ignore autoload
                 autosave: true,
                 autosaveInterval: 4000,
-                autoloadCallback: () => { // cspell:ignore autoload
+                autoloadCallback: () => {
+                    // cspell:ignore autoload
                     resolve();
                 },
             });

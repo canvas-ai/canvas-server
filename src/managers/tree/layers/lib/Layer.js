@@ -4,16 +4,15 @@ const debug = debugMessage('canvas:context:layer');
 import { uuid12 } from '@/utils/common.js';
 
 const LAYER_TYPES = [
-    'universe',     // Root layer for a workspace
-    'system',       // System layers (canvas, device, user, session)
-    'workspace',    // "Mountpoint" to a workspace
-    'canvas',       // Can store context, feature and filter bitmaps + dashboard / UI layouts
-    'context',      // Has context bitmaps only
-    'label',        // Label only (no associated bitmaps)
+    'universe', // Root layer for a workspace
+    'system', // System layers (canvas, device, user, session)
+    'workspace', // "Mountpoint" to a workspace
+    'canvas', // Can store context, feature and filter bitmaps + dashboard / UI layouts
+    'context', // Has context bitmaps only
+    'label', // Label only (no associated bitmaps)
 ];
 
 class Layer {
-
     constructor(options) {
         if (typeof options !== 'object') {
             options = { name: options };
@@ -33,11 +32,11 @@ class Layer {
         }
 
         // TODO: This constructor needs a proper cleanup!
-        this.id =  options.id;
+        this.id = options.id;
         this.type = this.#validateType(options.type); // TODO: Move to LayerManager/dedicated file
         this.name = this.#sanitizeName(options.name);
-        this.label = (options.label) ? this.#sanitizeLabel(options.label) : this.name;
-        this.description = (options.description) ? this.#sanitizeDescription(options.description) : 'Canvas layer';
+        this.label = options.label ? this.#sanitizeLabel(options.label) : this.name;
+        this.description = options.description ? this.#sanitizeDescription(options.description) : 'Canvas layer';
         this.color = options?.color;
         this.locked = options?.locked || false;
         this.metadata = options.metadata || {};
@@ -48,19 +47,25 @@ class Layer {
      */
 
     setName(name) {
-        if (this.locked) {throw new Error('Layer is locked');}
+        if (this.locked) {
+            throw new Error('Layer is locked');
+        }
         this.name = this.#sanitizeName(name);
         return this;
     }
 
     setLabel(label) {
-        if (this.locked) {throw new Error('Layer is locked');}
+        if (this.locked) {
+            throw new Error('Layer is locked');
+        }
         this.label = this.#sanitizeLabel(label);
         return this;
     }
 
     setDescription(description) {
-        if (this.locked) {throw new Error('Layer is locked');}
+        if (this.locked) {
+            throw new Error('Layer is locked');
+        }
         this.description = this.#sanitizeDescription(description);
         return this;
     }
@@ -70,7 +75,7 @@ class Layer {
      */
 
     #validateType(type) {
-        if (! LAYER_TYPES.includes(type)) {
+        if (!LAYER_TYPES.includes(type)) {
             throw new Error('Unsupported layer type');
         }
 
@@ -148,7 +153,6 @@ class Layer {
         });
         return layer;
     }
-
 }
 
 export default Layer;

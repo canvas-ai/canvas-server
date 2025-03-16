@@ -80,7 +80,7 @@ class AuthTokenService {
             name: options.name || 'API Token',
             description: options.description || '',
             scopes: options.scopes || ['*'],
-            expiresAt
+            expiresAt,
         });
 
         // Store token value in cache for validation
@@ -152,7 +152,7 @@ class AuthTokenService {
             return null;
         }
 
-        debug(`Validating API token`);
+        debug('Validating API token');
 
         try {
             // Check cache first
@@ -193,7 +193,7 @@ class AuthTokenService {
                     // In a real implementation, we would need to store a hash of the token value
 
                     // For now, we'll just return null
-                    debug(`Token validation requires token value to be in cache`);
+                    debug('Token validation requires token value to be in cache');
                 } catch (error) {
                     debug(`Error checking tokens for user ${userId}: ${error.message}`);
                 }

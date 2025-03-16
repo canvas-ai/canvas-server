@@ -15,7 +15,6 @@ import AuthTokenService from './lib/AuthToken.js';
  * Handles user authentication, registration, and session management
  */
 class AuthService extends EventEmitter {
-
     #userManager;
     #sessionManager;
     #sessionService;
@@ -53,7 +52,7 @@ class AuthService extends EventEmitter {
         const jwtSecret = this.#config.jwtSecret || 'canvas-jwt-secret-dev-only';
         this.#passport = configurePassport(jwtSecret, {
             userManager: this.#userManager,
-            authService: this
+            authService: this,
         });
         debug('Passport configured with JWT secret');
 
@@ -61,12 +60,12 @@ class AuthService extends EventEmitter {
         this.#sessionService = new SessionService({
             jwtSecret,
             jwtLifetime: this.#config.jwtLifetime || '7d',
-            sessionManager: this.#sessionManager
+            sessionManager: this.#sessionManager,
         });
 
         // Initialize auth token service
         this.#authTokenService = new AuthTokenService({
-            userManager: this.#userManager
+            userManager: this.#userManager,
         });
         await this.#authTokenService.initialize();
 
@@ -143,7 +142,7 @@ class AuthService extends EventEmitter {
         // Create user
         const user = await this.#userManager.createUser({
             email,
-            userType
+            userType,
         });
 
         // Store password hash
@@ -152,7 +151,7 @@ class AuthService extends EventEmitter {
         // Create session
         const session = await this.#sessionManager.createSession(user.id, {
             userAgent: 'Canvas API',
-            ipAddress: '127.0.0.1'
+            ipAddress: '127.0.0.1',
         });
 
         // Generate JWT token
@@ -164,7 +163,7 @@ class AuthService extends EventEmitter {
         return {
             user,
             token,
-            session
+            session,
         };
     }
 
@@ -200,7 +199,7 @@ class AuthService extends EventEmitter {
         // Create session
         const session = await this.#sessionManager.createSession(user.id, {
             userAgent: 'Canvas API',
-            ipAddress: '127.0.0.1'
+            ipAddress: '127.0.0.1',
         });
 
         // Generate JWT token
@@ -212,7 +211,7 @@ class AuthService extends EventEmitter {
         return {
             user,
             token,
-            session
+            session,
         };
     }
 
@@ -293,9 +292,7 @@ class AuthService extends EventEmitter {
         }
 
         // Check if requesting user is an admin (for admin override)
-        const isAdminOverride = requestingUser &&
-                               requestingUser.id !== userId &&
-                               requestingUser.userType === 'admin';
+        const isAdminOverride = requestingUser && requestingUser.id !== userId && requestingUser.userType === 'admin';
 
         // Verify current password if not admin override
         if (!isAdminOverride) {
@@ -464,7 +461,7 @@ class AuthService extends EventEmitter {
     async #storePassword(userId, passwordHash) {
         await this.#userManager.db.put(`auth:password:${userId}`, {
             hash: passwordHash,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         });
     }
 

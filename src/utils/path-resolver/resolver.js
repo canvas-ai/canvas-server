@@ -29,10 +29,10 @@ export function resolve(specifier, context, nextResolve) {
             let extension = extensionMatch ? extensionMatch[0] : '';
             const cleanSpecifier = specifier.replace(/\.[^.]+$/, '');
             const relativePath = cleanSpecifier.slice(config.prefix.length);
-            
+
             // Build the full path
             let fullPath = resolvePath(config.basePath, relativePath);
-            
+
             // If no extension provided, try to resolve it
             if (!extension) {
                 // First try as a directory with index.js
@@ -63,6 +63,6 @@ export function resolve(specifier, context, nextResolve) {
             return nextResolve(newSpecifier);
         }
     }
-    
+
     return nextResolve(specifier);
 }

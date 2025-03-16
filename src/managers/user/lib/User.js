@@ -17,7 +17,6 @@ import ContextManager from '@/managers/context/index.js';
  * Manages workspaces, contexts, and other user-specific resources
  */
 class User extends EventEmitter {
-
     #id;
     #email;
     #homePath;
@@ -36,13 +35,13 @@ class User extends EventEmitter {
     #stats = {
         workspaces: {
             total: 0,
-            open: 0
+            open: 0,
         },
         contexts: {
             total: 0,
-            active: 0
+            active: 0,
         },
-        apiTokens: 0
+        apiTokens: 0,
     };
 
     constructor(options = {}) {
@@ -100,12 +99,12 @@ class User extends EventEmitter {
 
             // Initialize token store
             this.#initializeTokenStore();
-            debug(`Token store initialized`);
+            debug('Token store initialized');
 
             // Initialize workspace manager
             this.#workspaceManager = new WorkspaceManager({
                 rootPath: workspacesPath,
-                owner: this.#id
+                owner: this.#id,
             });
             await this.#workspaceManager.initialize();
             debug(`Workspace manager initialized for user: ${this.#id}`);
@@ -113,7 +112,7 @@ class User extends EventEmitter {
             // Initialize context manager
             this.#contextManager = new ContextManager({
                 user: this,
-                workspaceManager: this.#workspaceManager
+                workspaceManager: this.#workspaceManager,
             });
 
             if (typeof this.#contextManager.initialize === 'function') {
@@ -128,10 +127,13 @@ class User extends EventEmitter {
                     type: 'universe',
                     label: 'Universe',
                     color: '#fff',
-                    owner: this.#id
+                    owner: this.#id,
                 });
                 debug(`Created universe workspace for user: ${this.#id}`);
-            } else if (this.#workspaceManager.hasWorkspaceOnDisk('universe') && !this.#workspaceManager.hasWorkspace('universe')) {
+            } else if (
+                this.#workspaceManager.hasWorkspaceOnDisk('universe') &&
+                !this.#workspaceManager.hasWorkspace('universe')
+            ) {
                 // If workspace exists on disk but not in memory, load it
                 await this.#workspaceManager.loadWorkspace('universe');
                 debug(`Loaded existing universe workspace for user: ${this.#id}`);
@@ -187,13 +189,13 @@ class User extends EventEmitter {
             this.#stats = {
                 workspaces: {
                     total: 0,
-                    open: 0
+                    open: 0,
                 },
                 contexts: {
                     total: 0,
-                    active: 0
+                    active: 0,
                 },
-                apiTokens: 0
+                apiTokens: 0,
             };
 
             // Mark as inactive
@@ -209,18 +211,36 @@ class User extends EventEmitter {
     }
 
     // Getters
-    get id() { return this.#id; }
-    get email() { return this.#email; }
-    get homePath() { return this.#homePath; }
-    get userType() { return this.#userType; }
-    get workspaceManager() { return this.#workspaceManager; }
-    get contextManager() { return this.#contextManager; }
-    get status() { return this.#status; }
+    get id() {
+        return this.#id;
+    }
+    get email() {
+        return this.#email;
+    }
+    get homePath() {
+        return this.#homePath;
+    }
+    get userType() {
+        return this.#userType;
+    }
+    get workspaceManager() {
+        return this.#workspaceManager;
+    }
+    get contextManager() {
+        return this.#contextManager;
+    }
+    get status() {
+        return this.#status;
+    }
     get uptime() {
-        if (!this.#startTime) return 0;
+        if (!this.#startTime) {
+            return 0;
+        }
         return Date.now() - this.#startTime;
     }
-    get stats() { return this.#stats; }
+    get stats() {
+        return this.#stats;
+    }
 
     // Check if user is an admin
     isAdmin() {
@@ -241,7 +261,7 @@ class User extends EventEmitter {
         debug(`Creating workspace: ${workspaceID}`);
         return this.#workspaceManager.createWorkspace(workspaceID, {
             ...options,
-            owner: this.#id
+            owner: this.#id,
         });
     }
 
@@ -329,7 +349,7 @@ class User extends EventEmitter {
         const workspaces = this.#workspaceManager.listWorkspaces();
 
         if (!options.includeDeleted) {
-            return workspaces.filter(workspace => !workspace.isDeleted);
+            return workspaces.filter((workspace) => !workspace.isDeleted);
         }
 
         return workspaces;
@@ -439,7 +459,7 @@ class User extends EventEmitter {
             scopes: options.scopes || ['*'],
             createdAt: new Date().toISOString(),
             expiresAt: options.expiresAt ? options.expiresAt.toISOString() : null,
-            lastUsedAt: null
+            lastUsedAt: null,
         };
 
         // Store token in Conf
@@ -457,7 +477,7 @@ class User extends EventEmitter {
         // Return token with value (value is only returned once)
         return {
             ...token,
-            value: tokenValue
+            value: tokenValue,
         };
     }
 
@@ -491,7 +511,7 @@ class User extends EventEmitter {
 
         if (!options.includeExpired) {
             const now = new Date().toISOString();
-            return tokenList.filter(token => !token.expiresAt || token.expiresAt > now);
+            return tokenList.filter((token) => !token.expiresAt || token.expiresAt > now);
         }
 
         return tokenList;
@@ -523,7 +543,7 @@ class User extends EventEmitter {
         const updatedToken = {
             ...token,
             ...updates,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         // Store updated token
@@ -645,7 +665,7 @@ class User extends EventEmitter {
             email: this.#email,
             status: this.#status,
             uptime: this.uptime,
-            stats: this.#stats
+            stats: this.#stats,
         };
     }
 
@@ -662,12 +682,15 @@ class User extends EventEmitter {
             status: this.#status,
             uptime: this.uptime,
             stats: this.#stats,
-            workspaces: this.#status === 'active' ? this.listWorkspaces().map(w => ({
-                id: w.id,
-                name: w.name,
-                type: w.type,
-                isOpen: this.#workspaceManager.isOpen(w.id)
-            })) : []
+            workspaces:
+                this.#status === 'active'
+                    ? this.listWorkspaces().map((w) => ({
+                          id: w.id,
+                          name: w.name,
+                          type: w.type,
+                          isOpen: this.#workspaceManager.isOpen(w.id),
+                      }))
+                    : [],
         };
     }
 
@@ -681,8 +704,8 @@ class User extends EventEmitter {
             configName: 'tokens',
             cwd: this.#homePath,
             defaults: {
-                tokens: {}
-            }
+                tokens: {},
+            },
         });
 
         debug(`Token store initialized with ${Object.keys(this.#tokenStore.get('tokens')).length} tokens`);
@@ -729,7 +752,9 @@ class User extends EventEmitter {
      * @private
      */
     #updateStats() {
-        if (this.#status !== 'active') return;
+        if (this.#status !== 'active') {
+            return;
+        }
 
         if (this.#workspaceManager) {
             this.#stats.workspaces.total = this.#workspaceManager.listWorkspaces().length;

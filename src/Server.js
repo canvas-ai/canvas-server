@@ -19,31 +19,31 @@ const { productName, version, description, license } = pkg;
 
 // Database
 import AuthService from '@/services/auth/index.js';
-import Db from '@/services/synapsd/src/backends/lmdb/index.js'
+import Db from '@/services/synapsd/src/backends/lmdb/index.js';
 
 // Create the main server database
 const db = new Db({
-    path: env.CANVAS_SERVER_DB
+    path: env.CANVAS_SERVER_DB,
 });
 
 // Global Managers
 import UserManager from '@/managers/user/index.js';
 const userManager = new UserManager({
     rootPath: env.CANVAS_USER_HOME,
-    db: db.createDataset('users')
+    db: db.createDataset('users'),
 });
 
 import SessionManager from '@/managers/session/index.js';
 const sessionManager = new SessionManager(
     db.createDataset('sessions'),
     // TODO: Move to config
-    { sessionTimeout: 1000 * 60 * 60 * 24 * 7 } // 7 days
+    { sessionTimeout: 1000 * 60 * 60 * 24 * 7 }, // 7 days
 );
 
 // Event Handlers
 import UserEventHandler from '@/services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
-    userManager: userManager
+    userManager: userManager,
 });
 
 /**
@@ -56,10 +56,9 @@ const userEventHandler = new UserEventHandler({
  */
 
 class Server extends EventEmitter {
-
     // Runtime state
-    #mode;                  // user, standalone
-    #status = 'stopped';    // initialized, running, stopping, stopped
+    #mode; // user, standalone
+    #status = 'stopped'; // initialized, running, stopping, stopped
 
     // Internals
     #services = new Map();
@@ -81,20 +80,36 @@ class Server extends EventEmitter {
     }
 
     // Getters
-    get mode() { return this.#mode; }
-    get version() { return `${productName} v${version} | ${description}`; }
-    get license() { return license; }
-    get status() { return this.#status; }
+    get mode() {
+        return this.#mode;
+    }
+    get version() {
+        return `${productName} v${version} | ${description}`;
+    }
+    get license() {
+        return license;
+    }
+    get status() {
+        return this.#status;
+    }
 
     // Service getters
-    get services() { return this.#services; }
+    get services() {
+        return this.#services;
+    }
 
     // Manager getters
-    get userManager() { return userManager; }
-    get sessionManager() { return sessionManager; }
+    get userManager() {
+        return userManager;
+    }
+    get sessionManager() {
+        return sessionManager;
+    }
 
     // Database getter
-    get db() { return this.#db; }
+    get db() {
+        return this.#db;
+    }
 
     /**
      * Initialize the server
@@ -217,11 +232,11 @@ class Server extends EventEmitter {
             mode: this.#mode,
             status: this.#status,
             users: {
-                count: userManager.users.size
+                count: userManager.users.size,
             },
             sessions: {
-                count: sessionManager.sessions.size
-            }
+                count: sessionManager.sessions.size,
+            },
         };
     }
 
@@ -262,12 +277,12 @@ class Server extends EventEmitter {
             const authConfig = {
                 ...config,
                 jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret',
-                jwtLifetime: process.env.CANVAS_JWT_LIFETIME || '7d'
+                jwtLifetime: process.env.CANVAS_JWT_LIFETIME || '7d',
             };
 
             const authService = new AuthService(authConfig, {
                 sessionManager: sessionManager,
-                userManager: userManager
+                userManager: userManager,
             });
 
             await authService.initialize();
@@ -467,7 +482,8 @@ class Server extends EventEmitter {
      */
     async #loadModule(type, name, config) {
         // Convert Windows paths to proper URL format
-        const modulePath = path.join(__dirname, type, name, 'index.js')
+        const modulePath = path
+            .join(__dirname, type, name, 'index.js')
             .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
             .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
 
@@ -530,7 +546,7 @@ class Server extends EventEmitter {
             // Create the admin user
             const adminUser = await userManager.createUser({
                 email,
-                userType: 'admin'
+                userType: 'admin',
             });
 
             // Store the password in the auth service
@@ -582,7 +598,10 @@ class Server extends EventEmitter {
         }
 
         // Shuffle the password characters
-        return password.split('').sort(() => 0.5 - Math.random()).join('');
+        return password
+            .split('')
+            .sort(() => 0.5 - Math.random())
+            .join('');
     }
 }
 
@@ -593,7 +612,4 @@ const server = new Server();
 export default server;
 
 // Export managers for convenience
-export {
-    userManager,
-    sessionManager
-};
+export { userManager, sessionManager };

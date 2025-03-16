@@ -5,7 +5,6 @@ import ip from 'ip';
 import { familySync } from 'detect-libc';
 
 class GenericDevice {
-
     constructor() {
         this.id = machineIdSync(true).substr(0, 11);
         this.endianness = os.endianness();
@@ -43,7 +42,6 @@ class GenericDevice {
     get hostname() {
         return this.network.hostname;
     }
-
 }
 
 export default GenericDevice;

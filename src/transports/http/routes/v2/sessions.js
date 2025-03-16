@@ -111,12 +111,15 @@ export default function sessionsRoutes(options) {
 
             const sessions = await sessionManager.getUserSessions(userId);
 
-            const response = new ResponseObject().success({
-                sessions,
-                total: sessions.length,
-                limit: sessions.length,
-                offset: 0
-            }, 'Sessions retrieved successfully');
+            const response = new ResponseObject().success(
+                {
+                    sessions,
+                    total: sessions.length,
+                    limit: sessions.length,
+                    offset: 0,
+                },
+                'Sessions retrieved successfully',
+            );
 
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
@@ -164,7 +167,7 @@ export default function sessionsRoutes(options) {
             const session = await sessionManager.createSession(req.user.id, {
                 name: name || `Session ${new Date().toISOString()}`,
                 description: description || 'Created via API',
-                initializer: 'api'
+                initializer: 'api',
             });
 
             const response = new ResponseObject().created(session, 'Session created successfully');
@@ -201,16 +204,21 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:sessionId', passport.authenticate(['jwt', 'api-token'], { session: false }), getSessionMiddleware, async (req, res) => {
-        try {
-            const response = new ResponseObject().success(req.session, 'Session retrieved successfully');
-            res.status(response.statusCode).json(response.getResponse());
-        } catch (error) {
-            debug(`Error getting session: ${error.message}`);
-            const response = new ResponseObject().serverError(error.message);
-            res.status(response.statusCode).json(response.getResponse());
-        }
-    });
+    router.get(
+        '/:sessionId',
+        passport.authenticate(['jwt', 'api-token'], { session: false }),
+        getSessionMiddleware,
+        async (req, res) => {
+            try {
+                const response = new ResponseObject().success(req.session, 'Session retrieved successfully');
+                res.status(response.statusCode).json(response.getResponse());
+            } catch (error) {
+                debug(`Error getting session: ${error.message}`);
+                const response = new ResponseObject().serverError(error.message);
+                res.status(response.statusCode).json(response.getResponse());
+            }
+        },
+    );
 
     /**
      * @swagger
@@ -237,18 +245,23 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.delete('/:sessionId', passport.authenticate(['jwt', 'api-token'], { session: false }), getSessionMiddleware, async (req, res) => {
-        try {
-            await sessionManager.endSession(req.session.id);
+    router.delete(
+        '/:sessionId',
+        passport.authenticate(['jwt', 'api-token'], { session: false }),
+        getSessionMiddleware,
+        async (req, res) => {
+            try {
+                await sessionManager.endSession(req.session.id);
 
-            const response = new ResponseObject().success(null, 'Session ended successfully');
-            res.status(response.statusCode).json(response.getResponse());
-        } catch (error) {
-            debug(`Error ending session: ${error.message}`);
-            const response = new ResponseObject().serverError(error.message);
-            res.status(response.statusCode).json(response.getResponse());
-        }
-    });
+                const response = new ResponseObject().success(null, 'Session ended successfully');
+                res.status(response.statusCode).json(response.getResponse());
+            } catch (error) {
+                debug(`Error ending session: ${error.message}`);
+                const response = new ResponseObject().serverError(error.message);
+                res.status(response.statusCode).json(response.getResponse());
+            }
+        },
+    );
 
     return router;
 }

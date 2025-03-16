@@ -8,12 +8,15 @@ const debug = debugInstance('canvas:utils:jim');
  */
 
 class JsonIndexManager {
-
-    constructor(options = {
-        rootPath: null,
-        driver: 'conf',
-    }) {
-        if (!options.rootPath) { throw new Error('rootPath is required'); }
+    constructor(
+        options = {
+            rootPath: null,
+            driver: 'conf',
+        },
+    ) {
+        if (!options.rootPath) {
+            throw new Error('rootPath is required');
+        }
 
         this.rootPath = options.rootPath;
         this.driver = options.driver;
@@ -52,8 +55,9 @@ class JsonIndexManager {
         return this.indices.get(id);
     }
 
-    listIndexes() { return Array.from(this.indices.keys()); }
-
+    listIndexes() {
+        return Array.from(this.indices.keys());
+    }
 }
 
 export default JsonIndexManager;

@@ -16,13 +16,11 @@ import env from '@/env.js';
 // User
 import User from '@/managers/user/lib/User.js';
 
-
 /**
  * User Manager
  * Manages user lifecycle and persistence
  */
 class UserManager extends EventEmitter {
-
     #rootPath;
     #db;
     #activeUsers = new Map();
@@ -54,7 +52,9 @@ class UserManager extends EventEmitter {
      * @returns {Promise<void>}
      */
     async initialize() {
-        if (this.#initialized) { return; }
+        if (this.#initialized) {
+            return;
+        }
         debug('Initializing user manager');
 
         // Ensure user root directory exists
@@ -173,7 +173,9 @@ class UserManager extends EventEmitter {
             // In a production system, we would have a secondary index for email
             for (const entry of this.#db.getRange({ prefix: 'user:' })) {
                 // Skip token entries
-                if (entry.key.includes(':token:')) continue;
+                if (entry.key.includes(':token:')) {
+                    continue;
+                }
 
                 if (entry.value && entry.value.email === email) {
                     return await this.#activateUser(entry.value);
@@ -218,7 +220,9 @@ class UserManager extends EventEmitter {
             try {
                 for (const entry of this.#db.getRange({ prefix: 'user:' })) {
                     // Skip token entries
-                    if (entry.key.includes(':token:')) continue;
+                    if (entry.key.includes(':token:')) {
+                        continue;
+                    }
 
                     const userData = entry.value;
                     // Skip if already in active users
@@ -241,7 +245,7 @@ class UserManager extends EventEmitter {
      */
     async deleteUser(id) {
         // Check if user exists
-        if (!await this.hasUser(id)) {
+        if (!(await this.hasUser(id))) {
             throw new Error(`User with ID ${id} not found`);
         }
 
@@ -277,7 +281,7 @@ class UserManager extends EventEmitter {
      */
     async updateUser(id, userData = {}) {
         // Check if user exists
-        if (!await this.hasUser(id)) {
+        if (!(await this.hasUser(id))) {
             throw new Error(`User with ID ${id} not found`);
         }
 
@@ -291,7 +295,7 @@ class UserManager extends EventEmitter {
         const updatedData = {
             ...currentData,
             ...userData,
-            updated: new Date().toISOString()
+            updated: new Date().toISOString(),
         };
 
         // Store updated data
@@ -337,10 +341,7 @@ class UserManager extends EventEmitter {
                 updated: new Date().toISOString(),
             };
 
-            await fs.writeFile(
-                path.join(userHomePath, 'user.json'),
-                JSON.stringify(userConfig, null, 2),
-            );
+            await fs.writeFile(path.join(userHomePath, 'user.json'), JSON.stringify(userConfig, null, 2));
 
             return userHomePath;
         } catch (err) {
@@ -497,7 +498,9 @@ class UserManager extends EventEmitter {
             // Get all user records from database
             for (const entry of this.#db.getRange({ prefix: 'user:' })) {
                 // Skip token entries
-                if (entry.key.includes(':token:')) continue;
+                if (entry.key.includes(':token:')) {
+                    continue;
+                }
 
                 const userData = entry.value;
                 if (userData) {

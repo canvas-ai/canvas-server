@@ -7,15 +7,12 @@ import { v4 as uuidv4 } from 'uuid';
 // Includes
 import Session from './lib/Session.js';
 
-
 /**
  * Session Manager
  * Handles user sessions and authentication
  */
 
-
 class SessionManager extends EventEmitter {
-
     #sessionStore;
     #sessionOptions;
     #sessions = new Map();
@@ -31,15 +28,16 @@ class SessionManager extends EventEmitter {
         this.#sessionStore = sessionStore;
         this.#sessionOptions = {
             sessionTimeout: 7 * 24 * 60 * 60 * 1000, // Default 7 days
-            ...sessionOptions
+            ...sessionOptions,
         };
 
         debug('Session Manager options', this.#sessionOptions);
     }
 
-
     async initialize() {
-        if (this.#initialized) { return; }
+        if (this.#initialized) {
+            return;
+        }
         debug('Initializing session manager');
 
         // Load active sessions from database
@@ -67,7 +65,7 @@ class SessionManager extends EventEmitter {
             metadata,
             createdAt: new Date(),
             lastActiveAt: new Date(),
-            isActive: true
+            isActive: true,
         };
 
         try {
@@ -177,7 +175,9 @@ class SessionManager extends EventEmitter {
     async touchSession(sessionId) {
         try {
             const session = await this.getSession(sessionId);
-            if (!session) return false;
+            if (!session) {
+                return false;
+            }
 
             session.touch();
             await session.save();
@@ -197,7 +197,9 @@ class SessionManager extends EventEmitter {
     async endSession(sessionId) {
         try {
             const session = await this.getSession(sessionId);
-            if (!session) return false;
+            if (!session) {
+                return false;
+            }
 
             session.end();
             await session.save();
@@ -227,7 +229,7 @@ class SessionManager extends EventEmitter {
 
         try {
             const userSessions = await this.getUserSessions(userId);
-            const activeSessions = userSessions.filter(session => session.isActive);
+            const activeSessions = userSessions.filter((session) => session.isActive);
 
             for (const session of activeSessions) {
                 await this.endSession(session.id);
@@ -292,7 +294,7 @@ class SessionManager extends EventEmitter {
         const lastActive = session.lastActiveAt;
         const sessionTimeout = this.#sessionOptions.sessionTimeout;
 
-        return (now - lastActive) <= sessionTimeout;
+        return now - lastActive <= sessionTimeout;
     }
 
     /**

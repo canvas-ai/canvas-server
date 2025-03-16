@@ -18,12 +18,7 @@ const DEFAULT_LOG_FILE = path.join(env.CANVAS_SERVER_VAR, 'log', 'canvas-server.
  */
 
 function createLogger(options = {}) {
-    const {
-        level = env.LOG_LEVEL || 'info',
-        filename = DEFAULT_LOG_FILE,
-        console = true,
-        format = 'default',
-    } = options;
+    const { level = env.LOG_LEVEL || 'info', filename = DEFAULT_LOG_FILE, console = true, format = 'default' } = options;
 
     // Define log formats
     const formats = {
@@ -35,10 +30,7 @@ function createLogger(options = {}) {
                 return `${timestamp}|${level}|${message}`;
             }),
         ),
-        json: winston.format.combine(
-            winston.format.timestamp(),
-            winston.format.json(),
-        ),
+        json: winston.format.combine(winston.format.timestamp(), winston.format.json()),
         // Add more formats as needed
     };
 
@@ -54,10 +46,7 @@ function createLogger(options = {}) {
     if (console) {
         transports.push(
             new winston.transports.Console({
-                format: winston.format.combine(
-                    winston.format.colorize(),
-                    winston.format.simple(),
-                ),
+                format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
             }),
         );
     }
@@ -74,10 +63,6 @@ function createLogger(options = {}) {
 const logger = createLogger();
 
 // Export the logger and utilities
-export {
-    logger,
-    createLogger,
-    createDebug,
-};
+export { logger, createLogger, createDebug };
 
 export default logger;

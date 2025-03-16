@@ -19,7 +19,7 @@ const WORKSPACE_STATUS = {
     INITIALIZED: 'initialized',
     ACTIVE: 'active',
     INACTIVE: 'inactive',
-    DELETED: 'deleted'
+    DELETED: 'deleted',
 };
 
 /**
@@ -27,7 +27,6 @@ const WORKSPACE_STATUS = {
  * Represents a workspace with configuration and resources
  */
 class Workspace extends EventEmitter {
-
     // Private properties
     #configStore;
     #db;
@@ -89,15 +88,33 @@ class Workspace extends EventEmitter {
     }
 
     // Getters
-    get db() { return this.#db; }
-    get jsonTree() { return this.tree.toJSON(); }
-    get layers() { return this.tree?.layers; }
-    get config() { return this.#configStore?.store || {}; }
-    get isConfigLoaded() { return this.#configStore !== null; }
-    get isOpen() { return this.#db !== null && this.tree !== null; }
-    get isDeleted() { return this.status === WORKSPACE_STATUS.DELETED; }
-    get isActive() { return this.status === WORKSPACE_STATUS.ACTIVE; }
-    get status() { return this.#configStore?.get('status', WORKSPACE_STATUS.INITIALIZED); }
+    get db() {
+        return this.#db;
+    }
+    get jsonTree() {
+        return this.tree.toJSON();
+    }
+    get layers() {
+        return this.tree?.layers;
+    }
+    get config() {
+        return this.#configStore?.store || {};
+    }
+    get isConfigLoaded() {
+        return this.#configStore !== null;
+    }
+    get isOpen() {
+        return this.#db !== null && this.tree !== null;
+    }
+    get isDeleted() {
+        return this.status === WORKSPACE_STATUS.DELETED;
+    }
+    get isActive() {
+        return this.status === WORKSPACE_STATUS.ACTIVE;
+    }
+    get status() {
+        return this.#configStore?.get('status', WORKSPACE_STATUS.INITIALIZED);
+    }
 
     // Status methods
     setStatus(status) {
@@ -294,8 +311,7 @@ class Workspace extends EventEmitter {
             updated: this.updated,
             acl: this.acl,
             path: this.path,
-            status: this.status
-
+            status: this.status,
         };
     }
 
@@ -342,7 +358,7 @@ class Workspace extends EventEmitter {
 
         this.#jim = new JsonIndexManager({
             rootPath: configPath,
-            driver: 'conf'
+            driver: 'conf',
         });
 
         // Create the tree and layer indexes
@@ -358,7 +374,9 @@ class Workspace extends EventEmitter {
      * @private
      */
     async #initializeTree() {
-        if (!this.#jim) { await this.#initializeJIM(); }
+        if (!this.#jim) {
+            await this.#initializeJIM();
+        }
 
         const treeIndex = this.#jim.getIndex('tree');
         const layerIndex = this.#jim.getIndex('layers');
@@ -369,15 +387,16 @@ class Workspace extends EventEmitter {
             rootLayerOptions: {
                 id: this.id, // Use workspace ID for root layer
                 type: 'universe',
-                name: '/',  // Keep as '/' for compatibility with Tree class
-                label: this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Universe Workspace'),
+                name: '/', // Keep as '/' for compatibility with Tree class
+                label:
+                    this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Universe Workspace'),
                 description: this.description || (this.name ? `Root layer for ${this.name}` : 'And then there was geometry'),
                 color: '#fff',
                 locked: true,
                 update: true,
                 created: new Date().toISOString(),
-                updated: new Date().toISOString()
-            }
+                updated: new Date().toISOString(),
+            },
         });
 
         debug(`Context tree initialized for workspace ${this.name}`);

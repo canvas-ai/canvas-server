@@ -15,7 +15,6 @@ import Url from './Url.js';
  */
 
 class Context extends EventEmitter {
-
     // Context properties
     #id;
     #name;
@@ -29,8 +28,8 @@ class Context extends EventEmitter {
     #tree; // workspace.tree
 
     // Runtime Context arrays
-    #serverContextArray = []; // server/os/linux, server/version/1.0.0, server/datetime/, server/ip/192.168.1.1
-    #clientContextArray = []; // client/os/linux, client/app/firefox, client/datetime/, client/user/john.doe
+    #serverContextArray; // server/os/linux, server/version/1.0.0, server/datetime/, server/ip/192.168.1.1
+    #clientContextArray; // client/os/linux, client/app/firefox, client/datetime/, client/user/john.doe
 
     // Bitmap arrays
     #contextBitmapArray = [];
@@ -75,6 +74,12 @@ class Context extends EventEmitter {
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
 
+        // Server Context
+        this.#serverContextArray = options.serverContextArray || [];
+
+        // Client Context
+        this.#clientContextArray = options.clientContextArray || [];
+
         // Parse the URL without switching workspaces
         // We'll handle the actual URL setting after initialization
         try {
@@ -116,19 +121,45 @@ class Context extends EventEmitter {
     }
 
     // Getters
-    get id() { return this.#id; }
-    get name() { return this.#name; }
-    get baseUrl() { return this.#baseUrl; }
-    get url() { return this.#url; }
-    get path() { return this.#path; }
-    get pathArray() { return this.#pathArray; }
-    get workspace() { return this.#workspace.id; }
-    get device() { return this.#device.id; }
-    get apps() { return this.#device.apps; }
-    get user() { return this.#user; }
-    get identity() { return this.#user.identity; }
-    get tree() { return this.#tree.toJSON(); } // Legacy
-    get pendingUrl() { return this.#pendingUrl; } // Check if there's a pending URL switch
+    get id() {
+        return this.#id;
+    }
+    get name() {
+        return this.#name;
+    }
+    get baseUrl() {
+        return this.#baseUrl;
+    }
+    get url() {
+        return this.#url;
+    }
+    get path() {
+        return this.#path;
+    }
+    get pathArray() {
+        return this.#pathArray;
+    }
+    get workspace() {
+        return this.#workspace.id;
+    }
+    get device() {
+        return this.#device.id;
+    }
+    get apps() {
+        return this.#device.apps;
+    }
+    get user() {
+        return this.#user;
+    }
+    get identity() {
+        return this.#user.identity;
+    }
+    get tree() {
+        return this.#tree.toJSON();
+    } // Legacy
+    get pendingUrl() {
+        return this.#pendingUrl;
+    } // Check if there's a pending URL switch
     get bitmapArrays() {
         return {
             server: this.#serverContextArray,
@@ -139,15 +170,31 @@ class Context extends EventEmitter {
         };
     }
 
-    get serverContextArray() { return this.#serverContextArray; }
-    get clientContextArray() { return this.#clientContextArray; }
-    get contextBitmapArray() { return this.#contextBitmapArray; }
-    get featureBitmapArray() { return this.#featureBitmapArray; }
-    get filterArray() { return this.#filterArray; }
+    get serverContextArray() {
+        return this.#serverContextArray;
+    }
+    get clientContextArray() {
+        return this.#clientContextArray;
+    }
+    get contextBitmapArray() {
+        return this.#contextBitmapArray;
+    }
+    get featureBitmapArray() {
+        return this.#featureBitmapArray;
+    }
+    get filterArray() {
+        return this.#filterArray;
+    }
 
-    get created() { return this.#created; }
-    get updated() { return this.#updated; }
-    get status() { return this.toJSON(); }
+    get created() {
+        return this.#created;
+    }
+    get updated() {
+        return this.#updated;
+    }
+    get status() {
+        return this.toJSON();
+    }
 
     /**
      * Context API
@@ -182,7 +229,7 @@ class Context extends EventEmitter {
             throw new Error('Context is locked');
         }
 
-        let parsed = new Url(url);
+        const parsed = new Url(url);
         debug(`Setting URL to ${parsed.url}`);
 
         // If the workspace ID is different, switch to the new workspace
@@ -195,7 +242,7 @@ class Context extends EventEmitter {
         debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the context bitmap array
-        this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
+        this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
 
         // Update the URL
         this.#url = parsed.url;
@@ -293,7 +340,7 @@ class Context extends EventEmitter {
 
                 // Update the context bitmap array with prefixed layers
                 // Prefix workaround till we implement propper collections in the DB
-                this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
+                this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
 
                 // Update the URL
                 this.#url = parsed.url;
@@ -352,7 +399,7 @@ class Context extends EventEmitter {
         if (!Array.isArray(featureArray)) {
             featureArray = [featureArray];
         }
-        this.#featureBitmapArray = this.#featureBitmapArray.filter(feature => !featureArray.includes(feature));
+        this.#featureBitmapArray = this.#featureBitmapArray.filter((feature) => !featureArray.includes(feature));
     }
 
     clearFeatureBitmaps() {
@@ -368,7 +415,7 @@ class Context extends EventEmitter {
             throw new Error('Workspace or database not available');
         }
 
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
 
         if (options.includeServerContext) {
             contextArray.push(this.#serverContextArray);
@@ -389,7 +436,7 @@ class Context extends EventEmitter {
             throw new Error('Workspace or database not available');
         }
 
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
 
         if (options.includeServerContext) {
             contextArray.push(this.#serverContextArray);
@@ -415,15 +462,12 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
         contextArray.push(this.#clientContextArray);
 
         // We always index with all features
-        featureArray = [
-            ...this.#featureBitmapArray,
-            ...featureArray,
-        ];
+        featureArray = [...this.#featureBitmapArray, ...featureArray];
 
         // Insert the document
         const result = this.#db.insertDocument(document, contextArray, featureArray);
@@ -441,7 +485,7 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
         contextArray.push(this.#clientContextArray);
 
@@ -461,7 +505,7 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
         contextArray.push(this.#clientContextArray);
 
@@ -482,7 +526,7 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        let contextArray = this.#contextBitmapArray;
+        const contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
         contextArray.push(this.#clientContextArray);
 
@@ -572,7 +616,6 @@ class Context extends EventEmitter {
 
         return json;
     }
-
 }
 
 export default Context;

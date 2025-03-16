@@ -53,10 +53,7 @@ export function setupSwagger() {
     const options = {
         swaggerDefinition,
         // Path to the API docs
-        apis: [
-            './src/transports/http/routes/v2/*.js',
-            './src/transports/http/routes/v2/**/*.js',
-        ],
+        apis: ['./src/transports/http/routes/v2/*.js', './src/transports/http/routes/v2/**/*.js'],
     };
 
     // Initialize swagger-jsdoc
@@ -66,10 +63,14 @@ export function setupSwagger() {
     const setupRoutes = (app) => {
         // Serve swagger docs - ensure these routes are NOT protected by authentication
         // Mount at root path to avoid authentication middleware
-        app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-            explorer: true,
-            customCss: '.swagger-ui .topbar { display: none }',
-        }));
+        app.use(
+            '/api-docs',
+            swaggerUi.serve,
+            swaggerUi.setup(swaggerSpec, {
+                explorer: true,
+                customCss: '.swagger-ui .topbar { display: none }',
+            }),
+        );
 
         // Serve swagger spec as JSON
         app.get('/api-docs.json', (req, res) => {

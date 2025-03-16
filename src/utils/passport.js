@@ -35,120 +35,126 @@ export default function configurePassport(jwtSecret, options = {}) {
     let authService = options.authService;
 
     // JWT Strategy for token-based authentication
-    passport.use('jwt', new JwtStrategy({
-        jwtFromRequest: ExtractJwt.fromExtractors([
-            ExtractJwt.fromAuthHeaderAsBearerToken(),
-            cookieExtractor,
-        ]),
-        secretOrKey: jwtSecret,
-        passReqToCallback: true,
-    }, async (req, payload, done) => {
-        try {
-            debug(`JWT strategy verification for user ID: ${payload.id}`);
+    passport.use(
+        'jwt',
+        new JwtStrategy(
+            {
+                jwtFromRequest: ExtractJwt.fromExtractors([ExtractJwt.fromAuthHeaderAsBearerToken(), cookieExtractor]),
+                secretOrKey: jwtSecret,
+                passReqToCallback: true,
+            },
+            async (req, payload, done) => {
+                try {
+                    debug(`JWT strategy verification for user ID: ${payload.id}`);
 
-            // Lazy-load userManager if not provided
-            if (!userManager && req.app && req.app.get('userManager')) {
-                userManager = req.app.get('userManager');
-            }
+                    // Lazy-load userManager if not provided
+                    if (!userManager && req.app && req.app.get('userManager')) {
+                        userManager = req.app.get('userManager');
+                    }
 
-            if (!userManager) {
-                debug('User manager not available');
-                return done(null, false);
-            }
+                    if (!userManager) {
+                        debug('User manager not available');
+                        return done(null, false);
+                    }
 
-            // Get user from UserManager
-            try {
-                const user = await userManager.getUserById(payload.id);
+                    // Get user from UserManager
+                    try {
+                        const user = await userManager.getUserById(payload.id);
 
-                if (!user) {
-                    debug(`User not found for JWT payload ID: ${payload.id}`);
-                    return done(null, false);
+                        if (!user) {
+                            debug(`User not found for JWT payload ID: ${payload.id}`);
+                            return done(null, false);
+                        }
+
+                        // Attach the original token payload to the user object
+                        const userWithPayload = {
+                            ...user.toJSON(),
+                            tokenPayload: payload,
+                        };
+
+                        debug(`JWT authentication successful for user: ${user.email}`);
+                        return done(null, userWithPayload);
+                    } catch (error) {
+                        debug(`User not found for JWT payload ID: ${payload.id}: ${error.message}`);
+                        return done(null, false);
+                    }
+                } catch (error) {
+                    debug(`Error in JWT strategy: ${error.message}`);
+                    return done(error);
                 }
-
-                // Attach the original token payload to the user object
-                const userWithPayload = {
-                    ...user.toJSON(),
-                    tokenPayload: payload
-                };
-
-                debug(`JWT authentication successful for user: ${user.email}`);
-                return done(null, userWithPayload);
-            } catch (error) {
-                debug(`User not found for JWT payload ID: ${payload.id}: ${error.message}`);
-                return done(null, false);
-            }
-        } catch (error) {
-            debug(`Error in JWT strategy: ${error.message}`);
-            return done(error);
-        }
-    }));
+            },
+        ),
+    );
 
     // API Token Strategy for custom token authentication
-    passport.use('api-token', new CustomStrategy(async (req, done) => {
-        try {
-            // Check for API token in Authorization header
-            const authHeader = req.headers.authorization;
-            if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                debug('No Bearer token found in Authorization header');
-                return done(null, false);
-            }
-
-            const tokenValue = authHeader.split(' ')[1];
-            debug(`API token authentication attempt: ${tokenValue.substring(0, 10)}...`);
-
-            // Lazy-load dependencies if not provided
-            if (!authService && req.app && req.app.get('authService')) {
-                authService = req.app.get('authService');
-            }
-
-            if (!userManager && req.app && req.app.get('userManager')) {
-                userManager = req.app.get('userManager');
-            }
-
-            if (!authService || !userManager) {
-                debug('Auth service or User manager not available');
-                return done(null, false);
-            }
-
-            // Try to verify as API token
-            const result = await authService.validateApiToken(tokenValue);
-            if (!result) {
-                debug('Invalid API token');
-                return done(null, false);
-            }
-
-            const { userId, tokenId } = result;
-
-            // Get user from UserManager
+    passport.use(
+        'api-token',
+        new CustomStrategy(async (req, done) => {
             try {
-                const user = await userManager.getUserById(userId);
-
-                if (!user) {
-                    debug(`User not found for API token: ${userId}`);
+                // Check for API token in Authorization header
+                const authHeader = req.headers.authorization;
+                if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                    debug('No Bearer token found in Authorization header');
                     return done(null, false);
                 }
 
-                // Get token details
-                const token = await authService.getApiToken(userId, tokenId);
+                const tokenValue = authHeader.split(' ')[1];
+                debug(`API token authentication attempt: ${tokenValue.substring(0, 10)}...`);
 
-                // Return the user with token info attached
-                const userWithToken = {
-                    ...user.toJSON(),
-                    tokenId: tokenId,
-                    tokenName: token ? token.name : 'Unknown Token'
-                };
+                // Lazy-load dependencies if not provided
+                if (!authService && req.app && req.app.get('authService')) {
+                    authService = req.app.get('authService');
+                }
 
-                debug(`API token authentication successful for user: ${user.email}`);
-                return done(null, userWithToken);
-            } catch (error) {
-                debug(`User not found for API token: ${error.message}`);
-                return done(null, false);
+                if (!userManager && req.app && req.app.get('userManager')) {
+                    userManager = req.app.get('userManager');
+                }
+
+                if (!authService || !userManager) {
+                    debug('Auth service or User manager not available');
+                    return done(null, false);
+                }
+
+                // Try to verify as API token
+                const result = await authService.validateApiToken(tokenValue);
+                if (!result) {
+                    debug('Invalid API token');
+                    return done(null, false);
+                }
+
+                const { userId, tokenId } = result;
+
+                // Get user from UserManager
+                try {
+                    const user = await userManager.getUserById(userId);
+
+                    if (!user) {
+                        debug(`User not found for API token: ${userId}`);
+                        return done(null, false);
+                    }
+
+                    // Get token details
+                    const token = await authService.getApiToken(userId, tokenId);
+
+                    // Return the user with token info attached
+                    const userWithToken = {
+                        ...user.toJSON(),
+                        tokenId: tokenId,
+                        tokenName: token ? token.name : 'Unknown Token',
+                    };
+
+                    debug(`API token authentication successful for user: ${user.email}`);
+                    return done(null, userWithToken);
+                } catch (error) {
+                    debug(`User not found for API token: ${error.message}`);
+                    return done(null, false);
+                }
+            } catch (err) {
+                debug(`Error in API token strategy: ${err.message}`);
+                return done(err);
             }
-        } catch (err) {
-            debug(`Error in API token strategy: ${err.message}`);
-            return done(err);
-        }
-    }));
+        }),
+    );
 
     debug('Passport strategies configured successfully');
     return passport;

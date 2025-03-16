@@ -1,4 +1,3 @@
-
 /*
 https://www.npmjs.com/package/dockerode
 container.inspect(options) - Docker API Endpoint
@@ -15,7 +14,6 @@ container.stats(options) - Docker API Endpoint
 */
 
 class Role {
-
     constructor(name, description) {
         this.name = name;
         this.description = description;
@@ -23,31 +21,29 @@ class Role {
 
     getConfig() {}
 
-    inspect() { }
+    inspect() {}
 
-    start() { }
+    start() {}
 
-    stop() { }
+    stop() {}
 
-    pause() { }
+    pause() {}
 
-    unpause() { }
+    unpause() {}
 
-    restart() { }
+    restart() {}
 
-    kill() { }
+    kill() {}
 
-    attach() { }
+    attach() {}
 
-    remove() { }
+    remove() {}
 
-    logs() { }
+    logs() {}
 
-    stats() { }
+    stats() {}
 
     status() {}
-
 }
 
 module.exports = Role;
-

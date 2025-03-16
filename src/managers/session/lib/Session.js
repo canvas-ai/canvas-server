@@ -1,5 +1,4 @@
 class Session {
-
     #id;
     #userId;
     #metadata;
@@ -35,14 +34,30 @@ class Session {
         this.#endedAt = sessionOptions.endedAt ? new Date(sessionOptions.endedAt) : null;
     }
 
-    get id() { return this.#id; }
-    get userId() { return this.#userId; }
-    get metadata() { return this.#metadata; }
-    get isActive() { return this.#isActive; }
-    get createdAt() { return this.#createdAt; }
-    get lastActiveAt() { return this.#lastActiveAt; }
-    get endedAt() { return this.#endedAt; }
-    get options() { return this.#sessionOptions; }
+    get id() {
+        return this.#id;
+    }
+    get userId() {
+        return this.#userId;
+    }
+    get metadata() {
+        return this.#metadata;
+    }
+    get isActive() {
+        return this.#isActive;
+    }
+    get createdAt() {
+        return this.#createdAt;
+    }
+    get lastActiveAt() {
+        return this.#lastActiveAt;
+    }
+    get endedAt() {
+        return this.#endedAt;
+    }
+    get options() {
+        return this.#sessionOptions;
+    }
 
     // Convert to a plain object for storage
     toJSON() {
@@ -53,7 +68,7 @@ class Session {
             isActive: this.#isActive,
             createdAt: this.#createdAt.toISOString(),
             lastActiveAt: this.#lastActiveAt.toISOString(),
-            endedAt: this.#endedAt ? this.#endedAt.toISOString() : null
+            endedAt: this.#endedAt ? this.#endedAt.toISOString() : null,
         };
     }
 
@@ -66,7 +81,7 @@ class Session {
             isActive: this.#isActive,
             createdAt: this.#createdAt,
             lastActiveAt: this.#lastActiveAt,
-            endedAt: this.#endedAt
+            endedAt: this.#endedAt,
         };
     }
 

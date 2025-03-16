@@ -11,13 +11,10 @@ import builtInLayers from './lib/builtinLayers.js';
  * Layer Index
  */
 class LayerIndex extends EventEmitter {
-
     constructor(index, rootLayerOptions = {}) {
         super(); // EventEmitter
 
-        if (!index ||
-            typeof index.set !== 'function' ||
-            typeof index.get !== 'function') {
+        if (!index || typeof index.set !== 'function' || typeof index.get !== 'function') {
             throw new Error('A Index Store reference with a Map() like interface required');
         }
         this.index = index;
@@ -28,18 +25,24 @@ class LayerIndex extends EventEmitter {
         debug(`Layer index initialized with ${this.index.size} layers`);
     }
 
-    has(id) { return this.hasLayerID(id); }
-    hasLayerID(id) { return this.index.has(id); }
-    hasLayerName(name) { return this.nameToLayerMap.has(name); }
+    has(id) {
+        return this.hasLayerID(id);
+    }
+    hasLayerID(id) {
+        return this.index.has(id);
+    }
+    hasLayerName(name) {
+        return this.nameToLayerMap.has(name);
+    }
 
     isInternalLayerName(name) {
         const layer = this.getLayerByName(name);
-        return layer && builtInLayers.find(layer => layer.name === name);
+        return layer && builtInLayers.find((layer) => layer.name === name);
     }
 
     isInternalLayerID(id) {
         const layer = this.getLayerByID(id);
-        return layer && builtInLayers.find(layer => layer.id === id);
+        return layer && builtInLayers.find((layer) => layer.id === id);
     }
 
     list() {
@@ -56,7 +59,9 @@ class LayerIndex extends EventEmitter {
                 name: name,
                 ...options,
             };
-        } else { options = name; }
+        } else {
+            options = name;
+        }
         debug(`Creating layer ${JSON.stringify(options)}`);
 
         // Check if layer already exists
@@ -73,7 +78,9 @@ class LayerIndex extends EventEmitter {
         }
 
         const layer = new Layer(options);
-        if (!layer) {throw new Error(`Failed to create layer with options ${options}`);}
+        if (!layer) {
+            throw new Error(`Failed to create layer with options ${options}`);
+        }
 
         this.#addLayerToIndex(layer, !this.isInternalLayerID(layer.id));
         return layer;
@@ -90,8 +97,12 @@ class LayerIndex extends EventEmitter {
 
     updateLayer(name, options) {
         const layer = this.getLayerByName(name);
-        if (!layer) {return false;}
-        if (layer.locked) {throw new Error('Layer is locked');}
+        if (!layer) {
+            return false;
+        }
+        if (layer.locked) {
+            throw new Error('Layer is locked');
+        }
         Object.assign(layer, options);
         this.index.set(layer.id, layer);
         return true;
@@ -99,7 +110,9 @@ class LayerIndex extends EventEmitter {
 
     renameLayer(name, newName) {
         const layer = this.getLayerByName(name);
-        if (layer.locked) {throw new Error('Layer is locked');}
+        if (layer.locked) {
+            throw new Error('Layer is locked');
+        }
         if (layer.setName(newName)) {
             this.nameToLayerMap.deleteSync(name);
             this.nameToLayerMap.set(newName, layer);
@@ -108,20 +121,26 @@ class LayerIndex extends EventEmitter {
     }
 
     removeLayer(layer) {
-        if (layer.locked) {throw new Error('Layer is locked');}
+        if (layer.locked) {
+            throw new Error('Layer is locked');
+        }
         this.index.delete(layer.id);
         this.nameToLayerMap.deleteSync(layer.name);
     }
 
     removeLayerByID(id) {
         const layer = this.getLayerByID(id);
-        if (layer.locked) {throw new Error('Layer is locked');}
+        if (layer.locked) {
+            throw new Error('Layer is locked');
+        }
         return layer ? this.removeLayer(layer) : false;
     }
 
     removeLayerByName(name) {
         const layer = this.getLayerByName(name);
-        if (layer.locked) {throw new Error('Layer is locked');}
+        if (layer.locked) {
+            throw new Error('Layer is locked');
+        }
         return layer ? this.removeLayer(layer) : false;
     }
 
