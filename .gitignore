@@ -9,10 +9,10 @@
 /server/**
 !/server/config/example-*.json
 !/server/config/default-*.json
-
-# Data directories
 /data/**
 /user/**
+/users/**
+/multiverse/**
 
 # Test files and directories(well, non-production files)
 tests/**
@@ -23,6 +23,7 @@ _test*
 /.vscode
 /.fossil-settings
 /_SCRATCH_
+/_OLD_
 
 # Logs
 *.log
