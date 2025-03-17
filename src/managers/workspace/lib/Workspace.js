@@ -151,20 +151,20 @@ class Workspace extends EventEmitter {
         return this.tree.toJSON();
     }
 
-    insertPath(path, options = {}) {
-        return this.tree.insert(path, options);
+    insertPath(path) {
+        return this.tree.insert(path);
     }
 
-    removePath(path, options = {}) {
-        return this.tree.remove(path, options);
+    removePath(path, recursive) {
+        return this.tree.remove(path, recursive);
     }
 
-    movePath(pathFrom, pathTo, options = {}) {
-        return this.tree.move(pathFrom, pathTo, options);
+    movePath(pathFrom, pathTo, recursive) {
+        return this.tree.move(pathFrom, pathTo, recursive);
     }
 
-    copyPath(pathFrom, pathTo, options = {}) {
-        return this.tree.copy(pathFrom, pathTo, options);
+    copyPath(pathFrom, pathTo, recursive) {
+        return this.tree.copy(pathFrom, pathTo, recursive);
     }
 
     pathToIdArray(path) {

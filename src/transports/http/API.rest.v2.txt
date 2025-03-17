@@ -12,39 +12,92 @@ baseUrl: /rest/v2
 │   ├── /forgot-password
 │   ├── /reset-password
 │   ├── /verify-email
-│   └── /verify-email/:token
+│   ├── /verify-email/:token
+│   ├── /tokens [GET] - Get all tokens for the current user
+│   ├── /tokens [POST] - Create a new token
+│   ├── /tokens/:tokenId [DELETE] - Delete a token
+│   ├── /tokens/:tokenId [PUT] - Update a token
+│   ├── /token/verify [POST] - Verify a token without requiring authentication
 │
 ├── /admin
 │   ├── /users [GET] - Get all users (admin only)
+│   ├── /users [POST] - Create a new user (admin only)
 │   ├── /users/:id [GET] - Get a specific user (admin only)
 │   ├── /users/:id [PUT] - Update a user (admin only)
+│   ├── /users/:id [DELETE] - Delete a user (admin only)
+│   ├── /users/:id/status [PUT] - Update a user's status (admin only)
+│   ├── /users/:id/tokens [GET] - Get all tokens for a user (admin only)
+│   ├── /users/:id/tokens/:tokenId [DELETE] - Delete a token for a user (admin only)
+│   ├── /users/:id/tokens/:tokenId [PUT] - Update a token for a user (admin only)
 │   └── /users/:id/password [PUT] - Update a user's password (admin only)
 │
 ├── /users
 │   ├── /:id
+│   ├── /:id/status
+│   ├── /:id/start-container
+│   ├── /:id/stop-container
+│   ├── /:id/restart-container
+│   ├── /:id/logs
+│   ├── /:id/apps
+│   ├── /:id/roles
+│   ├── /:id/agents
+│   ├── /:id/minions
+│   ├── /:id/devices
+│   ├── /:id/identities
+│   ├── /:id/tokens
 │   ├── /:id/workspaces
 │   ├── /:id/contexts
 │   └── /:id/sessions
 │
 ├── /workspaces
 │   ├── /:id
-│   ├── /:id/documents
-│   ├── /:id/documents/by-id/:id
-│   ├── /:id/documents/by-abstraction/:abstraction
-│   ├── /:id/documents/by-hash/:hashString
-│   ├── /:id/documents/query
-│   ├── /:id/tree
-│   ├── /:id/tree/layers
-│   └── /:id/tree/layers/:layerId
-│   └── /:id/tree/copy
-│   └── /:id/tree/move
-│   └── /:id/tree/remove
-│   └── /:id/tree/merge
-│   └── /:id/tree/subtract
+│   ├── /:id/status
+│   ├── /:id/open
+│   ├── /:id/close
+│   ├── /:id/query [GET] - Natural language query for workspace information
+│   ├── /:id/apps [GET] - List apps in workspace
+│   ├── /:id/apps/:appId [GET] - Get app by ID
+│   ├── /:id/apps/:appId [POST] - Assign an app to a workspace
+│   ├── /:id/apps/:appId [PUT] - Update app in workspace
+│   ├── /:id/apps/:appId [DELETE] - Delete app from workspace
+│   ├── /:id/roles [GET] - List roles in workspace
+│   ├── /:id/roles/:roleId [GET] - Get role by ID
+│   ├── /:id/roles/:roleId [POST] - Assign a role to a workspace
+│   ├── /:id/roles/:roleId [PUT] - Update role in workspace
+│   ├── /:id/roles/:roleId [DELETE] - Delete role from workspace
+│   ├── /:id/agents [GET] - List agents in workspace
+│   ├── /:id/agents/:agentId [GET] - Get agent by ID
+│   ├── /:id/agents/:agentId [POST] - Assign an agent to a workspace
+│   ├── /:id/agents/:agentId [PUT] - Update agent in workspace
+│   ├── /:id/agents/:agentId [DELETE] - Delete agent from workspace
+│   ├── /:id/minions [GET] - List minions in workspace
+│   ├── /:id/minions/:minionId [GET] - Get minion by ID
+│   ├── /:id/minions/:minionId [POST] - Assign a minion to a workspace
+│   ├── /:id/minions/:minionId [PUT] - Update minion in workspace
+│   ├── /:id/minions/:minionId [DELETE] - Delete minion from workspace
+│   ├── /:id/documents [GET] - List documents in workspace
+│   ├── /:id/documents [POST] - Insert documents into workspace
+│   ├── /:id/documents [PUT] - Update documents in workspace
+│   ├── /:id/documents [DELETE] - Delete documents from workspace
+│   ├── /:id/documents/remove [DELETE] - Remove documents from workspace
+│   ├── /:id/documents/by-id/:id [GET] - Get document by ID
+│   ├── /:id/documents/by-abstraction/:abstraction [GET] - Get documents by abstraction
+│   ├── /:id/documents/by-hash/:hashString [GET] - Get documents by hash string
+│   ├── /:id/tree [GET] - Get workspace tree
+│   ├── /:id/tree/layers [GET] - Get workspace layers
+│   ├── /:id/tree/layers/:layerId [GET] - Get workspace layer by ID
+│   ├── /:id/tree/insert [POST] - Insert a path into the workspace tree
+│   ├── /:id/tree/copy [POST] - Copy workspace layer
+│   ├── /:id/tree/move [POST] - Move workspace layer
+│   ├── /:id/tree/remove [POST] - Remove workspace layer
+│   ├── /:id/tree/merge [POST] - Merge workspace layers
+│   ├── /:id/tree/subtract [POST] - Subtract workspace layers
+│   └── /:id/tree/intersect [POST] - Intersect workspace layers
 │
 ├── /contexts
 │   ├── / [GET] - List all contexts
 │   ├── /:id [GET] - Get context by ID
+│   ├── /:id/query [GET] - Natural language query for context information
 │   ├── /:id/url [GET] - Get context URL
 │   ├── /:id/url [POST] - Set context URL
 │   ├── /:id/base_url [GET] - Get context base URL
@@ -78,14 +131,7 @@ baseUrl: /rest/v2
 │   ├── /:id/documents/remove [DELETE] - Remove documents from context
 │   ├── /:id/documents/by-id/:id [GET] - Get document by ID
 │   ├── /:id/documents/by-abstraction/:abstraction [GET] - Get documents by abstraction
-│   ├── /:id/documents/by-hash/:hashString [GET] - Get documents by hash string
-│   └── /:id/query [GET] - Natural language query for context information
-│
-├── /documents
-│   ├── /schemas
-│   ├── /by-id/:id
-│   ├── /by-abstraction/:abstraction
-│   └── /by-hash/:hashString
+│   └── /:id/documents/by-hash/:hashString [GET] - Get documents by hash string
 │
 ├── /roles
 │   ├── /:id

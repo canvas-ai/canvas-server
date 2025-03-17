@@ -2,15 +2,7 @@ import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:layer');
 
 import { uuid12 } from '@/utils/common.js';
-
-const LAYER_TYPES = [
-    'universe', // Root layer for a workspace
-    'system', // System layers (canvas, device, user, session)
-    'workspace', // "Mountpoint" to a workspace
-    'canvas', // Can store context, feature and filter bitmaps + dashboard / UI layouts
-    'context', // Has context bitmaps only
-    'label', // Label only (no associated bitmaps)
-];
+import { LAYER_TYPES } from '../index.js';
 
 class Layer {
     constructor(options) {

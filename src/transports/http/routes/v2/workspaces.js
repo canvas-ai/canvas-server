@@ -568,5 +568,53 @@ export default function workspacesRoutes(options) {
         }
     });
 
+    /**
+     * @swagger
+     * /{id}/tree:
+     *   get:
+     *     summary: Get the JSON tree structure of a workspace
+     *     tags: [Workspaces]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Workspace ID
+     *     responses:
+     *       200:
+     *         description: JSON tree structure of the workspace
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *       401:
+     *         description: Unauthorized
+     *       403:
+     *         description: Access denied
+     *       404:
+     *         description: Workspace not found
+     *       500:
+     *         description: Server error
+     */
+    router.get('/:id/tree', async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            const workspace = await req.workspaceManager.getWorkspace(id);
+            if (!workspace) {
+                return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
+            }
+
+            const tree = workspace.jsonTree;
+            const response = new ResponseObject().success(tree, 'Workspace tree retrieved successfully');
+            debug(`Workspace tree: ${JSON.stringify(tree, null, 2)}`);
+            return res.status(200).json(response.getResponse());
+        } catch (err) {
+            debug(`Error getting workspace tree: ${err.message}`);
+            return res.status(500).json(new ResponseObject(null, err.message, 500));
+        }
+    });
+
     return router;
 }

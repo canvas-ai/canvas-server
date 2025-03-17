@@ -3,6 +3,16 @@ import EventEmitter from 'eventemitter2';
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:layer-manager');
 
+// Constants
+const LAYER_TYPES = [
+    'universe', // Root layer for a workspace
+    'system', // System layers (canvas, device, user, session)
+    'workspace', // "Mountpoint" to a workspace
+    'canvas', // Can store context, feature and filter bitmaps + dashboard / UI layouts
+    'context', // Has context bitmaps only
+    'label', // Label only (no associated bitmaps)
+];
+
 // Includes
 import Layer from './lib/Layer.js';
 import builtInLayers from './lib/builtinLayers.js';
@@ -63,6 +73,11 @@ class LayerIndex extends EventEmitter {
             options = name;
         }
         debug(`Creating layer ${JSON.stringify(options)}`);
+
+        // Check if layer type is valid
+        if (options.type && !LAYER_TYPES.includes(options.type)) {
+            throw new Error(`Invalid layer type: ${options.type}`);
+        }
 
         // Check if layer already exists
         if (this.hasLayerName(options.name)) {
@@ -192,3 +207,4 @@ class LayerIndex extends EventEmitter {
 }
 
 export default LayerIndex;
+export { LAYER_TYPES };
