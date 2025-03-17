@@ -639,7 +639,7 @@ class Server extends EventEmitter {
 // Create server instance
 const server = new Server();
 
-// Export Server
+// Export Server as singleton
 export default server;
 
 // Export managers for convenience
