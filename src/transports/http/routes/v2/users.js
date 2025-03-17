@@ -137,6 +137,46 @@ export default function usersRoutes(options) {
 
     /**
      * @swagger
+     * /current:
+     *   get:
+     *     summary: Get the current authenticated user
+     *     tags: [Users]
+     *     responses:
+     *       200:
+     *         description: Current user retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/User'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.get('/current', async (req, res) => {
+        try {
+            if (!req.user || !req.user.id) {
+                return res.status(401).json(new ResponseObject().unauthorized('Unauthorized'));
+            }
+
+            const userId = req.user.id;
+            debug(`Getting current user with ID: ${userId}`);
+
+            const user = await userManager.getUser(userId);
+            if (!user) {
+                debug(`Current user not found with ID: ${userId}`);
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            }
+
+            return res.json(new ResponseObject().success(user));
+        } catch (err) {
+            debug(`Error getting current user: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
+        }
+    });
+
+    /**
+     * @swagger
      * /:
      *   get:
      *     summary: List all users

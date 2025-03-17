@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { ChevronRight, ChevronDown, FileIcon, FolderIcon } from 'lucide-react';
+import { ChevronRight, ChevronDown, FileIcon, FolderIcon, File } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
 } from './ui/context-menu';
 import { TreeNode, DragItem, TreeContextMenuActions } from '../types/tree';
 import { cn } from '../lib/utils';
@@ -17,6 +20,8 @@ interface TreeNodeProps {
   onNodeMove: (draggedId: string, targetId: string) => void;
   contextMenuActions: TreeContextMenuActions;
   level: number;
+  expandedNodes: Set<string>;
+  onNodeToggle: (nodeId: string) => void;
 }
 
 export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
@@ -25,8 +30,10 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   onNodeMove,
   contextMenuActions,
   level,
+  expandedNodes,
+  onNodeToggle,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isExpanded = expandedNodes.has(node.id);
 
   const [{ isDragging }, drag] = useDrag({
     type: 'TREE_NODE',
@@ -49,7 +56,7 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
+    onNodeToggle(node.id);
   };
 
   const getIcon = () => {
@@ -57,7 +64,9 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
       case 'context':
         return <FolderIcon className="w-4 h-4 mr-2" />;
       case 'canvas':
+        return <File className="w-4 h-4 mr-2" />;
       case 'workspace':
+      case 'universe':
         return <FileIcon className="w-4 h-4 mr-2" />;
       default:
         return null;
@@ -105,7 +114,60 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
           <ContextMenuItem onClick={() => contextMenuActions.onPaste(node.id)}>
             Paste
           </ContextMenuItem>
+          <ContextMenuItem onClick={() => contextMenuActions.onMove(node.id)}>
+            Move
+          </ContextMenuItem>
           <ContextMenuSeparator />
+
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Create</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onClick={() => contextMenuActions.onCreateLayer(node.id)}>
+                Create Layer
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => contextMenuActions.onCreateCanvas(node.id)}>
+                Create Canvas
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Path</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onClick={() => contextMenuActions.onInsertPath(node.id)}>
+                Insert Path
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => contextMenuActions.onRemovePath(node.id)}>
+                Remove Path
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          <ContextMenuSeparator />
+
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Rename</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onClick={() => contextMenuActions.onRenameLayer(node.id)}>
+                Rename Layer
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => contextMenuActions.onRenameCanvas(node.id)}>
+                Rename Canvas
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Remove</ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onClick={() => contextMenuActions.onRemoveCanvas(node.id)}>
+                Remove Canvas
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          <ContextMenuSeparator />
+
           <ContextMenuItem onClick={() => contextMenuActions.onMergeUp(node.id)}>
             Merge Up
           </ContextMenuItem>
@@ -125,6 +187,8 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
               onNodeMove={onNodeMove}
               contextMenuActions={contextMenuActions}
               level={level + 1}
+              expandedNodes={expandedNodes}
+              onNodeToggle={onNodeToggle}
             />
           ))}
         </div>

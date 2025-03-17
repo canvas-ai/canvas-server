@@ -56,6 +56,7 @@ class HttpRestTransport {
     #canvasServer;
     #app;
     #connections = new Set();
+    #wsTransport; // Reference to WebSocket transport
 
     constructor(options = {}) {
         debug('Initializing HTTP Transport');
@@ -134,14 +135,30 @@ class HttpRestTransport {
         next();
     }
 
+    /**
+     * Set the Canvas server instance
+     * @param {Object} server - Canvas server instance
+     */
     setCanvasServer(server) {
+        debug('Setting Canvas server instance');
         this.#canvasServer = server;
     }
 
+    /**
+     * Set the WebSocket transport reference
+     * This allows HTTP routes to broadcast events via WebSockets
+     * @param {Object} wsTransport - WebSocket transport instance
+     */
+    setWebSocketTransport(wsTransport) {
+        debug('Setting WebSocket transport reference');
+        this.#wsTransport = wsTransport;
+    }
+
+    /**
+     * Get the server instance
+     * @returns {http.Server} HTTP server instance
+     */
     getServer() {
-        if (!this.#server) {
-            return null;
-        }
         return this.#server;
     }
 
@@ -157,6 +174,13 @@ class HttpRestTransport {
 
         const app = express();
         this.#app = app;
+
+        // Store reference to WebSocket transport in app.locals
+        // This makes it accessible to all routes
+        if (this.#wsTransport) {
+            debug('Adding WebSocket transport reference to app.locals');
+            app.locals.wsTransport = this.#wsTransport;
+        }
 
         // Set up middleware
         app.use(express.json());

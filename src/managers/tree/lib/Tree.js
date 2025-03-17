@@ -45,7 +45,7 @@ class Tree extends EventEmitter {
         debug('Context tree initialized');
         debug(JSON.stringify(this.buildJsonTree(), null, 2));
 
-        this.emit('ready');
+        this.emit('tree:ready');
     }
 
     // =======================================================================
@@ -105,6 +105,7 @@ class Tree extends EventEmitter {
         let currentNode = this.root;
         let child;
         const layerIds = [];
+        const createdLayers = [];
 
         const layerNames = path.split('/').filter(Boolean);
         for (const layerName of layerNames) {
@@ -116,6 +117,7 @@ class Tree extends EventEmitter {
             if (!layer) {
                 if (autoCreateLayers) {
                     layer = this.dblayers.createLayer(layerName);
+                    createdLayers.push(layer);
                 } else {
                     debug(`Layer "${layerName}" not found at path "${path} and autoCreateLayers is disabled"`);
                     return [];
@@ -142,6 +144,18 @@ class Tree extends EventEmitter {
 
         this.save();
         debug(`Path "${path}" inserted successfully.`);
+
+        // Emit an event with the path and created layers
+        this.emit('tree:path:inserted', {
+            path,
+            layerIds,
+            createdLayers: createdLayers.map(layer => ({
+                id: layer.id,
+                name: layer.name,
+                type: layer.type
+            }))
+        });
+
         return layerIds;
     }
 
@@ -200,6 +214,17 @@ class Tree extends EventEmitter {
         // Remove node from its old location
         parentNode.removeChild(node.id);
         this.save();
+
+        // Emit an event with the source and destination paths
+        this.emit('tree:path:moved', {
+            pathFrom,
+            pathTo,
+            recursive,
+            layerId: layer.id,
+            layerName: layer.name,
+            layerType: layer.type
+        });
+
         return true;
     }
 
@@ -239,6 +264,17 @@ class Tree extends EventEmitter {
         }
 
         this.save();
+
+        // Emit an event with the source and destination paths
+        this.emit('tree:path:copied', {
+            pathFrom,
+            pathTo,
+            recursive,
+            layerId: layer.id,
+            layerName: layer.name,
+            layerType: layer.type
+        });
+
         return true;
     }
 
@@ -263,6 +299,9 @@ class Tree extends EventEmitter {
             throw new Error(`Unable to remove layer, parent node not found at path "${parentPath}"`);
         }
 
+        const layer = node.payload;
+        const childrenCount = node.children.size;
+
         // If non-recursive and node has children, move them to parent
         if (!recursive && node.hasChildren) {
             for (const child of node.children.values()) {
@@ -272,6 +311,18 @@ class Tree extends EventEmitter {
 
         parentNode.removeChild(node.id);
         this.save();
+
+        // Emit an event with path and removal details
+        this.emit('tree:path:removed', {
+            path,
+            recursive,
+            layerId: layer.id,
+            layerName: layer.name,
+            layerType: layer.type,
+            hadChildren: childrenCount > 0,
+            childrenCount
+        });
+
         return true;
     }
 
@@ -283,6 +334,20 @@ class Tree extends EventEmitter {
     mergeUp(path) {
         debug(`[PLACEHOLDER] Merging layer at "${path}" with layers above it`);
         // TODO: Implement bitmap merging logic
+
+        const node = this.getNode(path);
+        if (!node) {
+            debug(`Unable to merge layer, node not found at path "${path}"`);
+            return false;
+        }
+
+        // Emit an event for the merge operation
+        this.emit('tree:layer:merged:up', {
+            path,
+            layerId: node.id,
+            layerName: node.name
+        });
+
         return true;
     }
 
@@ -294,6 +359,20 @@ class Tree extends EventEmitter {
     mergeDown(path) {
         debug(`[PLACEHOLDER] Merging layer at "${path}" with layers below it`);
         // TODO: Implement bitmap merging logic
+
+        const node = this.getNode(path);
+        if (!node) {
+            debug(`Unable to merge layer, node not found at path "${path}"`);
+            return false;
+        }
+
+        // Emit an event for the merge operation
+        this.emit('tree:layer:merged:down', {
+            path,
+            layerId: node.id,
+            layerName: node.name
+        });
+
         return true;
     }
 
@@ -309,7 +388,18 @@ class Tree extends EventEmitter {
      */
     renameLayer(name, newName) {
         debug(`Renaming layer "${name}" to "${newName}"`);
-        return this.dblayers.renameLayer(name, newName);
+        const result = this.dblayers.renameLayer(name, newName);
+
+        if (result) {
+            const layer = this.dblayers.getLayerByName(newName);
+            this.emit('tree:layer:renamed', {
+                oldName: name,
+                newName,
+                layerId: layer.id
+            });
+        }
+
+        return result;
     }
 
     /**
@@ -320,7 +410,18 @@ class Tree extends EventEmitter {
      */
     updateLayer(name, options) {
         debug(`Updating layer "${name}" with options: ${JSON.stringify(options)}`);
-        return this.dblayers.updateLayer(name, options);
+        const result = this.dblayers.updateLayer(name, options);
+
+        if (result) {
+            const layer = this.dblayers.getLayerByName(name);
+            this.emit('tree:layer:updated', {
+                name,
+                layerId: layer.id,
+                updates: options
+            });
+        }
+
+        return result;
     }
 
     /**
@@ -330,11 +431,25 @@ class Tree extends EventEmitter {
      */
     deleteLayer(layerName) {
         debug(`Deleting layer "${layerName}" from database`);
+
+        const layer = this.dblayers.getLayerByName(layerName);
+        if (!layer) {
+            return false;
+        }
+
+        const layerId = layer.id;
+
         // This requires a full tree recalculation
         const success = this.dblayers.removeLayerByName(layerName);
         if (success) {
             this.recalculateTree();
+
+            this.emit('tree:layer:deleted', {
+                name: layerName,
+                layerId
+            });
         }
+
         return success;
     }
 
@@ -364,6 +479,15 @@ class Tree extends EventEmitter {
         }
 
         debug(`Layer created: ${layer.name} (${layer.id})`);
+
+        // Emit a layer created event
+        this.emit('tree:layer:created', {
+            id: layer.id,
+            name: layer.name,
+            type: layer.type,
+            options
+        });
+
         return layer;
     }
 
@@ -399,9 +523,22 @@ class Tree extends EventEmitter {
         try {
             this.dbtree.set('tree', data);
             debug('Tree saved successfully.');
+
+            // Emit a save event
+            this.emit('tree:saved', {
+                timestamp: new Date().toISOString()
+            });
+
             return true;
         } catch (error) {
             debug(`Error saving tree to database: ${error.message}`);
+
+            // Emit an error event
+            this.emit('tree:error', {
+                operation: 'save',
+                error: error.message
+            });
+
             throw error;
         }
     }
@@ -419,6 +556,12 @@ class Tree extends EventEmitter {
         }
 
         this.root = this.#buildTreeFromJson(json);
+
+        // Emit a load event
+        this.emit('tree:loaded', {
+            timestamp: new Date().toISOString()
+        });
+
         return true;
     }
 
@@ -429,6 +572,11 @@ class Tree extends EventEmitter {
         debug('Clearing context tree');
         this.root = new TreeNode(this.rootLayer.id, this.rootLayer);
         this.save();
+
+        // Emit a clear event
+        this.emit('tree:cleared', {
+            timestamp: new Date().toISOString()
+        });
     }
 
     /**
@@ -445,16 +593,21 @@ class Tree extends EventEmitter {
             return createLayerInfo(this.dblayers.getLayerByID(currentNode.id) || this.rootLayer, children);
         };
 
-        const createLayerInfo = (payload, children = []) => ({
-            id: payload.id,
-            type: payload.type,
-            name: payload.name,
-            label: payload.label,
-            description: payload.description,
-            color: payload.color,
-            locked: payload.locked,
-            children,
-        });
+        const createLayerInfo = (payload, children = []) => {
+            // Normalize the name to avoid issues with paths
+            const normalizedName = payload.name === '/' ? '' : payload.name;
+
+            return {
+                id: payload.id,
+                type: payload.type,
+                name: normalizedName, // Use normalized name
+                label: payload.label,
+                description: payload.description,
+                color: payload.color,
+                locked: payload.locked,
+                children
+            };
+        };
 
         return buildTree(node);
     }
@@ -484,6 +637,11 @@ class Tree extends EventEmitter {
         rebuildTree(this.root, newRoot);
         this.root = newRoot;
         this.save();
+
+        // Emit a recalculation event
+        this.emit('tree:recalculated', {
+            timestamp: new Date().toISOString()
+        });
     }
 
     // =======================================================================

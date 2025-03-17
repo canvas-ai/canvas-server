@@ -92,7 +92,7 @@ class Workspace extends EventEmitter {
         return this.#db;
     }
     get jsonTree() {
-        return this.tree.toJSON();
+        return this.tree.jsonTree   ;
     }
     get layers() {
         return this.tree?.layers;
@@ -151,24 +151,261 @@ class Workspace extends EventEmitter {
         return this.tree.toJSON();
     }
 
-    insertPath(path) {
-        return this.tree.insert(path);
+    insertPath(path, data = null, autoCreateLayers = true) {
+        const result = this.tree.insertPath(path, data, autoCreateLayers);
+        this.emit('workspace:tree:updated', {
+            operation: 'insertPath',
+            path,
+            tree: this.jsonTree
+        });
+        return {
+            layerIds: result,
+            tree: this.jsonTree
+        };
     }
 
     removePath(path, recursive) {
-        return this.tree.remove(path, recursive);
+        const result = this.tree.removePath(path, recursive);
+        if (result) {
+            this.emit('workspace:tree:updated', {
+                operation: 'removePath',
+                path,
+                recursive,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            tree: result ? this.jsonTree : null
+        };
     }
 
     movePath(pathFrom, pathTo, recursive) {
-        return this.tree.move(pathFrom, pathTo, recursive);
+        const result = this.tree.movePath(pathFrom, pathTo, recursive);
+        if (result) {
+            this.emit('workspace:tree:updated', {
+                operation: 'movePath',
+                pathFrom,
+                pathTo,
+                recursive,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            tree: result ? this.jsonTree : null
+        };
     }
 
     copyPath(pathFrom, pathTo, recursive) {
-        return this.tree.copy(pathFrom, pathTo, recursive);
+        const result = this.tree.copyPath(pathFrom, pathTo, recursive);
+        if (result) {
+            this.emit('workspace:tree:updated', {
+                operation: 'copyPath',
+                pathFrom,
+                pathTo,
+                recursive,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            tree: result ? this.jsonTree : null
+        };
     }
 
     pathToIdArray(path) {
         return this.tree.pathToIdArray(path);
+    }
+
+    mergeUp(path) {
+        const result = this.tree.mergeUp(path);
+        if (result) {
+            this.emit('workspace:tree:updated', {
+                operation: 'mergeUp',
+                path,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            tree: result ? this.jsonTree : null
+        };
+    }
+
+    mergeDown(path) {
+        const result = this.tree.mergeDown(path);
+        if (result) {
+            this.emit('workspace:tree:updated', {
+                operation: 'mergeDown',
+                path,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            tree: result ? this.jsonTree : null
+        };
+    }
+
+    /**
+     * Get a workspace layer by name
+     * @param {string} name - Layer name
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayer(name) {
+        return this.tree.getLayer(name);
+    }
+
+    /**
+     * Get a workspace layer by ID
+     * @param {string} id - Layer ID
+     * @returns {Object} - Layer object or null if not found
+     */
+    getLayerById(id) {
+        return this.tree.getLayerById(id);
+    }
+
+    /**
+     * Get all paths in the workspace tree
+     * @returns {Array} - Array of paths
+     */
+    get paths() {
+        return this.tree.paths;
+    }
+
+    /**
+     * Insert a canvas layer at a specified path
+     * @param {string} path - Parent path where to insert the canvas
+     * @param {string} canvasName - Name of the canvas
+     * @param {Object} options - Canvas options
+     * @returns {Object} - Result with canvas ID and updated tree
+     */
+    insertCanvas(path, canvasName, options = {}) {
+        const canvasLayer = this.createLayer({
+            name: canvasName,
+            type: 'canvas',
+            ...options
+        });
+
+        const canvasPath = path === '/' ? `/${canvasName}` : `${path}/${canvasName}`;
+        this.tree.insertPath(canvasPath);
+
+        this.emit('workspace:tree:updated', {
+            operation: 'insertCanvas',
+            path,
+            canvasName,
+            canvasId: canvasLayer.id,
+            tree: this.jsonTree
+        });
+
+        return {
+            canvasId: canvasLayer.id,
+            path: canvasPath,
+            canvasName,
+            tree: this.jsonTree
+        };
+    }
+
+    /**
+     * Insert a Workspace reference at a specified path
+     * @param {string} path - Parent path where to insert the workspace reference
+     * @param {string} workspaceName - Name of the workspace reference
+     * @param {string} targetWorkspaceId - ID of the target workspace
+     * @param {Object} options - Workspace options
+     * @returns {Object} - Result with workspace ID and updated tree
+     */
+    insertWorkspace(path, workspaceName, targetWorkspaceId, options = {}) {
+        const workspaceLayer = this.createLayer({
+            name: workspaceName,
+            type: 'workspace',
+            metadata: {
+                targetWorkspaceId
+            },
+            ...options
+        });
+
+        const workspacePath = path === '/' ? `/${workspaceName}` : `${path}/${workspaceName}`;
+        this.tree.insertPath(workspacePath);
+
+        this.emit('workspace:tree:updated', {
+            operation: 'insertWorkspace',
+            path,
+            workspaceName,
+            targetWorkspaceId,
+            workspaceId: workspaceLayer.id,
+            tree: this.jsonTree
+        });
+
+        return {
+            workspaceId: workspaceLayer.id,
+            path: workspacePath,
+            workspaceName,
+            targetWorkspaceId,
+            tree: this.jsonTree
+        };
+    }
+
+    /**
+     * Tree layer methods
+     */
+
+    createLayer(options) {
+        const layer = this.tree.createLayer(options);
+        this.emit('workspace:layer:created', {
+            layer,
+            tree: this.jsonTree
+        });
+        return layer;
+    }
+
+    renameLayer(name, newName) {
+        const result = this.tree.renameLayer(name, newName);
+        if (result) {
+            this.emit('workspace:layer:renamed', {
+                oldName: name,
+                newName,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            oldName: name,
+            newName: result ? newName : null,
+            tree: result ? this.jsonTree : null
+        };
+    }
+
+    updateLayer(name, options) {
+        const result = this.tree.updateLayer(name, options);
+        if (result) {
+            this.emit('workspace:layer:updated', {
+                name,
+                options,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            name,
+            options: result ? options : null,
+            tree: result ? this.jsonTree : null
+        };
+    }
+
+    deleteLayer(name) {
+        const result = this.tree.deleteLayer(name);
+        if (result) {
+            this.emit('workspace:layer:deleted', {
+                name,
+                tree: this.jsonTree
+            });
+        }
+        return {
+            success: result,
+            name,
+            tree: result ? this.jsonTree : null
+        };
     }
 
     /**

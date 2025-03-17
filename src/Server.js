@@ -105,6 +105,15 @@ class Server extends EventEmitter {
     get sessionManager() {
         return sessionManager;
     }
+    get workspaceManager() {
+        // The userManager doesn't have a getCurrentUser method
+        // Instead, return null for now - the individual route handlers
+        // will get the workspace manager from the user when needed
+        return null;
+
+        // For routes, the workspaceManager is usually accessed like:
+        // req.workspaceManager or from the current user instance
+    }
 
     // Database getter
     get db() {
@@ -388,56 +397,78 @@ class Server extends EventEmitter {
     }
 
     /**
-     * Start transports
+     * Start the transports
      * @private
      */
     async #startTransports() {
-        debug('Starting transports..');
-        logger.info('Starting transports..');
-        const errors = [];
+        debug('Starting transports...');
+        const transportNames = Array.from(this.#transports.keys());
+        debug(`Found ${transportNames.length} transports: ${transportNames.join(', ')}`);
 
-        // First, start the HTTP transport if it exists
-        const httpTransport = this.#transports.get('http');
-        let httpServer = null;
+        // Variables to store references to HTTP and WebSocket transports
+        let httpTransport = null;
+        let wsTransport = null;
 
+        // Find HTTP and WebSocket transports if available
+        for (const [name, transport] of this.#transports.entries()) {
+            if (name === 'http') {
+                httpTransport = transport;
+            } else if (name === 'ws') {
+                wsTransport = transport;
+            }
+        }
+
+        // Connect HTTP transport to WebSocket transport if both are available
+        if (httpTransport && wsTransport) {
+            debug('Connecting HTTP transport to WebSocket transport');
+            httpTransport.setWebSocketTransport(wsTransport);
+        }
+
+        // Start HTTP transport first if available
         if (httpTransport) {
+            debug('Starting HTTP transport first');
             try {
                 await httpTransport.start();
-                // Get the HTTP server instance if available
-                httpServer = httpTransport.getServer?.();
-                debug('HTTP transport started');
+                debug('HTTP transport started successfully');
             } catch (error) {
-                const msg = `Error starting http transport: ${error.message}`;
-                logger.error(msg);
-                errors.push(msg);
+                logger.error('Failed to start HTTP transport:', error);
+                throw new Error(`Error starting HTTP transport: ${error.message}`);
             }
-        }
 
-        // Then start other transports, passing the HTTP server to WebSocket transport
-        for (const [name, transport] of this.#transports) {
-            // Skip HTTP transport as it's already started
-            if (name === 'http') continue;
-
-            try {
-                // If this is the WebSocket transport and we have an HTTP server, use it
-                if (name === 'ws' && httpServer) {
-                    await transport.start(httpServer);
-                } else {
-                    await transport.start();
+            // Start WebSocket transport with HTTP server if available
+            if (wsTransport) {
+                debug('Starting WebSocket transport with HTTP server');
+                try {
+                    // Get the HTTP server from the HTTP transport
+                    const httpServer = httpTransport.getServer();
+                    await wsTransport.start(httpServer);
+                    debug('WebSocket transport started successfully');
+                } catch (error) {
+                    logger.error('Failed to start WebSocket transport with HTTP server:', error);
+                    throw new Error(`Error starting WebSocket transport with HTTP server: ${error.message}`);
                 }
-                debug(`${name} transport started`);
-            } catch (error) {
-                const msg = `Error starting ${name} transport: ${error.message}`;
-                logger.error(msg);
-                errors.push(msg);
             }
         }
 
-        if (errors.length > 0) {
-            throw new Error(errors.join('\n'));
+        // Start all other transports
+        for (const [name, transport] of this.#transports.entries()) {
+            // Skip HTTP and WebSocket transports as they were handled above
+            if ((name === 'http' && httpTransport) || (name === 'ws' && wsTransport && httpTransport)) {
+                debug(`Skipping ${name} transport as it was already started`);
+                continue;
+            }
+
+            debug(`Starting ${name} transport...`);
+            try {
+                await transport.start();
+                debug(`${name} transport started successfully`);
+            } catch (error) {
+                logger.error(`Failed to start ${name} transport:`, error);
+                throw new Error(`Error starting ${name} transport: ${error.message}`);
+            }
         }
 
-        logger.info('All transports started');
+        debug('All transports started successfully');
     }
 
     /**
@@ -613,3 +644,5 @@ export default server;
 
 // Export managers for convenience
 export { userManager, sessionManager };
+
+

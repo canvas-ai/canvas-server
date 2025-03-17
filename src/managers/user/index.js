@@ -132,6 +132,15 @@ class UserManager extends EventEmitter {
     }
 
     /**
+     * Get a user by ID - alias for getUserById for backward compatibility
+     * @param {string} id - User ID
+     * @returns {Promise<User>} User instance
+     */
+    async getUser(id) {
+        return this.getUserById(id);
+    }
+
+    /**
      * Get a user by ID
      * @param {string} id - User ID
      * @returns {Promise<User>} User instance

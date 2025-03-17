@@ -14,7 +14,6 @@ export default class WorkspaceLayer extends Layer {
     }
 
     /**
-    /**
      * Workspace methods
      */
 
@@ -89,5 +88,84 @@ export default class WorkspaceLayer extends Layer {
             ui: json.ui,
         });
         return layer;
+    }
+
+    /**
+     * Insert a Canvas layer at the specified path
+     * @param {string} path - Parent path where to insert the canvas
+     * @param {string} canvasName - Name of the canvas
+     * @param {Object} canvasOptions - Additional canvas options
+     * @returns {string} - ID of the created canvas layer
+     */
+    insertCanvas(path, canvasName, canvasOptions = {}) {
+        debug(`Inserting canvas "${canvasName}" at path "${path}"`);
+
+        // Create the canvas layer with the canvas type
+        const canvasLayer = this.tree.createLayer({
+            name: canvasName,
+            type: 'canvas',
+            ...canvasOptions
+        });
+
+        // Generate the full path
+        const canvasPath = path === '/' ? `/${canvasName}` : `${path}/${canvasName}`;
+
+        // Insert the layer into the tree
+        this.tree.insertPath(canvasPath);
+
+        // Emit an event
+        this.emit('workspace:canvas:created', {
+            path: canvasPath,
+            name: canvasName,
+            id: canvasLayer.id
+        });
+
+        return canvasLayer.id;
+    }
+
+    /**
+     * Insert a Workspace reference at the specified path
+     * @param {string} path - Parent path where to insert the workspace
+     * @param {string} workspaceName - Name of the workspace reference
+     * @param {string} targetWorkspaceId - ID of the target workspace
+     * @param {Object} workspaceOptions - Additional workspace options
+     * @returns {string} - ID of the created workspace layer
+     */
+    insertWorkspace(path, workspaceName, targetWorkspaceId, workspaceOptions = {}) {
+        debug(`Inserting workspace reference "${workspaceName}" at path "${path}"`);
+
+        // Create the workspace layer with the workspace type
+        const workspaceLayer = this.tree.createLayer({
+            name: workspaceName,
+            type: 'workspace',
+            metadata: {
+                targetWorkspaceId
+            },
+            ...workspaceOptions
+        });
+
+        // Generate the full path
+        const workspacePath = path === '/' ? `/${workspaceName}` : `${path}/${workspaceName}`;
+
+        // Insert the layer into the tree
+        this.tree.insertPath(workspacePath);
+
+        // Emit an event
+        this.emit('workspace:workspace:created', {
+            path: workspacePath,
+            name: workspaceName,
+            id: workspaceLayer.id,
+            targetId: targetWorkspaceId
+        });
+
+        return workspaceLayer.id;
+    }
+
+    insertPath(path) {
+        return this.tree.insertPath(path);
+    }
+
+    removePath(path, recursive) {
+        return this.tree.removePath(path, recursive);
     }
 }
