@@ -5,14 +5,18 @@
 # Portable runtimes
 /runtimes/**
 
-# Server data directories
+# Data directories
 /server/**
 !/server/config/example-*.json
 !/server/config/default-*.json
 /data/**
+!/data/.keep
 /user/**
+!/user/.keep
 /users/**
+!/users/.keep
 /multiverse/**
+!/multiverse/.keep
 
 # Test files and directories(well, non-production files)
 tests/**

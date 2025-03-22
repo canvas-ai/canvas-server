@@ -7,24 +7,16 @@ services:
     container_name: canvas-server
     image: canvas-server:latest
     ports:
-      - "8000:8000"
       - "8001:8001"
       - "8002:8002"
+      - "8003:8003"
+      - "8004:8004"
     environment:
-      NODE_ENV: development
+      NODE_ENV: ${NODE_ENV:-development}
       CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
-      CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-/opt/canvas-server/server/config}
-      CANVAS_SERVER_CACHE: ${CANVAS_SERVER_CACHE:-/opt/canvas-server/server/cache}
-      CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
-      CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
-      CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
-      CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/server/data}
-      CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/server/multiverse}
+      CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/users}
+      CANVAS_ADMIN_EMAIL: ${CANVAS_ADMIN_EMAIL:-admin@canvas.local}
+      CANVAS_ADMIN_PASSWORD: ${CANVAS_ADMIN_PASSWORD:-$(openssl rand -base64 16)}
     volumes:
-      - ${CANVAS_SERVER_CONFIG:-./server/config}:/opt/canvas-server/server/config
-      - ${CANVAS_SERVER_CACHE:-./server/cache}:/opt/canvas-server/server/cache
-      - ${CANVAS_SERVER_DB:-./server/db}:/opt/canvas-server/server/db
-      - ${CANVAS_SERVER_VAR:-./server/var}:/opt/canvas-server/server/var
-      - ${CANVAS_SERVER_ROLES:-./server/roles}:/opt/canvas-server/server/roles
-      - ${CANVAS_SERVER_DATA:-./server/data}:/opt/canvas-server/server/data
-      - ${CANVAS_USER_HOME:-./server/multiverse}:/opt/canvas-server/server/multiverse
+      - ${CANVAS_SERVER_HOME:-./server}:/opt/canvas-server/server
+      - ${CANVAS_USER_HOME:-./users}:/opt/canvas-server/users

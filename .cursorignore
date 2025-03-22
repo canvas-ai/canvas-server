@@ -5,10 +5,14 @@
 # Portable runtimes
 /runtimes/**
 
-# Server data directories
+# Data directories
 /server/**
 !/server/config/example-*.json
 !/server/config/default-*.json
+/data/**
+/user/**
+/users/**
+/multiverse/**
 
 # Extensions directory
 /extensions/**

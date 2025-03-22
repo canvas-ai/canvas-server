@@ -21,6 +21,7 @@ import User from '@/managers/user/lib/User.js';
  * Manages user lifecycle and persistence
  */
 class UserManager extends EventEmitter {
+
     #rootPath;
     #db;
     #activeUsers = new Map();
@@ -37,6 +38,7 @@ class UserManager extends EventEmitter {
         }
 
         this.#db = options.db;
+        debug(`User home path: ${this.#rootPath}`);
     }
 
     /**
@@ -515,6 +517,7 @@ class UserManager extends EventEmitter {
                 if (userData) {
                     try {
                         // Activate user
+                        debug(`Activating user: ${userData.id} (${userData.email})`);
                         await this.#activateUser(userData);
                     } catch (error) {
                         debug(`Error activating user ${userData.id}: ${error.message}`);

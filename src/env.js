@@ -13,6 +13,7 @@ const SERVER_MODE = argv.argv.slice(2).includes('--user') ? 'user' : 'standalone
 // Root paths
 const SERVER_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const SERVER_HOME = process.env.CANVAS_SERVER_HOME || getServerHome();
+const USER_HOME = process.env.CANVAS_USER_HOME || getUserHome();
 
 /**
  * Default environment configuration
@@ -32,12 +33,13 @@ const envConfig = {
     CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
     CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
-    CANVAS_USER_HOME: process.env.CANVAS_USER_HOME || path.join(SERVER_HOME, 'multiverse'),
+
+    // User paths (user data)
+    CANVAS_USER_HOME: USER_HOME,
 
     // Admin user creation
-    CANVAS_CREATE_ADMIN_USER: process.env.CANVAS_CREATE_ADMIN_USER === 'true' || false,
     CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
-    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || 'password',
+    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || 'p@ssw0rd',
 };
 
 /**
@@ -91,6 +93,18 @@ function getServerHome() {
     } else {
         return path.join(SERVER_ROOT, 'server');
     }
+}
+
+function getUserHome() {
+    if (SERVER_MODE === 'user') {
+        const homeDir = os.homedir();
+        if (process.platform === 'win32') {
+            return path.join(homeDir, 'Canvas');
+        } else {
+            return path.join(homeDir, '.canvas');
+        }
+    }
+    return path.join(SERVER_ROOT, 'users');
 }
 
 async function ensureDirectories(paths) {

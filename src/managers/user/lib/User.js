@@ -12,6 +12,16 @@ import Conf from 'conf';
 import WorkspaceManager from '@/managers/workspace/index.js';
 import ContextManager from '@/managers/context/index.js';
 
+// Constants
+const USER_DIRECTORIES = {
+    config: 'Config',
+    home: 'Home',
+    data: 'Data',
+    db: 'Db',
+    dotfiles: 'Dotfiles', // We use Dotfiles.git for the bare-metal repository
+    workspaces: 'Workspaces',
+};
+
 /**
  * User Class
  * Manages workspaces, contexts, and other user-specific resources
@@ -67,6 +77,8 @@ class User extends EventEmitter {
         this.#homePath = options.homePath;
         this.#userType = options.userType || 'user';
 
+
+
         debug(`User instance created: ${this.#id} (${this.#email})`);
     }
 
@@ -92,14 +104,18 @@ class User extends EventEmitter {
             await fs.mkdir(this.#homePath, { recursive: true });
             debug(`Ensured user home directory exists: ${this.#homePath}`);
 
-            // Create workspaces directory if it doesn't exist
-            const workspacesPath = path.join(this.#homePath, 'workspaces');
-            await fs.mkdir(workspacesPath, { recursive: true });
-            debug(`Ensured workspaces directory exists: ${workspacesPath}`);
+            // Ensure user directories exist
+            for (const dir in USER_DIRECTORIES) {
+                const dirPath = path.join(this.#homePath, USER_DIRECTORIES[dir]);
+                await fs.mkdir(dirPath, { recursive: true });
+            }
+            debug(`Ensured user directories exist: ${Object.keys(USER_DIRECTORIES).join(', ')}`);
 
             // Initialize token store
             this.#initializeTokenStore();
             debug('Token store initialized');
+
+            // TODO: Remove, WM and CM will be initialized centrally in the Server.js
 
             // Initialize workspace manager
             this.#workspaceManager = new WorkspaceManager({
