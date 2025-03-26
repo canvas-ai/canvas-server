@@ -21,14 +21,16 @@ const WORKSPACE_DIRECTORIES = {
     config: 'config',
     data: 'data',
     cache: 'cache',
+    roles: 'roles',
     dotfiles: 'dotfiles',
 };
 
 /**
  * Workspace Manager
- * Manages workspaces for a single user
  */
+
 class WorkspaceManager extends EventEmitter {
+
     #rootPath;
     #workspaceIndex = new Map(); // Map of workspaceID -> Workspace
     #openWorkspaces = new Map(); // Map of workspaceID -> Workspace
@@ -192,44 +194,26 @@ class WorkspaceManager extends EventEmitter {
     }
 
     /**
-     * Load a workspace from disk
-     * @param {string} workspaceID - Workspace ID/name
+     * Open a workspace from disk
      * @param {string} workspacePath - Optional custom path
      * @returns {Promise<Workspace>} The loaded workspace
      */
-    async loadWorkspace(workspaceID, workspacePath = null) {
-        if (!workspaceID) {
-            throw new Error('Workspace ID is required');
-        }
+    async openWorkspace(workspacePath) {
         if (!workspacePath) {
             throw new Error('Workspace path rquired');
         }
-        debug(`Loading workspace ${workspaceID} from ${workspacePath}`);
 
-        // Check if workspace is already loaded
-        if (this.#workspaceIndex.has(workspaceID)) {
-            const workspace = this.#workspaceIndex.get(workspaceID);
-
-            // Skip if workspace is marked as deleted
-            if (workspace.isDeleted) {
-                debug(`Workspace ${workspaceID} is marked as deleted, skipping`);
-                return null;
-            }
-
-            debug(`Workspace ${workspaceID} is already loaded`);
-            return workspace;
-        }
+        debug(`Opening workspace from ${workspacePath}`);
 
         // Check if workspace directory exists
         if (!existsSync(workspacePath)) {
-            debug(`Workspace directory does not exist at ${workspacePath}`);
-            return null; // TODO: Should we throw an error here?
+            throw new Error(`Workspace directory does not exist at ${workspacePath}`);
         }
 
         try {
             // Create a Conf instance to read the workspace config
             const configStore = new Conf({
-                configName: 'workspace',
+                configName: 'workspace',    // workspacePath/workspace.json
                 cwd: workspacePath,
             });
 
@@ -554,31 +538,9 @@ class WorkspaceManager extends EventEmitter {
         return this.openWorkspaces;
     }
 
-    /**
-     * Get a random color for workspace
-     * @returns {string} Random color
-     * @private
-     */
-    #getRandomColor() {
-        return randomcolor({
-            luminosity: 'light',
-            format: 'hex',
-        });
-    }
 
-    /**
-     * Ensure a directory exists
-     * @param {string} dirPath - Directory path
-     * @returns {Promise<void>}
-     * @private
-     */
-    async #ensureDirectoryExists(dirPath) {
-        try {
-            await fsPromises.mkdir(dirPath, { recursive: true });
-        } catch (err) {
-            throw new Error(`Failed to create directory ${dirPath}: ${err.message}`);
-        }
-    }
+
+
 
     /**
      * Scan for existing workspaces

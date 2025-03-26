@@ -13,6 +13,10 @@ const debug = createDebug('user-manager');
 // Environment
 import env from '@/env.js';
 
+// Managers
+import WorkspaceManager from '@/managers/workspace/index.js';
+import ContextManager from '@/managers/context/index.js';
+
 // User
 import User from '@/managers/user/lib/User.js';
 

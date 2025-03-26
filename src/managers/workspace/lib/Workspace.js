@@ -3,7 +3,6 @@
 // Utils
 import EventEmitter from 'eventemitter2';
 import path from 'path';
-import Conf from 'conf';
 
 // Logging
 import { createDebug } from '@/utils/log/index.js';
@@ -12,30 +11,25 @@ const debug = createDebug('workspace');
 // Includes
 import Db from '@/services/synapsd/src/index.js';
 import Tree from '../../tree/lib/Tree.js';
-import JsonIndexManager from '@/utils/jim/index.js';
 
 // Constants
-const WORKSPACE_STATUS = {
-    INITIALIZED: 'initialized',
-    ACTIVE: 'active',
-    INACTIVE: 'inactive',
-    DELETED: 'deleted',
-};
+import {
+    WORKSPACE_TYPES,
+    WORKSPACE_STATUS_VALUES,
+    WORKSPACE_DIRECTORIES
+} from '../index.new.js';
 
 /**
  * Canvas Workspace
- * Represents a workspace with configuration and resources
  */
+
 class Workspace extends EventEmitter {
-    // Private properties
+
+    // Internal
     #configStore;
     #db;
-    #jim;
+    #tree;
 
-    //#data; (storeD)
-    //#apps;
-    //#roles;
-    //#dotfiles;
 
     /**
      * Create a new Workspace instance
@@ -73,7 +67,6 @@ class Workspace extends EventEmitter {
         this.label = options.label || this.name.charAt(0).toUpperCase() + this.name.slice(1);
         this.description = options.description || `My ${this.name} workspace`;
         this.locked = options.locked || false;
-
         this.created = options.created || new Date().toISOString();
         this.updated = options.updated || new Date().toISOString();
         this.acl = options.acl || {};
@@ -85,62 +78,52 @@ class Workspace extends EventEmitter {
         if (this.#configStore && options.status) {
             this.#configStore.set('status', options.status);
         }
+
+        this.status = 'initialized';
     }
 
-    // Getters
-    get db() {
-        return this.#db;
-    }
-    get jsonTree() {
-        return this.tree.jsonTree   ;
-    }
-    get layers() {
-        return this.tree?.layers;
-    }
-    get config() {
-        return this.#configStore?.store || {};
-    }
-    get isConfigLoaded() {
-        return this.#configStore !== null;
-    }
-    get isOpen() {
-        return this.#db !== null && this.tree !== null;
-    }
-    get isDeleted() {
-        return this.status === WORKSPACE_STATUS.DELETED;
-    }
-    get isActive() {
-        return this.status === WORKSPACE_STATUS.ACTIVE;
-    }
-    get status() {
-        return this.#configStore?.get('status', WORKSPACE_STATUS.INITIALIZED);
+    /**
+     * Getters
+     */
+
+    get db() { return this.#db; }
+    get jsonTree() { return this.tree?.jsonTree; }
+    get layers() { return this.tree?.layers; }
+    get config() { return this.#configStore?.store || {}; }
+    get isConfigLoaded() { return this.#configStore !== null; }
+    get isOpen() { return this.#db !== null && this.tree !== null; }
+    get isDeleted() { return this.status === WORKSPACE_STATUS_VALUES.DELETED; }
+    get isActive() { return this.status === WORKSPACE_STATUS_VALUES.ACTIVE; }
+    get status() { return this.status; }
+
+    /**
+     * Workspace controls
+     */
+
+    async start() {
+        if (this.status === WORKSPACE_STATUS_VALUES.ACTIVE) {
+            debug(`Workspace ${this.name} is already active`);
+            return this;
+        }
+
+        await this.#initializeResources();
+        // await this.#initializeRoles();
+
+        this.#setStatus(WORKSPACE_STATUS_VALUES.ACTIVE);
+        this.emit('workspace:started', { id: this.id });
     }
 
-    // Status methods
-    setStatus(status) {
-        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
-            debug(`Invalid status: ${status}`);
+    async stop() {
+        if (this.status !== WORKSPACE_STATUS_VALUES.ACTIVE) {
+            debug(`Workspace ${this.name} is not active`);
             return false;
         }
 
-        if (this.#configStore) {
-            this.#configStore.set('status', status);
-            this.#configStore.set('updated', new Date().toISOString());
-            this.emit('workspace:status:changed', { name: this.name, status });
-        }
-        return true;
-    }
+        await this.#shutdownResources();
+        // await this.#shutdownRoles();
 
-    markAsActive() {
-        return this.setStatus(WORKSPACE_STATUS.ACTIVE);
-    }
-
-    markAsInactive() {
-        return this.setStatus(WORKSPACE_STATUS.INACTIVE);
-    }
-
-    markAsDeleted() {
-        return this.setStatus(WORKSPACE_STATUS.DELETED);
+        this.#setStatus(WORKSPACE_STATUS_VALUES.INACTIVE);
+        this.emit('workspace:stopped', { id: this.id });
     }
 
     /**
@@ -480,61 +463,9 @@ class Workspace extends EventEmitter {
     }
 
     /**
-     * Initialize the database and resources
-     * @internal - Should only be called by WorkspaceManager
+     * Convert the workspace to a JSON object
+     * @returns {Object} - JSON object
      */
-    async _initializeResources() {
-        debug(`Initializing resources for workspace ${this.name}`);
-
-        if (!this.#configStore) {
-            throw new Error('Configuration must be initialized before resources');
-        }
-
-        await this.#initializeDatabase();
-        await this.#initializeJIM();
-        await this.#initializeTree();
-
-        this.emit('workspace:resources:initialized', { id: this.name });
-    }
-
-    /**
-     * Shutdown the database and resources
-     * @internal - Should only be called by WorkspaceManager
-     */
-    async _shutdownResources() {
-        debug(`Shutting down resources for workspace ${this.name}`);
-
-        if (this.#db) {
-            await this.#db.shutdown();
-            this.#db = null;
-        }
-
-        this.tree = null;
-        this.#jim = null;
-
-        this.emit('workspace:resources:shutdown', { id: this.name });
-    }
-
-    /**
-     * Initialize the workspace (configuration and resources)
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-        debug(`Initializing workspace ${this.name}`);
-        await this._initializeResources();
-        debug(`Workspace ${this.name} initialized successfully`);
-    }
-
-    /**
-     * Shutdown the workspace (close database and resources)
-     * @returns {Promise<void>}
-     */
-    async shutdown() {
-        debug(`Shutting down workspace ${this.name}`);
-        await this._shutdownResources();
-        debug(`Workspace ${this.name} shutdown successfully`);
-    }
-
     toJSON() {
         return {
             id: this.id,
@@ -552,7 +483,28 @@ class Workspace extends EventEmitter {
         };
     }
 
-    // Private methods
+    /**
+     * Private methods
+     */
+
+    /**
+     * Set the workspace status
+     * @param {string} status - Status to set
+     * @returns {boolean} - True if status was set, false otherwise
+     * @private
+     */
+    #setStatus(status) {
+        if (!Object.values(WORKSPACE_STATUS_VALUES).includes(status)) {
+            debug(`Invalid status: ${status}`);
+            return false;
+        }
+
+        this.#configStore.set('status', status);
+        this.#configStore.set('updated', new Date().toISOString());
+        this.emit('workspace:status:changed', { name: this.name, status });
+        return true;
+    }
+
     /**
      * Validate color format (hex color)
      * @param {string} color - Color to validate
@@ -566,6 +518,22 @@ class Workspace extends EventEmitter {
 
         const hexRegex = /^#([0-9A-F]{3}){1,2}$/i;
         return hexRegex.test(color);
+    }
+
+    /**
+     * Initialize workspace resources
+     * @private
+     */
+    async #initializeResources() {
+        await this.#initializeDatabase();
+    }
+
+    /**
+     * Shutdown workspace resources
+     * @private
+     */
+    async #shutdownResources() {
+        await this.#stopDatabase();
     }
 
     /**
@@ -587,58 +555,14 @@ class Workspace extends EventEmitter {
     }
 
     /**
-     * Initialize the JSON Index Manager
+     * Stop the database
      * @private
      */
-    async #initializeJIM() {
-        const configPath = path.join(this.path, 'config');
-
-        this.#jim = new JsonIndexManager({
-            rootPath: configPath,
-            driver: 'conf',
-        });
-
-        // Create the tree and layer indexes
-        const treeIndex = this.#jim.createIndex('tree');
-        const layerIndex = this.#jim.createIndex('layers');
-
-        debug(`Initialized JSON Index Manager for workspace ${this.name}`);
-        return { treeIndex, layerIndex };
+    async #stopDatabase() {
+        await this.#db.shutdown();
+        this.#db = null;
     }
 
-    /**
-     * Initialize the tree
-     * @private
-     */
-    async #initializeTree() {
-        if (!this.#jim) {
-            await this.#initializeJIM();
-        }
-
-        const treeIndex = this.#jim.getIndex('tree');
-        const layerIndex = this.#jim.getIndex('layers');
-
-        this.tree = new Tree({
-            treeIndexStore: treeIndex,
-            layerIndexStore: layerIndex,
-            rootLayerOptions: {
-                id: this.id, // Use workspace ID for root layer
-                type: 'universe',
-                name: '/', // Keep as '/' for compatibility with Tree class
-                label:
-                    this.label || (this.name ? this.name.charAt(0).toUpperCase() + this.name.slice(1) : 'Universe Workspace'),
-                description: this.description || (this.name ? `Root layer for ${this.name}` : 'And then there was geometry'),
-                color: '#fff',
-                locked: true,
-                update: true,
-                created: new Date().toISOString(),
-                updated: new Date().toISOString(),
-            },
-        });
-
-        debug(`Context tree initialized for workspace ${this.name}`);
-        return this.tree;
-    }
 }
 
 export default Workspace;

@@ -77,8 +77,6 @@ class User extends EventEmitter {
         this.#homePath = options.homePath;
         this.#userType = options.userType || 'user';
 
-
-
         debug(`User instance created: ${this.#id} (${this.#email})`);
     }
 

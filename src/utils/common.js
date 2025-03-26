@@ -2,10 +2,8 @@
 
 // Includes
 import debugInstance from 'debug';
-import path from 'path';
-import os from 'os';
 import crypto from 'crypto';
-import { ensureDirSync } from 'fs-extra';
+import { ulid } from 'ulid';
 
 /*
  * Temporary logger as per @RFC5424
@@ -25,19 +23,6 @@ logger.info = console.log;
 logger.warn = console.log;
 logger.error = console.error;
 
-function ensureContextDirectory(dir) {
-    if (dir.startsWith('~/') || dir === '~') {
-        dir = dir.replace('~', os.homedir());
-    }
-    dir = path.resolve(dir);
-    ensureDirSync(dir);
-    return dir;
-}
-
-function getDefaultContextDirectory() {
-    return path.join(os.homedir(), '.canvas');
-}
-
 function uuid(delimiter = true) {
     const id = crypto.randomUUID();
     return delimiter ? id : id.replace(/-/g, '');
@@ -48,7 +33,16 @@ function uuid12(delimiter = true) {
     return delimiter ? id : id.replace(/-/g, '');
 }
 
-const arrayToTree = (arr, p = 'parent_id') =>
+function ulid(charLength = 12, idCase = 'lower') {
+    const id = ulid();
+    if (idCase === 'lower') {
+        return id.substring(0, charLength).toLowerCase();
+    }
+
+    return id.substring(0, charLength);
+}
+
+const pathArrayToTree = (arr, p = 'parent_id') =>
     arr.reduce((o, n) => {
         if (!o[n.id]) {
             o[n.id] = {};
@@ -133,12 +127,11 @@ function printTree(tree, indent = 0) {
 
 export {
     logger,
-    getDefaultContextDirectory,
-    ensureContextDirectory,
     uuid,
     uuid12,
-    arrayToTree,
-    pathsToTree,
-    pathsToTree2,
-    printTree,
+    ulid,
+    pathArrayToTree,
+    pathsToTree,    // To refactor?remove
+    pathsToTree2,   // To remove
+    printTree,      // To refactor
 };
