@@ -51,6 +51,7 @@ baseUrl: /rest/v2
 │
 ├── /workspaces
 │   ├── /:id
+│   ├── /:id [POST] - Update workspace parameters
 │   ├── /:id/status
 │   ├── /:id/open
 │   ├── /:id/close

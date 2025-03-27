@@ -103,7 +103,7 @@ class WorkspaceManager extends EventEmitter {
      * Simplified Workspace Manager API
      */
 
-    openWorkspace(pathOrID) {
+    async openWorkspace(pathOrID) {
         if (!pathOrID) {
             throw new Error('Workspace path or id is required');
         }
@@ -117,7 +117,7 @@ class WorkspaceManager extends EventEmitter {
         return this.#openWorkspaceByID(pathOrID);
     }
 
-    closeWorkspace(workspaceID) {
+    async closeWorkspace(workspaceID) {
 
     }
 
