@@ -1,20 +1,25 @@
 import jwt from 'jsonwebtoken';
-import passport from 'passport';
-import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
-import { Strategy as CustomStrategy } from 'passport-custom';
 import logger, { createDebug } from '@/utils/log/index.js';
-import AuthToken from '@/prisma/models/AuthToken.js';
-const debug = createDebug('session-service');
+const debug = createDebug('canvas:auth:session');
 
 /**
  * Session Service
  *
- * Handles JWT token generation, verification, and authentication middleware
+ * Handles JWT token generation, verification, and cookie management
  */
 class SessionService {
     #config;
+    #sessionManager;
     #initialized = false;
 
+    /**
+     * Create a new SessionService
+     * @param {Object} config - Configuration object
+     * @param {string} config.jwtSecret - JWT secret
+     * @param {string|number} config.jwtLifetime - JWT lifetime (e.g. '7d', 3600)
+     * @param {boolean} config.secureCookies - Whether to use secure cookies
+     * @param {Object} config.sessionManager - Session manager instance
+     */
     constructor(config) {
         this.#config = config;
 
@@ -26,79 +31,13 @@ class SessionService {
             config.jwtLifetime = '7d'; // Default to 7 days
         }
 
-        this.initialize();
-    }
-
-    initialize() {
-        if (this.#initialized) {
-            return;
+        if (!config.sessionManager) {
+            throw new Error('Session manager is required');
         }
 
-        debug('Initializing session service');
+        this.#sessionManager = config.sessionManager;
 
-        // Configure passport with JWT strategy
-        const jwtOptions = {
-            jwtFromRequest: ExtractJwt.fromExtractors([
-                ExtractJwt.fromAuthHeaderAsBearerToken(),
-                req => req.cookies && req.cookies.token,
-                req => req.query && req.query.token,
-            ]),
-            secretOrKey: this.#config.jwtSecret,
-            passReqToCallback: true,
-        };
-
-        passport.use(new JwtStrategy(jwtOptions, async (req, payload, done) => {
-            try {
-                // The payload should contain the user ID
-                if (!payload || !payload.id) {
-                    return done(null, false);
-                }
-
-                // Store the payload in the request
-                req.user = payload;
-
-                return done(null, payload);
-            } catch (err) {
-                return done(err, false);
-            }
-        }));
-
-        // Add custom middleware to check for API tokens
-        passport.use('api-token', new CustomStrategy(async (req, done) => {
-            try {
-                // Check for API token in Authorization header
-                const authHeader = req.headers.authorization;
-                if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                    return done(null, false);
-                }
-
-                const token = authHeader.split(' ')[1];
-
-                // First try to verify as JWT token
-                const jwtPayload = this.verifyToken(token);
-                if (jwtPayload) {
-                    return done(null, jwtPayload);
-                }
-
-                // If not a JWT token, try as API token
-                const result = await AuthToken.verifyToken(token);
-                if (!result) {
-                    return done(null, false);
-                }
-
-                // Store the user in the request
-                const user = {
-                    id: result.user.id,
-                    email: result.user.email,
-                    tokenId: result.token.id
-                };
-
-                return done(null, user);
-            } catch (err) {
-                return done(err, false);
-            }
-        }));
-
+        debug('Session service created');
         this.#initialized = true;
     }
 
@@ -112,19 +51,26 @@ class SessionService {
         }
 
         debug('Stopping session service');
-
-        // No active resources to clean up, but we could add them here if needed
-
         this.#initialized = false;
     }
 
     /**
-   * Generate a JWT token for a user
-   * @param {Object} user - User object
-   * @param {Object} session - Session object
-   * @returns {string} - JWT token
-   */
+     * Get JWT secret
+     * @returns {string} - JWT secret
+     */
+    getJwtSecret() {
+        return this.#config.jwtSecret;
+    }
+
+    /**
+     * Generate a JWT token for a user
+     * @param {Object} user - User object
+     * @param {Object} session - Session object
+     * @returns {string} - JWT token
+     */
     generateToken(user, session = null) {
+        debug(`Generating token for user: ${user.email}`);
+
         const payload = {
             id: user.id,
             email: user.email,
@@ -135,60 +81,63 @@ class SessionService {
             payload.sessionId = session.id;
         }
 
-        return jwt.sign(
-            payload,
-            this.#config.jwtSecret,
-            {
-                expiresIn: this.#config.jwtLifetime,
-            },
-        );
+        return jwt.sign(payload, this.#config.jwtSecret, {
+            expiresIn: this.#config.jwtLifetime,
+        });
     }
 
     /**
-   * Verify JWT token
-   * @param {string} token - JWT token
-   * @returns {Object|null} - Decoded token or null
-   */
+     * Verify JWT token
+     * @param {string} token - JWT token
+     * @returns {Object|null} - Decoded token or null
+     */
     verifyToken(token) {
         try {
-            return jwt.verify(token, this.#config.jwtSecret);
+            const decoded = jwt.verify(token, this.#config.jwtSecret);
+            debug(`Token verified for user ID: ${decoded.id}`);
+
+            // If token has a session ID, verify the session is still valid
+            if (decoded.sessionId) {
+                this.#verifySession(decoded.sessionId);
+            }
+
+            return decoded;
         } catch (error) {
+            debug(`Token verification failed: ${error.message}`);
             return null;
         }
     }
 
     /**
-   * Get authentication middleware
-   * @returns {Function} - Authentication middleware
-   */
-    getAuthMiddleware() {
-        return (req, res, next) => {
-            // Use the api-token strategy which handles both JWT and API tokens
-            passport.authenticate('api-token', { session: false }, (err, user, info) => {
-                if (err) {
-                    return next(err);
-                }
+     * Verify a session is valid
+     * @param {string} sessionId - Session ID
+     * @returns {Promise<boolean>} - Whether the session is valid
+     * @private
+     */
+    async #verifySession(sessionId) {
+        try {
+            const session = await this.#sessionManager.getSession(sessionId);
+            if (session && session.isActive) {
+                // Touch the session to update last active time
+                await this.#sessionManager.touchSession(sessionId);
+                return true;
+            }
+        } catch (error) {
+            debug(`Error verifying session: ${error.message}`);
+        }
 
-                if (!user) {
-                    return res.status(401).json({
-                        success: false,
-                        message: 'Unauthorized: Invalid token'
-                    });
-                }
-
-                req.user = user;
-                next();
-            })(req, res, next);
-        };
+        return false;
     }
 
     /**
-   * Set token cookie
-   * @param {Object} res - Response object
-   * @param {string} token - JWT token
-   * @param {Object} options - Cookie options
-   */
+     * Set token cookie
+     * @param {Object} res - Response object
+     * @param {string} token - JWT token
+     * @param {Object} options - Cookie options
+     */
     setCookie(res, token, options = {}) {
+        debug('Setting token cookie');
+
         const cookieOptions = {
             httpOnly: true,
             secure: this.#config.secureCookies || process.env.NODE_ENV === 'production',
@@ -201,17 +150,19 @@ class SessionService {
     }
 
     /**
-   * Clear token cookie
-   * @param {Object} res - Response object
-   */
+     * Clear token cookie
+     * @param {Object} res - Response object
+     */
     clearCookie(res) {
+        debug('Clearing token cookie');
         res.clearCookie('token');
     }
 
     /**
-   * Get max age for cookie based on JWT lifetime
-   * @returns {number} - Max age in milliseconds
-   */
+     * Get max age for cookie based on JWT lifetime
+     * @returns {number} - Max age in milliseconds
+     * @private
+     */
     #getMaxAge() {
         const lifetime = this.#config.jwtLifetime;
 
@@ -230,12 +181,18 @@ class SessionService {
         const unit = match[2];
 
         switch (unit) {
-            case 's': return value * 1000; // seconds
-            case 'm': return value * 60 * 1000; // minutes
-            case 'h': return value * 60 * 60 * 1000; // hours
-            case 'd': return value * 24 * 60 * 60 * 1000; // days
-            case 'w': return value * 7 * 24 * 60 * 60 * 1000; // weeks
-            default: return 7 * 24 * 60 * 60 * 1000; // Default to 7 days
+            case 's':
+                return value * 1000; // seconds
+            case 'm':
+                return value * 60 * 1000; // minutes
+            case 'h':
+                return value * 60 * 60 * 1000; // hours
+            case 'd':
+                return value * 24 * 60 * 60 * 1000; // days
+            case 'w':
+                return value * 7 * 24 * 60 * 60 * 1000; // weeks
+            default:
+                return 7 * 24 * 60 * 60 * 1000; // Default to 7 days
         }
     }
 }

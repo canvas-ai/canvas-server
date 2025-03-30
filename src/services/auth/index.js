@@ -1,65 +1,44 @@
 import validator from 'validator';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import EventEmitter from 'eventemitter2';
+import configurePassport from '@/utils/passport.js';
+import bcrypt from 'bcrypt';
 
 import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('service:auth');
+const debug = createDebug('canvas:service:auth');
 
 import SessionService from './lib/SessionService.js';
-import UserEventHandler from '../events/UserEventHandler.js';
-import User from '@/prisma/models/User.js';
-import Session from '@/prisma/models/Session.js';
-import AuthToken from '@/prisma/models/AuthToken.js';
+import AuthTokenService from './lib/AuthToken.js';
 
 /**
  * Auth Service
  *
  * Handles user authentication, registration, and session management
  */
-class AuthService {
+class AuthService extends EventEmitter {
     #userManager;
-    #workspaceManager;
     #sessionManager;
-    #deviceManager;
-    #contextManager;
     #sessionService;
-    #userEventHandler;
+    #authTokenService;
     #config;
+    #passport;
     #initialized = false;
     #started = false;
 
     constructor(config, options = {}) {
+        super();
         this.#config = config;
         this.#userManager = options.userManager;
-        this.#workspaceManager = options.workspaceManager;
         this.#sessionManager = options.sessionManager;
-        this.#deviceManager = options.deviceManager;
-        this.#contextManager = options.contextManager;
 
         if (!this.#userManager) {
             throw new Error('UserManager is required');
-        }
-
-        if (!this.#workspaceManager) {
-            throw new Error('WorkspaceManager is required');
         }
 
         if (!this.#sessionManager) {
             throw new Error('SessionManager is required');
         }
 
-        this.#sessionService = new SessionService(config);
-
-        this.#userEventHandler = new UserEventHandler({
-            auth: this,
-            userManager: this.#userManager,
-            workspaceManager: this.#workspaceManager,
-            sessionManager: this.#sessionManager,
-        });
+        debug('Auth service created');
     }
 
     async initialize() {
@@ -69,7 +48,29 @@ class AuthService {
 
         debug('Initializing auth service');
 
+        // Configure passport with JWT secret
+        const jwtSecret = this.#config.jwtSecret || 'canvas-jwt-secret-dev-only';
+        this.#passport = configurePassport(jwtSecret, {
+            userManager: this.#userManager,
+            authService: this,
+        });
+        debug('Passport configured with JWT secret');
+
+        // Initialize session service
+        this.#sessionService = new SessionService({
+            jwtSecret,
+            jwtLifetime: this.#config.jwtLifetime || '7d',
+            sessionManager: this.#sessionManager,
+        });
+
+        // Initialize auth token service
+        this.#authTokenService = new AuthTokenService({
+            userManager: this.#userManager,
+        });
+        await this.#authTokenService.initialize();
+
         this.#initialized = true;
+        debug('Auth service initialized');
     }
 
     /**
@@ -86,9 +87,6 @@ class AuthService {
         }
 
         debug('Starting auth service');
-
-        // Any startup tasks can go here
-
         this.#started = true;
         debug('Auth service started');
     }
@@ -104,10 +102,11 @@ class AuthService {
 
         debug('Stopping auth service');
 
-        // Clean up resources if needed
-        if (this.#sessionService) {
-            await this.#sessionService.stop();
-        }
+        // Stop session service
+        await this.#sessionService.stop();
+
+        // Stop auth token service
+        await this.#authTokenService.stop();
 
         this.#started = false;
         debug('Auth service stopped');
@@ -117,73 +116,103 @@ class AuthService {
      * Register a new user
      * @param {string} email - User email
      * @param {string} password - User password
-     * @param {string} userType - User type (default: 'user')
-     * @returns {Promise<Object>} - User and token
+     * @param {string} [userType='user'] - User type ('user' or 'admin')
+     * @returns {Promise<Object>} - Registration result with user, token, and session
      */
     async register(email, password, userType = 'user') {
-        debug(`Registering new user: ${email}`);
+        debug(`Registering new user with email: ${email}`);
 
-        if (!validator.isEmail(email)) {
-            throw new Error('Invalid email format');
+        if (!email || !validator.isEmail(email)) {
+            throw new Error('Valid email address is required');
+        }
+
+        if (!password || password.length < 8) {
+            throw new Error('Password must be at least 8 characters long');
         }
 
         // Check if user already exists
         const existingUser = await this.#userManager.getUserByEmail(email);
         if (existingUser) {
-            throw new Error('User already exists');
+            throw new Error('User with this email already exists');
         }
 
+        // Hash password
+        const hashedPassword = await this.#hashPassword(password);
+
         // Create user
-        const user = await this.#userManager.registerUser({
+        const user = await this.#userManager.createUser({
             email,
-            password,
-            userType
+            userType,
         });
 
-        // Create a new session
+        // Store password hash
+        await this.#storePassword(user.id, hashedPassword);
+
+        // Create session
         const session = await this.#sessionManager.createSession(user.id, {
-            initializer: 'registration',
+            userAgent: 'Canvas API',
+            ipAddress: '127.0.0.1',
         });
 
-        // Generate token
+        // Generate JWT token
         const token = this.#sessionService.generateToken(user, session);
 
-        // Generate an API token for the user
-        const { tokenValue } = await AuthToken.generateToken(user.id, 'Default API Token');
-        debug(`Generated API token for new user ${email}: ${tokenValue}`);
+        this.emit('user:registered', user);
+        debug(`User registered: ${email} (${user.id})`);
 
-        debug(`User registered: ${email}`);
-
-        return { user, token, session };
+        return {
+            user,
+            token,
+            session,
+        };
     }
 
     /**
      * Login a user
      * @param {string} email - User email
      * @param {string} password - User password
-     * @returns {Promise<Object>} - User and token
+     * @returns {Promise<Object>} - Login result with user and token
      */
     async login(email, password) {
         debug(`Login attempt for user: ${email}`);
 
-        if (!validator.isEmail(email)) {
-            throw new Error('Invalid email format');
+        if (!email || !validator.isEmail(email)) {
+            throw new Error('Valid email address is required');
         }
 
-        // Authenticate user
-        const user = await this.#userManager.authenticateUser(email, password);
+        if (!password) {
+            throw new Error('Password is required');
+        }
 
-        // Create a new session
+        // Get user by email
+        const user = await this.#userManager.getUserByEmail(email);
+        if (!user) {
+            throw new Error('Invalid email or password');
+        }
+
+        // Verify password
+        const isPasswordValid = await this.#verifyPassword(user.id, password);
+        if (!isPasswordValid) {
+            throw new Error('Invalid email or password');
+        }
+
+        // Create session
         const session = await this.#sessionManager.createSession(user.id, {
-            initializer: 'login',
+            userAgent: 'Canvas API',
+            ipAddress: '127.0.0.1',
         });
 
-        // Generate token
+        // Generate JWT token
         const token = this.#sessionService.generateToken(user, session);
 
-        debug(`User logged in: ${email}`);
+        this.emit('user:login', { user, session });
+        debug(`User logged in: ${email} (${user.id})`);
 
-        return { user, token, session };
+        return {
+            user,
+            token,
+            session,
+        };
     }
 
     /**
@@ -192,69 +221,23 @@ class AuthService {
      * @param {Object} res - Response object
      */
     logout(req, res) {
-        debug('User logout');
+        debug('Logging out user');
 
-        // End the session if available
-        if (req.session && req.session.id) {
-            this.#sessionManager.endSession(req.session.id);
+        // Clear session cookie
+        if (res) {
+            this.#sessionService.clearCookie(res);
         }
 
-        // Clear the cookie
-        this.#sessionService.clearCookie(res);
+        // Invalidate session if available
+        if (req && req.user && req.user.tokenPayload && req.user.tokenPayload.sessionId) {
+            this.#sessionManager.endSession(req.user.tokenPayload.sessionId);
+        }
+
+        debug('User logged out');
     }
 
     /**
-     * Verify a session by token
-     * @param {string} token - JWT token
-     * @returns {Promise<Object|null>} - Session data or null if invalid
-     */
-    async verifySession(token) {
-        // First, verify the token
-        const payload = this.#sessionService.verifyToken(token);
-        if (!payload) {
-            debug('Invalid token');
-            return null;
-        }
-
-        // Get the user
-        const user = await this.#userManager.getUserById(payload.id);
-        if (!user) {
-            debug(`User not found: ${payload.id}`);
-            return null;
-        }
-
-        // If we have a session ID in the payload, verify it
-        if (payload.sessionId) {
-            const session = this.#sessionManager.getSession(payload.sessionId);
-            if (!session || !session.isActive) {
-                debug(`Invalid or inactive session: ${payload.sessionId}`);
-                return null;
-            }
-
-            // Update last active time
-            this.#sessionManager.touchSession(payload.sessionId);
-
-            return { user, session };
-        }
-
-        // If no session ID in payload, create or get a default session
-        const session = await this.#sessionManager.createSession(user.id, {
-            initializer: 'token_verification',
-        });
-
-        return { user, session };
-    }
-
-    /**
-     * Get authentication middleware
-     * @returns {Function} - Authentication middleware
-     */
-    getAuthMiddleware() {
-        return this.#sessionService.getAuthMiddleware();
-    }
-
-    /**
-     * Verify a token
+     * Verify a JWT token
      * @param {string} token - JWT token
      * @returns {Object|null} - Decoded token or null
      */
@@ -263,215 +246,239 @@ class AuthService {
     }
 
     /**
+     * Get authentication middleware
+     * @returns {Function} - Authentication middleware
+     */
+    getAuthMiddleware() {
+        return this.#passport.authenticate('jwt', { session: false });
+    }
+
+    /**
+     * Set a user's password
+     * @param {string} userId - User ID
+     * @param {string} password - Password
+     * @returns {Promise<boolean>} - Success status
+     */
+    async setPassword(userId, password) {
+        debug(`Setting password for user: ${userId}`);
+
+        if (!password || password.length < 8) {
+            throw new Error('Password must be at least 8 characters long');
+        }
+
+        // Hash password
+        const hashedPassword = await this.#hashPassword(password);
+
+        // Store password hash
+        await this.#storePassword(userId, hashedPassword);
+
+        debug(`Password set for user: ${userId}`);
+        return true;
+    }
+
+    /**
+     * Update a user's password
+     * @param {string} userId - User ID
+     * @param {string} currentPassword - Current password
+     * @param {string} newPassword - New password
+     * @param {Object} requestingUser - User making the request (for admin override)
+     * @returns {Promise<boolean>} - Success status
+     */
+    async updatePassword(userId, currentPassword, newPassword, requestingUser) {
+        debug(`Updating password for user: ${userId}`);
+
+        if (!newPassword || newPassword.length < 8) {
+            throw new Error('New password must be at least 8 characters long');
+        }
+
+        // Check if requesting user is an admin (for admin override)
+        const isAdminOverride = requestingUser && requestingUser.id !== userId && requestingUser.userType === 'admin';
+
+        // Verify current password if not admin override
+        if (!isAdminOverride) {
+            const isPasswordValid = await this.#verifyPassword(userId, currentPassword);
+            if (!isPasswordValid) {
+                throw new Error('Current password is incorrect');
+            }
+        }
+
+        // Hash new password
+        const hashedPassword = await this.#hashPassword(newPassword);
+
+        // Store password hash
+        await this.#storePassword(userId, hashedPassword);
+
+        // Invalidate all sessions for this user
+        await this.#sessionManager.endAllUserSessions(userId);
+
+        debug(`Password updated for user: ${userId}`);
+        return true;
+    }
+
+    /**
+     * Create an API token for a user
+     * @param {string} userId - User ID
+     * @param {Object} options - Token options
+     * @returns {Promise<Object>} - Created token
+     */
+    async createApiToken(userId, options = {}) {
+        return this.#authTokenService.createToken(userId, options);
+    }
+
+    /**
+     * Get an API token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<Object|null>} - Token or null
+     */
+    async getApiToken(userId, tokenId) {
+        return this.#authTokenService.getToken(userId, tokenId);
+    }
+
+    /**
+     * List API tokens for a user
+     * @param {string} userId - User ID
+     * @param {Object} options - Filter options
+     * @returns {Promise<Array<Object>>} - List of tokens
+     */
+    async listApiTokens(userId, options = {}) {
+        return this.#authTokenService.listTokens(userId, options);
+    }
+
+    /**
+     * Update an API token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @param {Object} updates - Updates to apply
+     * @returns {Promise<Object|null>} - Updated token or null
+     */
+    async updateApiToken(userId, tokenId, updates = {}) {
+        return this.#authTokenService.updateToken(userId, tokenId, updates);
+    }
+
+    /**
+     * Delete an API token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<boolean>} - Success status
+     */
+    async deleteApiToken(userId, tokenId) {
+        return this.#authTokenService.deleteToken(userId, tokenId);
+    }
+
+    /**
+     * Validate an API token
+     * @param {string} tokenValue - Token value
+     * @returns {Promise<Object|null>} - User ID and token ID if valid, null if invalid
+     */
+    async validateApiToken(tokenValue) {
+        return this.#authTokenService.validateToken(tokenValue);
+    }
+
+    /**
+     * Get session service
+     * @returns {SessionService} - Session service
+     */
+    get sessionService() {
+        return this.#sessionService;
+    }
+
+    /**
+     * Get session manager
+     * @returns {Object} - Session manager
+     */
+    get sessionManager() {
+        return this.#sessionManager;
+    }
+
+    /**
+     * Get passport instance
+     * @returns {Object} - Passport instance
+     */
+    get passport() {
+        return this.#passport;
+    }
+
+    /**
      * Get user from request
      * @param {Object} req - Request object
-     * @returns {Promise<Object>} - User object
+     * @returns {Promise<Object|null>} - User object or null
      */
     async getUserFromRequest(req) {
         if (!req.user || !req.user.id) {
             return null;
         }
 
-        return await this.#userManager.getUserById(req.user.id);
+        try {
+            return await this.#userManager.getUserById(req.user.id);
+        } catch (error) {
+            debug(`Error getting user from request: ${error.message}`);
+            return null;
+        }
     }
 
     /**
-     * Create a user context
-     * @param {Object} user - User object
-     * @param {string} workspaceName - Workspace name
-     * @param {string} contextPath - Context path
-     * @returns {Promise<Object>} - Created context
+     * Hash a password
+     * @param {string} password - Password to hash
+     * @returns {Promise<string>} - Hashed password
+     * @private
      */
-    async createUserContext(user, workspaceName, contextPath = '/') {
-        // Get workspace
-        const workspace = await this.#workspaceManager.getWorkspace(user.email, workspaceName);
+    async #hashPassword(password) {
+        const saltRounds = 10;
+        return bcrypt.hash(password, saltRounds);
+    }
 
-        if (!workspace) {
-            throw new Error(`Workspace "${workspaceName}" not found for user ${user.email}`);
+    /**
+     * Verify a password
+     * @param {string} userId - User ID
+     * @param {string} password - Password to verify
+     * @returns {Promise<boolean>} - Whether password is valid
+     * @private
+     */
+    async #verifyPassword(userId, password) {
+        try {
+            // Get stored password hash
+            const storedHash = await this.#getStoredPassword(userId);
+            if (!storedHash) {
+                return false;
+            }
+
+            // Compare passwords
+            return bcrypt.compare(password, storedHash);
+        } catch (error) {
+            debug(`Error verifying password: ${error.message}`);
+            return false;
         }
+    }
 
-        // Get current device
-        const device = this.#deviceManager.getCurrentDevice();
-
-        // Create context URL - format: workspaceId://context-path
-        const contextUrl = `${workspaceName}://${contextPath}`;
-        debug(`Creating context with URL: ${contextUrl}`);
-
-        // Create context
-        const context = await this.#contextManager.createContext(contextUrl, {
-            user,
-            workspace,
-            device,
+    /**
+     * Store a password hash
+     * @param {string} userId - User ID
+     * @param {string} passwordHash - Password hash to store
+     * @returns {Promise<void>}
+     * @private
+     */
+    async #storePassword(userId, passwordHash) {
+        await this.#userManager.db.put(`auth:password:${userId}`, {
+            hash: passwordHash,
+            updatedAt: new Date().toISOString(),
         });
-
-        return context;
     }
 
     /**
-     * Update a user
-     * @param {string} userId - User ID to update
-     * @param {Object} userData - User data to update
-     * @param {Object} requestingUser - User making the request
-     * @returns {Promise<Object>} - Updated user
-     * @throws {Error} - If validation fails or permissions are insufficient
-     */
-    async updateUser(userId, userData, requestingUser) {
-        debug(`User ${requestingUser.email} attempting to update user ${userId}`);
-
-        // Check permissions
-        const isSelf = userId === requestingUser.id;
-        const isAdmin = requestingUser.isAdmin();
-
-        // Only admins can change userType
-        if (userData.userType !== undefined && !isAdmin) {
-            throw new Error('Only admins can change user types');
-        }
-
-        // Prevent admins from demoting themselves
-        if (isSelf && userData.userType === 'user' && isAdmin) {
-            throw new Error('Admins cannot demote themselves');
-        }
-
-        // Non-admins can only update their own account
-        if (!isAdmin && !isSelf) {
-            throw new Error('You can only update your own account');
-        }
-
-        // Update the user
-        const updatedUser = await this.#userManager.updateUser(userId, userData);
-
-        debug(`User ${updatedUser.email} updated by ${requestingUser.email}`);
-        return updatedUser;
-    }
-
-    /**
-     * Update user password
+     * Get stored password hash
      * @param {string} userId - User ID
-     * @param {string} currentPassword - Current password (required for non-admins)
-     * @param {string} newPassword - New password
-     * @param {Object} requestingUser - User making the request
-     * @returns {Promise<Object>} - Updated user
-     * @throws {Error} - If validation fails or permissions are insufficient
+     * @returns {Promise<string|null>} - Stored password hash or null
+     * @private
      */
-    async updatePassword(userId, currentPassword, newPassword, requestingUser) {
-        debug(`User ${requestingUser.email} attempting to update password for user ${userId}`);
-
-        // Check permissions
-        const isSelf = userId === requestingUser.id;
-        const isAdmin = requestingUser.isAdmin();
-
-        // Non-admins can only update their own password
-        if (!isAdmin && !isSelf) {
-            throw new Error('You can only update your own password');
+    async #getStoredPassword(userId) {
+        try {
+            const data = await this.#userManager.db.get(`auth:password:${userId}`);
+            return data ? data.hash : null;
+        } catch (error) {
+            debug(`Error getting stored password: ${error.message}`);
+            return null;
         }
-
-        // Non-admins must provide current password
-        if (!isAdmin && isSelf && currentPassword) {
-            // Verify current password
-            const user = await this.#userManager.getUserById(userId);
-            if (!user) {
-                throw new Error('User not found');
-            }
-
-            const isValid = await user.comparePassword(currentPassword);
-            if (!isValid) {
-                throw new Error('Current password is incorrect');
-            }
-        }
-
-        // Update the password
-        const updatedUser = await this.#userManager.updateUser(userId, { password: newPassword });
-
-        debug(`Password updated for user ${updatedUser.email}`);
-        return updatedUser;
-    }
-
-    /**
-     * List all auth tokens for a user
-     * @param {string} userId - User ID
-     * @returns {Promise<Array>} - Array of tokens
-     */
-    async listAuthTokens(userId) {
-        debug(`Listing auth tokens for user: ${userId}`);
-
-        const tokens = await AuthToken.prisma.authToken.findMany({
-            where: {
-                userId,
-                revoked: false
-            },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-
-        return tokens.map(token => new AuthToken(token));
-    }
-
-    /**
-     * Generate a new auth token for a user
-     * @param {string} userId - User ID
-     * @param {string} name - Token name
-     * @param {number} expiresInDays - Token expiration in days (null for no expiration)
-     * @returns {Promise<Object>} - Generated token
-     */
-    async generateAuthToken(userId, name = 'API Token', expiresInDays = null) {
-        debug(`Generating auth token for user: ${userId}`);
-
-        const user = await this.#userManager.getUserById(userId);
-        if (!user) {
-            throw new Error('User not found');
-        }
-
-        const { token, tokenValue } = await AuthToken.generateToken(userId, name, expiresInDays);
-
-        debug(`Generated auth token for user ${userId}: ${token.id}`);
-
-        return { token, tokenValue };
-    }
-
-    /**
-     * Revoke an auth token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object>} - Revoked token
-     */
-    async revokeAuthToken(userId, tokenId) {
-        debug(`Revoking auth token: ${tokenId} for user: ${userId}`);
-
-        const token = await AuthToken.prisma.authToken.findFirst({
-            where: {
-                id: tokenId,
-                userId
-            }
-        });
-
-        if (!token) {
-            throw new Error('Token not found');
-        }
-
-        const authToken = new AuthToken(token);
-        await authToken.revoke();
-
-        debug(`Revoked auth token: ${tokenId}`);
-
-        return authToken;
-    }
-
-    /**
-     * Verify an auth token
-     * @param {string} tokenValue - Token value
-     * @returns {Promise<Object|null>} - Token verification result
-     */
-    async verifyAuthToken(tokenValue) {
-        return await AuthToken.verifyToken(tokenValue);
-    }
-
-    /**
-     * Get the session service
-     * @returns {SessionService} - Session service instance
-     */
-    get sessionService() {
-        return this.#sessionService;
     }
 }
 

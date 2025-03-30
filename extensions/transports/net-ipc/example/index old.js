@@ -1,6 +1,5 @@
 'use strict';
 
-
 // Utils
 const net = require('net');
 const os = require('os');
@@ -16,7 +15,7 @@ const SOCKET_PATH = os.tmpdir() + '/ws-ipcd.sock';
 const DEFAULT_SOCKET_PATH = SOCKET_PATH;
 const CLIENT_SOCKET_TIMEOUT_MS = 1000;
 const CLIENT_RECONNECT_TIMEOUT_MS = 2000;
-const CLIENT_RECONNECT_ERROR_COUNT = 3;   // Number of connection errors till we attempt a reconnect
+const CLIENT_RECONNECT_ERROR_COUNT = 3; // Number of connection errors till we attempt a reconnect
 const CLIENT_IGNORE_EVENTS = [
     'ECONNREFUSED',
     'ECONNRESET',
@@ -31,26 +30,25 @@ const CLIENT_IGNORE_EVENTS = [
 const SCHEMA_V0 = {};
 
 class Server extends EE {
-
     constructor(socketPath) {
-
         super();
 
-        this.socketPath = (socketPath) ? xpipe(socketPath) : SOCKET_PATH;
+        this.socketPath = socketPath ? xpipe(socketPath) : SOCKET_PATH;
         this.isQuitting = false;
         this.sockets = {};
         this.connectionCount = 0;
         this.listener = null;
 
-        if (fs.existsSync(this.socketPath)) {this._unlinkSocket();}
-
+        if (fs.existsSync(this.socketPath)) {
+            this._unlinkSocket();
+        }
     }
 
     start() {
-
-        this.listener = net.createServer((socket) => {
-            socket.on('data', (data) => this._handleData(data, socket));
-        })
+        this.listener = net
+            .createServer((socket) => {
+                socket.on('data', (data) => this._handleData(data, socket));
+            })
 
             .listen(this.socketPath)
             .on('connection', (socket) => this._handleConnection(socket))
@@ -60,12 +58,12 @@ class Server extends EE {
         process.on('SIGINT', () => this.stop());
 
         return this.listener;
-
     }
 
     send(data, socket) {
-
-        if (!socket) {return this.broadcast(data);}
+        if (!socket) {
+            return this.broadcast(data);
+        }
 
         const message = {
             id: genUUID(),
@@ -73,18 +71,18 @@ class Server extends EE {
             payload: '',
         };
 
-        if (typeof socket === 'object')
-        {return (socket.writable) ? socket.write(msgPack(data)) : false;}
+        if (typeof socket === 'object') {
+            return socket.writable ? socket.write(msgPack(data)) : false;
+        }
 
-        if (typeof socket === 'number')
-        {return (this.sockets[socket].writable) ? this.sockets[socket].write(msgPack(data)) : false;}
+        if (typeof socket === 'number') {
+            return this.sockets[socket].writable ? this.sockets[socket].write(msgPack(data)) : false;
+        }
 
         return false;
-
     }
 
     broadcast(data) {
-
         let message = {
             id: genUUID(),
             type: 'broadcast',
@@ -94,34 +92,33 @@ class Server extends EE {
         message = msgPack(message);
 
         if (Object.keys(this.sockets).length) {
-
             log(`IPC Server: Sending broadcast message to ${Object.keys(this.sockets).length} clients`);
             const clients = Object.keys(this.sockets);
 
-            while(clients.length){
+            while (clients.length) {
                 const client = clients.pop();
                 this.sockets[client].write(message);
             }
         }
-
     }
 
     stop() {
-
-        if(!this.isQuitting) {
+        if (!this.isQuitting) {
             this.isQuitting = true;
             log(`IPC server::Terminating, PID ${process.pid}`);
 
             if (Object.keys(this.sockets).length) {
                 const clients = Object.keys(this.sockets);
-                while(clients.length){
+                while (clients.length) {
                     const client = clients.pop();
-                    this.sockets[client].write(msgPack({type: '__disconnect'}));
+                    this.sockets[client].write(msgPack({ type: '__disconnect' }));
                     this.sockets[client].end();
                 }
             }
 
-            if (this.listener) {this.listener.close();}
+            if (this.listener) {
+                this.listener.close();
+            }
         }
     }
 
@@ -135,10 +132,7 @@ class Server extends EE {
         log(`IPC Server: Client #${this.connectionCount} ID ${socketID} connected`);
 
         socket.on('error', (e) => {
-            if (
-                e.code === 'ERR_STREAM_DESTROYED' ||
-                e.code === 'EPIPE'
-            ) {
+            if (e.code === 'ERR_STREAM_DESTROYED' || e.code === 'EPIPE') {
                 delete this.sockets[socketID];
                 this.connectionCount--;
             }
@@ -154,7 +148,6 @@ class Server extends EE {
     }
 
     _handleData(data, socket) {
-
         data = msgUnpack(data);
         data.socketID = socket.id;
 
@@ -168,8 +161,7 @@ class Server extends EE {
             return data;
         }
 
-        switch(data.type) {
-
+        switch (data.type) {
             case 'req':
                 log('Got request -> will reply');
                 this.emit('req', data);
@@ -191,12 +183,10 @@ class Server extends EE {
 
         return;
         //socket.write(msgPack(reply))
-
     }
 
     _handleError(e) {
-
-        switch(e.code) {
+        switch (e.code) {
             case 'EADDRINUSE':
                 this._unlinkSocket();
                 this.start();
@@ -206,52 +196,57 @@ class Server extends EE {
                 break;
             default:
                 console.error('IPC Server::Communication error occurred: ', e);
-
         }
-
     }
 
     _unlinkSocket() {
-        try { fs.unlinkSync(this.socketPath); }
-        catch(err) { if (err) {throw err;} }
+        try {
+            fs.unlinkSync(this.socketPath);
+        } catch (err) {
+            if (err) {
+                throw err;
+            }
+        }
     }
-
 }
 
 class Client extends EE {
-
     constructor(socketPath) {
-
         super();
 
-        this.socketPath = (socketPath) ? xpipe(socketPath) : DEFAULT_SOCKET_PATH;
+        this.socketPath = socketPath ? xpipe(socketPath) : DEFAULT_SOCKET_PATH;
         this.isQuitting = false;
         this.isConneted = false;
         this.socket = null;
         this.errorCount = 0;
         this.cbQueue = [];
-
     }
 
     // Status utils
-    isQuitting() { return this.isQuitting; }
-    isConnected() { return this.isConneted; }
-    getSocket() { return this.socket; }
+    isQuitting() {
+        return this.isQuitting;
+    }
+    isConnected() {
+        return this.isConneted;
+    }
+    getSocket() {
+        return this.socket;
+    }
     //get socket() { return this._socket }
 
     connect() {
-
         // Connect to server
         console.log(`IPC Client: Connecting to server via ${this.socketPath}`);
-        this.socket = net.connect(this.socketPath, () => {
-            log('IPC Client: Connected to server');
-            this.isConneted = true;
-        })
+        this.socket = net
+            .connect(this.socketPath, () => {
+                log('IPC Client: Connected to server');
+                this.isConneted = true;
+            })
 
-        //.setTimeout(CLIENT_SOCKET_TIMEOUT_MS)
+            //.setTimeout(CLIENT_SOCKET_TIMEOUT_MS)
             .on('connect', () => this._handleConnection())
             .on('data', (data) => this._handleData(data))
-        //.on('close', (e) => { log('close', e) })    // Test
+            //.on('close', (e) => { log('close', e) })    // Test
             .on('error', (error) => this._handleError(error));
         /*.on('timeout', () => {
             log('socket timeout')
@@ -260,7 +255,6 @@ class Client extends EE {
 
         process.on('SIGINT', () => this.disconnect());
         return this.socket;
-
     }
 
     disconnect() {
@@ -277,7 +271,6 @@ class Client extends EE {
     }
 
     send(data, type = 'message') {
-
         if (!data) {
             log('IPC Client: No data to be send');
             return false;
@@ -285,7 +278,9 @@ class Client extends EE {
 
         if (!this.socket) {
             log('IPC Client: Socket not connected, attempting to connect');
-            if (!this.connect()) {return false;}
+            if (!this.connect()) {
+                return false;
+            }
         }
 
         if (!this.socket.writable) {
@@ -296,8 +291,9 @@ class Client extends EE {
                 this.disconnect();
             }
 
-            if (!this.connect()) {return false;}
-
+            if (!this.connect()) {
+                return false;
+            }
         }
 
         log('IPC Client: Sending data to server');
@@ -306,23 +302,27 @@ class Client extends EE {
     }
 
     req(data, cb) {
-
         const requestID = genUUID();
 
-        if (!this.send({
-            id: requestID,
-            type: 'req',
-            payload: data,
-        })) {return false;}
+        if (
+            !this.send({
+                id: requestID,
+                type: 'req',
+                payload: data,
+            })
+        ) {
+            return false;
+        }
 
         this.once(requestID, (reply) => {
             log(`IPC Client: Got reply for ${requestID}`);
-            if (typeof cb === 'function') {cb(reply);}
+            if (typeof cb === 'function') {
+                cb(reply);
+            }
             return reply;
         });
 
         return true;
-
     }
 
     _handleConnection() {
@@ -330,7 +330,6 @@ class Client extends EE {
     }
 
     _handleData(data) {
-
         data = msgUnpack(data);
         log('IPC Client: Received data');
 
@@ -340,8 +339,7 @@ class Client extends EE {
             return data;
         }
 
-        switch(data.type) {
-
+        switch (data.type) {
             case 'req':
                 log('req');
                 this.emit(`${data.id}`, data.payload);
@@ -367,11 +365,9 @@ class Client extends EE {
         }
 
         return data.payload;
-
     }
 
     _handleError(e) {
-
         log('------- Client Error -------');
         if (e.code === 'ENOENT') {
             log(`Attempting to reconnect, timeout ${CLIENT_RECONNECT_TIMEOUT_MS}`);
@@ -383,9 +379,7 @@ class Client extends EE {
 
         log(e);
         log('------- /Client Error -------');
-
     }
-
 }
 
 module.exports = {
@@ -400,18 +394,16 @@ module.exports = {
  * @returns
  */
 function xpipe(path) {
-
     const prefix = process.platform === 'win32' ? '//./pipe/' : '';
     if (prefix.endsWith('/') && path.startsWith('/')) {
         return prefix + path.substr(1);
     }
 
     return prefix + path;
-
 }
 
 function msgPack(msg) {
-    const packer = new Packer;
+    const packer = new Packer();
     packer.push(msg);
     return packer.toBuffer();
 }

@@ -169,7 +169,7 @@ class DeviceManager extends EventEmitter {
         }
 
         try {
-            const devicesData = Array.from(this.#devices.values()).map(device => device.toJSON());
+            const devicesData = Array.from(this.#devices.values()).map((device) => device.toJSON());
             await fs.writeFile(this.#configPath, JSON.stringify(devicesData, null, 2));
             debug(`Saved ${devicesData.length} devices to config`);
         } catch (err) {
@@ -213,7 +213,6 @@ class DeviceManager extends EventEmitter {
 
 const deviceManager = new DeviceManager();
 deviceManager.initialize();
-
 
 // Default export
 export default deviceManager;

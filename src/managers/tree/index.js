@@ -7,7 +7,6 @@ import Tree from './lib/Tree.js';
 // TODO: Add tree versioning
 // TODO: Finish this implementation (proxy the Tree class to trigger save on updates)
 class TreeManager extends EventEmitter {
-
     #treeIndexStore;
     #layerIndexStore;
     #tree;
@@ -16,7 +15,7 @@ class TreeManager extends EventEmitter {
         super(); // EventEmitter
 
         this.#treeIndexStore = options.treeIndexStore;
-        this.#layerIndexStore =  options.layerIndexStore;
+        this.#layerIndexStore = options.layerIndexStore;
 
         this.#tree = new Tree({
             treeIndexStore: this.#treeIndexStore,
@@ -28,26 +27,29 @@ class TreeManager extends EventEmitter {
         return this.#tree;
     }
 
-    deleteContextTree() {
+    deleteContextTree(id) {
         throw new Error('Not implemented');
     }
 
-    saveContextTree() {
-        this.#tree.save(); // TODO: Refactor
+    saveContextTree(id) {
+        throw new Error('Not implemented');
     }
 
-    loadContextTree() {
-        this.#tree.load(); // TODO: Refactor
+    loadContextTree(id) {
+        throw new Error('Not implemented');
     }
 
-    nextContextTreeVersion() {}
+    nextContextTreeVersion(id) {
+        throw new Error('Not implemented');
+    }
 
-    previousContextTreeVersion() {}
+    previousContextTreeVersion(id) {
+        throw new Error('Not implemented');
+    }
 
-    listContextTreeVersions() {}
-
-    diffContextTree(vID1, vID2) {}
-
+    listContextTreeVersions(id) {
+        throw new Error('Not implemented');
+    }
 }
 
 export default TreeManager;

@@ -13,23 +13,29 @@ import Url from './Url.js';
  * Context
  * Represents a view on top of data, holding references to workspace, session, device, etc.
  */
-class Context extends EventEmitter {
 
+class Context extends EventEmitter {
     // Context properties
     #id;
     #name;
     #baseUrl; // With workspace support we need to change the format to workspace://baseUrl/path
     #url;
+    #path;
+    #pathArray;
 
     // Workspace references
     #db; // workspace.db
     #tree; // workspace.tree
 
+    // Runtime Context arrays
+    #serverContextArray; // server/os/linux, server/version/1.0.0, server/datetime/, server/ip/192.168.1.1
+    #clientContextArray; // client/os/linux, client/app/firefox, client/datetime/, client/user/john.doe
+
     // Bitmap arrays
-    #systemBitmapArray = [];
     #contextBitmapArray = [];
     #featureBitmapArray = [];
-    #filterBitmapArray = [];
+
+    #filterArray = [];
 
     // Manager module references
     #device;
@@ -50,7 +56,7 @@ class Context extends EventEmitter {
 
         // Context properties
         this.#id = options.id || uuidv4();
-        this.#name = options.name || '';
+        this.#name = options.name ?? this.#id;
         this.#baseUrl = options.baseUrl || '/';
         this.#isLocked = options.locked || false;
 
@@ -67,6 +73,12 @@ class Context extends EventEmitter {
         // Context metadata
         this.#created = options.created || new Date().toISOString();
         this.#updated = options.updated || new Date().toISOString();
+
+        // Server Context
+        this.#serverContextArray = options.serverContextArray || [];
+
+        // Client Context
+        this.#clientContextArray = options.clientContextArray || [];
 
         // Parse the URL without switching workspaces
         // We'll handle the actual URL setting after initialization
@@ -92,29 +104,132 @@ class Context extends EventEmitter {
         this.emit('created', this.toJSON());
     }
 
+    /**
+     * Initialize the context by processing any pending URL switch
+     * This should be called after the context is created if you need
+     * to ensure the context is fully initialized with the correct workspace
+     * @returns {Promise<Context>} - The initialized context
+     */
+    async initialize() {
+        if (this.#pendingUrl) {
+            debug(`Processing pending URL switch to ${this.#pendingUrl}`);
+            const pendingUrl = this.#pendingUrl;
+            this.#pendingUrl = null;
+            return this.setUrl(pendingUrl);
+        }
+        return Promise.resolve(this);
+    }
+
     // Getters
-    get id() { return this.#id; }
-    get name() { return this.#name; }
-    get baseUrl() { return this.#baseUrl; }
-    get url() { return this.#url; }
-    get workspace() { return this.#workspace.id; }
-    get device() { return this.#device.id; }
-    get app() { return this.#device.app; }
-    get user() { return this.#user; }
-    get identity() { return this.#user.identity; }
-    get tree() { return this.#tree.toJSON(); } // Legacy
-    get pendingUrl() { return this.#pendingUrl; } // Check if there's a pending URL switch
+    get id() {
+        return this.#id;
+    }
+    get name() {
+        return this.#name;
+    }
+    get baseUrl() {
+        return this.#baseUrl;
+    }
+    get url() {
+        return this.#url;
+    }
+    get path() {
+        return this.#path;
+    }
+    get pathArray() {
+        return this.#pathArray;
+    }
+    get workspace() {
+        return this.#workspace.id;
+    }
+    get device() {
+        return this.#device.id;
+    }
+    get apps() {
+        return this.#device.apps;
+    }
+    get user() {
+        return this.#user;
+    }
+    get identity() {
+        return this.#user.identity;
+    }
+    get tree() {
+        return this.#tree.toJSON();
+    } // Legacy
+    get pendingUrl() {
+        return this.#pendingUrl;
+    } // Check if there's a pending URL switch
+    get bitmapArrays() {
+        return {
+            server: this.#serverContextArray,
+            client: this.#clientContextArray,
+            context: this.#contextBitmapArray,
+            feature: this.#featureBitmapArray,
+            filter: this.#filterArray,
+        };
+    }
+
+    get serverContextArray() {
+        return this.#serverContextArray;
+    }
+    get clientContextArray() {
+        return this.#clientContextArray;
+    }
+    get contextBitmapArray() {
+        return this.#contextBitmapArray;
+    }
+    get featureBitmapArray() {
+        return this.#featureBitmapArray;
+    }
+    get filterArray() {
+        return this.#filterArray;
+    }
+
+    get created() {
+        return this.#created;
+    }
+    get updated() {
+        return this.#updated;
+    }
+    get status() {
+        return this.toJSON();
+    }
 
     /**
      * Context API
      */
+
+    setClientContextArray(clientContextArray) {
+        if (!Array.isArray(clientContextArray)) {
+            clientContextArray = [clientContextArray];
+        }
+
+        this.#clientContextArray = clientContextArray;
+    }
+
+    clearClientContextArray() {
+        this.#clientContextArray = [];
+    }
+
+    setServerContextArray(serverContextArray) {
+        if (!Array.isArray(serverContextArray)) {
+            serverContextArray = [serverContextArray];
+        }
+
+        this.#serverContextArray = serverContextArray;
+    }
+
+    clearServerContextArray() {
+        this.#serverContextArray = [];
+    }
 
     setUrl(url) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
 
-        let parsed = new Url(url);
+        const parsed = new Url(url);
         debug(`Setting URL to ${parsed.url}`);
 
         // If the workspace ID is different, switch to the new workspace
@@ -127,10 +242,12 @@ class Context extends EventEmitter {
         debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the context bitmap array
-        this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
+        this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
 
         // Update the URL
         this.#url = parsed.url;
+        this.#path = parsed.path;
+        this.#pathArray = parsed.pathArray;
 
         // Update the updated timestamp
         this.#updated = new Date().toISOString();
@@ -223,7 +340,7 @@ class Context extends EventEmitter {
 
                 // Update the context bitmap array with prefixed layers
                 // Prefix workaround till we implement propper collections in the DB
-                this.#contextBitmapArray = contextLayers.map(layer => `context/${layer}`);
+                this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
 
                 // Update the URL
                 this.#url = parsed.url;
@@ -241,19 +358,52 @@ class Context extends EventEmitter {
     }
 
     /**
-     * Initialize the context by processing any pending URL switch
-     * This should be called after the context is created if you need
-     * to ensure the context is fully initialized with the correct workspace
-     * @returns {Promise<Context>} - The initialized context
+     * Query
      */
-    async initialize() {
-        if (this.#pendingUrl) {
-            debug(`Processing pending URL switch to ${this.#pendingUrl}`);
-            const pendingUrl = this.#pendingUrl;
-            this.#pendingUrl = null;
-            return this.setUrl(pendingUrl);
+
+    query(query, featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
         }
-        return Promise.resolve(this);
+
+        // NLP query
+    }
+
+    ftsQuery(query, featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        // FTS query
+    }
+
+    /**
+     * Bitmaps
+     */
+
+    setFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
+        this.#featureBitmapArray = featureArray;
+    }
+
+    appendFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
+        this.#featureBitmapArray.push(...featureArray);
+    }
+
+    removeFeatureBitmaps(featureArray) {
+        if (!Array.isArray(featureArray)) {
+            featureArray = [featureArray];
+        }
+        this.#featureBitmapArray = this.#featureBitmapArray.filter((feature) => !featureArray.includes(feature));
+    }
+
+    clearFeatureBitmaps() {
+        this.#featureBitmapArray = [];
     }
 
     /**
@@ -265,13 +415,18 @@ class Context extends EventEmitter {
             throw new Error('Workspace or database not available');
         }
 
-        // This may be subject to change, if featureArray is empty, we'll use the context-wide feature array
-        if (featureArray.length === 0) {
-            featureArray = this.#featureBitmapArray;
+        const contextArray = this.#contextBitmapArray;
+
+        if (options.includeServerContext) {
+            contextArray.push(this.#serverContextArray);
+        }
+
+        if (options.includeClientContext) {
+            contextArray.push(this.#clientContextArray);
         }
 
         // Filters are out of scope for now
-        const document = this.#db.getDocument(documentId, this.#contextBitmapArray, featureArray, filterArray, options);
+        const document = this.#db.getDocument(documentId, contextArray, featureArray, filterArray);
         this.emit('document:get', document.id);
         return document;
     }
@@ -281,23 +436,23 @@ class Context extends EventEmitter {
             throw new Error('Workspace or database not available');
         }
 
-        // This may be subject to change, if featureArray is empty, we'll use the context-wide feature array
-        if (featureArray.length === 0) {
-            featureArray = this.#featureBitmapArray;
+        const contextArray = this.#contextBitmapArray;
+
+        if (options.includeServerContext) {
+            contextArray.push(this.#serverContextArray);
         }
 
-        // Additionally filter based on system features (os, app, device, user)
-        if (options.includeSystemContext) {
-            featureArray.push(this.#systemBitmapArray);
+        if (options.includeClientContext) {
+            contextArray.push(this.#clientContextArray);
         }
 
         // Filters are out of scope for now
-        const documents = this.#db.listDocuments(this.#contextBitmapArray, featureArray, filterArray, options);
+        const documents = this.#db.listDocuments(contextArray, featureArray, filterArray);
         this.emit('documents:list', documents.length);
         return documents;
     }
 
-    insertDocument(document, featureArray = []) {
+    insertDocument(document, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -306,15 +461,16 @@ class Context extends EventEmitter {
             throw new Error('Document is required');
         }
 
+        // We always update context bitmaps
+        const contextArray = this.#contextBitmapArray;
+        contextArray.push(this.#serverContextArray);
+        contextArray.push(this.#clientContextArray);
+
         // We always index with all features
-        featureArray = [
-            ...this.#featureBitmapArray,
-            ...this.#systemBitmapArray,
-            ...featureArray,
-        ];
+        featureArray = [...this.#featureBitmapArray, ...featureArray];
 
         // Insert the document
-        const result = this.#db.insertDocument(document, this.#contextBitmapArray, featureArray);
+        const result = this.#db.insertDocument(document, contextArray, featureArray);
         this.emit('document:insert', document.id || result.id);
         return result;
     }
@@ -328,20 +484,18 @@ class Context extends EventEmitter {
             throw new Error('Document array must be an array');
         }
 
-        // We always index with all features
-        featureArray = [
-            ...this.#featureBitmapArray,
-            ...this.#systemBitmapArray,
-            ...featureArray,
-        ];
+        // We always update context bitmaps
+        const contextArray = this.#contextBitmapArray;
+        contextArray.push(this.#serverContextArray);
+        contextArray.push(this.#clientContextArray);
 
         // Insert the documents
-        const result = this.#db.insertDocuments(documentArray, this.#contextBitmapArray, featureArray, options);
+        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
         this.emit('documents:insert', documentArray.length);
         return result;
     }
 
-    updateDocument(document, featureArray = []) {
+    updateDocument(document, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -350,15 +504,14 @@ class Context extends EventEmitter {
             throw new Error('Document is required');
         }
 
-        // We always index with all features
-        featureArray = [
-            ...this.#featureBitmapArray,
-            ...this.#systemBitmapArray,
-            ...featureArray,
-        ];
+        // We always update context bitmaps
+        const contextArray = this.#contextBitmapArray;
+        contextArray.push(this.#serverContextArray);
+        contextArray.push(this.#clientContextArray);
 
         // Update the document
-        const result = this.#db.updateDocument(document, this.#contextBitmapArray, featureArray);
+        const result = this.#db.updateDocument(document, contextArray, featureArray);
+
         this.emit('document:update', document.id);
         return result;
     }
@@ -372,8 +525,14 @@ class Context extends EventEmitter {
             throw new Error('Document array must be an array');
         }
 
+        // We always update context bitmaps
+        const contextArray = this.#contextBitmapArray;
+        contextArray.push(this.#serverContextArray);
+        contextArray.push(this.#clientContextArray);
+
         // Update the documents
-        const result = this.#db.updateDocuments(documentArray, this.#contextBitmapArray, featureArray, options);
+        const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
+
         this.emit('documents:update', documentArray.length);
         return result;
     }
@@ -399,7 +558,7 @@ class Context extends EventEmitter {
         }
 
         // We remove documents from the current context not from the database
-        const result = this.#db.removeDocuments(documentIdArray, this.#contextBitmapArray, featureArray, options);
+        const result = this.#db.removeDocumentArray(documentIdArray, this.#contextBitmapArray, featureArray, options);
         this.emit('documents:remove', documentIdArray.length);
         return result;
     }
@@ -425,37 +584,9 @@ class Context extends EventEmitter {
         }
 
         // Completely delete the documents from the database
-        const result = this.#db.deleteDocuments(documentIdArray, featureArray, options);
+        const result = this.#db.deleteDocumentArray(documentIdArray, featureArray, options);
         this.emit('documents:delete', documentIdArray.length);
         return result;
-    }
-
-    /**
-     * Document Feature API
-     */
-
-    addDocumentFeature(feature) {
-        // Implementation needed
-        this.emit('feature:add', feature);
-    }
-
-    removeDocumentFeature(feature) {
-        // Implementation needed
-        this.emit('feature:remove', feature);
-    }
-
-    listDocumentFeatures() {
-        // Implementation needed
-        const features = []; // Placeholder for actual implementation
-        this.emit('features:list', features.length);
-        return features;
-    }
-
-    hasDocumentFeature(feature) {
-        // Implementation needed
-        const hasFeature = false; // Placeholder for actual implementation
-        this.emit('feature:check', { feature, exists: hasFeature });
-        return hasFeature;
     }
 
     /**
@@ -471,6 +602,11 @@ class Context extends EventEmitter {
             created: this.#created,
             updated: this.#updated,
             locked: this.#isLocked,
+            serverContextArray: this.#serverContextArray,
+            clientContextArray: this.#clientContextArray,
+            contextBitmapArray: this.#contextBitmapArray,
+            featureBitmapArray: this.#featureBitmapArray,
+            filterArray: this.#filterArray,
         };
 
         // Include pendingUrl if it exists
@@ -480,7 +616,6 @@ class Context extends EventEmitter {
 
         return json;
     }
-
 }
 
 export default Context;

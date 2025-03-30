@@ -7,14 +7,12 @@ import App from './lib/App.js';
  */
 
 class AppManager extends EventEmitter {
-
     #index;
 
     constructor(options = {}) {
         debug('Initializing Canvas App Manager');
         super();
     }
-
 }
 
 export default AppManager;

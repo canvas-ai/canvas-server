@@ -1,44 +1,150 @@
 import debugInstance from 'debug';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { Server } from 'socket.io';
+import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 
 const debug = debugInstance('canvas:transport:ws');
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const API_VERSIONS = ['v2'];
 const DEFAULT_CONFIG = {
-    protocol: process.env.CANVAS_TRANSPORT_WS_PROTOCOL || 'ws',
     host: process.env.CANVAS_TRANSPORT_WS_HOST || '0.0.0.0',
     port: process.env.CANVAS_TRANSPORT_WS_PORT || 8002,
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST'],
+        credentials: true
+    },
     auth: {
-        enabled: process.env.CANVAS_TRANSPORT_WS_AUTH_ENABLED || false,
-        accessToken: process.env.CANVAS_TRANSPORT_WS_ACCESS_TOKEN || 'canvas-server-token',
-        jwtSecret: process.env.CANVAS_TRANSPORT_WS_JWT_SECRET || 'canvas-jwt-secret',
-        jwtLifetime: process.env.CANVAS_TRANSPORT_WS_JWT_LIFETIME || '48h',
+        enabled: process.env.CANVAS_TRANSPORT_WS_AUTH_ENABLED === 'true' || false,
     },
 };
 
 class WebSocketTransport {
     #config;
     #io;
+    #httpServer;
     #isShuttingDown = false;
-    #closePromise;
     #canvasServer;
 
+    // Track workspace subscriptions across all clients
+    #workspaceSubscriptions = new Map(); // workspaceId -> Set of socket IDs
+
     constructor(options = {}) {
+        debug(`Initializing WebSocket Transport with options: ${JSON.stringify(options)}`);
         this.#config = { ...DEFAULT_CONFIG, ...options };
         this.ResponseObject = ResponseObject;
-        debug('WebSocket Transport initialized with config:', this.#config);
+    }
+
+    setCanvasServer(server) {
+        debug('Setting Canvas server instance');
+        this.#canvasServer = server;
     }
 
     /**
-     * Set the Canvas server instance
-     * @param {Object} server - Canvas server instance
+     * Get the underlying Socket.IO server instance
+     * @returns {Server} Socket.IO server instance
      */
-    setCanvasServer(server) {
-        this.#canvasServer = server;
+    getIo() {
+        return this.#io;
+    }
+
+    /**
+     * Check if there are active subscriptions for a workspace
+     * @param {string} workspaceId - Workspace ID
+     * @returns {boolean} True if there are active subscriptions
+     */
+    hasWorkspaceSubscribers(workspaceId) {
+        const subscribers = this.#workspaceSubscriptions.get(workspaceId);
+        return subscribers !== undefined && subscribers.size > 0;
+    }
+
+    /**
+     * Get the number of subscribers for a workspace
+     * @param {string} workspaceId - Workspace ID
+     * @returns {number} Number of subscribers
+     */
+    getWorkspaceSubscriberCount(workspaceId) {
+        const subscribers = this.#workspaceSubscriptions.get(workspaceId);
+        return subscribers ? subscribers.size : 0;
+    }
+
+    /**
+     * Broadcast an event to all clients subscribed to a workspace
+     * @param {string} workspaceId - Workspace ID
+     * @param {string} eventName - Event name
+     * @param {Object} data - Event data
+     */
+    broadcastToWorkspace(workspaceId, eventName, data) {
+        const subscribers = this.#workspaceSubscriptions.get(workspaceId);
+        if (!subscribers || subscribers.size === 0) {
+            return;
+        }
+
+        debug(`Broadcasting event ${eventName} to ${subscribers.size} clients for workspace ${workspaceId}`);
+
+        // Emit to each subscribed socket
+        if (this.#io) {
+            subscribers.forEach(socketId => {
+                const socket = this.#io.sockets.sockets.get(socketId);
+                if (socket && socket.connected) {
+                    socket.emit(`workspace:${eventName}`, { workspaceId, data });
+                }
+            });
+        }
+    }
+
+    /**
+     * Add a subscription for a workspace
+     * @param {string} workspaceId - Workspace ID
+     * @param {string} socketId - Socket ID
+     */
+    addWorkspaceSubscription(workspaceId, socketId) {
+        if (!this.#workspaceSubscriptions.has(workspaceId)) {
+            this.#workspaceSubscriptions.set(workspaceId, new Set());
+        }
+
+        this.#workspaceSubscriptions.get(workspaceId).add(socketId);
+        debug(`Added subscription for workspace ${workspaceId} from socket ${socketId}, total subscribers: ${this.#workspaceSubscriptions.get(workspaceId).size}`);
+    }
+
+    /**
+     * Remove a subscription for a workspace
+     * @param {string} workspaceId - Workspace ID
+     * @param {string} socketId - Socket ID
+     */
+    removeWorkspaceSubscription(workspaceId, socketId) {
+        const subscribers = this.#workspaceSubscriptions.get(workspaceId);
+        if (subscribers) {
+            subscribers.delete(socketId);
+            debug(`Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`);
+
+            // Clean up the map entry if there are no more subscribers
+            if (subscribers.size === 0) {
+                this.#workspaceSubscriptions.delete(workspaceId);
+                debug(`No more subscribers for workspace ${workspaceId}, removed workspace from subscription map`);
+            }
+        }
+    }
+
+    /**
+     * Remove all subscriptions for a socket
+     * @param {string} socketId - Socket ID
+     */
+    removeSocketSubscriptions(socketId) {
+        debug(`Removing all subscriptions for socket ${socketId}`);
+
+        // For each workspace subscription
+        for (const [workspaceId, subscribers] of this.#workspaceSubscriptions.entries()) {
+            if (subscribers.has(socketId)) {
+                subscribers.delete(socketId);
+                debug(`Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`);
+
+                // Clean up the map entry if there are no more subscribers
+                if (subscribers.size === 0) {
+                    this.#workspaceSubscriptions.delete(workspaceId);
+                    debug(`No more subscribers for workspace ${workspaceId}, removed workspace from subscription map`);
+                }
+            }
+        }
     }
 
     async start(httpServer = null) {
@@ -52,189 +158,241 @@ class WebSocketTransport {
 
         // Create HTTP server if not provided
         if (!httpServer) {
-            const http = await import('http');
-            httpServer = http.createServer();
-            httpServer.listen(this.#config.port, this.#config.host, () => {
+            debug('Creating new HTTP server');
+            this.#httpServer = http.createServer();
+            this.#httpServer.listen(this.#config.port, this.#config.host, () => {
                 debug(`WebSocket server listening on ${this.#config.host}:${this.#config.port}`);
             });
+        } else {
+            this.#httpServer = httpServer;
+            debug('Using provided HTTP server for WebSocket');
         }
 
-        const { Server } = await import('socket.io');
-        this.#io = new Server(httpServer, {
-            cors: {
-                origin: '*',
-                methods: ['GET', 'POST'],
-            },
+        // Initialize Socket.IO server with improved configuration
+        this.#io = new Server(this.#httpServer, {
+            cors: this.#config.cors,
+            // Connection parameters
+            connectTimeout: 45000,
+            // Ping settings
+            pingTimeout: 30000,
+            pingInterval: 25000,
+            // Transport settings
+            transports: ['websocket', 'polling'],
+            allowUpgrades: true,
+            upgradeTimeout: 10000,
+            // Max payload
+            maxHttpBufferSize: 1e6, // 1MB
+            // Performance
+            perMessageDeflate: true,
+            httpCompression: true,
+            // Security
+            allowEIO3: false,
+            cookie: {
+                name: 'canvas.sid',
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: 86400 * 30 * 1000 // 30 days
+            }
+        });
+
+        // Set up debugging for connection events
+        this.#io.engine.on('connection', (socket) => {
+            debug(`Raw engine connection established: ${socket.id}`);
+
+            socket.on('error', (err) => {
+                debug(`Socket error for ${socket.id}: ${err.message}`);
+            });
+
+            socket.on('close', (reason) => {
+                debug(`Socket ${socket.id} closed. Reason: ${reason}`);
+            });
+        });
+
+        // Monitor ping/pong
+        this.#io.engine.on('packet', (packet) => {
+            if (packet.type === 'ping') {
+                debug(`Server sent ping to clients`);
+            } else if (packet.type === 'pong') {
+                debug(`Server received pong from client`);
+            }
+        });
+
+        // Set up global disconnect handler for all sockets
+        this.#io.on('disconnect', (socket) => {
+            debug(`Socket ${socket.id} disconnected`);
+            // Clean up any workspace subscriptions for this socket
+            this.removeSocketSubscriptions(socket.id);
         });
 
         // Set max listeners
-        this.#io.sockets.setMaxListeners(5);
+        this.#io.sockets.setMaxListeners(15);
+
+        // Handle custom ping
+        this.#io.on('ping', (socket, callback) => {
+            debug(`Received custom ping from client ${socket.id}`);
+            if (typeof callback === 'function') {
+                callback();
+            }
+        });
 
         if (this.#config.auth.enabled) {
-            this.#setupAuthentication();
+            debug('Setting up WebSocket authentication');
+            await this.#setupAuthentication();
         }
 
-        this.#setupConnectionHandler();
-
-        // Register admin routes
-        await this.#setupAdminRoutes();
-
+        await this.#setupConnectionHandler();
         debug('WebSocket server started');
     }
 
     async stop() {
-        if (!this.#io) {
-            debug('No WebSocket server instance to stop');
-            return Promise.resolve();
-        }
-
         if (this.#isShuttingDown) {
-            debug('WebSocket server is already shutting down, waiting for existing shutdown to complete');
-            return this.#closePromise;
+            debug('WebSocket server already shutting down');
+            return;
         }
 
         this.#isShuttingDown = true;
         debug('Shutting down WebSocket server...');
 
-        this.#closePromise = new Promise((resolve) => {
-            // Close all existing connections
-            const sockets = Array.from(this.#io.sockets.sockets.values());
-            sockets.forEach(socket => {
-                this.#handleDisconnect(socket);
-                socket.disconnect(true);
-            });
+        if (!this.#io) {
+            debug('WebSocket server not running');
+            this.#isShuttingDown = false;
+            return;
+        }
 
-            // Close the server
-            this.#io.close(() => {
-                debug('WebSocket server gracefully shut down');
+        return new Promise((resolve) => {
+            this.#io.close((err) => {
+                if (err) {
+                    debug(`Error closing WebSocket server: ${err.message}`);
+                }
                 this.#io = null;
                 this.#isShuttingDown = false;
+                debug('WebSocket server closed');
                 resolve();
             });
-
-            // Force close after timeout
-            setTimeout(() => {
-                if (this.#io) {
-                    debug('Force closing remaining WebSocket connections');
-                    this.#io = null;
-                    this.#isShuttingDown = false;
-                    resolve();
-                }
-            }, 5000);
         });
-
-        return this.#closePromise;
-    }
-
-    async restart(httpServer) {
-        await this.stop();
-        await this.start(httpServer);
     }
 
     status() {
-        if (!this.#io) { return { listening: false }; }
+        if (!this.#io) {
+            return {
+                running: false,
+                connections: 0,
+                workspaces: 0
+            };
+        }
+
         return {
-            protocol: this.#config.protocol,
-            host: this.#config.host,
-            port: this.#config.port,
-            listening: true,
+            running: true,
             connections: this.#io.sockets.sockets.size,
+            workspaces: this.#workspaceSubscriptions.size
         };
     }
 
-    #setupAuthentication() {
-        // Get auth service from the Canvas server
+    async #setupAuthentication() {
         const authService = this.#canvasServer.services.get('auth');
         if (!authService) {
             throw new Error('Auth service not found in Canvas server');
         }
 
-        this.#io.use((socket, next) => {
-            const token = socket.handshake.auth.token || socket.handshake.headers['authorization'];
-
-            if (!token) {
-                return next(new Error('Authentication token required'));
-            }
-
-            const decoded = authService.verifyToken(token);
-            if (!decoded) {
-                return next(new Error('Invalid token'));
-            }
-
-            socket.user = decoded;
-            next();
-        });
+        const { default: createAuthMiddleware } = await import('./middleware/auth.js');
+        const authMiddleware = createAuthMiddleware(this.#canvasServer);
+        this.#io.use(authMiddleware);
+        debug('WebSocket authentication middleware configured');
     }
 
-    #setupConnectionHandler() {
+    async #setupConnectionHandler() {
+        debug('Setting up connection handler');
+        const { default: contextRoutes } = await import('./routes/v2/context.js');
+        const { default: workspaceRoutes } = await import('./routes/v2/workspace.js');
+
         this.#io.on('connection', async (socket) => {
             debug(`Client connected: ${socket.id}`);
 
             // Initialize socket state
             socket.sessionManager = this.#canvasServer.sessionManager;
-            socket.session = null; // Will be set by auth middleware
-            socket.context = null; // Will be set when a context is selected
+            socket.session = null;
+            socket.context = null;
+            socket.wsTransport = this; // Give socket access to this transport instance
 
-            // Load and bind route handlers
-            await this.#loadSocketRoutes(socket);
+            // Load routes
+            contextRoutes(socket, {
+                ResponseObject: this.ResponseObject,
+                sessionManager: this.#canvasServer.sessionManager,
+                context: this.#canvasServer.contextManager,
+            });
+
+            workspaceRoutes(socket, {
+                ResponseObject: this.ResponseObject,
+                userManager: this.#canvasServer.userManager,
+                workspaceManager: this.#canvasServer.workspaceManager,
+                wsTransport: this, // Pass this transport instance to the routes
+            });
 
             socket.on('disconnect', () => {
                 debug(`Client disconnected: ${socket.id}`);
-                this.#handleDisconnect(socket);
+                // Clean up any workspace subscriptions for this socket
+                this.removeSocketSubscriptions(socket.id);
             });
         });
     }
 
-    async #loadSocketRoutes(socket) {
-        for (const version of API_VERSIONS) {
-            const versionPath = path.join(__dirname, 'routes', version);
-            const routeFiles = fs.readdirSync(versionPath).filter(file => file.endsWith('.js'));
+    /**
+     * Set up workspace event listeners for a specific workspace
+     * @param {string} workspaceId - Workspace ID
+     * @param {Object} workspace - Workspace instance
+     */
+    setupWorkspaceListeners(workspaceId, workspace) {
+        if (!workspace || !workspace.id) {
+            debug(`Cannot setup listeners: Invalid workspace for ${workspaceId}`);
+            return false;
+        }
 
-            for (const file of routeFiles) {
-                try {
-                    const route = await import(path.join(versionPath, file));
-                    debug(`Loading socket route: ${file}`);
-                    route.default(socket, this.#injectDependencies(socket));
-                } catch (error) {
-                    debug(`Error loading route ${file}:`, error);
+        debug(`Setting up event listeners for workspace ${workspaceId}`);
+
+        // Define all workspace events we want to listen for
+        const events = [
+            'workspace:tree:updated',
+            'workspace:layer:created',
+            'workspace:layer:updated',
+            'workspace:layer:renamed',
+            'workspace:layer:deleted',
+            'workspace:status:changed',
+            'workspace:color:changed',
+            'workspace:description:changed',
+            'workspace:label:changed',
+            'workspace:locked',
+            'workspace:unlocked',
+            'workspace:config:changed'
+        ];
+
+        // First check if we already have listeners for this workspace
+        if (workspace._wsListenersSetup) {
+            debug(`Workspace ${workspaceId} already has event listeners set up`);
+            return true;
+        }
+
+        // For each event, add a listener
+        events.forEach(eventName => {
+            // First remove any existing listeners to avoid duplicates
+            workspace.removeAllListeners(`${eventName}:ws-bridge`);
+
+            // Add a new listener with a unique name suffix to avoid conflicts
+            workspace.on(eventName, (data) => {
+                debug(`Workspace event ${eventName} received for ${workspaceId}`);
+
+                // Only broadcast if there are subscribers
+                if (this.hasWorkspaceSubscribers(workspaceId)) {
+                    debug(`Broadcasting ${eventName} event to ${this.getWorkspaceSubscriberCount(workspaceId)} subscribers`);
+                    this.broadcastToWorkspace(workspaceId, eventName, data);
                 }
-            }
-        }
-    }
+            });
 
-    #injectDependencies(socket) {
-        return {
-            ResponseObject: this.ResponseObject,
-            canvasServer: this.#canvasServer,
-            sessionManager: this.#canvasServer.sessionManager,
-            session: socket.session,
-            context: socket.context,
-        };
-    }
+            debug(`Added listener for ${eventName} on workspace ${workspaceId}`);
+        });
 
-    #handleDisconnect(socket) {
-        if (socket.context) {
-            socket.context.cleanup?.();
-        }
-        if (socket.session) {
-            socket.session.cleanup?.();
-        }
-    }
-
-    async #setupAdminRoutes() {
-        // Get auth service from the Canvas server
-        const authService = this.#canvasServer.services.get('auth');
-        if (!authService) {
-            throw new Error('Auth service not found in Canvas server');
-        }
-
-        try {
-            const adminRoutes = await import('./routes/v2/admin.js');
-            adminRoutes.default(this.#io, authService);
-            debug('Admin routes registered');
-        } catch (error) {
-            debug(`Error loading admin routes: ${error.message}`);
-        }
+        // Mark workspace as having listeners set up
+        workspace._wsListenersSetup = true;
+        return true;
     }
 }
 

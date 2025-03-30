@@ -1,8 +1,8 @@
 'use strict';
 
-const Role          = require('../role');
-const MailListener  = require('mail-listener-fixed2');
-const notify        = require('../../gui/utils/notifier');
+const Role = require('../role');
+const MailListener = require('mail-listener-fixed2');
+const notify = require('../../gui/utils/notifier');
 
 const default_config = {
     connTimeout: 5000, // Default by node-imap
@@ -20,30 +20,27 @@ const default_config = {
 
 const DEFAULT_MAX_LISTENERS = 10;
 
-const fs            = require('fs');
-const path          = require('path');
-const configfile    = path.resolve(__dirname, '../../../config/role.maild.json');
-const data          = fs.readFileSync(configfile, 'utf8');
+const fs = require('fs');
+const path = require('path');
+const configfile = path.resolve(__dirname, '../../../config/role.maild.json');
+const data = fs.readFileSync(configfile, 'utf8');
 
 const config = JSON.parse(data);
 
 class MailD {
-
     constructor() {
-
         console.log('Mail notifier consturctor');
         this.accounts = new Array(DEFAULT_MAX_LISTENERS);
         this.listeners = new Array(DEFAULT_MAX_LISTENERS);
 
         for (const account in config) {
-            if (! config[account].enabled) {
+            if (!config[account].enabled) {
                 console.log(`account ${account} disabled`);
             } else {
                 console.log(`Loading configuration options for account ${account}`);
-                this.accounts[account] = {...default_config, ...config[account]};    
+                this.accounts[account] = { ...default_config, ...config[account] };
             }
         }
-
     }
 
     start() {
@@ -62,48 +59,36 @@ class MailD {
         this.listener.stop();
     }
 
-    restart() {
+    restart() {}
 
-    }
+    status() {}
 
-    status() {
+    register() {}
 
-    }
-
-    register() {
-
-    }
-
-    unregister() {
-
-    }
+    unregister() {}
 
     _setupEventEmitters(account, listener) {
-
-        listener.on('server:connected', function(){
+        listener.on('server:connected', function () {
             console.log('imapConnected');
             notify.info('imapConnected');
         });
-           
-        listener.on('server:disconnected', function(){
+
+        listener.on('server:disconnected', function () {
             console.log('imapDisconnected');
             notify.info('imapDisconnected');
         });
-           
-        listener.on('error', function(err){
+
+        listener.on('error', function (err) {
             console.log(err);
             notify.err(err);
         });
-           
-        listener.on('mail', function(mail, seqno, attributes){
+
+        listener.on('mail', function (mail, seqno, attributes) {
             // do something with mail object including attachments
             console.log('emailParsed', mail.subject);
-            notify.info(
-                `Subject: ${mail.subject}`, 
-                `[${account}] New email from ${mail.from.text}`, 
-                null, () => {
-                    console.log('click');
-                    /*
+            notify.info(`Subject: ${mail.subject}`, `[${account}] New email from ${mail.from.text}`, null, () => {
+                console.log('click');
+                /*
                     fs.writeFileSync('/tmp/test.eml', mail.eml)
                     const  EmlParser = require('eml-parser')
 
@@ -117,17 +102,14 @@ class MailD {
                     .catch(err  => {
                         console.log(err);
                     }) */
-
-                });
-
+            });
         });
-           
-        listener.on('attachment', function(attachment){
+
+        listener.on('attachment', function (attachment) {
             console.log(attachment.path);
         });
     }
-
 }
 
 // Role should always be a singleton
-module.exports = new MailD;
+module.exports = new MailD();

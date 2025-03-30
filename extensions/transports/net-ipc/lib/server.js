@@ -10,12 +10,7 @@ const os = require('os');
 const fs = require('fs');
 const EE = require('eventemitter2');
 
-const {
-    xpipe,
-    msgPack,
-    msgUnpack,
-    genUUID,
-} = require('./utils');
+const { xpipe, msgPack, msgUnpack, genUUID } = require('./utils');
 
 // Logger
 const log = require('debug')('net.ipc.server');
@@ -26,30 +21,33 @@ const SERVER_SOCKET_TIMEOUT_MS = 1000;
 const SERVER_IGNORE_EVENTS = [];
 
 class Server extends EE {
-
     constructor(opts = {}) {
-
         super();
 
-        this.socketPath = (opts.socketPath) ? xpipe(opts.socketPath) : DEFAULT_SOCKET_PATH;
+        this.socketPath = opts.socketPath ? xpipe(opts.socketPath) : DEFAULT_SOCKET_PATH;
         this.isQuitting = false;
         this.sockets = {};
         this.connectionCount = 0;
         this.listener = null;
 
         // TODO: Check if active > refuse to remove
-        if (fs.existsSync(this.socketPath)) {this._unlinkSocket();}
-
+        if (fs.existsSync(this.socketPath)) {
+            this._unlinkSocket();
+        }
     }
 
-    getClients() { return Object.keys(this.sockets); }
-    getConnectionCount() { return this.connectionCount; }
+    getClients() {
+        return Object.keys(this.sockets);
+    }
+    getConnectionCount() {
+        return this.connectionCount;
+    }
 
     start() {
-
-        this.listener = net.createServer((socket) => {
-            socket.on('data', (data) => this._handleData(data, socket));
-        })
+        this.listener = net
+            .createServer((socket) => {
+                socket.on('data', (data) => this._handleData(data, socket));
+            })
 
             .listen(this.socketPath)
             .on('connection', (socket) => this._handleConnection(socket))
@@ -59,71 +57,75 @@ class Server extends EE {
         process.on('SIGINT', () => this.stop());
 
         return this;
-
     }
 
     stop() {
-
-        if(!this.isQuitting) {
+        if (!this.isQuitting) {
             this.isQuitting = true;
             log(`IPC server::Terminating, PID ${process.pid}`);
 
             if (Object.keys(this.sockets).length) {
                 const clients = Object.keys(this.sockets);
-                while(clients.length){
+                while (clients.length) {
                     const client = clients.pop();
-                    this.sockets[client].write(msgPack({type: '__disconnect'}));
+                    this.sockets[client].write(msgPack({ type: '__disconnect' }));
                     this.sockets[client].end();
                 }
             }
 
-            if (this.listener) {this.listener.close();}
+            if (this.listener) {
+                this.listener.close();
+            }
         }
 
         this.emit('stop');
     }
 
     send(data, socket = null) {
-
-        if (!socket) {return this.broadcast(data);}
+        if (!socket) {
+            return this.broadcast(data);
+        }
 
         const message = msgPack({
-            id: (data.id) ? data.id : genUUID(),
-            type: (data.type) ? data.type : 'data',
-            payload: (data.payload) ? data.payload : data,
+            id: data.id ? data.id : genUUID(),
+            type: data.type ? data.type : 'data',
+            payload: data.payload ? data.payload : data,
         });
 
-        if (typeof socket === 'object') // got a socket
-        {return (socket.writable) ? socket.write(message) : false;}
+        if (typeof socket === 'object') {
+            // got a socket
+            return socket.writable ? socket.write(message) : false;
+        }
 
-        if (typeof socket === 'number') // got a socket ID
-        {return (this.sockets[socket].writable) ? this.sockets[socket].write(message) : false;}
+        if (typeof socket === 'number') {
+            // got a socket ID
+            return this.sockets[socket].writable ? this.sockets[socket].write(message) : false;
+        }
 
         return false;
-
     }
 
     broadcast(data) {
-
         const message = msgPack({
             id: genUUID(),
             type: 'broadcast',
-            payload: (data.payload) ? data.payload : data,
+            payload: data.payload ? data.payload : data,
         });
 
         const clients = Object.keys(this.sockets);
-        if (clients.length === 0) { log('IPC Server: No clients connected'); return false; }
+        if (clients.length === 0) {
+            log('IPC Server: No clients connected');
+            return false;
+        }
 
         while (clients.length) {
             const client = clients.pop();
             log(`IPC Server: Sending broadcast message to ${client}`);
             this.sockets[client].write(message);
         }
-
     }
 
     _handleConnection(socket) {
-
         const sockID = genUUID();
 
         this.sockets[sockID] = socket;
@@ -135,16 +137,13 @@ class Server extends EE {
         socket.write(msgPack({ type: '__connect', payload: sockID }));
 
         socket.on('error', (e) => {
-            if (
-                e.code === 'ERR_STREAM_DESTROYED' ||
-                e.code === 'EPIPE'
-            ) {
+            if (e.code === 'ERR_STREAM_DESTROYED' || e.code === 'EPIPE') {
                 log('Epipe error');
                 //delete this.sockets[sockID]
                 //this.connectionCount--
             }
 
-            log(`IPC Server Error > Code: ${e.code}` );
+            log(`IPC Server Error > Code: ${e.code}`);
         });
 
         socket.on('end', () => {
@@ -156,7 +155,6 @@ class Server extends EE {
     }
 
     _handleData(data, socket) {
-
         data = msgUnpack(data);
         log('IPC Server: Received data from client');
 
@@ -166,8 +164,7 @@ class Server extends EE {
             return true; //data
         }
 
-        switch(data.type) {
-
+        switch (data.type) {
             case 'req':
                 log('IPC Server: Got request -> will reply');
                 this.emit('req', data, (reply) => {
@@ -204,15 +201,13 @@ class Server extends EE {
         }
 
         // return true // data.payload
-
     }
 
     _handleError(e) {
-
         this.emit('error', e);
         log('IPC Server: Error ' + e.code);
 
-        switch(e.code) {
+        switch (e.code) {
             case 'EADDRINUSE':
                 this._unlinkSocket();
                 this.start();
@@ -223,14 +218,17 @@ class Server extends EE {
             default:
                 console.error('IPC Server: Communication error occurred: ', e);
         }
-
     }
 
     _unlinkSocket() {
-        try { fs.unlinkSync(this.socketPath); }
-        catch(err) { if (err) {throw err;} }
+        try {
+            fs.unlinkSync(this.socketPath);
+        } catch (err) {
+            if (err) {
+                throw err;
+            }
+        }
     }
-
 }
 
 module.exports = Server;

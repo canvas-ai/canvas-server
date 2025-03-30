@@ -38,7 +38,7 @@ RUN npm install
 RUN npm run db:setup
 
 # Expose canvas-server ports
-EXPOSE 8000 8001 8002
+EXPOSE 8001 8002 8003 8004
 
 # Start the server
 ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]

@@ -1,8 +1,7 @@
 // placeholder
 
 class Peer {
-    constructor() {
-    }
+    constructor() {}
 }
 
 export default Peer;

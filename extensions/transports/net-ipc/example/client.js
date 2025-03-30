@@ -10,31 +10,23 @@ const cli = rl.createInterface({
     prompt: '> ',
 });
 
-
 client.on('ready', (te) => {
-
     console.log(te);
     //const sockID = id
-
 });
 
 cli.prompt();
 cli.on('line', (input) => {
-
     if (input == 'req') {
         client.req(input, (res) => {
-
             console.log('Req/res test');
             console.log(res);
-  
         });
-  
     } else {
         client.send(input);
     }
 
     cli.prompt();
-
 });
 
 client.on('data', (data) => {

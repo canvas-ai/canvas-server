@@ -1,10 +1,10 @@
 export default [
     {
         id: '0000-0000-0000',
-        type: 'root',
+        type: 'universe',
         name: '/',
-        label: 'Root',
-        description: 'Root layer',
+        label: 'Universe',
+        description: 'Root layer for the current universe',
         color: '#fff',
         locked: true,
     },

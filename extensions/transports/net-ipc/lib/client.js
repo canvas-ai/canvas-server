@@ -9,12 +9,7 @@ const net = require('net');
 const os = require('os');
 const EE = require('eventemitter2');
 
-const {
-    xpipe,
-    msgPack,
-    msgUnpack,
-    genUUID,
-} = require('./utils');
+const { xpipe, msgPack, msgUnpack, genUUID } = require('./utils');
 
 // Logger
 const log = require('debug')('net.ipc.client');
@@ -24,7 +19,7 @@ const DEFAULT_SOCKET_PATH = xpipe(os.tmpdir() + '/net.ipc.sock');
 const CLIENT_ENABLE_RECONNECT = false;
 const CLIENT_SOCKET_TIMEOUT_MS = 1000;
 const CLIENT_RECONNECT_TIMEOUT_MS = 2000;
-const CLIENT_RECONNECT_ERROR_COUNT = 3;   // Number of connection errors till we attempt a reconnect
+const CLIENT_RECONNECT_ERROR_COUNT = 3; // Number of connection errors till we attempt a reconnect
 const CLIENT_IGNORE_EVENTS = [
     'ECONNREFUSED',
     'ECONNRESET',
@@ -37,46 +32,63 @@ const CLIENT_IGNORE_EVENTS = [
 ];
 
 class Client extends EE {
-
     constructor(opts = {}) {
-
         super();
 
-        this.socketPath = (opts.socketPath) ? xpipe(opts.socketPath) : DEFAULT_SOCKET_PATH;
-        this.autoreconnect = (opts.autoreconnect) ? opts.autoreconnect : CLIENT_ENABLE_RECONNECT;
-        
+        this.socketPath = opts.socketPath ? xpipe(opts.socketPath) : DEFAULT_SOCKET_PATH;
+        this.autoreconnect = opts.autoreconnect ? opts.autoreconnect : CLIENT_ENABLE_RECONNECT;
+
         this.isQuitting = false;
         this.isConneted = false; // we have a valid socket connection
-        this.isReady = false;    // we received an ACK message from server
+        this.isReady = false; // we received an ACK message from server
 
         this.socket = null;
         this.socketID = null;
         this.errorCount = 0;
 
         this.queue = {};
-
     }
 
     // Status utils
-    isQuitting() { return this.isQuitting; }
-    isConnected() { return this.isConneted; }
-    isReady() { return this.isReady; }
+    isQuitting() {
+        return this.isQuitting;
+    }
+    isConnected() {
+        return this.isConneted;
+    }
+    isReady() {
+        return this.isReady;
+    }
 
-    getSocket() { return this.socket; }
-    getSocketID() { return this.socketID; }
-    getSocketPath() { return this.socketPath; }
+    getSocket() {
+        return this.socket;
+    }
+    getSocketID() {
+        return this.socketID;
+    }
+    getSocketPath() {
+        return this.socketPath;
+    }
 
     connect() {
+        this.socket = net
+            .connect(this.socketPath, () => {
+                log(`IPC Client: Connecting to server via ${this.socketPath}`);
+            })
 
-        this.socket = net.connect(this.socketPath, () => {
-            log(`IPC Client: Connecting to server via ${this.socketPath}`);
-        })
-
-        //.setTimeout(CLIENT_SOCKET_TIMEOUT_MS)
-            .on('connect', () => { console.log(this.socket); this._handleConnection(); })
-            .on('ready', () => { this.isConneted = true; })
+            //.setTimeout(CLIENT_SOCKET_TIMEOUT_MS)
+            .on('connect', () => {
+                console.log(this.socket);
+                this._handleConnection();
+            })
+            .on('ready', () => {
+                this.isConneted = true;
+            })
             .on('data', (data) => this._handleData(data))
-            .on('close', (e) => { log('IPC Client: close(hadError: ', e, ')'); this.emit('close'); })    // Test
+            .on('close', (e) => {
+                log('IPC Client: close(hadError: ', e, ')');
+                this.emit('close');
+            }) // Test
             .on('error', (error) => this._handleError(error))
             .on('timeout', () => {
                 log('IPC Client: socket timeout');
@@ -87,12 +99,11 @@ class Client extends EE {
         process.on('SIGINT', () => this.disconnect());
         //return this.socket
         return this;
-
     }
 
-    disconnect() { 
+    disconnect() {
         log('IPC Client: Server disconnect');
-        this.socket.end(); 
+        this.socket.end();
         process.removeAllListeners();
         this.isConnected = false;
         this.socketID = null;
@@ -106,10 +117,11 @@ class Client extends EE {
     }
 
     send(data = null, type = 'message') {
-
         if (!this.socket) {
             log('IPC Client: Socket not connected, attempting to connect');
-            if (!this.connect()) {return false;}
+            if (!this.connect()) {
+                return false;
+            }
         }
 
         if (!this.socket.writable) {
@@ -119,43 +131,45 @@ class Client extends EE {
                 log('IPC Client: Connection error threshold reached, attempting a full reconnect');
                 this.disconnect();
             }
-            
+
             if (!this.connect()) {
                 log('IPC CLient: Reconnect failed');
                 return false;
             }
-
         }
 
         const message = msgPack({
-            id: (data.id) ? data.id : genUUID(),
-            type: (data.type) ? data.type : type,
-            payload: (data.payload) ? data.payload : data,
-        });        
+            id: data.id ? data.id : genUUID(),
+            type: data.type ? data.type : type,
+            payload: data.payload ? data.payload : data,
+        });
 
         log(`IPC Client: Sending data type "${data.type}" to server..`);
         return this.socket.write(message);
-
     }
 
     req(data, cb) {
-
         const requestID = genUUID();
 
-        if (!this.send({
-            id: requestID,
-            type: 'req',
-            payload: data,
-        })) {return false;} 
+        if (
+            !this.send({
+                id: requestID,
+                type: 'req',
+                payload: data,
+            })
+        ) {
+            return false;
+        }
 
         this.once(requestID, (reply) => {
             log(`IPC Client: Triggered reply event for ${requestID}`);
-            if (typeof cb === 'function') {cb(reply);}
+            if (typeof cb === 'function') {
+                cb(reply);
+            }
             return reply;
         });
 
         return true;
-        
     }
 
     _handleConnection() {
@@ -165,8 +179,9 @@ class Client extends EE {
     }
 
     _handleData(data) {
-        
-        if (!data) {return null;}
+        if (!data) {
+            return null;
+        }
 
         data = msgUnpack(data);
         log('IPC Client: Got data from server');
@@ -177,8 +192,7 @@ class Client extends EE {
             return data;
         }
 
-        switch(data.type) {
-
+        switch (data.type) {
             case 'req':
                 log('IPC Client: > Received request message');
                 this.emit('req', data, (reply) => {
@@ -195,7 +209,7 @@ class Client extends EE {
                         log('IPC Client: Socket write:', this.socket.write(message));
                         //log('IPC Client: Implicit disconnect on reply ')
                         //this.socket.end()
-                    }                    
+                    }
                 });
                 break;
 
@@ -207,8 +221,8 @@ class Client extends EE {
             case 'broadcast':
                 log('IPC Client: > Data is a broadcast message');
                 this.emit('broadcast', data.payload);
-                break;                
-    
+                break;
+
             case '__connect':
                 log('IPC Client: Received connection ACK from server');
                 this.emit('ready', data);
@@ -224,24 +238,20 @@ class Client extends EE {
         }
 
         // return true // data.payload
-
     }
 
     _handleError(e) {
-
-        this.emit('error', e);        
+        this.emit('error', e);
         if (e.code === 'ENOENT' && this.autoreconnect) {
             log(`IPC CLient: Attempting to reconnect, timeout ${CLIENT_RECONNECT_TIMEOUT_MS}ms`);
-            setTimeout(() => { 
-                this._reconnect(); 
+            setTimeout(() => {
+                this._reconnect();
                 // Resend queue
             }, CLIENT_RECONNECT_TIMEOUT_MS);
         }
 
-        log(e);        
-
+        log(e);
     }
-
 }
 
 module.exports = Client;

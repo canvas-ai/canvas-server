@@ -2,10 +2,8 @@
 
 // Includes
 import debugInstance from 'debug';
-import path from 'path';
-import os from 'os';
 import crypto from 'crypto';
-import { ensureDirSync } from 'fs-extra';
+import { ulid } from 'ulid';
 
 /*
  * Temporary logger as per @RFC5424
@@ -16,7 +14,7 @@ import { ensureDirSync } from 'fs-extra';
  *    debug: 4
  *    silly: 5
  * Logger needs to implement at least the 4 methods below
-*/
+ */
 // TODO: Replace logger with canvas-utils-logger
 const debug = debugInstance('canvas:utils:common');
 const logger = {};
@@ -24,19 +22,6 @@ logger.debug = debug;
 logger.info = console.log;
 logger.warn = console.log;
 logger.error = console.error;
-
-function ensureContextDirectory(dir) {
-    if (dir.startsWith('~/') || dir === '~') {
-        dir = dir.replace('~', os.homedir());
-    }
-    dir = path.resolve(dir);
-    ensureDirSync(dir);
-    return dir;
-}
-
-function getDefaultContextDirectory() {
-    return path.join(os.homedir(), '.canvas');
-}
 
 function uuid(delimiter = true) {
     const id = crypto.randomUUID();
@@ -48,32 +33,51 @@ function uuid12(delimiter = true) {
     return delimiter ? id : id.replace(/-/g, '');
 }
 
-const arrayToTree = (arr, p = 'parent_id') => arr.reduce((o, n) => {
-    if (!o[n.id]) {o[n.id] = {};}
-    if (!o[n[p]]) {o[n[p]] = {};}
-    if (!o[n[p]].children) {o[n[p]].children= [];}
-    if (o[n.id].children) {n.children= o[n.id].children;}
+function ulid(charLength = 12, idCase = 'lower') {
+    const id = ulid();
+    if (idCase === 'lower') {
+        return id.substring(0, charLength).toLowerCase();
+    }
 
-    o[n[p]].children.push(n);
-    o[n.id] = n;
+    return id.substring(0, charLength);
+}
 
-    return o;
+const pathArrayToTree = (arr, p = 'parent_id') =>
+    arr.reduce((o, n) => {
+        if (!o[n.id]) {
+            o[n.id] = {};
+        }
+        if (!o[n[p]]) {
+            o[n[p]] = {};
+        }
+        if (!o[n[p]].children) {
+            o[n[p]].children = [];
+        }
+        if (o[n.id].children) {
+            n.children = o[n.id].children;
+        }
 
-}, {});
+        o[n[p]].children.push(n);
+        o[n.id] = n;
+
+        return o;
+    }, {});
 
 function pathsToTree(paths) {
     const result = [];
-    const level = {result};
+    const level = { result };
 
-    paths.forEach(path => {
-        path.replace(/^universe:\/\//, '').split('/').reduce((r, name, i, a) => {
-            if(!r[name]) {
-                r[name] = {result: []};
-                r.result.push({name, children: r[name].result});
-            }
+    paths.forEach((path) => {
+        path.replace(/^universe:\/\//, '')
+            .split('/')
+            .reduce((r, name, i, a) => {
+                if (!r[name]) {
+                    r[name] = { result: [] };
+                    r.result.push({ name, children: r[name].result });
+                }
 
-            return r[name];
-        }, level);
+                return r[name];
+            }, level);
     });
 
     return result;
@@ -85,7 +89,7 @@ function pathsToTree2(paths) {
 
     // loop through the paths
     for (const path of paths) {
-    // split the path into its components
+        // split the path into its components
         const components = path.split('/').filter(Boolean);
 
         // create a reference to the current level of the tree
@@ -123,12 +127,11 @@ function printTree(tree, indent = 0) {
 
 export {
     logger,
-    getDefaultContextDirectory,
-    ensureContextDirectory,
     uuid,
     uuid12,
-    arrayToTree,
-    pathsToTree,
-    pathsToTree2,
-    printTree,
+    ulid,
+    pathArrayToTree,
+    pathsToTree,    // To refactor?remove
+    pathsToTree2,   // To remove
+    printTree,      // To refactor
 };

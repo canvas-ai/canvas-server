@@ -2,47 +2,36 @@
  * Canvas Server init script
  */
 
-import Server from './Server.js';
+import server from './Server.js';
 import logger from '@/utils/log/index.js';
 
 async function main() {
     try {
-        const canvas = new Server();
-
         // Register event handlers before starting
-        canvas.on('running', () => {
-            console.log('Canvas server started successfully.');
-        });
+        setupProcessEventListeners();
+        setupServerEventHandlers();
 
-        canvas.on('error', (err) => {
-            console.error('Canvas server failed to start:', err);
-            process.exit(1);
-        });
+        // Initialize and start the server
+        await server.init();
+        await server.start();
 
-        setupProcessEventListeners(canvas);
-        setupServerEventHandlers(canvas);
-
-        // Start the server
-        await canvas.init();
-        await canvas.start();
-
+        console.log('Canvas server started successfully.');
     } catch (err) {
         console.error('Failed to initialize Canvas server:', err);
         process.exit(1);
     }
 }
 
-main().catch(err => {
+// Run the main function
+main().catch((err) => {
     console.error('Fatal error:', err);
     process.exit(1);
 });
 
-
 /**
- * Init utils
+ * Set up process event listeners for graceful shutdown
  */
-
-function setupProcessEventListeners(server) {
+function setupProcessEventListeners() {
     // Handle process signals
     const shutdown = async (signal) => {
         console.log(`Received ${signal}. Shutting down gracefully...`);
@@ -61,7 +50,7 @@ function setupProcessEventListeners(server) {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 
     process.on('uncaughtException', (error) => {
-        console.error(error);
+        console.error('Uncaught Exception:', error);
         logger.error('Uncaught Exception:', error);
         server.stop().then(() => process.exit(1));
     });
@@ -79,7 +68,9 @@ function setupProcessEventListeners(server) {
     });
 
     process.on('beforeExit', async (code) => {
-        if (code !== 0) {return;}
+        if (code !== 0) {
+            return;
+        }
         logger.info('Process beforeExit:', code);
         await server.stop();
     });
@@ -104,22 +95,23 @@ function setupProcessEventListeners(server) {
     }
 }
 
-function setupServerEventHandlers(server) {
-    server.on('running', () => {
+/**
+ * Set up server event handlers
+ */
+function setupServerEventHandlers() {
+    server.on('initialized', () => {
+        logger.info('Canvas server initialized successfully');
+    });
+
+    server.on('started', () => {
         logger.info('Canvas server started successfully');
     });
 
-    server.on('error', (err) => {
-        logger.error('Canvas server failed to start:', err);
-        process.exit(1);
-    });
-
-    // Could add more server-specific event handlers
-    server.on('ready', () => {
-        logger.info('Canvas server ready to accept connections');
-    });
-
-    server.on('stopping', () => {
+    server.on('before-shutdown', () => {
         logger.info('Canvas server is shutting down');
+    });
+
+    server.on('shutdown', () => {
+        logger.info('Canvas server has shut down');
     });
 }

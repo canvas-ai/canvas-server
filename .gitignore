@@ -5,14 +5,18 @@
 # Portable runtimes
 /runtimes/**
 
-# Server data directories
+# Data directories
 /server/**
 !/server/config/example-*.json
 !/server/config/default-*.json
-
-# Data directories
 /data/**
+!/data/.keep
 /user/**
+!/user/.keep
+/users/**
+!/users/.keep
+/multiverse/**
+!/multiverse/.keep
 
 # Test files and directories(well, non-production files)
 tests/**
@@ -23,6 +27,7 @@ _test*
 /.vscode
 /.fossil-settings
 /_SCRATCH_
+/_OLD_
 
 # Logs
 *.log

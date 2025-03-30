@@ -3,6 +3,8 @@ import EventEmitter from 'eventemitter2';
 import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
+import validator from 'validator';
+import { v4 as uuidv4 } from 'uuid';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
@@ -11,143 +13,330 @@ const debug = createDebug('user-manager');
 // Environment
 import env from '@/env.js';
 
-// Includes
-import User from '@/prisma/models/User.js';
+// Managers
+import WorkspaceManager from '@/managers/workspace/index.js';
+import ContextManager from '@/managers/context/index.js';
 
+// User
+import User from '@/managers/user/lib/User.js';
 
 /**
  * User Manager
+ * Manages user lifecycle and persistence
  */
 class UserManager extends EventEmitter {
 
-    #userHome;
-    #workspaceManager;
+    #rootPath;
+    #db;
+    #activeUsers = new Map();
     #initialized = false;
 
     constructor(options = {}) {
         super();
 
         debug('Initializing user manager');
-        this.#userHome = options.userHome ?? env.CANVAS_USER_HOME;
-        this.#workspaceManager = options.workspaceManager;
+        this.#rootPath = options.rootPath ?? env.CANVAS_USER_HOME;
 
-        this.users = new Map(); // Cache active users
+        if (!options.db) {
+            throw new Error('Database instance required');
+        }
+
+        this.#db = options.db;
+        debug(`User home path: ${this.#rootPath}`);
     }
 
+    /**
+     * Get the database instance
+     * @returns {Object} Database instance
+     */
+    get db() {
+        return this.#db;
+    }
+
+    /**
+     * Initialize the user manager
+     * @returns {Promise<void>}
+     */
     async initialize() {
         if (this.#initialized) {
             return;
         }
-
         debug('Initializing user manager');
 
-        // Ensure user home directory exists
+        // Ensure user root directory exists
         try {
-            await fs.mkdir(this.#userHome, { recursive: true });
-            debug(`User home directory created at ${this.#userHome}`);
+            await fs.mkdir(this.#rootPath, { recursive: true });
+            debug(`User root directory created at ${this.#rootPath}`);
         } catch (err) {
-            debug(`Error creating user home directory: ${err.message}`);
+            debug(`Error creating user root directory: ${err.message}`);
             throw err;
         }
 
+        // Load users from database
+        await this.#loadUsersFromDatabase();
+
         this.#initialized = true;
+        debug('User manager initialized');
     }
 
     /**
-     * Check if any users exist in the database
-     * @returns {Promise<boolean>} - True if users exist, false otherwise
+     * Get all active users
+     * @returns {Map<string, User>} Map of active users
      */
-    async hasUsers() {
-        debug('Checking if any users exist');
-        const count = await User.prisma.user.count();
-        return count > 0;
+    get users() {
+        return this.#activeUsers;
     }
 
     /**
-     * Create initial admin user if no users exist
-     * @param {Object} adminData - Admin user data
-     * @param {string} adminData.email - Admin email
-     * @param {string} adminData.password - Admin password
-     * @returns {Promise<Object|null>} - Created admin user or null if users already exist
+     * Create a new user
+     * @param {Object} userData - User data
+     * @param {string} userData.id - User ID (optional, will be generated if not provided)
+     * @param {string} userData.email - User email
+     * @param {string} [userData.userType='user'] - User type ('user' or 'admin')
+     * @returns {Promise<User>} Created user instance
      */
-    async createInitialAdminUser(adminData) {
-        debug('Checking if initial admin user needs to be created');
+    async createUser(userData = {}) {
+        const id = userData.id || uuidv4();
+        const email = userData.email;
+        const userType = userData.userType || 'user';
 
-        // Check if any users exist
-        const hasExistingUsers = await this.hasUsers();
-        if (hasExistingUsers) {
-            debug('Users already exist, skipping initial admin creation');
-            return null;
+        if (!email) {
+            throw new Error('Email address is required');
         }
 
-        // Create admin user
-        debug(`Creating initial admin user with email: ${adminData.email}`);
-        const adminUser = await this.registerUser({
-            email: adminData.email,
-            password: adminData.password,
-            userType: 'admin'
-        });
+        if (!validator.isEmail(email)) {
+            throw new Error('Invalid email address provided');
+        }
 
-        logger.info(`Initial admin user created with email: ${adminData.email}`);
-        this.emit('admin:created', adminUser);
+        if (await this.getUserByEmail(email)) {
+            throw new Error(`User with email ${email} already exists`);
+        }
 
-        return adminUser;
+        // Create user home directory
+        const userHomePath = await this.createUserHomeDirectory(email, userType);
+
+        // Create user record in database
+        const userRecord = {
+            id,
+            email,
+            userType,
+            homePath: userHomePath,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+        };
+
+        // Store in database
+        await this.#db.put(`user:${id}`, userRecord);
+
+        // Create and activate user instance
+        const user = await this.#activateUser(userRecord);
+
+        this.emit('user:created', user);
+        debug(`User created: ${email} (${id})`);
+
+        return user;
     }
 
     /**
-     * Register a new user
-     * @param {Object} userData - User data
-     * @param {string} userData.email - User email
-     * @param {string} userData.password - User password
-     * @param {string} [userData.userType='user'] - User type ('user' or 'admin')
-     * @returns {Promise<Object>} - Created user
+     * Get a user by ID - alias for getUserById for backward compatibility
+     * @param {string} id - User ID
+     * @returns {Promise<User>} User instance
      */
-    async registerUser(userData) {
-        debug(`Registering new user with email: ${userData.email}`);
+    async getUser(id) {
+        return this.getUserById(id);
+    }
 
-        // Create user in database
-        const hashedPassword = await User.hashPassword(userData.password);
-        const user = await User.create({
-            email: userData.email,
-            password: hashedPassword,
-            userType: userData.userType || 'user',
-        });
+    /**
+     * Get a user by ID
+     * @param {string} id - User ID
+     * @returns {Promise<User>} User instance
+     * @throws {Error} If user not found
+     */
+    async getUserById(id) {
+        // Check active users first
+        if (this.#activeUsers.has(id)) {
+            return this.#activeUsers.get(id);
+        }
 
-        // Create user home directory
-        await this.createUserHomeDirectory(userData.email, userData.userType || 'user');
+        // Try to load from database
+        const userRecord = await this.#db.get(`user:${id}`);
+        if (!userRecord) {
+            throw new Error(`User with ID ${id} not found`);
+        }
 
-        // Create default universe workspace
-        if (this.#workspaceManager) {
-            try {
-                const workspace = await this.#workspaceManager.createWorkspace(
-                    userData.email,
-                    'universe',
-                    {
-                        type: 'universe',
-                        label: 'Universe',
-                        description: 'Default universe workspace',
-                    }
-                );
-                debug(`Created default universe workspace for user ${userData.email}`);
-            } catch (err) {
-                debug(`Error creating default universe workspace: ${err.message}`);
-                // Don't fail user registration if workspace creation fails
-                // We'll just log the error and continue
+        // Activate user
+        const user = await this.#activateUser(userRecord);
+        return user;
+    }
+
+    /**
+     * Get a user by email
+     * @param {string} email - User email
+     * @returns {Promise<User|null>} User instance or null if not found
+     */
+    async getUserByEmail(email) {
+        // Check active users first
+        for (const user of this.#activeUsers.values()) {
+            if (user.email === email) {
+                return user;
             }
         }
 
-        this.emit('user:created', user);
-        return user;
+        // Query database
+        try {
+            // We need to scan all users since we're querying by email
+            // In a production system, we would have a secondary index for email
+            for (const entry of this.#db.getRange({ prefix: 'user:' })) {
+                // Skip token entries
+                if (entry.key.includes(':token:')) {
+                    continue;
+                }
+
+                if (entry.value && entry.value.email === email) {
+                    return await this.#activateUser(entry.value);
+                }
+            }
+        } catch (error) {
+            debug(`Error finding user by email: ${error.message}`);
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a user exists by ID
+     * @param {string} id - User ID
+     * @returns {Promise<boolean>} True if user exists
+     */
+    async hasUser(id) {
+        if (this.#activeUsers.has(id)) {
+            return true;
+        }
+
+        return await this.#db.has(`user:${id}`);
+    }
+
+    /**
+     * List all users
+     * @param {Object} options - Options
+     * @param {boolean} [options.includeInactive=false] - Include inactive users
+     * @returns {Promise<Array<Object>>} Array of user objects
+     */
+    async listUsers(options = {}) {
+        const users = [];
+
+        // Always include active users
+        for (const user of this.#activeUsers.values()) {
+            users.push(user.toJSON());
+        }
+
+        // Include inactive users if requested
+        if (options.includeInactive) {
+            try {
+                for (const entry of this.#db.getRange({ prefix: 'user:' })) {
+                    // Skip token entries
+                    if (entry.key.includes(':token:')) {
+                        continue;
+                    }
+
+                    const userData = entry.value;
+                    // Skip if already in active users
+                    if (userData && !this.#activeUsers.has(userData.id)) {
+                        users.push(userData);
+                    }
+                }
+            } catch (error) {
+                debug(`Error listing users: ${error.message}`);
+            }
+        }
+
+        return users;
+    }
+
+    /**
+     * Delete a user
+     * @param {string} id - User ID
+     * @returns {Promise<boolean>} Success status
+     */
+    async deleteUser(id) {
+        // Check if user exists
+        if (!(await this.hasUser(id))) {
+            throw new Error(`User with ID ${id} not found`);
+        }
+
+        // Get user if active
+        let user = null;
+        if (this.#activeUsers.has(id)) {
+            user = this.#activeUsers.get(id);
+            // Deactivate user
+            await this.#deactivateUser(user);
+        } else {
+            // Load user data from database
+            const userData = await this.#db.get(`user:${id}`);
+            if (userData) {
+                user = userData;
+            }
+        }
+
+        // Remove from database
+        await this.#db.delete(`user:${id}`);
+
+        // We never delete user directories, just mark as deleted in database
+        this.emit('user:deleted', id);
+        debug(`User deleted: ${id}`);
+
+        return true;
+    }
+
+    /**
+     * Update a user
+     * @param {string} id - User ID
+     * @param {Object} userData - User data to update
+     * @returns {Promise<User>} Updated user
+     */
+    async updateUser(id, userData = {}) {
+        // Check if user exists
+        if (!(await this.hasUser(id))) {
+            throw new Error(`User with ID ${id} not found`);
+        }
+
+        // Get current user data
+        const currentData = await this.#db.get(`user:${id}`);
+        if (!currentData) {
+            throw new Error(`User data for ${id} not found`);
+        }
+
+        // Update user data
+        const updatedData = {
+            ...currentData,
+            ...userData,
+            updated: new Date().toISOString(),
+        };
+
+        // Store updated data
+        await this.#db.put(`user:${id}`, updatedData);
+
+        // If user is active, update the instance
+        if (this.#activeUsers.has(id)) {
+            // Deactivate and reactivate to apply changes
+            await this.#deactivateUser(this.#activeUsers.get(id));
+            await this.#activateUser(updatedData);
+        }
+
+        this.emit('user:updated', updatedData);
+        debug(`User updated: ${id}`);
+
+        return this.#activeUsers.get(id) || updatedData;
     }
 
     /**
      * Create user home directory
      * @param {string} email - User email
      * @param {string} [userType='user'] - User type ('user' or 'admin')
-     * @returns {Promise<string>} - Path to user home directory
+     * @returns {Promise<string>} Path to user home directory
      */
     async createUserHomeDirectory(email, userType = 'user') {
-        const userHomePath = path.join(this.#userHome, email);
+        const userHomePath = path.join(this.#rootPath, email);
         const workspacesPath = path.join(userHomePath, 'workspaces');
 
         try {
@@ -167,10 +356,7 @@ class UserManager extends EventEmitter {
                 updated: new Date().toISOString(),
             };
 
-            await fs.writeFile(
-                path.join(userHomePath, 'user.json'),
-                JSON.stringify(userConfig, null, 2),
-            );
+            await fs.writeFile(path.join(userHomePath, 'user.json'), JSON.stringify(userConfig, null, 2));
 
             return userHomePath;
         } catch (err) {
@@ -180,162 +366,174 @@ class UserManager extends EventEmitter {
     }
 
     /**
-     * Get user by ID
-     * @param {string} id - User ID
-     * @returns {Promise<Object>} - User object
-     */
-    async getUserById(id) {
-        // Check cache first
-        if (this.users.has(id)) {
-            return this.users.get(id);
-        }
-
-        // Fetch from database
-        const user = await User.findById(id);
-        if (user) {
-            this.users.set(id, user);
-        }
-
-        return user;
-    }
-
-    /**
-     * Get user by email
-     * @param {string} email - User email
-     * @returns {Promise<Object>} - User object
-     */
-    async getUserByEmail(email) {
-        // Fetch from database
-        const user = await User.findByEmail(email);
-        if (user) {
-            this.users.set(user.id, user);
-        }
-
-        return user;
-    }
-
-    /**
-     * Authenticate user
-     * @param {string} email - User email
-     * @param {string} password - User password
-     * @returns {Promise<Object>} - User object if authentication successful
-     */
-    async authenticateUser(email, password) {
-        const user = await this.getUserByEmail(email);
-
-        if (!user) {
-            throw new Error('User not found');
-        }
-
-        const isValid = await user.comparePassword(password);
-        if (!isValid) {
-            throw new Error('Invalid password');
-        }
-
-        return user;
-    }
-
-    /**
      * Get user home path
      * @param {string} email - User email
-     * @returns {string} - Path to user home directory
+     * @returns {string} Path to user home directory
      */
     getUserHomePath(email) {
-        return path.join(this.#userHome, email);
+        return path.join(this.#rootPath, email);
     }
 
     /**
-     * Update a user
-     * @param {string} userId - User ID to update
-     * @param {Object} userData - User data to update
-     * @param {string} [userData.userType] - User type ('user' or 'admin')
-     * @param {string} [userData.email] - User email
-     * @param {string} [userData.password] - User password
-     * @returns {Promise<Object>} - Updated user
-     * @throws {Error} - If user not found
+     * Create an API token for a user
+     * @param {string} userId - User ID
+     * @param {Object} options - Token options
+     * @returns {Promise<Object>} Created token with value
      */
-    async updateUser(userId, userData) {
-        debug(`Updating user ${userId}`);
-
-        // Get the user
+    async createApiToken(userId, options = {}) {
         const user = await this.getUserById(userId);
-        if (!user) {
-            throw new Error(`User with ID ${userId} not found`);
-        }
-
-        // Process password separately if provided
-        let hashedPassword;
-        if (userData.password) {
-            hashedPassword = await User.hashPassword(userData.password);
-        }
-
-        // Prepare data for database update
-        const updateData = { ...userData };
-        if (hashedPassword) {
-            updateData.password = hashedPassword;
-            delete updateData.currentPassword; // Remove if present
-        }
-
-        // Update user in database
-        const updatedUser = await User.update(userId, updateData);
-
-        // Update user config file if userType changed
-        if (userData.userType && userData.userType !== user.userType) {
-            const userHomePath = this.getUserHomePath(user.email);
-            const userConfigPath = path.join(userHomePath, 'user.json');
-
-            try {
-                if (existsSync(userConfigPath)) {
-                    const userConfig = JSON.parse(await fs.readFile(userConfigPath, 'utf8'));
-                    userConfig.userType = userData.userType;
-                    userConfig.updated = new Date().toISOString();
-
-                    await fs.writeFile(
-                        userConfigPath,
-                        JSON.stringify(userConfig, null, 2)
-                    );
-
-                    debug(`Updated user config for ${user.email} to ${userData.userType}`);
-                }
-            } catch (err) {
-                debug(`Error updating user config: ${err.message}`);
-                // Continue even if config update fails
-            }
-
-            // Emit appropriate event based on userType change
-            if (userData.userType === 'admin') {
-                this.emit('user:promoted', updatedUser);
-                debug(`User ${user.email} promoted to admin`);
-            } else if (userData.userType === 'user' && user.userType === 'admin') {
-                this.emit('user:demoted', updatedUser);
-                debug(`Admin ${user.email} demoted to regular user`);
-            }
-        }
-
-        // Update cache
-        if (this.users.has(userId)) {
-            this.users.set(userId, updatedUser);
-        }
-
-        this.emit('user:updated', updatedUser);
-        debug(`User ${user.email} updated`);
-
-        return updatedUser;
+        return user.createApiToken(options);
     }
 
     /**
-     * Get all users
-     * @returns {Promise<Array>} - Array of all users
+     * Get an API token by ID
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<Object|null>} Token or null if not found
      */
-    async getAllUsers() {
-        debug('Getting all users');
+    async getApiToken(userId, tokenId) {
+        const user = await this.getUserById(userId);
+        return user.getApiToken(tokenId);
+    }
+
+    /**
+     * List all API tokens for a user
+     * @param {string} userId - User ID
+     * @param {Object} options - Filter options
+     * @returns {Promise<Array<Object>>} List of tokens
+     */
+    async listApiTokens(userId, options = {}) {
+        const user = await this.getUserById(userId);
+        return user.listApiTokens(options);
+    }
+
+    /**
+     * Update an API token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @param {Object} updates - Updates to apply
+     * @returns {Promise<Object|null>} Updated token or null if not found
+     */
+    async updateApiToken(userId, tokenId, updates = {}) {
+        const user = await this.getUserById(userId);
+        return user.updateApiToken(tokenId, updates);
+    }
+
+    /**
+     * Delete an API token
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<boolean>} Success status
+     */
+    async deleteApiToken(userId, tokenId) {
+        const user = await this.getUserById(userId);
+        return user.deleteApiToken(tokenId);
+    }
+
+    /**
+     * Update API token usage
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @returns {Promise<boolean>} Success status
+     */
+    async updateApiTokenUsage(userId, tokenId) {
+        const user = await this.getUserById(userId);
+        return user.updateApiTokenUsage(tokenId);
+    }
+
+    /**
+     * Activate a user
+     * @param {Object} userConfig - User configuration
+     * @returns {Promise<User>} Activated user instance
+     * @private
+     */
+    async #activateUser(userConfig) {
+        debug(`Activating user: ${userConfig.id} (${userConfig.email})`);
+
+        // Create user instance
+        const user = new User(userConfig);
 
         try {
-            const users = await User.findMany();
-            return users;
+            // Activate user runtime
+            await user.activate();
+
+            // Add to active users
+            this.#activeUsers.set(user.id, user);
+
+            this.emit('user:activated', user);
+            debug(`User activated: ${user.id} (${user.email})`);
+
+            return user;
         } catch (err) {
-            debug(`Error getting all users: ${err.message}`);
+            debug(`Error activating user: ${err.message}`);
             throw err;
+        }
+    }
+
+    /**
+     * Deactivate a user
+     * @param {User} user - User instance
+     * @returns {Promise<boolean>} Success status
+     * @private
+     */
+    async #deactivateUser(user) {
+        if (!this.#activeUsers.has(user.id)) {
+            debug(`User not active: ${user.id}`);
+            return false;
+        }
+
+        debug(`Deactivating user: ${user.id} (${user.email})`);
+
+        try {
+            // Deactivate user runtime
+            await user.deactivate();
+
+            // Remove from active users
+            this.#activeUsers.delete(user.id);
+
+            this.emit('user:deactivated', user.id);
+            debug(`User deactivated: ${user.id} (${user.email})`);
+
+            return true;
+        } catch (err) {
+            debug(`Error deactivating user: ${err.message}`);
+            throw err;
+        }
+    }
+
+    /**
+     * Load users from database
+     * @returns {Promise<void>}
+     * @private
+     */
+    async #loadUsersFromDatabase() {
+        debug('Loading users from database');
+
+        try {
+            // Get all user records from database
+            for (const entry of this.#db.getRange({ prefix: 'user:' })) {
+                // Skip token entries
+                if (entry.key.includes(':token:')) {
+                    continue;
+                }
+
+                const userData = entry.value;
+                if (userData) {
+                    try {
+                        // Activate user
+                        debug(`Activating user: ${userData.id} (${userData.email})`);
+                        await this.#activateUser(userData);
+                    } catch (error) {
+                        debug(`Error activating user ${userData.id}: ${error.message}`);
+                        // Continue with next user
+                    }
+                }
+            }
+
+            debug(`Loaded ${this.#activeUsers.size} users from database`);
+        } catch (error) {
+            debug(`Error loading users from database: ${error.message}`);
+            // Don't throw, just log the error
         }
     }
 }

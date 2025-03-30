@@ -5,83 +5,134 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
-
-// Product info
-import pkg from '@root/package.json' assert { type: 'json' };
-const {
-    productName,
-    version
-} = pkg
-
+import os from 'os';
 // Transport dependencies
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import http from 'http';
 import ResponseObject from '../ResponseObject.js';
-import passport from 'passport';
-import configurePassport from '@/utils/passport.js';
 
-// Swagger documentation
-import setupSwagger from '@/utils/swagger.js';
+// Import package info
+import pkg from '../../../package.json' assert { type: 'json' };
+const { productName, version, description, license } = pkg;
 
-// Routes
-import contextRoutes from './routes/v2/context.js';
-import usersRoutes from './routes/v2/users.js';
-import workspacesRoutes from './routes/v2/workspaces.js';
-import documentsRoutes from './routes/v2/documents.js';
-
-// Transport config
-const API_VERSIONS = ['v2'];
+// Default configuration
 const DEFAULT_CONFIG = {
     protocol: process.env.CANVAS_TRANSPORT_HTTP_PROTOCOL || 'http',
     host: process.env.CANVAS_TRANSPORT_HTTP_HOST || '0.0.0.0',
     port: process.env.CANVAS_TRANSPORT_HTTP_PORT || 8001,
     basePath: process.env.CANVAS_TRANSPORT_HTTP_BASE_PATH || '/rest',
     cors: {
-        origins: process.env.CANVAS_TRANSPORT_HTTP_CORS_ORIGINS?.split(',') || [
-            'http://127.0.0.1',
-            'http://localhost',
-            'https://*.cnvs.ai',
-            'https://cnvs.ai',
-            'https://*.getcanvas.org',
-            'https://getcanvas.org'
-        ],
+        origin: true, // Allow all origins
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-device-name', 'x-app-name'],
-        credentials: true
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization',
+            'x-device-id',
+            'x-device-name',
+            'x-app-name',
+            'x-selected-session',
+            'x-workspace-id',
+            'x-context-id',
+        ],
+        exposedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true,
+        maxAge: 86400, // 24 hours
     },
     auth: {
-        enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false, // FIX ME: https://github.com/orgs/canvas-ai/projects/2/views/1?pane=issue&itemId=81465641
-        jwtToken: process.env.CANVAS_TRANSPORT_HTTP_JWT_TOKEN || 'canvas-server-token',
+        enabled: process.env.CANVAS_TRANSPORT_HTTP_AUTH_ENABLED || false,
         jwtSecret: process.env.CANVAS_TRANSPORT_HTTP_JWT_SECRET || 'canvas-jwt-secret',
         jwtLifetime: process.env.CANVAS_TRANSPORT_HTTP_JWT_LIFETIME || '48h',
     },
     staticPath: './src/ui/web/dist',
 };
 
-
-
 class HttpRestTransport {
-
     #config;
     #server;
     #closePromise;
     #isShuttingDown = false;
     #canvasServer;
+    #app;
+    #connections = new Set();
+    #wsTransport; // Reference to WebSocket transport
 
     constructor(options = {}) {
-        debug(`Initializing HTTP Transport with options: ${JSON.stringify(options)}`);
+        debug('Initializing HTTP Transport');
+
+        // Extract only the properties we need
+        const {
+            protocol = DEFAULT_CONFIG.protocol,
+            host = DEFAULT_CONFIG.host,
+            port = DEFAULT_CONFIG.port,
+            basePath = DEFAULT_CONFIG.basePath,
+            cors: corsOptions,
+            auth: authOptions,
+            staticPath = DEFAULT_CONFIG.staticPath,
+        } = options;
+
+        // Handle CORS configuration
+        let corsConfig;
+        if (corsOptions === false) {
+            corsConfig = false;
+        } else if (corsOptions === true || !corsOptions) {
+            corsConfig = DEFAULT_CONFIG.cors;
+        } else {
+            corsConfig = {
+                ...DEFAULT_CONFIG.cors,
+                ...corsOptions,
+            };
+        }
+
+        // Handle auth configuration
+        const authConfig = {
+            ...DEFAULT_CONFIG.auth,
+            ...(authOptions || {}),
+        };
 
         this.#config = {
-            ...DEFAULT_CONFIG,
-            ...options,
-            cors: options.cors ? DEFAULT_CONFIG.cors : {}
+            protocol,
+            host,
+            port,
+            basePath,
+            cors: corsConfig,
+            auth: authConfig,
+            staticPath,
         };
-        console.log(this.#config.cors);
 
         this.ResponseObject = ResponseObject;
-        debug(`HTTP Transport initialized with config:`, this.#config);
+        debug('HTTP Transport initialized');
+    }
+
+    /**
+     * Set security headers for all responses
+     * @private
+     */
+    #setSecurityHeaders(req, res, next) {
+        // Set security headers
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+        // For API endpoints and API docs, use a more permissive CSP
+        if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
+            res.setHeader(
+                'Content-Security-Policy',
+                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
+            );
+            next();
+            return;
+        }
+
+        // Content Security Policy for other routes
+        res.setHeader(
+            'Content-Security-Policy',
+            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
+        );
+
+        next();
     }
 
     /**
@@ -89,107 +140,151 @@ class HttpRestTransport {
      * @param {Object} server - Canvas server instance
      */
     setCanvasServer(server) {
+        debug('Setting Canvas server instance');
         this.#canvasServer = server;
     }
 
     /**
-     * Get the HTTP server instance
-     * @returns {Object} - HTTP server instance
+     * Set the WebSocket transport reference
+     * This allows HTTP routes to broadcast events via WebSockets
+     * @param {Object} wsTransport - WebSocket transport instance
+     */
+    setWebSocketTransport(wsTransport) {
+        debug('Setting WebSocket transport reference');
+        this.#wsTransport = wsTransport;
+    }
+
+    /**
+     * Get the server instance
+     * @returns {http.Server} HTTP server instance
      */
     getServer() {
         return this.#server;
     }
 
     async start() {
+        debug('Starting HTTP transport');
         if (this.#isShuttingDown) {
-            throw new Error('Server is currently shutting down');
+            throw new Error('HTTP server is currently shutting down');
         }
 
         if (!this.#canvasServer) {
             throw new Error('Canvas server instance not set. Call setCanvasServer() before starting.');
         }
 
-        const app = this.#configureExpress();
-        await this.#setupRoutes(app);
-        this.#server = http.createServer(app);
-
-        // Set max listeners to prevent warning
-        this.#server.setMaxListeners(5);
-
-        return new Promise((resolve, reject) => {
-            this.#server.listen(this.#config.port, this.#config.host, () => {
-                console.log(`HTTP server started at http://${this.#config.host}:${this.#config.port}/`);
-                resolve();
-            }).on('error', reject);
-        });
-    }
-
-    async stop() {
-        if (!this.#server) {
-            debug('No server instance to stop');
-            return Promise.resolve();
-        }
-
-        if (this.#isShuttingDown) {
-            debug('Server is already shutting down, waiting for existing shutdown to complete');
-            return this.#closePromise;
-        }
-
-        this.#isShuttingDown = true;
-        debug('Shutting down server...');
-
-        this.#closePromise = new Promise((resolve) => {
-            // Remove all existing listeners to prevent memory leaks
-            this.#server.removeAllListeners('close');
-
-            this.#server.close(() => {
-                debug('HTTP server gracefully shut down');
-                this.#server = null;
-                this.#isShuttingDown = false;
-                resolve();
-            });
-
-            // Force close after timeout
-            setTimeout(() => {
-                if (this.#server) {
-                    debug('Force closing remaining connections');
-                    this.#server.closeAllConnections?.();
-                    this.#server = null;
-                    this.#isShuttingDown = false;
-                    resolve();
-                }
-            }, 5000);
-        });
-
-        return this.#closePromise;
-    }
-
-    async restart() {
-        await this.stop();
-        await this.start();
-    }
-
-    status() {
-        if (!this.#server) { return { listening: false }; }
-        return {
-            protocol: this.#config.protocol,
-            host: this.#config.host,
-            port: this.#config.port,
-            listening: this.#server.listening
-        };
-    }
-
-    #configureExpress() {
         const app = express();
+        this.#app = app;
 
-        // Configure static file serving
+        // Store reference to WebSocket transport in app.locals
+        // This makes it accessible to all routes
+        if (this.#wsTransport) {
+            debug('Adding WebSocket transport reference to app.locals');
+            app.locals.wsTransport = this.#wsTransport;
+        }
+
+        // Set up middleware
+        app.use(express.json());
+        app.use(express.urlencoded({ extended: true }));
+        app.use(cookieParser());
+        app.use(this.#setSecurityHeaders.bind(this));
+
+        // Set up CORS - simplified and permissive
+        debug('Setting up CORS');
+        app.use(cors(this.#config.cors));
+
+        // Health check endpoint (unprotected)
+        app.get(`${this.#config.basePath}/v2/ping`, (req, res) => {
+            const response = new ResponseObject().success(
+                {
+                    message: 'pong',
+                    timestamp: new Date().toISOString(),
+                    version: version,
+                    name: productName,
+                    productName: productName,
+                    description: description,
+                    license: license,
+                    architecture: os.arch(),
+                    platform: os.platform(),
+                },
+                'Context created successfully',
+            );
+            res.status(200).json(response);
+        });
+
+        // Register API routes
+        try {
+            debug('Registering API routes');
+
+            // Get services from canvas server
+            const authService = this.#canvasServer.services.get('auth');
+            const sessionManager = this.#canvasServer.sessionManager;
+            const userManager = this.#canvasServer.userManager;
+
+            // Dynamically import and register routes
+            if (authService) {
+                debug('Registering auth routes');
+                const authRoutesModule = await import('./routes/v2/auth.js');
+                app.use(`${this.#config.basePath}/v2/auth`, authRoutesModule.default(authService));
+            }
+
+            if (sessionManager) {
+                debug('Registering sessions routes');
+                const sessionsRoutesModule = await import('./routes/v2/sessions.js');
+                app.use(
+                    `${this.#config.basePath}/v2/sessions`,
+                    sessionsRoutesModule.default({
+                        auth: authService,
+                        sessionManager,
+                    }),
+                );
+            }
+
+            if (userManager) {
+                debug('Registering contexts routes');
+                const contextsRoutesModule = await import('./routes/v2/contexts.js');
+                app.use(
+                    `${this.#config.basePath}/v2/contexts`,
+                    contextsRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                    }),
+                );
+
+                debug('Registering workspaces routes');
+                const workspacesRoutesModule = await import('./routes/v2/workspaces.js');
+                app.use(
+                    `${this.#config.basePath}/v2/workspaces`,
+                    workspacesRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                    }),
+                );
+
+                debug('Registering users routes');
+                const usersRoutesModule = await import('./routes/v2/users.js');
+                app.use(
+                    `${this.#config.basePath}/v2/users`,
+                    usersRoutesModule.default({
+                        auth: authService,
+                        userManager,
+                        sessionManager,
+                    }),
+                );
+            }
+
+            debug('API routes registered successfully');
+        } catch (error) {
+            debug(`Error registering API routes: ${error.message}`);
+            console.error('Failed to register API routes:', error);
+        }
+
+        // Configure static file serving AFTER API routes
         const staticPath = path.resolve(this.#config.staticPath);
         if (fs.existsSync(staticPath)) {
             debug(`Serving static files from: ${staticPath}`);
             app.use(express.static(staticPath));
 
             // Serve index.html for all non-API routes to support client-side routing
-            // But exclude Swagger routes
             app.get('*', (req, res, next) => {
                 if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
                     return next();
@@ -200,185 +295,109 @@ class HttpRestTransport {
             debug(`Static path not found: ${staticPath}`);
         }
 
-        // Middleware
-        app.set('trust proxy', true);
-        app.use(cors({
-            origin: (origin, callback) => {
-                debug(`Checking CORS for origin: ${origin}`);
+        // Create HTTP server
+        this.#server = http.createServer(app);
 
-                // Allow requests with no origin, empty origin, or 'null' origin
-                // - null/undefined: Server-to-server requests
-                // - empty string: Some proxy configurations
-                // - 'null' string: Requests from file:// URLs or sandboxed contexts
-                if (!origin || origin === '' || origin === 'null') {
-                    debug('Allowing request with absent/empty/null origin');
-                    callback(null, true);
-                    return;
-                }
-
-                // Check if origin matches any of our allowed patterns
-                const isAllowed =
-                    this.#config.cors.origins?.some(o => new RegExp(o.replace('*.', '.*')).test(origin)) || // Match allowed domains
-                    /^https?:\/\/localhost(:[0-9]+)?$/.test(origin) || // Match localhost with optional port
-                    /^https?:\/\/127\.0\.0\.1(:[0-9]+)?$/.test(origin) || // Match 127.0.0.1 with optional port
-                    /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:[0-9]+)?$/.test(origin); // Match IP addresses with optional port
-
-                if (isAllowed) {
-                    debug(`Origin ${origin} is allowed`);
-                    callback(null, true);
-                } else {
-                    debug(`Origin ${origin} is not allowed`);
-                    callback(new Error(`CORS policy: ${origin} not allowed`));
-                }
-            },
-            methods: this.#config.cors?.methods || DEFAULT_CONFIG.cors.methods,
-            allowedHeaders: this.#config.cors?.allowedHeaders || DEFAULT_CONFIG.cors.allowedHeaders,
-            credentials: this.#config.cors?.credentials || DEFAULT_CONFIG.cors.credentials
-        }));
-
-        app.use(express.json());
-        app.use(express.urlencoded({ extended: true }));
-        app.use(cookieParser());
-        app.use(this.#setSecurityHeaders);
-
-        // Initialize Passport
-        configurePassport(this.#config.auth.jwtSecret);
-        app.use(passport.initialize());
-
-        return app;
-    }
-
-    #setSecurityHeaders(req, res, next) {
-        res.setHeader('Content-Security-Policy', "default-src 'self'");
-        next();
-    }
-
-    async #setupRoutes(app) {
-        console.log('Setting up routes with base path:', this.#config.basePath);
-
-        // Get auth service from the Canvas server
-        const authService = this.#canvasServer.services.get('auth');
-        if (!authService) {
-            throw new Error('Auth service not found in Canvas server');
-        }
-
-        // Setup Swagger documentation BEFORE authentication middleware
-        // This ensures API docs are accessible without authentication
-        const swagger = setupSwagger();
-        swagger.setupRoutes(app);
-
-        // Health check endpoint (unprotected)
-        app.get(`${this.#config.basePath}/ping`, (req, res) => {
-            res.status(200).json({
-                message: 'pong',
-                status: 'ok',
-                timestamp: new Date().toISOString(),
-                productName: productName,
-                version: version,
-                platform: process.platform,
-                architecture: process.arch,
+        // Track connections
+        this.#server.on('connection', (connection) => {
+            debug('New connection established');
+            this.#connections.add(connection);
+            connection.on('close', () => {
+                debug('Connection closed');
+                this.#connections.delete(connection);
             });
         });
 
-        // Mount auth routes (unprotected)
-        const authBasePath = `${this.#config.basePath}/`;
-        app.use(authBasePath, (await import('./routes/v2/auth.js')).default(authService));
+        // Handle process signals
+        process.on('SIGTERM', () => this.stop());
+        process.on('SIGINT', () => this.stop());
 
-        // Create a middleware that excludes Swagger routes from authentication
-        const authMiddleware = (req, res, next) => {
-            // Skip authentication for Swagger routes
-            if (req.path.startsWith('/api-docs')) {
-                return next();
-            }
+        // Start listening
+        await new Promise((resolve, reject) => {
+            this.#server.listen(this.#config.port, this.#config.host, () => {
+                debug(`HTTP server listening on ${this.#config.host}:${this.#config.port}`);
+                resolve();
+            });
 
-            // Apply authentication middleware for all other routes
-            return authService.getAuthMiddleware()(req, res, next);
-        };
+            this.#server.on('error', (error) => {
+                debug(`HTTP server error: ${error.message}`);
+                reject(error);
+            });
+        });
 
-        // Protect all other routes with authentication, except Swagger routes
-        app.use(this.#config.basePath, authMiddleware);
-
-        // Register context routes
-        const contextBasePath = `${this.#config.basePath}/v2/context`;
-        app.use(contextBasePath, contextRoutes({
-            auth: authService,
-            contextManager: this.#canvasServer.contextManager,
-            sessionManager: this.#canvasServer.sessionManager,
-            workspaceManager: this.#canvasServer.workspaceManager
-        }));
-
-        // Register users routes
-        const usersBasePath = `${this.#config.basePath}/v2/users`;
-        app.use(usersBasePath, usersRoutes({
-            auth: authService,
-            userManager: this.#canvasServer.userManager,
-            workspaceManager: this.#canvasServer.workspaceManager,
-            contextManager: this.#canvasServer.contextManager,
-            sessionManager: this.#canvasServer.sessionManager
-        }));
-
-        // Register workspaces routes
-        const workspacesBasePath = `${this.#config.basePath}/v2/workspaces`;
-        app.use(workspacesBasePath, workspacesRoutes({
-            auth: authService,
-            workspaceManager: this.#canvasServer.workspaceManager
-        }));
-
-        // Register documents routes
-        const documentsBasePath = `${this.#config.basePath}/v2/documents`;
-        app.use(documentsBasePath, documentsRoutes({
-            auth: authService,
-            workspaceManager: this.#canvasServer.workspaceManager,
-            contextManager: this.#canvasServer.contextManager
-        }));
-
-        // Register admin routes
-        const adminBasePath = `${this.#config.basePath}/v2/admin`;
-        app.use(adminBasePath, (await import('./routes/v2/admin.js')).default(authService));
-
-        // API routes (protected)
-        this.#loadApiRoutes(app);
+        debug('HTTP transport started');
     }
 
-    async #loadApiRoutes(app) {
-        for (const version of API_VERSIONS) {
-            const versionPath = path.join(__dirname, 'routes', version);
-            debug(`Attempting to load routes from: ${versionPath}`);
-
-            if (!fs.existsSync(versionPath)) {
-                debug(`Routes directory not found: ${versionPath}`);
-                continue;
-            }
-
-            try {
-                const routeFiles = fs.readdirSync(versionPath)
-                    .filter(file => file.endsWith('.js'));
-
-                if (routeFiles.length === 0) {
-                    debug(`No route files found in: ${versionPath}`);
-                    continue;
-                }
-
-                for (const file of routeFiles) {
-                    const routePath = path.join(versionPath, file);
-                    const fileUrl = new URL(`file://${routePath}`).href;
-                    debug(`Loading route from URL: ${fileUrl}`);
-                    const route = await import(fileUrl);
-                    const routeBasePath = `${this.#config.basePath}/${version}/${path.parse(file).name}`;
-                    debug(`Loading route: ${routeBasePath}`);
-
-                    app.use(routeBasePath, this.#injectDependencies.bind(this), route.default);
-                }
-            } catch (error) {
-                debug(`Error loading routes from ${versionPath}: ${error.message}`);
-            }
+    async stop() {
+        debug('Stopping HTTP transport');
+        if (this.#isShuttingDown) {
+            debug('Already shutting down, waiting for existing shutdown to complete');
+            return this.#closePromise;
         }
+
+        this.#isShuttingDown = true;
+        debug('Starting graceful shutdown');
+
+        this.#closePromise = new Promise((resolve, reject) => {
+            if (!this.#server) {
+                debug('HTTP server not running');
+                this.#isShuttingDown = false;
+                resolve();
+                return;
+            }
+
+            // Close all existing connections
+            debug(`Closing ${this.#connections.size} active connections`);
+            for (const connection of this.#connections) {
+                connection.end();
+                this.#connections.delete(connection);
+            }
+
+            // Set a timeout for forceful shutdown
+            const forceShutdown = setTimeout(() => {
+                debug('Forcing shutdown after timeout');
+                for (const connection of this.#connections) {
+                    connection.destroy();
+                }
+                if (this.#server) {
+                    this.#server.close();
+                }
+            }, 5000); // 5 seconds timeout
+
+            // Attempt graceful shutdown
+            this.#server.close((err) => {
+                clearTimeout(forceShutdown);
+                if (err) {
+                    debug(`Error during graceful shutdown: ${err.message}`);
+                    this.#isShuttingDown = false;
+                    reject(err);
+                    return;
+                }
+
+                debug('HTTP server closed successfully');
+                this.#server = null;
+                this.#connections.clear();
+                this.#isShuttingDown = false;
+                resolve();
+            });
+        });
+
+        return this.#closePromise;
     }
 
-    #injectDependencies(req, res, next) {
-        req.ResponseObject = this.ResponseObject;
-        req.canvas = this.#canvasServer;
-        next();
+    async restart() {
+        debug('Restarting HTTP transport');
+        await this.stop();
+        await this.start();
+        debug('HTTP transport restarted');
+    }
+
+    status() {
+        return {
+            running: !!this.#server,
+            port: this.#config.port,
+            host: this.#config.host,
+        };
     }
 }
 

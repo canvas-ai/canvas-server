@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('http:routes:users');
 import ResponseObject from '@/transports/ResponseObject.js';
+import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
 
 /**
  * @swagger
@@ -88,14 +89,12 @@ import ResponseObject from '@/transports/ResponseObject.js';
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
  * @param {Object} options.userManager - User manager
- * @param {Object} options.workspaceManager - Workspace manager
- * @param {Object} options.contextManager - Context manager
  * @param {Object} options.sessionManager - Session manager
  * @returns {express.Router} - Express router
  */
 export default function usersRoutes(options) {
     const router = express.Router();
-    const { auth, userManager, workspaceManager, contextManager, sessionManager } = options;
+    const { auth, userManager, sessionManager } = options;
 
     if (!auth) {
         throw new Error('Auth service is required');
@@ -105,35 +104,76 @@ export default function usersRoutes(options) {
         throw new Error('User manager is required');
     }
 
-    if (!workspaceManager) {
-        throw new Error('Workspace manager is required');
-    }
-
-    if (!contextManager) {
-        throw new Error('Context manager is required');
-    }
-
     if (!sessionManager) {
         throw new Error('Session manager is required');
     }
 
+    // Apply auth middleware to all routes
+    router.use(auth.getAuthMiddleware());
+
+    // Create user managers middleware (but don't require them by default)
+    const userManagersMiddleware = createUserManagersMiddleware({ userManager });
+
     // Middleware to get user from request
     const getUserMiddleware = async (req, res, next) => {
         try {
-            req.user = await auth.getUserFromRequest(req);
             if (!req.user) {
-                return res.status(401).json(new ResponseObject(null, 'Unauthorized', 401));
+                req.user = await auth.getUserFromRequest(req);
             }
+
+            if (!req.user) {
+                return res.status(401).json(new ResponseObject().unauthorized('Unauthorized'));
+            }
+
             next();
         } catch (err) {
             debug(`Error getting user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     };
 
-    // Apply auth middleware to all routes
-    router.use(auth.getAuthMiddleware());
+    // Apply user middleware to all routes
     router.use(getUserMiddleware);
+
+    /**
+     * @swagger
+     * /current:
+     *   get:
+     *     summary: Get the current authenticated user
+     *     tags: [Users]
+     *     responses:
+     *       200:
+     *         description: Current user retrieved successfully
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/User'
+     *       401:
+     *         description: Unauthorized
+     *       500:
+     *         description: Server error
+     */
+    router.get('/current', async (req, res) => {
+        try {
+            if (!req.user || !req.user.id) {
+                return res.status(401).json(new ResponseObject().unauthorized('Unauthorized'));
+            }
+
+            const userId = req.user.id;
+            debug(`Getting current user with ID: ${userId}`);
+
+            const user = await userManager.getUser(userId);
+            if (!user) {
+                debug(`Current user not found with ID: ${userId}`);
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            }
+
+            return res.json(new ResponseObject().success(user));
+        } catch (err) {
+            debug(`Error getting current user: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
+        }
+    });
 
     /**
      * @swagger
@@ -180,7 +220,7 @@ export default function usersRoutes(options) {
             const options = {
                 limit: parseInt(limit, 10),
                 offset: parseInt(offset, 10),
-                status
+                status,
             };
 
             const users = await userManager.listUsers(options);
@@ -251,7 +291,7 @@ export default function usersRoutes(options) {
                 email,
                 firstName,
                 lastName,
-                password
+                password,
             };
 
             const user = await userManager.createUser(userData);
@@ -368,7 +408,7 @@ export default function usersRoutes(options) {
                 email,
                 firstName,
                 lastName,
-                status
+                status,
             };
 
             const user = await userManager.updateUser(id, userData);
@@ -530,20 +570,42 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id/workspaces', async (req, res) => {
+    router.get('/:id/workspaces', userManagersMiddleware, async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
 
             if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            const workspaces = await workspaceManager.listUserWorkspaces(id);
-            return res.json(new ResponseObject(workspaces));
-        } catch (err) {
-            debug(`Error listing user workspaces: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            // Check if the requested user is the authenticated user
+            if (id !== req.user.id && req.user.role !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
+            }
+
+            // If we're looking at the current user, use the already initialized workspaceManager
+            if (id === req.user.id && req.workspaceManager) {
+                const workspaces = await req.workspaceManager.listWorkspaces();
+                return res.json(new ResponseObject().success(workspaces));
+            }
+
+            // Otherwise, we need to get the user instance and activate it
+            const userInstance = await userManager.getUserById(id);
+            if (!userInstance) {
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            }
+
+            // Activate the user if not already active
+            if (userInstance.status !== 'active') {
+                await userInstance.activate();
+            }
+
+            const workspaces = await userInstance.workspaceManager.listWorkspaces();
+            return res.json(new ResponseObject().success(workspaces));
+        } catch (error) {
+            debug(`Error listing user workspaces: ${error.message}`);
+            return res.status(500).json(new ResponseObject().serverError(error.message));
         }
     });
 
@@ -576,20 +638,42 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id/contexts', async (req, res) => {
+    router.get('/:id/contexts', userManagersMiddleware, async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
 
             if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            const contexts = await contextManager.listUserContexts(id);
-            return res.json(new ResponseObject(contexts));
-        } catch (err) {
-            debug(`Error listing user contexts: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            // Check if the requested user is the authenticated user
+            if (id !== req.user.id && req.user.role !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
+            }
+
+            // If we're looking at the current user, use the already initialized contextManager
+            if (id === req.user.id && req.contextManager) {
+                const contexts = await req.contextManager.listContexts();
+                return res.json(new ResponseObject().success(contexts));
+            }
+
+            // Otherwise, we need to get the user instance and activate it
+            const userInstance = await userManager.getUserById(id);
+            if (!userInstance) {
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            }
+
+            // Activate the user if not already active
+            if (userInstance.status !== 'active') {
+                await userInstance.activate();
+            }
+
+            const contexts = await userInstance.contextManager.listContexts();
+            return res.json(new ResponseObject().success(contexts));
+        } catch (error) {
+            debug(`Error listing user contexts: ${error.message}`);
+            return res.status(500).json(new ResponseObject().serverError(error.message));
         }
     });
 

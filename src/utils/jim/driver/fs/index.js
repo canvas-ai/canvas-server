@@ -3,7 +3,6 @@ import path from 'path';
 import Collection from './Collection.js';
 
 class PersistentIndex {
-
     constructor(configRootPath) {
         this.configRootPath = configRootPath;
         this.indexes = {};

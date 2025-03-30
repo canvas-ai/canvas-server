@@ -2,7 +2,7 @@
 
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('ws:routes:context');
-import routes from '@/transports/ws/routes.js';
+import ResponseObject from '@/transports/ResponseObject.js';
 
 /**
  * Context WebSocket routes
@@ -16,177 +16,73 @@ import routes from '@/transports/ws/routes.js';
 export default function contextRoutes(socket, deps) {
     const { ResponseObject, sessionManager, context: contextManager } = deps;
 
-    // Get user from socket
-    const user = socket.user;
+    // Track which contexts this socket is subscribed to
+    socket.subscribedContexts = new Set();
 
-    /**
-     * Get a context by ID
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.CONTEXT_GET_ID, async (data, callback) => {
+    socket.on('context:subscribe', async (contextId, callback) => {
         try {
-            debug(`Getting context by ID: ${data.id}`);
-            const context = contextManager.getContext(data.id);
-            callback(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error getting context: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 404));
+            debug(`Client ${socket.id} subscribing to context ${contextId}`);
+
+            // Get the context (will throw if not found)
+            const contextInstance = await contextManager.getContext(contextId);
+
+            // Add to subscribed contexts
+            socket.subscribedContexts.add(contextId);
+
+            // Set up event listeners for this context
+            const forwardEvent = (eventName) => {
+                contextInstance.on(eventName, (data) => {
+                    // Only forward if still subscribed
+                    if (socket.subscribedContexts.has(contextId)) {
+                        socket.emit(`context:${eventName}`, { contextId, data });
+                    }
+                });
+            };
+
+            // Forward relevant context events to the client
+            [
+                'change:url',
+                'change:baseUrl',
+                'locked',
+                'unlocked',
+                'document:insert',
+                'document:update',
+                'document:remove',
+                'document:delete',
+                'documents:insert',
+                'documents:update',
+                'documents:remove',
+                'documents:delete',
+            ].forEach(forwardEvent);
+
+            callback(new ResponseObject({ message: 'Subscribed to context events' }));
+        } catch (error) {
+            debug(`Error subscribing to context: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 
-    /**
-     * Get a context by URL
-     * @param {Object} data - Request data
-     * @param {string} data.url - Context URL
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.CONTEXT_GET_URL, async (data, callback) => {
+    socket.on('context:unsubscribe', (contextId, callback) => {
         try {
-            debug(`Getting context by URL: ${data.url}`);
-            const context = contextManager.getContextByUrl(data.url);
-
-            if (!context) {
-                return callback(new ResponseObject(null, 'Context not found', 404));
-            }
-
-            callback(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error getting context by URL: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
+            debug(`Client ${socket.id} unsubscribing from context ${contextId}`);
+            socket.subscribedContexts.delete(contextId);
+            callback(new ResponseObject({ message: 'Unsubscribed from context events' }));
+        } catch (error) {
+            debug(`Error unsubscribing from context: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 
-    /**
-     * Set context URL
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {string} data.url - New URL
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.CONTEXT_SET_URL, async (data, callback) => {
-        try {
-            debug(`Setting context URL: ${data.id} -> ${data.url}`);
-            const context = contextManager.getContext(data.id);
-            await context.setUrl(data.url);
-
-            // Emit event to all clients in the room
-            socket.to(data.id).emit(routes.EVENT_CONTEXT_URL, {
-                id: data.id,
-                url: data.url,
-            });
-
-            callback(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error setting context URL: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
-        }
+    socket.on('disconnect', () => {
+        debug(`Client ${socket.id} disconnected, cleaning up context subscriptions`);
+        socket.subscribedContexts.clear();
     });
 
-    /**
-     * Create a context
-     * @param {Object} data - Request data
-     * @param {string} data.url - Context URL
-     * @param {Object} data.options - Context options
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.SESSION_CONTEXT_CREATE, async (data, callback) => {
-        try {
-            debug(`Creating context: ${data.url}`);
-            const context = await contextManager.createContext(data.url, {
-                ...data.options,
-                user,
-            });
-
-            // Join the context room
-            socket.join(context.id);
-
-            callback(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error creating context: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
-        }
-    });
-
-    /**
-     * Remove a context
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.SESSION_CONTEXT_REMOVE, async (data, callback) => {
-        try {
-            debug(`Removing context: ${data.id}`);
-            const result = await contextManager.removeContext(data.id);
-
-            if (!result) {
-                return callback(new ResponseObject(null, 'Context not found', 404));
-            }
-
-            // Leave the context room
-            socket.leave(data.id);
-
-            callback(new ResponseObject({ success: true }));
-        } catch (err) {
-            debug(`Error removing context: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
-        }
-    });
-
-    /**
-     * List contexts for a session
-     * @param {Object} data - Request data
-     * @param {string} data.sessionId - Session ID
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.SESSION_CONTEXT_LIST, async (data, callback) => {
-        try {
-            debug(`Listing contexts for session: ${data.sessionId}`);
-            const contexts = contextManager.listSessionContexts(data.sessionId);
-            callback(new ResponseObject(contexts));
-        } catch (err) {
-            debug(`Error listing session contexts: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
-        }
-    });
-
-    /**
-     * Get a context by ID for a session
-     * @param {Object} data - Request data
-     * @param {string} data.sessionId - Session ID
-     * @param {string} data.contextId - Context ID
-     * @param {Function} callback - Callback function
-     */
-    socket.on(routes.SESSION_CONTEXT_GET_ID, async (data, callback) => {
-        try {
-            debug(`Getting context by ID for session: ${data.sessionId}, context: ${data.contextId}`);
-            const context = contextManager.getContext(data.contextId);
-
-            if (context.session.id !== data.sessionId) {
-                return callback(new ResponseObject(null, 'Context does not belong to session', 403));
-            }
-
-            callback(new ResponseObject(context));
-        } catch (err) {
-            debug(`Error getting context for session: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
-        }
-    });
-
-    /**
-     * Add a layer to a context
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {string} data.name - Layer name
-     * @param {Object} data.options - Layer options
-     * @param {Function} callback - Callback function
-     */
     socket.on('context:layer:add', async (data, callback) => {
         try {
             debug(`Adding layer to context: ${data.id}, layer: ${data.name}`);
-            const context = contextManager.getContext(data.id);
-            const layer = await context.addLayer(data.name, data.options);
+            const contextInstance = await contextManager.getContext(data.id);
+            const layer = await contextInstance.addLayer(data.name, data.options);
 
             // Emit event to all clients in the room
             socket.to(data.id).emit('context:layer:added', {
@@ -195,27 +91,20 @@ export default function contextRoutes(socket, deps) {
             });
 
             callback(new ResponseObject(layer));
-        } catch (err) {
-            debug(`Error adding layer: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
+        } catch (error) {
+            debug(`Error adding layer: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 
-    /**
-     * Remove a layer from a context
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {string} data.name - Layer name
-     * @param {Function} callback - Callback function
-     */
     socket.on('context:layer:remove', async (data, callback) => {
         try {
             debug(`Removing layer from context: ${data.id}, layer: ${data.name}`);
-            const context = contextManager.getContext(data.id);
-            const result = context.removeLayer(data.name);
+            const contextInstance = await contextManager.getContext(data.id);
+            const result = await contextInstance.removeLayer(data.name);
 
             if (!result) {
-                return callback(new ResponseObject(null, 'Layer not found', 404));
+                return callback(new ResponseObject(null, 'Layer not found'));
             }
 
             // Emit event to all clients in the room
@@ -225,66 +114,136 @@ export default function contextRoutes(socket, deps) {
             });
 
             callback(new ResponseObject({ success: true }));
-        } catch (err) {
-            debug(`Error removing layer: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
+        } catch (error) {
+            debug(`Error removing layer: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 
-    /**
-     * Add a filter to a context
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {string} data.name - Filter name
-     * @param {Object} data.options - Filter options
-     * @param {Function} callback - Callback function
-     */
+    socket.on('context:feature:add', async (data, callback) => {
+        try {
+            debug(`Adding feature to context: ${data.id}, feature: ${data.feature}`);
+            const contextInstance = await contextManager.getContext(data.id);
+            const feature = await contextInstance.appendFeatureBitmaps(data.feature, data.options);
+            callback(new ResponseObject(feature));
+        } catch (error) {
+            debug(`Error adding feature: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:feature:remove', async (data, callback) => {
+        try {
+            debug(`Removing feature from context: ${data.id}, feature: ${data.feature}`);
+            const contextInstance = await contextManager.getContext(data.id);
+            const result = await contextInstance.removeFeatureBitmaps(data.feature);
+
+            if (!result) {
+                return callback(new ResponseObject(null, 'Feature not found'));
+            }
+
+            callback(new ResponseObject({ success: true }));
+        } catch (error) {
+            debug(`Error removing feature: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
     socket.on('context:filter:add', async (data, callback) => {
         try {
-            debug(`Adding filter to context: ${data.id}, filter: ${data.name}`);
-            const context = contextManager.getContext(data.id);
-            const filter = context.addFilter(data.name, data.options);
+            debug(`Adding filter to context: ${data.id}, filter: ${data.filter}`);
+            const contextInstance = await contextManager.getContext(data.id);
+            const filter = await contextInstance.setFilterBitmaps(data.filter, data.options);
 
-            // Emit event to all clients in the room
             socket.to(data.id).emit('context:filter:added', {
                 contextId: data.id,
                 filter,
             });
 
             callback(new ResponseObject(filter));
-        } catch (err) {
-            debug(`Error adding filter: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
+        } catch (error) {
+            debug(`Error adding filter: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 
-    /**
-     * Remove a filter from a context
-     * @param {Object} data - Request data
-     * @param {string} data.id - Context ID
-     * @param {string} data.name - Filter name
-     * @param {Function} callback - Callback function
-     */
     socket.on('context:filter:remove', async (data, callback) => {
         try {
-            debug(`Removing filter from context: ${data.id}, filter: ${data.name}`);
-            const context = contextManager.getContext(data.id);
-            const result = context.removeFilter(data.name);
+            debug(`Removing filter from context: ${data.id}, filter: ${data.filter}`);
+            const contextInstance = await contextManager.getContext(data.id);
+            const result = await contextInstance.removeFilter(data.filter);
 
             if (!result) {
-                return callback(new ResponseObject(null, 'Filter not found', 404));
+                return callback(new ResponseObject(null, 'Filter not found'));
             }
 
-            // Emit event to all clients in the room
             socket.to(data.id).emit('context:filter:removed', {
                 contextId: data.id,
-                name: data.name,
+                filter: data.filter,
             });
 
             callback(new ResponseObject({ success: true }));
-        } catch (err) {
-            debug(`Error removing filter: ${err.message}`);
-            callback(new ResponseObject(null, err.message, 500));
+        } catch (error) {
+            debug(`Error removing filter: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:status', async (contextId, callback) => {
+        try {
+            debug(`Getting status for context: ${contextId}`);
+            const contextInstance = await contextManager.getContext(contextId);
+            callback(new ResponseObject(contextInstance.status));
+        } catch (error) {
+            debug(`Error getting context status: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:url:get', async ({ contextId }, callback) => {
+        try {
+            debug(`Getting URL for context: ${contextId}`);
+            const contextInstance = await contextManager.getContext(contextId);
+            callback(new ResponseObject({ url: contextInstance.url }));
+        } catch (error) {
+            debug(`Error getting context URL: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:url:set', async ({ contextId, url }, callback) => {
+        try {
+            debug(`Setting URL for context: ${contextId} to ${url}`);
+            const contextInstance = await contextManager.getContext(contextId);
+            await contextInstance.setUrl(url);
+            callback(new ResponseObject({ url: contextInstance.url }));
+        } catch (error) {
+            debug(`Error setting context URL: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:documents:list', async ({ contextId, featureArray = [], filterArray = [], options = {} }, callback) => {
+        try {
+            debug(`Listing documents for context: ${contextId}`);
+            const contextInstance = await contextManager.getContext(contextId);
+            const documents = await contextInstance.listDocuments(featureArray, filterArray, options);
+            callback(new ResponseObject(documents));
+        } catch (error) {
+            debug(`Error listing documents: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
+        }
+    });
+
+    socket.on('context:documents:insert', async ({ contextId, documents, featureArray = [], options = {} }, callback) => {
+        try {
+            debug(`Inserting documents into context: ${contextId}`);
+            const contextInstance = await contextManager.getContext(contextId);
+            const result = await contextInstance.insertDocuments(documents, featureArray, options);
+            callback(new ResponseObject(result));
+        } catch (error) {
+            debug(`Error inserting documents: ${error.message}`);
+            callback(new ResponseObject(null, error.message));
         }
     });
 }

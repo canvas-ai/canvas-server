@@ -5,7 +5,10 @@
         "commonjs": true,
         "es2021": true
     },
-    "extends": "eslint:recommended",
+    "extends": [
+        "eslint:recommended",
+        "prettier"
+    ],
     "parserOptions": {
         "ecmaVersion": "latest",
         "sourceType": "module"
@@ -29,9 +32,21 @@
         "**/_test/",
         "**/_old_/",
         "**/_SCRATCH_/",
-        "/src/ui/web",
-        "/src/services/neurald",
-        "/src/services/stored",
-        "/src/services/synapsd"
+        "**/extensions/**",
+        "**/src/ui/web/**",
+        "**/src/services/neurald/**",
+        "**/src/services/stored/**",
+        "**/src/services/synapsd/**",
+        "**/node_modules/**",
+        "**/*.json",
+        "**/*.md",
+        "**/*.css",
+        "**/*.html"
+    ],
+    "overrides": [
+        {
+            "files": ["*.js"],
+            "rules": {}
+        }
     ]
 }
