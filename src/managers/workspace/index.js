@@ -1,3 +1,5 @@
+'use strict';
+
 // Utils
 import EventEmitter from 'eventemitter2';
 import randomcolor from 'randomcolor';
@@ -5,6 +7,10 @@ import path from 'path';
 import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
 import Conf from 'conf';
+import AdmZip from 'adm-zip';
+import os from 'os';
+import crypto from 'crypto';
+import { ulid } from 'ulid';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
@@ -13,572 +19,847 @@ const debug = createDebug('workspace-manager');
 // Includes
 import Workspace from './lib/Workspace.js';
 
-// Constants
+/**
+ * Constants
+ */
+
 const WORKSPACE_TYPES = ['universe', 'workspace'];
+
+// Default configuration template for a new workspace's workspace.json
+const WORKSPACE_CONFIG_TEMPLATE = {
+    id: null,
+    name: null,
+    type: 'workspace',
+    label: 'Workspace',
+    color: '#000000',
+    description: 'Canvas Workspace',
+    owner: null,
+    // path is set dynamically
+    locked: true,
+    acl: {},
+    created: null, // Set during creation
+    updated: null, // Set during creation and updates
+    status: 'new', // Tracks status within workspace.json, manager uses global index
+};
+
+// Statuses stored in the global workspaces.json index
+const WORKSPACE_INDEX_STATUS = {
+    NEW: 'new',
+    IMPORTED: 'imported',
+    ACTIVE: 'active', // Workspace is loaded and running
+    INACTIVE: 'inactive', // Workspace is known but not running
+    DELETED: 'deleted', // Soft deleted, can be purged
+};
+
+// Internal status used by Workspace instances (matches config)
+const WORKSPACE_INSTANCE_STATUS = {
+    INITIALIZED: 'initialized',
+    ACTIVE: 'active',
+    INACTIVE: 'inactive',
+    DELETED: 'deleted',
+};
 
 const WORKSPACE_DIRECTORIES = {
     db: 'db',
     config: 'config',
     data: 'data',
     cache: 'cache',
+    home: 'home',
     roles: 'roles',
     dotfiles: 'dotfiles',
 };
 
 /**
  * Workspace Manager
+ *
+ * Manages workspaces on disk and their metadata in a global index.
+ * Handles loading/unloading (starting/stopping) workspace instances.
  */
-
 class WorkspaceManager extends EventEmitter {
 
-    #rootPath;
-    #workspaceIndex = new Map(); // Map of workspaceID -> Workspace
-    #openWorkspaces = new Map(); // Map of workspaceID -> Workspace
-    #initialized = false;
+    #rootPath;  // Default root path for workspaces if not specified
+    #configPath; // Path to store the global workspaces.json index
+
+    #index; // Conf instance for the global workspaces.json index
+    #activeWorkspaces = new Map(); // Map of workspaceID -> active Workspace instance
 
     /**
-     * Create a new WorkspaceManager instance
+     * Constructor
      * @param {Object} options - Configuration options
-     * @param {string} options.rootPath - Root path for user's workspaces
+     * @param {string} options.rootPath - Root path for workspaces
+     * @param {string} [options.configPath] - Path for global config (defaults to rootPath/config)
      */
     constructor(options = {}) {
-        super(); // EventEmitter
-
-        if (!options.rootPath) {
-            throw new Error('Workspace root path is required');
+        super(options.eventEmitterOptions || {});
+        if (!options.rootPath || typeof options.rootPath !== 'string') {
+            throw new Error('Workspaces root path (string) is required');
         }
 
         this.#rootPath = options.rootPath;
-        debug(`Workspaces root path: ${this.#rootPath}`);
+        this.#configPath = options.configPath || path.join(this.#rootPath, 'config');
+
+        // Ensure the config directory exists before initializing Conf
+        // NOTE: Conf might handle this, but explicit check is safer
+        // Consider adding an async initialize method if this needs async operations
+        try {
+            fsPromises.mkdir(this.#configPath, { recursive: true });
+        } catch (syncError) {
+            // Handle potential sync errors during setup if necessary
+            // In a real async setup, this would be awaited
+            console.error(`Error creating config directory sync: ${syncError}`);
+            // For now, we proceed assuming Conf might handle it or throw later
+        }
+
+        // Initialize the global config/index
+        this.#index = new Conf({
+            configName: 'workspaces', // -> workspaces.json
+            cwd: this.#configPath,
+            defaults: { // Structure of the global index
+                workspaces: {}, // Map of workspaceID -> { id, path, status, indexed, lastAccessed }
+            },
+        });
+
+        debug(`Workspace manager initialized, root path: ${this.#rootPath}, config path: ${this.#configPath}`);
+        // TODO: Potentially add an async initialize() method to handle async setup like directory checks,
+        // scanning existing workspaces, and ensuring universe exists.
     }
 
     /**
      * Getters
      */
 
-    get rootPath() {
-        return this.#rootPath;
-    }
-    get workspaces() {
-        return Array.from(this.#workspaceIndex.values());
-    }
-    get openWorkspaces() {
-        return Array.from(this.#openWorkspaces.values());
+    get rootPath() { return this.#rootPath; }
+    get configPath() { return this.#configPath; }
+    get index() { return this.#index.store.workspaces || {}; } // Return the workspaces object
+    get workspaces() { return Object.values(this.index); } // Array of workspace metadata objects
+    get activeWorkspaces() { return Array.from(this.#activeWorkspaces.values()); } // Array of active Workspace instances
+    get inactiveWorkspaces() { // Get metadata for inactive workspaces
+        return this.workspaces.filter(ws =>
+            ws.status === WORKSPACE_INDEX_STATUS.INACTIVE ||
+            ws.status === WORKSPACE_INDEX_STATUS.NEW ||
+            ws.status === WORKSPACE_INDEX_STATUS.IMPORTED
+        );
     }
 
     /**
-     * Initialize the workspace manager
-     * @returns {Promise<void>}
-     * @throws {Error} If initialization fails
+     * Simplified Workspace Manager API
      */
-    async initialize() {
-        if (this.#initialized) {
-            debug('Workspace manager already initialized');
-            return;
+
+    /**
+     * Create a new workspace.
+     * Creates the directory structure, workspace.json, and adds metadata to the global index.
+     * Does NOT start the workspace.
+     * @param {string} name - Desired name for the workspace (used for ID and default path).
+     * @param {Object} [options={}] - Configuration options (overrides defaults).
+     * @param {string} [options.path] - Optional custom path for the workspace.
+     * @param {string} [options.owner] - Owner identifier (required).
+     * @returns {Promise<Object>} Metadata of the created workspace from the global index.
+     */
+    async createWorkspace(name, options = {}) {
+        if (!name || typeof name !== 'string') {
+            throw new Error('Workspace name (string) is required');
+        }
+        if (!options.owner) {
+            // Enforce owner requirement based on user query
+            throw new Error('Workspace owner option is required');
         }
 
-        debug('Initializing workspace manager');
+        const workspaceID = this.#sanitizeNameForID(name); // Use sanitized name as ID
+        const workspacePath = options.path ? path.resolve(options.path) : path.join(this.#rootPath, workspaceID);
 
-        // Ensure root path exists
+        // Check if workspace ID or path is already indexed
+        if (this.index[workspaceID]) {
+            throw new Error(`Workspace ID "${workspaceID}" already registered.`);
+        }
+        if (this.workspaces.some(ws => ws.path === workspacePath)) {
+            throw new Error(`Workspace path "${workspacePath}" is already in use.`);
+        }
+
+        // Prepare configuration for workspace.json
+        const creationTime = new Date().toISOString();
+        let workspaceConfigData = this.#parseWorkspaceOptions({ // Use helper to merge defaults
+            id: workspaceID,
+            name: name, // Keep original name for display?
+            ...options, // User options override defaults
+            // Ensure crucial fields are set
+            created: creationTime,
+            updated: creationTime,
+            status: WORKSPACE_INSTANCE_STATUS.INITIALIZED, // Initial status in workspace.json
+        });
+
+        // Validate the final config data *before* creating files
+        if (!this.#validateWorkspaceConfig(workspaceConfigData)) {
+            // Validation errors are logged within the function
+            throw new Error('Invalid workspace configuration options provided.');
+        }
+
+        // Create workspace directory and standard subdirectories
+        await this.#ensureDirectoryExists(workspacePath);
+        for (const dirName of Object.values(WORKSPACE_DIRECTORIES)) {
+            await this.#ensureDirectoryExists(path.join(workspacePath, dirName));
+        }
+
+        // Create the workspace's own config file (workspace.json)
+        const workspaceConfigFile = path.join(workspacePath, 'workspace.json');
         try {
-            await this.#ensureDirectoryExists(this.#rootPath);
-            debug(`Workspaces root directory ensured at ${this.#rootPath}`);
+            await fsPromises.writeFile(workspaceConfigFile, JSON.stringify(workspaceConfigData, null, 4));
+            debug(`Created workspace config at: ${workspaceConfigFile}`);
         } catch (err) {
-            const error = new Error(`Failed to initialize workspace manager: ${err.message}`);
-            debug(error.message);
-            throw error;
+            // Clean up created directories if config write fails?
+            throw new Error(`Failed to write workspace config file at ${workspaceConfigFile}: ${err.message}`);
         }
 
-        // Scan for existing workspaces
-        await this.#scanWorkspaces();
+        // Add entry to the global index (workspaces.json)
+        const indexEntry = {
+            id: workspaceID,
+            path: workspacePath,
+            status: WORKSPACE_INDEX_STATUS.NEW, // Initial status in global index
+            indexed: creationTime,
+            lastAccessed: null,
+        };
+        this.#index.set(`workspaces.${workspaceID}`, indexEntry);
+        debug(`Added workspace "${workspaceID}" to global index.`);
 
-        // Autoload the universe workspace
-        if (!this.hasWorkspace('universe')) {
-            debug('Universe workspace not found, creating it');
-            await this.createWorkspace('universe', {
-                type: 'universe',
-                autoInitialize: true,
-            });
-        }
-
-        // Open the universe workspace
-        await this.openWorkspace('universe'); // TODO: Remove
-
-        this.#initialized = true;
-        debug('Workspace manager initialized successfully');
+        this.emit('workspace:created', indexEntry);
+        return indexEntry; // Return the metadata added to the index
     }
 
     /**
-     * Create a new workspace
-     * @param {string} workspaceID - Workspace ID/name
-     * @param {Object} options - Workspace options
-     * @returns {Promise<Workspace>} The created workspace
+     * Starts a workspace: Loads its config, creates a Workspace instance,
+     * calls its start() method, and adds it to the active list.
+     * @param {string} workspaceID - The ID of the workspace to start.
+     * @returns {Promise<Workspace>} The active Workspace instance.
      */
-    async createWorkspace(workspaceID, options = {}) {
-        if (!workspaceID) {
-            throw new Error('Workspace ID is required');
+    async startWorkspace(workspaceID) {
+        if (this.#activeWorkspaces.has(workspaceID)) {
+            debug(`Workspace "${workspaceID}" is already active.`);
+            return this.#activeWorkspaces.get(workspaceID);
         }
 
-        // Check if workspace already exists
-        if (this.#workspaceIndex.has(workspaceID)) {
-            debug(`Workspace "${workspaceID}" already exists, returning existing workspace`);
-            return this.openWorkspace(workspaceID);
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            throw new Error(`Workspace "${workspaceID}" not found in the index.`);
         }
 
-        // Create the workspace directory path - ensure it's a string
-        const workspacePath = typeof options.path === 'string' ? options.path : path.join(this.#rootPath, workspaceID);
-        debug(`Creating workspace "${workspaceID}" at ${workspacePath}`);
+        if (indexEntry.status === WORKSPACE_INDEX_STATUS.DELETED) {
+            throw new Error(`Workspace "${workspaceID}" is marked as deleted.`);
+        }
 
+        const workspacePath = indexEntry.path;
+        const workspaceConfigFile = path.join(workspacePath, 'workspace.json');
+
+        let workspaceConfigData;
         try {
-            // Check if workspace already exists
-            if (existsSync(workspacePath)) {
-                throw new Error(`Workspace directory already exists at ${workspacePath}`);
-            }
-
-            // Create workspace directory structure
-            await this.#ensureDirectoryExists(workspacePath);
-            for (const [key, dirName] of Object.entries(WORKSPACE_DIRECTORIES)) {
-                await this.#ensureDirectoryExists(path.join(workspacePath, dirName));
-                debug(`Created workspace ${key} directory: ${dirName}`);
-            }
-
-            // Create a Conf instance for workspace config
-            const configStore = new Conf({
-                configName: 'workspace',
-                cwd: workspacePath,
-            });
-
-            // Create workspace configuration
-            const workspaceConfig = {
-                id: options.id || workspaceID,
-                name: workspaceID,
-                type: options.type || 'workspace',
-                label: options.label || workspaceID.charAt(0).toUpperCase() + workspaceID.slice(1),
-                color: options.color || this.#getRandomColor(),
-                description: options.description || `My ${workspaceID} workspace`,
-                owner: options.owner || null,
-                path: workspacePath,
-                locked: options.locked || false,
-                acl: options.acl || {},
-                created: new Date().toISOString(),
-                updated: new Date().toISOString(),
-                status: options.status || 'initialized',
-            };
-
-            // Save workspace config
-            await configStore.set(workspaceConfig);
-
-            // Create workspace instance
-            const workspace = new Workspace({
-                ...workspaceConfig,
-                configStore: configStore,
-            });
-
-            // Add to tracked workspaces - use the workspaceID as the key
-            this.#workspaceIndex.set(workspaceID, workspace);
-
-            this.emit('workspace:created', workspace);
-            debug(`Workspace ${workspaceID} created successfully`);
-
-            // Initialize workspace
-            if (options.autoInitialize) {
-                await workspace.initialize();
-            }
-
-            return workspace;
+            const content = await fsPromises.readFile(workspaceConfigFile, 'utf8');
+            workspaceConfigData = JSON.parse(content);
+            debug(`Loaded workspace config for "${workspaceID}" from ${workspaceConfigFile}`);
         } catch (err) {
-            const error = new Error(`Failed to create workspace "${workspaceID}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Open a workspace from disk
-     * @param {string} workspacePath - Optional custom path
-     * @returns {Promise<Workspace>} The loaded workspace
-     */
-    async openWorkspace(workspacePath) {
-        if (!workspacePath) {
-            throw new Error('Workspace path rquired');
+            throw new Error(`Failed to read or parse workspace config for "${workspaceID}" at ${workspaceConfigFile}: ${err.message}`);
         }
 
-        debug(`Opening workspace from ${workspacePath}`);
-
-        // Check if workspace directory exists
-        if (!existsSync(workspacePath)) {
-            throw new Error(`Workspace directory does not exist at ${workspacePath}`);
+        // Validate loaded config again?
+        if (!this.#validateWorkspaceConfig(workspaceConfigData)) {
+             throw new Error(`Workspace config for "${workspaceID}" is invalid.`);
         }
 
+        // Create the Workspace instance
+        // We need Conf for the Workspace instance to manage its own config file
+        const configStore = new Conf({
+            configName: 'workspace', // workspace.json
+            cwd: workspacePath,
+            // We don't set defaults here, assuming the file exists and is loaded
+        });
+
+        const workspace = new Workspace({
+            ...workspaceConfigData, // Use data loaded from file
+            path: workspacePath, // Ensure path is correctly passed
+            configStore: configStore, // Pass the Conf instance
+        });
+
+        // Start the workspace's internal resources (DB, etc.)
         try {
-            // Create a Conf instance to read the workspace config
-            const configStore = new Conf({
-                configName: 'workspace',    // workspacePath/workspace.json
-                cwd: workspacePath,
-            });
-
-            // Check if the config has the required fields
-            if (!configStore.has('id')) {
-                throw new Error(`Workspace ${workspacePath} has no id defined`);
-            }
-
-            // Get all config data
-            const configData = configStore.store;
-
-            // Skip if workspace is marked as deleted
-            if (configData.status === 'deleted') {
-                debug(`Workspace ${workspaceID} is marked as deleted in config, skipping`);
-                return null;
-            }
-
-            // Create a workspace instance without initializing
-            // Constructor will throw an error if required fields are missing
-            const workspace = new Workspace({
-                ...configData,
-                path: workspacePath, // Path is calculated dynamically at runtime
-                configStore: configStore, // Pass the config store instance
-            });
-
-            // Add to workspace index
-            this.#workspaceIndex.set(workspaceID, workspace);
-            debug(`Successfully loaded workspace ${workspaceID} from ${workspacePath}`);
-            this.emit('workspace:loaded', workspace);
-            return workspace;
+            await workspace.start(); // Workspace handles its internal status
+            debug(`Workspace "${workspaceID}" instance started successfully.`);
         } catch (err) {
-            const error = new Error(`Failed to load workspace ${workspaceID} from "${workspacePath}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Open a workspace (initialize resources)
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Promise<Workspace>} The opened workspace
-     */
-    async openWorkspace(workspaceID) {
-        debug(`Opening workspace: ${workspaceID}`);
-
-        // Check if workspace is already open
-        if (this.#openWorkspaces.has(workspaceID)) {
-            debug(`Workspace ${workspaceID} is already open`);
-            return this.#openWorkspaces.get(workspaceID);
+            throw new Error(`Failed to start workspace "${workspaceID}" instance: ${err.message}`);
         }
 
-        // Load the workspace if not already loaded
-        let workspace;
-        if (!this.#workspaceIndex.has(workspaceID)) {
-            workspace = await this.loadWorkspace(workspaceID);
-            if (!workspace) {
-                throw new Error(`Workspace ${workspaceID} not found or is deleted`);
-            }
-        } else {
-            workspace = this.#workspaceIndex.get(workspaceID);
+        // Add to active workspaces map
+        this.#activeWorkspaces.set(workspaceID, workspace);
 
-            // Check if workspace is deleted
-            if (workspace.isDeleted) {
-                throw new Error(`Cannot open deleted workspace: ${workspaceID}`);
-            }
-        }
+        // Update global index status and last accessed time
+        this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_INDEX_STATUS.ACTIVE);
+        this.#index.set(`workspaces.${workspaceID}.lastAccessed`, new Date().toISOString());
+        debug(`Updated global index for active workspace "${workspaceID}".`);
 
-        // Initialize the workspace
-        try {
-            await workspace.initialize();
-
-            // Mark workspace as active
-            workspace.markAsActive();
-
-            // Add to open workspaces
-            this.#openWorkspaces.set(workspaceID, workspace);
-
-            this.emit('workspace:opened', workspace);
-            debug(`Workspace ${workspaceID} opened successfully`);
-
-            return workspace;
-        } catch (err) {
-            const error = new Error(`Failed to open workspace "${workspaceID}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Close a workspace (shutdown resources)
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Promise<boolean>} Success status
-     */
-    async closeWorkspace(workspaceID) {
-        debug(`Closing workspace: ${workspaceID}`);
-
-        if (!this.#openWorkspaces.has(workspaceID)) {
-            debug(`Workspace ${workspaceID} is not open`);
-            return false;
-        }
-
-        const workspace = this.#openWorkspaces.get(workspaceID);
-
-        try {
-            await workspace.shutdown();
-
-            // Mark workspace as inactive
-            workspace.markAsInactive();
-
-            this.#openWorkspaces.delete(workspaceID);
-
-            this.emit('workspace:closed', workspace);
-            debug(`Workspace ${workspaceID} closed successfully`);
-
-            return true;
-        } catch (err) {
-            const error = new Error(`Failed to close workspace "${workspaceID}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Remove a workspace from the index (but not from disk)
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Promise<boolean>} Success status
-     */
-    async removeWorkspace(workspaceID) {
-        debug(`Removing workspace ${workspaceID} from index`);
-
-        if (!this.#workspaceIndex.has(workspaceID)) {
-            debug(`Workspace ${workspaceID} is not in the index`);
-            return false;
-        }
-
-        // Close the workspace if it's open
-        if (this.#openWorkspaces.has(workspaceID)) {
-            await this.closeWorkspace(workspaceID);
-        }
-
-        // Remove from index
-        this.#workspaceIndex.delete(workspaceID);
-
-        this.emit('workspace:removed', workspaceID);
-        debug(`Workspace ${workspaceID} removed from index`);
-
-        return true;
-    }
-
-    /**
-     * Mark a workspace as deleted (soft delete)
-     * @param {string} workspaceID - Workspace ID/name
-     * @param {Object} options - Options
-     * @param {boolean} options.confirm - Confirmation flag
-     * @returns {Promise<boolean>} Success status
-     */
-    async deleteWorkspace(workspaceID, options = {}) {
-        debug(`Marking workspace ${workspaceID} as deleted`);
-
-        // Require confirmation to prevent accidental deletion
-        if (!options.confirm) {
-            throw new Error('Confirmation required to delete workspace. Set options.confirm = true');
-        }
-
-        // Check if workspace exists
-        if (!this.#workspaceIndex.has(workspaceID)) {
-            // Try to load it first
-            try {
-                const workspace = await this.loadWorkspace(workspaceID);
-                if (!workspace) {
-                    debug(`Workspace ${workspaceID} not found, cannot delete`);
-                    return false;
-                }
-            } catch (err) {
-                debug(`Workspace ${workspaceID} not found, cannot delete: ${err.message}`);
-                return false;
-            }
-        }
-
-        const workspace = this.#workspaceIndex.get(workspaceID);
-
-        // Close the workspace if it's open
-        if (this.#openWorkspaces.has(workspaceID)) {
-            await this.closeWorkspace(workspaceID);
-        }
-
-        try {
-            // Mark workspace as deleted
-            workspace.markAsDeleted();
-
-            // If purge option is set, physically delete the workspace
-            if (options.purge) {
-                await this.purgeWorkspace(workspaceID);
-            }
-
-            this.emit('workspace:deleted', workspaceID);
-            debug(`Workspace ${workspaceID} marked as deleted`);
-
-            return true;
-        } catch (err) {
-            const error = new Error(`Failed to delete workspace "${workspaceID}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Physically delete a workspace from disk
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Promise<boolean>} Success status
-     */
-    async purgeWorkspace(workspaceID) {
-        const workspacePath = path.join(this.#rootPath, workspaceID);
-        debug(`Purging workspace ${workspaceID} from disk at ${workspacePath}`);
-
-        // Check if workspace exists in index
-        if (this.#workspaceIndex.has(workspaceID)) {
-            // Close the workspace if it's open
-            if (this.#openWorkspaces.has(workspaceID)) {
-                await this.closeWorkspace(workspaceID);
-            }
-
-            // Remove from index
-            this.#workspaceIndex.delete(workspaceID);
-        }
-
-        try {
-            // Delete workspace directory
-            await fsPromises.rm(workspacePath, { recursive: true, force: true });
-
-            this.emit('workspace:purged', workspaceID);
-            debug(`Workspace ${workspaceID} purged from disk`);
-
-            return true;
-        } catch (err) {
-            const error = new Error(`Failed to purge workspace "${workspaceID}": ${err.message}`);
-            debug(error.message);
-            throw error;
-        }
-    }
-
-    /**
-     * Check if a workspace is open
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {boolean} True if workspace is open
-     */
-    isOpen(workspaceID) {
-        return this.#openWorkspaces.has(workspaceID);
-    }
-
-    /**
-     * Check if a workspace exists in the index
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {boolean} True if workspace exists
-     */
-    hasWorkspace(workspaceID) {
-        return this.#workspaceIndex.has(workspaceID);
-    }
-
-    /**
-     * Check if a workspace exists on disk
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {boolean} True if workspace exists on disk
-     */
-    hasWorkspaceOnDisk(workspaceID) {
-        const workspacePath = path.join(this.#rootPath, workspaceID);
-        return existsSync(workspacePath);
-    }
-
-    /**
-     * Get a workspace's configuration
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Object|null} Workspace configuration or null
-     */
-    getWorkspaceConfig(workspaceID) {
-        if (!this.#workspaceIndex.has(workspaceID)) {
-            return null;
-        }
-
-        const workspace = this.#workspaceIndex.get(workspaceID);
-        return workspace.config;
-    }
-
-    /**
-     * Get a workspace instance
-     * @param {string} workspaceID - Workspace ID/name
-     * @returns {Promise<Workspace|null>} Workspace instance or null
-     */
-    async getWorkspace(workspaceID, initialize = true) {
-        if (this.#workspaceIndex.has(workspaceID)) {
-            return this.#workspaceIndex.get(workspaceID);
-        }
-
-        // Try to load the workspace
-        const workspace = await this.loadWorkspace(workspaceID);
-        if (!workspace) {
-            debug(`Workspace ${workspaceID} not found, cannot get`);
-            return null;
-        }
-
-        // Initialize the workspace if requested
-        if (initialize) {
-            await workspace.initialize();
-        }
-
+        this.emit('workspace:started', workspace);
         return workspace;
     }
 
     /**
-     * List all workspaces
-     * @returns {Array<Workspace>} Array of workspace instances
+     * Stops an active workspace: Calls its stop() method and removes it from the active list.
+     * @param {string} workspaceID - The ID of the workspace to stop.
+     * @returns {Promise<boolean>} True if stopped successfully, false if not found or not active.
      */
-    listWorkspaces() {
-        return this.workspaces;
+    async stopWorkspace(workspaceID) {
+        const workspace = this.#activeWorkspaces.get(workspaceID);
+        if (!workspace) {
+            debug(`Workspace "${workspaceID}" is not active or not found.`);
+            return false;
+        }
+
+        try {
+            await workspace.stop(); // Workspace handles its internal status
+            debug(`Workspace "${workspaceID}" instance stopped successfully.`);
+        } catch (err) {
+            // Log the error but continue cleanup
+            logger.error(`Error stopping workspace "${workspaceID}" instance: ${err.message}`);
+            // Decide if we should re-throw or just log
+        }
+
+        // Remove from active map
+        this.#activeWorkspaces.delete(workspaceID);
+
+        // Update global index status (only if it exists - safety check)
+        if (this.index[workspaceID]) {
+             this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_INDEX_STATUS.INACTIVE);
+             debug(`Updated global index for inactive workspace "${workspaceID}".`);
+        }
+
+        this.emit('workspace:stopped', { id: workspaceID });
+        return true;
     }
 
     /**
-     * List all open workspaces
-     * @returns {Array<Workspace>} Array of open workspace instances
+     * Remove a workspace from the global index. Stops it if active.
+     * Does NOT delete files from disk.
+     * @param {string} workspaceID - Workspace ID/name to remove.
+     * @returns {Promise<boolean>} True if removed, false if not found.
      */
-    listOpenWorkspaces() {
-        return this.openWorkspaces;
+    async removeWorkspace(workspaceID) {
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found in index. Cannot remove.`);
+            return false;
+        }
+
+        // Stop the workspace if it's active
+        if (this.#activeWorkspaces.has(workspaceID)) {
+            debug(`Workspace "${workspaceID}" is active, stopping before removing from index.`);
+            await this.stopWorkspace(workspaceID);
+        }
+
+        // Remove from the global index
+        this.#index.delete(`workspaces.${workspaceID}`);
+        debug(`Removed workspace "${workspaceID}" from global index.`);
+
+        this.emit('workspace:removed', { id: workspaceID });
+        return true;
     }
 
+    /**
+     * Destroy a workspace: Stops it if active, removes it from the index,
+     * and deletes its directory from the filesystem.
+     * @param {string} workspaceID - Workspace ID/name to destroy.
+     * @param {boolean} [forceDestroy=false] - Skip checks and force deletion (use with caution).
+     * @returns {Promise<boolean>} True if destroyed, false if not found.
+     */
+    async destroyWorkspace(workspaceID, forceDestroy = false) {
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found in index. Cannot destroy.`);
+            return false;
+        }
 
+        const workspacePath = indexEntry.path;
 
+        // Basic safety check unless forced
+        if (!forceDestroy && this.#activeWorkspaces.has(workspaceID)) {
+             // Or maybe just stop it? User query implies stop is part of destroy.
+             debug(`Workspace "${workspaceID}" is active. Stopping before destroying.`);
+             await this.stopWorkspace(workspaceID);
+             // throw new Error(`Workspace "${workspaceID}" is active. Stop it before destroying, or use forceDestroy.`);
+        }
 
+        // Stop again just in case or if forceDestroy skipped the check
+         if (this.#activeWorkspaces.has(workspaceID)) {
+            await this.stopWorkspace(workspaceID);
+        }
+
+        // Remove from the global index *before* deleting files
+        this.#index.delete(`workspaces.${workspaceID}`);
+        debug(`Removed workspace "${workspaceID}" from global index before deletion.`);
+
+        // Delete the workspace directory
+        try {
+            debug(`Attempting to delete workspace directory: ${workspacePath}`);
+            await fsPromises.rm(workspacePath, { recursive: true, force: true }); // Use force: true cautiously
+            debug(`Successfully deleted workspace directory: ${workspacePath}`);
+        } catch (err) {
+            // Log the error, but the index entry is already removed.
+            // Consider if the index entry should be restored or marked as 'delete_failed'?
+            logger.error(`Failed to delete workspace directory "${workspacePath}": ${err.message}`);
+            // Re-throw or return false? Returning false might be less disruptive.
+            this.emit('workspace:destroy_failed', { id: workspaceID, error: err.message });
+            return false;
+        }
+
+        this.emit('workspace:destroyed', { id: workspaceID });
+        return true;
+    }
 
     /**
-     * Scan for existing workspaces
+     * Import a workspace from a zip file or an existing directory.
+     * Adds the workspace to the global index, does NOT start it.
+     * @param {string} sourcePath - Path to the zip file or workspace directory.
+     * @param {boolean} [inPlace=false] - If sourcePath is a directory, import it without copying (only adds to index).
+     * @returns {Promise<Object>} Metadata of the imported workspace from the global index.
+     */
+    async importWorkspace(sourcePath, inPlace = false) {
+        if (!existsSync(sourcePath)) {
+            throw new Error(`Source path does not exist: ${sourcePath}`);
+        }
+
+        let importPath = path.resolve(sourcePath);
+        let workspaceConfigData;
+        let workspaceID;
+        let finalWorkspacePath;
+        let isZip = importPath.toLowerCase().endsWith('.zip');
+        let tempExtractPath = null;
+
+        try {
+            if (isZip) {
+                debug(`Importing workspace from zip file: ${importPath}`);
+                tempExtractPath = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'canvas-import-'));
+                debug(`Extracting zip to temporary path: ${tempExtractPath}`);
+                const zip = new AdmZip(importPath);
+                zip.extractAllTo(tempExtractPath, true /* overwrite */);
+
+                // After extraction, treat the temp path as the source directory
+                importPath = tempExtractPath;
+                inPlace = false; // Cannot run in-place from temp dir
+            }
+
+            // Validate the source directory (original or extracted)
+            const configFilePath = path.join(importPath, 'workspace.json');
+            if (!existsSync(configFilePath)) {
+                throw new Error(`Import source directory is missing workspace.json: ${importPath}`);
+            }
+
+            // Read config to get ID and validate
+            try {
+                const content = await fsPromises.readFile(configFilePath, 'utf8');
+                workspaceConfigData = JSON.parse(content);
+            } catch (err) {
+                throw new Error(`Failed to read/parse workspace.json in import source: ${err.message}`);
+            }
+
+            if (!this.#validateWorkspaceConfig(workspaceConfigData, true /* isImport */)) {
+                throw new Error(`Import source workspace.json is invalid.`);
+            }
+            workspaceID = workspaceConfigData.id; // Use ID from the imported config
+
+            // Check for conflicts (ID or target path)
+            if (this.index[workspaceID]) {
+                throw new Error(`Workspace ID "${workspaceID}" from import source already exists in the index.`);
+            }
+
+            if (inPlace) {
+                if (isZip) throw new Error("Cannot import zip file 'inPlace'.");
+                finalWorkspacePath = importPath; // Use the source path directly
+                // Check if path conflicts with existing *indexed* paths
+                if (this.workspaces.some(ws => ws.path === finalWorkspacePath)) {
+                    throw new Error(`Workspace path "${finalWorkspacePath}" is already indexed.`);
+                }
+                debug(`Importing workspace "${workspaceID}" in-place from: ${finalWorkspacePath}`);
+            } else {
+                finalWorkspacePath = path.join(this.#rootPath, workspaceID);
+                // Check if target directory already exists (could be unrelated files)
+                if (existsSync(finalWorkspacePath)) {
+                    throw new Error(`Target directory for import already exists: ${finalWorkspacePath}`);
+                }
+                 debug(`Copying workspace "${workspaceID}" from ${importPath} to ${finalWorkspacePath}`);
+                 // fsPromises.cp is available in Node 16.7+
+                 await fsPromises.cp(importPath, finalWorkspacePath, { recursive: true });
+                 debug(`Workspace copy complete.`);
+            }
+
+            // Add entry to the global index
+            const indexEntry = {
+                id: workspaceID,
+                path: finalWorkspacePath,
+                status: WORKSPACE_INDEX_STATUS.IMPORTED, // Mark as imported
+                indexed: new Date().toISOString(),
+                lastAccessed: null,
+            };
+            this.#index.set(`workspaces.${workspaceID}`, indexEntry);
+            debug(`Added imported workspace "${workspaceID}" to global index.`);
+
+            this.emit('workspace:imported', indexEntry);
+            return indexEntry;
+
+        } catch (error) {
+            // Clean up temp directory if extraction happened
+            if (tempExtractPath) {
+                try {
+                    await fsPromises.rm(tempExtractPath, { recursive: true, force: true });
+                    debug(`Cleaned up temporary extraction path: ${tempExtractPath}`);
+                } catch (cleanupError) {
+                    logger.error(`Failed to clean up temp import directory ${tempExtractPath}: ${cleanupError.message}`);
+                }
+            }
+            // Re-throw the original error
+            throw error;
+        }
+    }
+
+    /**
+     * Export a workspace as a zip file.
+     * Requires the workspace to be stopped/inactive.
+     * @param {string} workspaceID - Source workspace id.
+     * @param {string} dstPath - Destination path for the zip file.
+     * @returns {Promise<string>} Path to the created zip file.
+     */
+    async exportWorkspace(workspaceID, dstPath) {
+        if (!workspaceID) throw new Error('Workspace ID is required for export.');
+        if (!dstPath) throw new Error('Destination path is required for export.');
+
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            throw new Error(`Workspace "${workspaceID}" not found in index.`);
+        }
+
+        // Ensure workspace is not active
+        if (this.#activeWorkspaces.has(workspaceID)) {
+            throw new Error(`Workspace "${workspaceID}" is active. Stop it before exporting.`);
+        }
+
+        const sourcePath = indexEntry.path;
+        let outputZipPath = dstPath;
+
+        // If dstPath is a directory, create zip name based on workspace ID
+        try {
+            const stats = await fsPromises.stat(dstPath);
+            if (stats.isDirectory()) {
+                 outputZipPath = path.join(dstPath, `${workspaceID}.zip`);
+            }
+        } catch (e) {
+            // If stat fails, dstPath likely doesn't exist, assume it's the full file path
+            // Ensure parent directory exists if dstPath includes directories
+             const parentDir = path.dirname(outputZipPath);
+             if (!existsSync(parentDir)) {
+                 await this.#ensureDirectoryExists(parentDir);
+             }
+        }
+
+        // Ensure path ends with .zip if it wasn't auto-generated
+        if (!outputZipPath.toLowerCase().endsWith('.zip')) {
+             outputZipPath += '.zip';
+        }
+
+        debug(`Exporting workspace "${workspaceID}" from ${sourcePath} to ${outputZipPath}`);
+
+        try {
+            const zip = new AdmZip();
+            // Add the entire workspace folder content to the zip
+            zip.addLocalFolder(sourcePath, ''); // Add content directly at zip root
+            await zip.writeZipPromise(outputZipPath);
+            debug(`Workspace export successful: ${outputZipPath}`);
+            this.emit('workspace:exported', { id: workspaceID, path: outputZipPath });
+            return outputZipPath;
+        } catch (err) {
+            throw new Error(`Failed to create workspace zip file at ${outputZipPath}: ${err.message}`);
+        }
+    }
+
+     /**
+     * Get the status of a workspace from the global index.
+     * @param {string} workspaceID - The ID of the workspace.
+     * @returns {string|null} Status string (e.g., 'active', 'inactive') or null if not found.
+     */
+    getWorkspaceStatus(workspaceID) {
+        const indexEntry = this.index[workspaceID];
+        return indexEntry ? indexEntry.status : null;
+    }
+
+    /**
+     * Update a specific property of a workspace's configuration.
+     * Updates both the workspace.json file and the active instance if loaded.
+     * @param {string} workspaceID - The ID of the workspace.
+     * @param {string} property - The configuration key to set (e.g., 'name', 'description', 'color').
+     * @param {*} value - The new value for the property.
+     * @returns {Promise<boolean>} True if successful, false otherwise.
+     */
+    async setWorkspaceProperty(workspaceID, property, value) {
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found. Cannot set property.`);
+            return false;
+        }
+
+        const allowedProperties = ['name', 'description', 'owner', 'color', 'acl', 'label', 'locked']; // Add 'token'? Not in template.
+        if (!allowedProperties.includes(property)) {
+            debug(`Attempted to set disallowed property "${property}" for workspace "${workspaceID}".`);
+            return false;
+        }
+
+        // Special validation for color
+        if (property === 'color' && !WorkspaceManager.validateWorkspaceColor(value)) {
+            debug(`Invalid color value "${value}" for workspace "${workspaceID}".`);
+            return false;
+        }
+
+        // Handle potential name/label sanitization if needed?
+        // if (property === 'name') value = this.#sanitizeName(value);
+        // if (property === 'label') value = this.#sanitizeLabel(value);
+
+        // Update the active instance if it exists
+        const workspaceInstance = this.#activeWorkspaces.get(workspaceID);
+        let updateSuccessful = false;
+        if (workspaceInstance) {
+            debug(`Updating property "${property}" on active workspace instance "${workspaceID}".`);
+            // Assume Workspace class has corresponding setters or a generic `setConfigKey`
+            // Need to match method names in Workspace.js
+            const setterMethod = `set${property.charAt(0).toUpperCase() + property.slice(1)}`;
+            if (typeof workspaceInstance[setterMethod] === 'function') {
+                workspaceInstance[setterMethod](value);
+                updateSuccessful = true; // Assume setter updates configStore internally
+            } else if (typeof workspaceInstance.setConfigKey === 'function') {
+                // Fallback to generic setter if specific one doesn't exist
+                workspaceInstance.setConfigKey(property, value);
+                 updateSuccessful = true;
+            } else {
+                 debug(`No suitable setter method found on Workspace instance for property "${property}". Config file might be updated directly.`);
+                 // If no setter, we have to update the config file directly (below)
+                 // We assume the setter handles updating the underlying configStore
+            }
+        }
+
+        // If not active OR setter didn't exist/failed, update workspace.json directly
+        if (!updateSuccessful) {
+             debug(`Updating property "${property}" directly in workspace.json for "${workspaceID}".`);
+            const workspacePath = indexEntry.path;
+             // Use Conf to update the specific workspace's config file
+            try {
+                const configStore = new Conf({
+                    configName: 'workspace',
+                    cwd: workspacePath,
+                });
+                configStore.set(property, value);
+                configStore.set('updated', new Date().toISOString()); // Also update timestamp
+                debug(`Successfully updated "${property}" in ${path.join(workspacePath, 'workspace.json')}`);
+                updateSuccessful = true;
+            } catch (err) {
+                 logger.error(`Failed to update workspace.json for "${workspaceID}": ${err.message}`);
+                 return false; // Failed to update the config file
+            }
+        }
+
+        // Emit event regardless of whether instance or file was updated (as long as successful)
+        if (updateSuccessful) {
+            this.emit('workspace:property:changed', { id: workspaceID, property, value });
+        }
+
+        return updateSuccessful;
+    }
+
+    /**
+     * Helper methods
+     */
+
+    /**
+     * List workspace metadata based on status filter.
+     * @param {string} [status] - Optional status filter (e.g., 'active', 'inactive').
+     * @returns {Array<Object>} Array of workspace metadata objects from the index.
+     */
+    listWorkspaces(status) {
+        const allWorkspaces = Object.values(this.index);
+        if (!status) {
+            return allWorkspaces;
+        }
+
+        if (!Object.values(WORKSPACE_INDEX_STATUS).includes(status)) {
+            debug('Invalid status filter: ' + status);
+            return []; // Or throw error?
+        }
+
+        return allWorkspaces.filter(workspace => workspace.status === status);
+    }
+
+    /**
+     * Workspace Utils
+     */
+
+    /**
+     * Get a random color for workspace
+     * @returns {string} Random color
+     * @static
+     */
+    static getRandomColor() {
+        return randomcolor({
+            luminosity: 'light',
+            format: 'hex',
+        });
+    }
+
+    /**
+     * Validate workspace color
+     * @param {string} color - Color to validate
+     * @returns {boolean} True if color is a valid hex color, false otherwise
+     * @static
+     */
+    static validateWorkspaceColor(color) {
+        if (typeof color !== 'string') {
+            debug('Workspace color must be a string');
+            return false;
+        }
+        // Relaxed regex to allow 3-digit hex?
+        // Current WORKSPACE_CONFIG_TEMPLATE uses #000000
+        // const hexRegex = /^#([0-9A-F]{3}){1,2}$/i;
+        if (!color.match(/^#(?:[0-9a-fA-F]{3}){1,2}$/)) {
+            debug('Workspace color must be a valid hex color (e.g., #RRGGBB or #RGB)');
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Private methods
+     */
+
+    /**
+     * Convert a workspace name/ID to a filesystem-safe path component.
+     * Example: "My Workspace!" -> "my-workspace"
+     * @param {string} name
+     * @returns {string}
+     */
+     #sanitizeNameForID(name) {
+        if (!name) return 'untitled';
+        return name
+            .toString()
+            .toLowerCase()
+            .replace(/\s+/g, '-')       // Replace spaces with -
+            .replace(/[^a-z0-9-]/g, '') // Remove all non-alphanumeric or hyphen characters
+            .replace(/--+/g, '-')      // Replace multiple - with single -
+            .replace(/^-+/, '')        // Trim - from start of text
+            .replace(/-+$/, '');       // Trim - from end of text
+    }
+
+    /**
+     * Validate workspace configuration data (used before creating or importing).
+     * @param {Object} configData - The configuration object to validate.
+     * @param {boolean} [isImport=false] - If true, applies stricter checks (e.g., requires ID).
+     * @returns {boolean} True if valid, false otherwise.
+     * @private
+     */
+    #validateWorkspaceConfig(configData, isImport = false) {
+         let isValid = true;
+         const logError = (msg) => {
+             debug(`Config validation failed: ${msg}`);
+             isValid = false;
+         };
+
+         if (!configData) return logError('Config data is missing.');
+
+         // ID is crucial, especially for import
+         if (!configData.id || typeof configData.id !== 'string') {
+             // For creation, ID might be generated later, but parseWorkspaceOptions should add it.
+             // For import, it MUST exist.
+             if (isImport) return logError('Workspace ID is missing or not a string.');
+         }
+
+         if (!configData.name || typeof configData.name !== 'string') return logError('Workspace name is missing or not a string.');
+         // Should we validate owner format?
+         if (!configData.owner || typeof configData.owner !== 'string') return logError('Workspace owner is missing or not a string.');
+         if (configData.color && !WorkspaceManager.validateWorkspaceColor(configData.color)) return logError('Invalid color format.');
+         if (!configData.type || !WORKSPACE_TYPES.includes(configData.type)) return logError(`Invalid type: ${configData.type}. Must be one of ${WORKSPACE_TYPES.join(', ')}.`);
+         if (typeof configData.locked !== 'boolean') return logError('Locked flag must be a boolean.');
+         // Check other fields like created, updated, status format?
+         if (!configData.created || Number.isNaN(Date.parse(configData.created))) return logError('Created timestamp is invalid or missing.');
+         if (!configData.updated || Number.isNaN(Date.parse(configData.updated))) return logError('Updated timestamp is invalid or missing.');
+         if (!configData.status || !Object.values(WORKSPACE_INSTANCE_STATUS).includes(configData.status)) return logError(`Invalid status in config: ${configData.status}`);
+
+        return isValid;
+    }
+
+    /**
+     * Parse and normalize workspace options, merging with defaults.
+     * @param {Object} options - Raw options provided by the user.
+     * @returns {Object} Parsed and defaulted options suitable for workspace.json.
+     * @private
+     */
+    #parseWorkspaceOptions(options) {
+        // Start with the template defaults
+        let parsedOptions = {
+            ...WORKSPACE_CONFIG_TEMPLATE,
+        };
+
+        // Apply provided options, potentially overriding defaults
+        // We need to be careful here not to overwrite required fields like id if they are already set (e.g., during import validation)
+        for (const key in options) {
+             if (options.hasOwnProperty(key) && options[key] !== undefined) { // Check for undefined
+                 // Only copy properties that exist in the template or are known valid options?
+                 // Or just copy everything provided?
+                 // For now, copy if value is provided.
+                 parsedOptions[key] = options[key];
+             }
+        }
+
+        // Ensure essential fields have values
+        if (!parsedOptions.id) {
+            // This should ideally be set before calling parse, based on name or import
+            // parsedOptions.id = ulid(); // Or generate based on name?
+            debug("Warning: Parsing options without an ID set.");
+        }
+        if (!parsedOptions.name) {
+             // Derive from ID if name is missing?
+             parsedOptions.name = parsedOptions.id || 'Untitled Workspace';
+        }
+        if (!parsedOptions.label) {
+            // Default label based on name
+             parsedOptions.label = parsedOptions.name.charAt(0).toUpperCase() + parsedOptions.name.slice(1);
+        }
+        if (!parsedOptions.color) {
+            parsedOptions.color = WorkspaceManager.getRandomColor();
+        }
+        if (!parsedOptions.created) {
+            const now = new Date().toISOString();
+            parsedOptions.created = now;
+            parsedOptions.updated = now;
+        } else if (!parsedOptions.updated) {
+            parsedOptions.updated = parsedOptions.created; // Default updated to created if missing
+        }
+
+        // Re-validate owner - should be enforced by createWorkspace
+        if (!parsedOptions.owner) {
+             debug("Warning: Parsing options without an owner set.");
+        }
+
+        return parsedOptions;
+    }
+
+    /**
+     * Ensure a directory exists.
+     * @param {string} dirPath - Directory path.
      * @returns {Promise<void>}
      * @private
      */
-    async #scanWorkspaces() {
-        debug(`Scanning for workspaces in ${this.#rootPath}`);
-
+    async #ensureDirectoryExists(dirPath) {
         try {
-            const entries = await fsPromises.readdir(this.#rootPath, { withFileTypes: true });
-
-            for (const entry of entries) {
-                if (entry.isDirectory()) {
-                    debug(`Found workspace directory: ${entry.name}`);
-                    const workspaceID = entry.name;
-                    const workspacePath = path.join(entry.path, workspaceID);
-
-                    // Check if it's a valid workspace (has a config file)
-                    const configPath = path.join(workspacePath, 'workspace.json');
-                    if (existsSync(configPath)) {
-                        debug(`Found workspace config file: ${configPath}`);
-                        try {
-                            await this.loadWorkspace(workspaceID, workspacePath);
-                        } catch (err) {
-                            debug(`Failed to load workspace ${workspaceID}: ${err.message}`);
-                        }
-                    } else {
-                        debug(`Workspace ${workspaceID} has no config file, skipping`);
-                    }
-                }
-            }
-
-            debug(`Found ${this.#workspaceIndex.size} valid workspaces in ${this.#rootPath}`);
+            await fsPromises.mkdir(dirPath, { recursive: true });
         } catch (err) {
-            debug(`Error scanning workspaces: ${err.message}`);
+            // Ignore EEXIST error (directory already exists)
+            if (err.code !== 'EEXIST') {
+                 throw new Error(`Failed to create directory ${dirPath}: ${err.message}`);
+            }
         }
     }
+
 }
 
 export default WorkspaceManager;
+export {
+    WORKSPACE_INDEX_STATUS,
+    WORKSPACE_INSTANCE_STATUS,
+    WORKSPACE_DIRECTORIES
+};
