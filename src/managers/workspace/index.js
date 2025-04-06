@@ -11,10 +11,21 @@ import AdmZip from 'adm-zip';
 import os from 'os';
 import crypto from 'crypto';
 import { ulid } from 'ulid';
+import pm2 from 'pm2';
+import { promisify } from 'util';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
 const debug = createDebug('workspace-manager');
+
+// Promisify PM2 functions
+const pm2Connect = promisify(pm2.connect).bind(pm2);
+const pm2Disconnect = promisify(pm2.disconnect).bind(pm2);
+const pm2List = promisify(pm2.list).bind(pm2);
+const pm2Start = promisify(pm2.start).bind(pm2);
+const pm2Stop = promisify(pm2.stop).bind(pm2);
+const pm2Delete = promisify(pm2.delete).bind(pm2);
+const pm2Describe = promisify(pm2.describe).bind(pm2);
 
 // Includes
 import Workspace from './lib/Workspace.js';
@@ -35,6 +46,10 @@ const WORKSPACE_CONFIG_TEMPLATE = {
     description: 'Canvas Workspace',
     owner: null,
     // path is set dynamically
+    restApi: { // Configuration for the optional dedicated REST API
+        port: null, // Port number
+        token: null // Auth token (store hash in production!)
+    },
     locked: true,
     acl: {},
     created: null, // Set during creation
@@ -49,6 +64,15 @@ const WORKSPACE_INDEX_STATUS = {
     ACTIVE: 'active', // Workspace is loaded and running
     INACTIVE: 'inactive', // Workspace is known but not running
     DELETED: 'deleted', // Soft deleted, can be purged
+};
+
+// Statuses for the optional REST API managed by PM2
+const WORKSPACE_API_STATUS = {
+    RUNNING: 'running',
+    STOPPED: 'stopped',
+    STARTING: 'starting',
+    STOPPING: 'stopping',
+    ERROR: 'error',
 };
 
 // Internal status used by Workspace instances (matches config)
@@ -114,14 +138,15 @@ class WorkspaceManager extends EventEmitter {
         this.#index = new Conf({
             configName: 'workspaces', // -> workspaces.json
             cwd: this.#configPath,
-            defaults: { // Structure of the global index
-                workspaces: {}, // Map of workspaceID -> { id, path, status, indexed, lastAccessed }
+            defaults: {
+                workspaces: {}, // Map of workspaceID -> { id, path, status, indexed, lastAccessed, restApiStatus, pm2Name }
             },
         });
 
         debug(`Workspace manager initialized, root path: ${this.#rootPath}, config path: ${this.#configPath}`);
         // TODO: Potentially add an async initialize() method to handle async setup like directory checks,
         // scanning existing workspaces, and ensuring universe exists.
+        // TODO: Connect to PM2 daemon on initialization?
     }
 
     /**
@@ -156,16 +181,17 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Object>} Metadata of the created workspace from the global index.
      */
     async createWorkspace(name, options = {}) {
+        const { restApi, ...otherOptions } = options;
         if (!name || typeof name !== 'string') {
             throw new Error('Workspace name (string) is required');
         }
-        if (!options.owner) {
+        if (!otherOptions.owner) {
             // Enforce owner requirement based on user query
             throw new Error('Workspace owner option is required');
         }
 
         const workspaceID = this.#sanitizeNameForID(name); // Use sanitized name as ID
-        const workspacePath = options.path ? path.resolve(options.path) : path.join(this.#rootPath, workspaceID);
+        const workspacePath = otherOptions.path ? path.resolve(otherOptions.path) : path.join(this.#rootPath, workspaceID);
 
         // Check if workspace ID or path is already indexed
         if (this.index[workspaceID]) {
@@ -180,11 +206,16 @@ class WorkspaceManager extends EventEmitter {
         let workspaceConfigData = this.#parseWorkspaceOptions({ // Use helper to merge defaults
             id: workspaceID,
             name: name, // Keep original name for display?
-            ...options, // User options override defaults
+            ...otherOptions, // User options override defaults
             // Ensure crucial fields are set
             created: creationTime,
             updated: creationTime,
             status: WORKSPACE_INSTANCE_STATUS.INITIALIZED, // Initial status in workspace.json
+            restApi: { // Initialize restApi config in workspace.json
+                port: restApi?.port || null,
+                // SECURITY: Store HASHED token in production!
+                token: restApi?.token || (restApi?.enabled ? crypto.randomBytes(24).toString('hex') : null),
+            },
         });
 
         // Validate the final config data *before* creating files
@@ -216,6 +247,8 @@ class WorkspaceManager extends EventEmitter {
             status: WORKSPACE_INDEX_STATUS.NEW, // Initial status in global index
             indexed: creationTime,
             lastAccessed: null,
+            restApiStatus: WORKSPACE_API_STATUS.STOPPED,
+            pm2Name: null,
         };
         this.#index.set(`workspaces.${workspaceID}`, indexEntry);
         debug(`Added workspace "${workspaceID}" to global index.`);
@@ -337,11 +370,15 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<boolean>} True if removed, false if not found.
      */
     async removeWorkspace(workspaceID) {
+        debug(`Attempting to remove workspace ${workspaceID} from index...`);
         const indexEntry = this.index[workspaceID];
         if (!indexEntry) {
             debug(`Workspace "${workspaceID}" not found in index. Cannot remove.`);
             return false;
         }
+
+        // Stop the REST API service if it's running
+        await this.stopRestApi(workspaceID);
 
         // Stop the workspace if it's active
         if (this.#activeWorkspaces.has(workspaceID)) {
@@ -365,11 +402,15 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<boolean>} True if destroyed, false if not found.
      */
     async destroyWorkspace(workspaceID, forceDestroy = false) {
+        debug(`Attempting to destroy workspace ${workspaceID}...`);
         const indexEntry = this.index[workspaceID];
         if (!indexEntry) {
             debug(`Workspace "${workspaceID}" not found in index. Cannot destroy.`);
             return false;
         }
+
+        // Stop the REST API service first
+        await this.stopRestApi(workspaceID);
 
         const workspacePath = indexEntry.path;
 
@@ -481,6 +522,8 @@ class WorkspaceManager extends EventEmitter {
                  debug(`Copying workspace "${workspaceID}" from ${importPath} to ${finalWorkspacePath}`);
                  // fsPromises.cp is available in Node 16.7+
                  await fsPromises.cp(importPath, finalWorkspacePath, { recursive: true });
+                 // Ensure workspace.json includes restApi structure after copy
+                 workspaceConfigData.restApi = workspaceConfigData.restApi || { port: null, token: null };
                  debug(`Workspace copy complete.`);
             }
 
@@ -488,9 +531,11 @@ class WorkspaceManager extends EventEmitter {
             const indexEntry = {
                 id: workspaceID,
                 path: finalWorkspacePath,
-                status: WORKSPACE_INDEX_STATUS.IMPORTED, // Mark as imported
+                status: WORKSPACE_INDEX_STATUS.IMPORTED,
                 indexed: new Date().toISOString(),
                 lastAccessed: null,
+                restApiStatus: WORKSPACE_API_STATUS.STOPPED,
+                pm2Name: null,
             };
             this.#index.set(`workspaces.${workspaceID}`, indexEntry);
             debug(`Added imported workspace "${workspaceID}" to global index.`);
@@ -597,7 +642,7 @@ class WorkspaceManager extends EventEmitter {
             return false;
         }
 
-        const allowedProperties = ['name', 'description', 'owner', 'color', 'acl', 'label', 'locked']; // Add 'token'? Not in template.
+        const allowedProperties = ['name', 'description', 'owner', 'color', 'acl', 'label', 'locked', 'restApi.port', 'restApi.token'];
         if (!allowedProperties.includes(property)) {
             debug(`Attempted to set disallowed property "${property}" for workspace "${workspaceID}".`);
             return false;
@@ -609,9 +654,26 @@ class WorkspaceManager extends EventEmitter {
             return false;
         }
 
-        // Handle potential name/label sanitization if needed?
-        // if (property === 'name') value = this.#sanitizeName(value);
-        // if (property === 'label') value = this.#sanitizeLabel(value);
+        // Validation for port
+        if (property === 'restApi.port' && (typeof value !== 'number' || !Number.isInteger(value) || value <= 0 || value > 65535)) {
+            debug(`Invalid port value "${value}" for workspace "${workspaceID}". Must be an integer between 1 and 65535.`);
+            return false;
+        }
+
+        // Validation for token (basic check)
+        if (property === 'restApi.token' && (typeof value !== 'string' || value.length < 16)) {
+            // SECURITY: Add stricter token validation/generation logic
+            debug(`Invalid token value for workspace "${workspaceID}". Must be a string of at least 16 characters.`);
+            return false;
+        }
+
+        const requiresApiRestart = (property === 'restApi.port' || property === 'restApi.token') &&
+                                  indexEntry.restApiStatus === WORKSPACE_API_STATUS.RUNNING;
+
+        if (requiresApiRestart) {
+             debug(`API property change requires restart for workspace ${workspaceID}. Stopping API...`);
+             await this.stopRestApi(workspaceID);
+        }
 
         // Update the active instance if it exists
         const workspaceInstance = this.#activeWorkspaces.get(workspaceID);
@@ -645,7 +707,12 @@ class WorkspaceManager extends EventEmitter {
                     configName: 'workspace',
                     cwd: workspacePath,
                 });
-                configStore.set(property, value);
+                if (property.startsWith('restApi.')) {
+                    // Use dot notation for nested properties within Conf
+                    configStore.set(property, value);
+                } else {
+                     configStore.set(property, value);
+                }
                 configStore.set('updated', new Date().toISOString()); // Also update timestamp
                 debug(`Successfully updated "${property}" in ${path.join(workspacePath, 'workspace.json')}`);
                 updateSuccessful = true;
@@ -658,6 +725,12 @@ class WorkspaceManager extends EventEmitter {
         // Emit event regardless of whether instance or file was updated (as long as successful)
         if (updateSuccessful) {
             this.emit('workspace:property:changed', { id: workspaceID, property, value });
+        }
+
+        // Restart API if necessary
+        if (requiresApiRestart && updateSuccessful) {
+            debug(`Restarting API for workspace ${workspaceID} after property change...`);
+            await this.startRestApi(workspaceID);
         }
 
         return updateSuccessful;
@@ -779,6 +852,17 @@ class WorkspaceManager extends EventEmitter {
          if (!configData.updated || Number.isNaN(Date.parse(configData.updated))) return logError('Updated timestamp is invalid or missing.');
          if (!configData.status || !Object.values(WORKSPACE_INSTANCE_STATUS).includes(configData.status)) return logError(`Invalid status in config: ${configData.status}`);
 
+        // Validate restApi structure if present
+        if (configData.restApi) {
+            if (configData.restApi.port && (typeof configData.restApi.port !== 'number' || !Number.isInteger(configData.restApi.port) || configData.restApi.port <= 0 || configData.restApi.port > 65535)) {
+                return logError('Invalid restApi.port: Must be an integer between 1 and 65535.');
+            }
+            // Basic token validation - could be enhanced
+            if (configData.restApi.token && (typeof configData.restApi.token !== 'string' || configData.restApi.token.length < 16)) {
+                 return logError('Invalid restApi.token: Must be a string of at least 16 characters.');
+            }
+        }
+
         return isValid;
     }
 
@@ -835,6 +919,9 @@ class WorkspaceManager extends EventEmitter {
              debug("Warning: Parsing options without an owner set.");
         }
 
+        // Ensure restApi object exists
+        parsedOptions.restApi = parsedOptions.restApi || { port: null, token: null };
+
         return parsedOptions;
     }
 
@@ -855,11 +942,133 @@ class WorkspaceManager extends EventEmitter {
         }
     }
 
+    /**
+     * Starts the dedicated REST API server for a workspace using PM2.
+     * @param {string} workspaceID The ID of the workspace.
+     * @returns {Promise<boolean>} True if API started successfully, false otherwise.
+     */
+    async startRestApi(workspaceID) {
+        debug(`Attempting to start REST API for workspace ${workspaceID}...`);
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            logger.error(`Cannot start REST API: Workspace ${workspaceID} not found in index.`);
+            return false;
+        }
+
+        if (indexEntry.restApiStatus === WORKSPACE_API_STATUS.RUNNING || indexEntry.restApiStatus === WORKSPACE_API_STATUS.STARTING) {
+            logger.warn(`REST API for workspace ${workspaceID} is already ${indexEntry.restApiStatus}.`);
+            // Consider checking if the pm2 process actually exists
+            return true;
+        }
+
+        // Load workspace config to get API port and token
+        let port, token;
+        try {
+            const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.path });
+            port = wsConfig.get('restApi.port');
+            token = wsConfig.get('restApi.token');
+        } catch (err) {
+            logger.error(`Failed to load workspace config for ${workspaceID} to start API: ${err.message}`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.ERROR);
+            return false;
+        }
+
+        if (!port || !token) {
+            logger.error(`Cannot start REST API for ${workspaceID}: Port or token not configured in workspace.json.`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.ERROR);
+            return false;
+        }
+
+        const pm2Name = `canvas-wsapi-${workspaceID}`;
+        const scriptPath = path.resolve('src/managers/workspace/server/service.js'); // Ensure absolute path?
+
+        const options = {
+            name: pm2Name,
+            script: scriptPath,
+            env: {
+                CANVAS_WS_PATH: indexEntry.path,
+                CANVAS_WS_API_PORT: port,
+                CANVAS_WS_API_TOKEN: token, // Pass the actual token
+                NODE_ENV: process.env.NODE_ENV || 'development' // Pass environment
+            },
+            // PM2 options: restart strategy, logs, etc.
+            autorestart: true,
+            watch: false, // Don't watch by default, can cause issues
+            max_memory_restart: '100M' // Example limit
+        };
+
+        try {
+            await pm2Connect();
+            logger.info(`Starting PM2 process "${pm2Name}" for workspace ${workspaceID} API...`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.STARTING);
+            this.#index.set(`workspaces.${workspaceID}.pm2Name`, pm2Name);
+
+            await pm2Start(options);
+            logger.info(`PM2 process "${pm2Name}" started successfully.`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.RUNNING);
+            this.emit('workspace:api:started', { id: workspaceID, name: pm2Name });
+            return true;
+        } catch (err) {
+            logger.error(`Failed to start PM2 process "${pm2Name}" for workspace ${workspaceID}: ${err.message}`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.ERROR);
+            this.#index.set(`workspaces.${workspaceID}.pm2Name`, null);
+            // Attempt to clean up failed start
+            try { await pm2Delete(pm2Name); } catch (delErr) { /* Ignore delete error */ }
+            return false;
+        } finally {
+            await pm2Disconnect();
+        }
+    }
+
+    /**
+     * Stops the dedicated REST API server for a workspace using PM2.
+     * @param {string} workspaceID The ID of the workspace.
+     * @returns {Promise<boolean>} True if API stopped successfully or was already stopped, false on error.
+     */
+    async stopRestApi(workspaceID) {
+        debug(`Attempting to stop REST API for workspace ${workspaceID}...`);
+        const indexEntry = this.index[workspaceID];
+        const pm2Name = indexEntry?.pm2Name;
+
+        if (!pm2Name || indexEntry?.restApiStatus === WORKSPACE_API_STATUS.STOPPED) {
+            debug(`REST API for workspace ${workspaceID} is not running or has no PM2 name associated.`);
+            // Ensure index is consistent if status was wrong
+            if (indexEntry && indexEntry.restApiStatus !== WORKSPACE_API_STATUS.STOPPED) {
+                this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.STOPPED);
+                this.#index.set(`workspaces.${workspaceID}.pm2Name`, null);
+            }
+            return true; // Already stopped
+        }
+
+        try {
+            await pm2Connect();
+            logger.info(`Stopping PM2 process "${pm2Name}" for workspace ${workspaceID} API...`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.STOPPING);
+
+            await pm2Stop(pm2Name);
+            await pm2Delete(pm2Name); // Stop and delete to remove from list
+            logger.info(`PM2 process "${pm2Name}" stopped and deleted successfully.`);
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.STOPPED);
+            this.#index.set(`workspaces.${workspaceID}.pm2Name`, null);
+            this.emit('workspace:api:stopped', { id: workspaceID, name: pm2Name });
+            return true;
+        } catch (err) {
+            logger.error(`Failed to stop/delete PM2 process "${pm2Name}" for workspace ${workspaceID}: ${err.message}`);
+            // If stop/delete failed, the process might still exist.
+            // Set status to error, keep pm2Name for potential manual cleanup?
+            this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.ERROR);
+            return false;
+        } finally {
+            await pm2Disconnect();
+        }
+    }
+
 }
 
 export default WorkspaceManager;
 export {
     WORKSPACE_INDEX_STATUS,
+    WORKSPACE_API_STATUS,
     WORKSPACE_INSTANCE_STATUS,
     WORKSPACE_DIRECTORIES
 };

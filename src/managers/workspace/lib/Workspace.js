@@ -103,7 +103,7 @@ class Workspace extends EventEmitter {
     // Internal Resource Getters
     get db() { return this.#db; }
     get tree() { return this.#db?.tree; } // Access tree via db instance
-    get jsonTree() { return this.#db?.tree?.toJSON ? this.#db.tree.toJSON() : null; } // Safely access tree method via db
+    get jsonTree() { return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : null; } // Safely access tree method via db
     get layers() { return this.#db?.tree?.layers; } // Assuming tree provides this, accessed via db
 
     // Status/State Getters
@@ -626,15 +626,6 @@ class Workspace extends EventEmitter {
             });
             await this.#db.start(); // Assuming start() is async
             debug(`Database started for workspace "${this.id}".`);
-
-            // Tree is initialized within SynapsD and accessed via this.#db.tree
-            // No need to get it separately here.
-            if (!this.#db.tree) {
-                 // This should ideally not happen if DB start succeeded and SynapsD constructor ran
-                 throw new Error('SynapsD instance does not have a tree object after starting.');
-            }
-            debug(`SynapsD tree is available via workspace.db.tree for "${this.id}".`);
-
             debug(`Workspace "${this.id}" resources initialized.`);
         } catch (err) {
              debug(`Error during resource initialization for "${this.id}": ${err.message}`);
