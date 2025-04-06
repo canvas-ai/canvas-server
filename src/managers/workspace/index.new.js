@@ -7,7 +7,10 @@ import path from 'path';
 import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
 import Conf from 'conf';
-import { ulid } from '@/utils/common.js';
+import AdmZip from 'adm-zip';
+import os from 'os';
+import crypto from 'crypto';
+import { ulid } from 'ulid';
 
 // Logging
 import logger, { createDebug } from '@/utils/log/index.js';
@@ -23,11 +26,11 @@ import Workspace from './lib/Workspace.js';
 const WORKSPACE_TYPES = ['universe', 'workspace'];
 
 const WORKSPACE_CONFIG_TEMPLATE = {
-    id: ulid(6), // Just a placeholder, we use workspace name as ID
-    name: 'workspace',
+    id: null,
+    name: null,
     type: 'workspace',
     label: 'Workspace',
-    color: WorkspaceManager.getRandomColor(),
+    color: '#000000',
     description: 'Canvas Workspace',
     owner: null,
     path: null,
@@ -51,30 +54,23 @@ const WORKSPACE_DIRECTORIES = {
     config: 'config',
     data: 'data',
     cache: 'cache',
+    home: 'home',
     roles: 'roles',
     dotfiles: 'dotfiles',
 };
-
-/**
- * Workspace Manager
- */
-
 
 /*
  * Workspace Manager
  *
  * Manages workspaces on disk and in memory
  *
- *
- * - Open/close workspaces
- * - Create/delete workspaces
- * - Get workspace by path or id
- * - Get all workspaces
  */
 class WorkspaceManager extends EventEmitter {
 
-    #rootPath;
-    #workspaceIndex = new Map(); // Map of workspacePath -> Workspace
+    #rootPath;  // Default root path for workspaces
+    #configPath;
+
+    #index;
 
     /**
      * Constructor
@@ -82,12 +78,22 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} options.rootPath - Root path for workspaces
      */
     constructor(options = {}) {
+        super(options.eventEmitterOptions);
         if (!options.rootPath) {
             throw new Error('Workspaces root path is required');
         }
 
         this.#rootPath = options.rootPath;
-        debug(`Workspace manager initialized with root path: ${this.#rootPath}`);
+        this.#configPath = options.configPath || path.join(this.#rootPath, 'config');
+
+        // Initialize the config/index
+        this.#index = new Conf({
+            configName: 'workspaces',
+            cwd: this.#configPath,
+            defaults: {},
+        });
+
+        debug(`Workspace manager initialized, root path: ${this.#rootPath}, config path: ${this.#configPath}`);
     }
 
     /**
@@ -95,31 +101,15 @@ class WorkspaceManager extends EventEmitter {
      */
 
     get rootPath() { return this.#rootPath; }
-    get workspaces() { return Array.from(this.#workspaceIndex.values()); }
+    get configPath() { return this.#configPath; }
+    get index() { return this.#index.store; }
+    get workspaces() { return this.#index.get('workspaces'); }
     get activeWorkspaces() { return this.listWorkspaces('active'); }
     get inactiveWorkspaces() { return this.listWorkspaces('inactive'); }
 
     /**
      * Simplified Workspace Manager API
      */
-
-    async openWorkspace(pathOrID) {
-        if (!pathOrID) {
-            throw new Error('Workspace path or id is required');
-        }
-
-        if (typeof pathOrID === 'string' && (pathOrID.includes('/') || pathOrID.includes('\\'))) {
-            // Workspace path
-            return this.#openWorkspaceByPath(pathOrID);
-        }
-
-        // Workspace id
-        return this.#openWorkspaceByID(pathOrID);
-    }
-
-    async closeWorkspace(workspaceID) {
-
-    }
 
     /**
      * Create a new workspace
@@ -466,7 +456,7 @@ class WorkspaceManager extends EventEmitter {
         };
 
         if (!options.color) {
-            parsedOptions.color = this.getRandomColor();
+            parsedOptions.color = WorkspaceManager.getRandomColor();
         }
 
         return parsedOptions;

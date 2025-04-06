@@ -10,11 +10,9 @@ const debug = createDebug('workspace');
 
 // Includes
 import Db from '@/services/synapsd/src/index.js';
-import Tree from '../../tree/lib/Tree.js';
 
 // Constants
 import {
-    WORKSPACE_TYPES,
     WORKSPACE_STATUS_VALUES,
     WORKSPACE_DIRECTORIES
 } from '../index.new.js';
@@ -87,6 +85,7 @@ class Workspace extends EventEmitter {
      */
 
     get db() { return this.#db; }
+    get tree() { return this.#tree; }
     get jsonTree() { return this.tree?.jsonTree; }
     get layers() { return this.tree?.layers; }
     get config() { return this.#configStore?.store || {}; }
