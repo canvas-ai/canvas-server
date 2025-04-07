@@ -7,7 +7,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { timingSafeEqual } from 'crypto';
 import { spawn } from 'child_process';
-import { createDebug } from '@/utils/log/index.js';
+import { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('canvas:role:sshd');
 
 // Default SSH server port

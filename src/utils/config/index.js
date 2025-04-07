@@ -17,10 +17,10 @@
 import Conf from 'conf';
 import fs from 'fs';
 import path from 'path';
-import dm from '@/managers/device/index.js';
+import dm from '../../managers/device/index.js';
 import _ from 'lodash';
-import env from '@/env.js';
-import logger from '@/utils/log/index.js';
+import env from '../../env.js';
+import logger from './log/index.js';
 
 class Config {
     constructor(options = {}) {

@@ -1,7 +1,7 @@
 import debugMessage from 'debug';
 const debug = debugMessage('canvas:context:layer');
 
-import { uuid12 } from '@/utils/common.js';
+import { uuid12 } from '../../../../utils/common.js';
 import { LAYER_TYPES } from '../index.js';
 
 class Layer {

@@ -1,9 +1,9 @@
 import validator from 'validator';
 import EventEmitter from 'eventemitter2';
-import configurePassport from '@/utils/passport.js';
+import configurePassport from '../../utils/passport.js';
 import bcrypt from 'bcrypt';
 
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('canvas:service:auth');
 
 import SessionService from './lib/SessionService.js';

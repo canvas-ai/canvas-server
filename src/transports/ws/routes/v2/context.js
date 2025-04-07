@@ -1,8 +1,11 @@
 'use strict';
 
-import logger, { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('ws:routes:context');
-import ResponseObject from '@/transports/ResponseObject.js';
+import router from 'express-promise-router';
+import logger, { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('transport:ws:route:context');
+import ResponseObject from '../../ResponseObject.js';
+
+const contextRouter = router();
 
 /**
  * Context WebSocket routes

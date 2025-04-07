@@ -2,15 +2,15 @@
 
 import path from 'path';
 import fs from 'fs/promises';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('user');
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 import Conf from 'conf';
 
 // Managers
-import WorkspaceManager from '@/managers/workspace/index.js';
-import ContextManager from '@/managers/context/index.js';
+import WorkspaceManager from '../../workspace/index.js';
+import ContextManager from '../../context/index.js';
 
 // Constants
 const USER_DIRECTORIES = {

@@ -11,8 +11,8 @@
     "context": "./bin/context"
   },
   "scripts": {
-    "start": "cross-env DEBUG=canvas* node --import ./src/utils/path-resolver/index.js ./src/init.js",
-    "start:dev": "cross-env DEBUG=* node --import ./src/utils/path-resolver/index.js ./src/init.js",
+    "start": "cross-env DEBUG=canvas* node ./src/init.js",
+    "start:dev": "cross-env DEBUG=* node ./src/init.js",
     "pm2:start": "PM2_HOME=../var/pm2 pm2 start ecosystem.config.js --watch",
     "pm2:stop": "PM2_HOME=../var/pm2 pm2 stop ecosystem.config.js",
     "pm2:restart": "PM2_HOME=../var/pm2 pm2 restart ecosystem.config.js",

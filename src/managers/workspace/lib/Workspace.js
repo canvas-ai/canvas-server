@@ -5,11 +5,11 @@ import EventEmitter from 'eventemitter2';
 import path from 'path';
 
 // Logging
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('workspace');
 
 // Includes
-import Db from '@/services/synapsd/src/index.js';
+import Db from '../../../services/synapsd/src/index.js';
 
 // Constants
 import {

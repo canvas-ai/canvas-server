@@ -8,8 +8,8 @@ import env from './env.js';
 // Utils
 import path from 'path';
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-import { defaultConfig as config } from '@/utils/config/index.js';
-import logger, { createDebug } from '@/utils/log/index.js';
+import { defaultConfig as config } from './utils/config/index.js';
+import logger, { createDebug } from './utils/log/index.js';
 const debug = createDebug('server');
 import EventEmitter from 'eventemitter2';
 
@@ -18,8 +18,8 @@ import pkg from '../package.json' assert { type: 'json' };
 const { productName, version, description, license } = pkg;
 
 // Database
-import AuthService from '@/services/auth/index.js';
-import Db from '@/services/synapsd/src/backends/lmdb/index.js';
+import AuthService from './services/auth/index.js';
+import Db from './services/synapsd/src/backends/lmdb/index.js';
 
 // Create the main server database
 const db = new Db({
@@ -27,13 +27,13 @@ const db = new Db({
 });
 
 // Global Managers
-import UserManager from '@/managers/user/index.js';
+import UserManager from './managers/user/index.js';
 const userManager = new UserManager({
     rootPath: env.CANVAS_USER_HOME,
     db: db.createDataset('users'),
 });
 
-import SessionManager from '@/managers/session/index.js';
+import SessionManager from './managers/session/index.js';
 const sessionManager = new SessionManager(
     db.createDataset('sessions'),
     // TODO: Move to config
@@ -41,7 +41,7 @@ const sessionManager = new SessionManager(
 );
 
 // Event Handlers
-import UserEventHandler from '@/services/events/UserEventHandler.js';
+import UserEventHandler from './services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
     userManager: userManager,
 });

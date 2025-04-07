@@ -2,7 +2,7 @@
 
 import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import { createDebug } from '@/utils/log/index.js';
+import { createDebug } from './log/index.js';
 const debug = createDebug('utils:swagger');
 
 /**

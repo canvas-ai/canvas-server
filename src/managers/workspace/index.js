@@ -15,7 +15,7 @@ import pm2 from 'pm2';
 import { promisify } from 'util';
 
 // Logging
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('workspace-manager');
 
 // Promisify PM2 functions

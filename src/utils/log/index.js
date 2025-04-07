@@ -4,7 +4,7 @@
 
 import winston from 'winston';
 import path from 'path';
-import env from '@/env.js';
+import env from '../../env.js';
 import debugMessage from 'debug';
 
 // Create debug namespace for the application

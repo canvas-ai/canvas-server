@@ -7,18 +7,18 @@ import validator from 'validator';
 import { v4 as uuidv4 } from 'uuid';
 
 // Logging
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('user-manager');
 
 // Environment
-import env from '@/env.js';
+import env from '../../env.js';
 
 // Managers
-import WorkspaceManager from '@/managers/workspace/index.js';
-import ContextManager from '@/managers/context/index.js';
+import WorkspaceManager from '../workspace/index.js';
+import ContextManager from '../context/index.js';
 
 // User
-import User from '@/managers/user/lib/User.js';
+import User from './lib/User.js';
 
 /**
  * User Manager

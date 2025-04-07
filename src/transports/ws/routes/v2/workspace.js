@@ -1,8 +1,8 @@
 'use strict';
 
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('ws:routes:workspace');
-import ResponseObject from '@/transports/ResponseObject.js';
+import ResponseObject from '../../ResponseObject.js';
 
 /**
  * Workspace WebSocket routes

@@ -3,7 +3,7 @@
  */
 
 import createAuthMiddleware from '../../common/middleware/auth.js';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('transport:ws:auth');
 
 /**
