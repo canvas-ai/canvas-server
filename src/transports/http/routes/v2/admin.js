@@ -5,8 +5,9 @@ import ResponseObject from '../../../ResponseObject.js';
 import adminMiddleware from '../../middleware/admin.js';
 import authMiddleware from '../../middleware/auth.js';
 
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:transport:http:routes:v2:admin');
+import logger, { createDebug } from '../../../../utils/log/index.js';
+import ResponseObject from '../../../ResponseObject.js';
+const debug = createDebug('http:routes:admin');
 
 export default function (authService) {
     // Apply auth and admin middleware to all routes

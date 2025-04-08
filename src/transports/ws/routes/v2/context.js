@@ -1,9 +1,10 @@
 'use strict';
 
 import router from 'express-promise-router';
-import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('transport:ws:route:context');
-import ResponseObject from '../../ResponseObject.js';
+
+import logger, { createDebug } from '../../../../utils/log/index.js';
+const debug = createDebug('ws:routes:context');
+import ResponseObject from '../../../ResponseObject.js';
 
 const contextRouter = router();
 

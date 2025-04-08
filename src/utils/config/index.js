@@ -20,7 +20,7 @@ import path from 'path';
 import dm from '../../managers/device/index.js';
 import _ from 'lodash';
 import env from '../../env.js';
-import logger from './log/index.js';
+import logger from '../log/index.js';
 
 class Config {
     constructor(options = {}) {
@@ -57,7 +57,9 @@ class Config {
 
     getConfigPaths(configPath) {
         // Split path into parts (e.g., 'server.roles' -> ['server', 'roles'])
-        const parts = configPath.split('.');
+        // Get the filename from the path
+        const filename = configPath.split('/').pop();
+        const parts = filename.split('.');
         const baseName = parts[0];
 
         // Generate paths for both full config and nested config

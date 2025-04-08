@@ -1,11 +1,11 @@
 'use strict';
 
 import { Router } from 'express';
-import passport from 'passport';
-import { v4 as uuidv4 } from 'uuid';
-import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('transport:http:route:users');
-import ResponseObject from '../../ResponseObject.js';
+
+import logger, { createDebug } from '../../../../utils/log/index.js';
+import ResponseObject from '../../../ResponseObject.js';
+const debug = createDebug('http:routes:users');
+
 import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
 
 /**

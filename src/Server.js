@@ -7,14 +7,15 @@ import env from './env.js';
 
 // Utils
 import path from 'path';
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath, pathToFileURL } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { defaultConfig as config } from './utils/config/index.js';
 import logger, { createDebug } from './utils/log/index.js';
 const debug = createDebug('server');
 import EventEmitter from 'eventemitter2';
 
 // Package info
-import pkg from '../package.json' assert { type: 'json' };
+import pkg from '../package.json' with { type: 'json' };
 const { productName, version, description, license } = pkg;
 
 // Database
@@ -45,6 +46,10 @@ import UserEventHandler from './services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
     userManager: userManager,
 });
+
+// Transports
+import HttpTransport from './transports/http/index.js';
+import WsTransport from './transports/ws/index.js';
 
 /**
  * Canvas Server
@@ -512,17 +517,14 @@ class Server extends EventEmitter {
      * @private
      */
     async #loadModule(type, name, config) {
-        // Convert Windows paths to proper URL format
-        const modulePath = path
-            .join(__dirname, type, name, 'index.js')
-            .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
-            .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
+        const absolutePath = path.join(__dirname, type, name, 'index.js');
+        const moduleUrl = pathToFileURL(absolutePath).href; // Convert path to file URL
 
         try {
-            debug(`Loading ${type} module: ${name}`);
+            debug(`Loading ${type} module: ${name} from ${moduleUrl}`);
             logger.debug(`${type} config:`, config);
 
-            const module = await import(modulePath);
+            const module = await import(moduleUrl); // Import using the file URL
             const instance = new module.default(config);
 
             debug(`Loaded ${type}: ${name}`);
@@ -530,7 +532,7 @@ class Server extends EventEmitter {
         } catch (error) {
             const isNotFound = error.code === 'ERR_MODULE_NOT_FOUND';
             const errorMessage = isNotFound
-                ? `${type} module not found: ${name}. Please ensure the module exists at ${modulePath}`
+                ? `${type} module not found: ${name}. Please ensure the module exists at ${absolutePath}` // Show original path in error
                 : `Error loading ${type} ${name}: ${error.message}`;
 
             logger.error(errorMessage);

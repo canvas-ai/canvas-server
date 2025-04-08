@@ -1,10 +1,11 @@
 import express from 'express';
 import passport from 'passport';
 import validator from 'validator';
-import ResponseObject from '../../../ResponseObject.js';
-import debugInstance from 'debug';
 
-const debug = debugInstance('canvas:transport:http:routes:v2:auth');
+import logger, { createDebug } from '../../../../utils/log/index.js';
+import ResponseObject from '../../../ResponseObject.js';
+const debug = createDebug('http:routes:auth');
+
 const router = express.Router();
 
 /**

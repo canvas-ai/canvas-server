@@ -1,6 +1,6 @@
 // Utils
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:transport:http');
+import logger, { createDebug } from '../../utils/log/index.js';
+const debug = createDebug('canvas:transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -14,7 +14,7 @@ import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 
 // Import package info
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '../../../package.json' with { type: 'json' };
 const { productName, version, description, license } = pkg;
 
 // Default configuration

@@ -1,5 +1,10 @@
 # TODO
 
+## Utils/config
+
+- fix the config class to properly normalize paths(windoze + *nix)
+- Remove user + server priority logic
+
 ## Workspaces
 
 ```
