@@ -66,7 +66,7 @@ class Context extends EventEmitter {
         this.#workspace = options.workspace;
         this.#workspaceManager = options.workspaceManager;
 
-        // In-Workspace references
+        // Workspace references
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
 
@@ -100,7 +100,7 @@ class Context extends EventEmitter {
             throw new Error(`Failed to initialize context: ${error.message}`);
         }
 
-        debug(`Context ${this.#id} created at ${this.#url}, base URL: ${this.#baseUrl}`);
+        debug(`Context ${this.#id} created at ${this.#url}`);
         this.emit('created', this.toJSON());
     }
 

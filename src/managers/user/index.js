@@ -28,16 +28,20 @@ class UserManager extends EventEmitter {
     #initialized = false;
 
     constructor(options = {}) {
-        super();
+        super(options.eventEmitterOptions);
 
         debug('Initializing user manager');
-        this.#rootPath = options.rootPath ?? env.CANVAS_USER_HOME;
+        if (!options.rootPath) {
+            throw new Error('Root path required');
+        }
 
         if (!options.db) {
             throw new Error('Database instance required');
         }
 
+        this.#rootPath = options.rootPath;
         this.#db = options.db;
+
         debug(`User home path: ${this.#rootPath}`);
     }
 
@@ -57,7 +61,6 @@ class UserManager extends EventEmitter {
         if (this.#initialized) {
             return;
         }
-        debug('Initializing user manager');
 
         // Ensure user root directory exists
         try {
@@ -444,7 +447,7 @@ class UserManager extends EventEmitter {
      * @private
      */
     async #activateUser(userConfig) {
-        debug(`Activating user: ${userConfig.id} (${userConfig.email})`);
+        debug(`Activating user container: ${userConfig.id} (${userConfig.email})`);
 
         // Create user instance
         const user = new User(userConfig);
@@ -515,9 +518,9 @@ class UserManager extends EventEmitter {
 
                 const userData = entry.value;
                 if (userData) {
+                    debug(`Fetched user: ${userData.id} (${userData.email}) from database`);
                     try {
                         // Activate user
-                        debug(`Activating user: ${userData.id} (${userData.email})`);
                         await this.#activateUser(userData);
                     } catch (error) {
                         debug(`Error activating user ${userData.id}: ${error.message}`);

@@ -84,6 +84,20 @@ export default function workspacesRoutes(options) {
     // Apply workspace manager middleware to all routes
     router.use(requireWorkspaceManager({ userManager }));
 
+    // Helper functions
+    const parseArrayParam = (param) => {
+        if (!param) return [];
+        return Array.isArray(param) ? param : [param];
+    };
+
+    const parseOptions = (options) => {
+        return {
+            ...options,
+            include: parseArrayParam(options.include),
+            exclude: parseArrayParam(options.exclude)
+        };
+    };
+
     /**
      * @swagger
      * /:
@@ -134,17 +148,17 @@ export default function workspacesRoutes(options) {
      */
     router.get('/', async (req, res) => {
         try {
-            const { limit = 50, offset = 0, status } = req.query;
             debug(`Listing workspaces for user: ${req.user.id}`);
 
             // Get workspaces from the user's workspace manager
-            const workspaces = await req.workspaceManager.listWorkspaces({
-                limit: parseInt(limit),
-                offset: parseInt(offset),
-                status,
-            });
+            const status = req.params.status || req.query.status;
+            const workspaces = await req.workspaceManager.listWorkspaces(status);
 
-            debug(`Found ${workspaces.length} workspaces for user: ${req.user.id}`);
+            if (status) {
+                debug(`Found ${workspaces.length} workspaces with status: ${status} for user: ${req.user.id}`);
+            } else {
+                debug(`Found ${workspaces.length} workspaces for user: ${req.user.id}`);
+            }
 
             // Structure the response as expected by the client
             const response = new ResponseObject();
@@ -506,7 +520,7 @@ export default function workspacesRoutes(options) {
                 offset: parseInt(offset, 10),
             };
 
-            const documents = await req.workspaceManager.listWorkspaceDocuments(id, options);
+            const documents = await workspace.listDocuments();
             return res.json(new ResponseObject(documents));
         } catch (err) {
             debug(`Error listing workspace documents: ${err.message}`);

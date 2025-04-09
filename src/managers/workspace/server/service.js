@@ -77,7 +77,7 @@ async function startServer() {
         // Add a simple health check endpoint (unauthenticated)
         app.get('/health', (req, res) => {
              // Check if workspace is still considered open/active
-            const wsStatus = workspaceInstance?.isOpen ? workspaceInstance.status : 'inactive';
+            const wsStatus = workspaceInstance.status;
             res.status(200).json({
                  status: 'ok',
                  workspaceId: workspaceInstance?.id || 'unknown',

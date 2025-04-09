@@ -257,6 +257,20 @@ class WorkspaceManager extends EventEmitter {
         return indexEntry; // Return the metadata added to the index
     }
 
+    getWorkspace(workspaceID) {
+        if (!this.index[workspaceID]) {
+            debug(`Workspace "${workspaceID}" not found in index.`);
+            return null;
+        }
+
+        if (!this.#activeWorkspaces.has(workspaceID)) {
+            debug(`Workspace "${workspaceID}" is not active.`);
+            return null;
+        }
+
+        return this.#activeWorkspaces.get(workspaceID);
+    }
+
     /**
      * Starts a workspace: Loads its config, creates a Workspace instance,
      * calls its start() method, and adds it to the active list.
@@ -736,6 +750,17 @@ class WorkspaceManager extends EventEmitter {
         return updateSuccessful;
     }
 
+    updateWorkspace(workspaceID, updates) {
+        const indexEntry = this.index[workspaceID];
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found. Cannot update.`);
+            return false;
+        }
+
+        return; // TODO: Implement
+
+    }
+
     /**
      * Helper methods
      */
@@ -757,6 +782,14 @@ class WorkspaceManager extends EventEmitter {
         }
 
         return allWorkspaces.filter(workspace => workspace.status === status);
+    }
+
+    hasWorkspace(workspaceID) {
+        return this.index[workspaceID] !== undefined;
+    }
+
+    isActive(workspaceID) {
+        return this.#activeWorkspaces.has(workspaceID);
     }
 
     /**

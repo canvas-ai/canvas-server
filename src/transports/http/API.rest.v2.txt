@@ -34,9 +34,9 @@ baseUrl: /rest/v2
 ├── /users
 │   ├── /:id
 │   ├── /:id/status
-│   ├── /:id/start-container
-│   ├── /:id/stop-container
-│   ├── /:id/restart-container
+│   ├── /:id/start_container
+│   ├── /:id/stop_container
+│   ├── /:id/restart_container
 │   ├── /:id/logs
 │   ├── /:id/apps
 │   ├── /:id/roles
@@ -106,10 +106,9 @@ baseUrl: /rest/v2
 │   ├── /:id/path [GET] - Get context path (read-only)
 │   ├── /:id/path_array [GET] - Get context path array (read-only)
 │   ├── /:id/device [GET] - Get context device (read-only)
-│   ├── /:id/app [GET] - Get context app (read-only)
-│   ├── /:id/user [GET] - Get context user (read-only)
 │   ├── /:id/identity [GET] - Get context identity (read-only)
 │   ├── /:id/tree [GET] - Get context tree (read-only)
+│   ├── /:id/tree/layers [GET] - Get context tree layers (read-only)
 │   ├── /:id/status [GET] - Get context status (read-only)
 │   ├── /:id/workspace [GET] - Get context workspace (read-only)
 │   ├── /:id/bitmaps [GET] - Get bitmaps (read-only)

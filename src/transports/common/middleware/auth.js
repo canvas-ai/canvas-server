@@ -7,7 +7,7 @@
 
 import passport from 'passport';
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('canvas:transport:auth');
+const debug = createDebug('transport:auth');
 
 /**
  * Create authentication middleware

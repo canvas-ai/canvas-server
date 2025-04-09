@@ -15,8 +15,8 @@ export default function createApiRoutes(workspace) {
 
     // Middleware to check if workspace is active/open for all API routes
     const requireActiveWorkspace = (req, res, next) => {
-        if (!workspace.isOpen) {
-            error(`Workspace ${workspace.id} is not open. Status: ${workspace.status}`);
+        if (!workspace.isActive()) {
+            error(`Workspace ${workspace.id} is not active. Status: ${workspace.status}`);
             return res.status(503).json({ success: false, message: 'Workspace is not active or ready' }); // 503 Service Unavailable
         }
         next();
