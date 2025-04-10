@@ -13,7 +13,8 @@ import Db from '../../../services/synapsd/src/index.js';
 
 // Constants
 import {
-    WORKSPACE_INSTANCE_STATUS,
+    WORKSPACE_STATUS,
+    WORKSPACE_API_STATUS,
     WORKSPACE_DIRECTORIES
 } from '../index.js';
 
@@ -26,83 +27,91 @@ import {
 
 class Workspace extends EventEmitter {
 
-    // Immutable properties set at construction
-    id;
-    name;
-    type;
-    path;
-    created;
+    // Path is set at construction time based on manager info
+    #path;
 
-    // Internal state
-    #configStore;
+    // Runtime state
+    #status = WORKSPACE_STATUS.INACTIVE; // Internal runtime status
     #db = null;
     #tree = null;
 
+    // Injected config store
+    #configStore;
+
     /**
      * Create a new Workspace instance.
-     * Should only be called by WorkspaceManager after validating config.
-     * @param {Object} options - Configuration options (should match workspace.json structure).
+     * Manages its configuration via the injected config store.
+     * @param {Object} options - Initialization options.
+     * @param {string} options.path - Absolute path to the workspace root directory.
      * @param {Conf} options.configStore - Initialized Conf instance for this workspace.
+     * @param {object} [options.eventEmitterOptions] - Options for EventEmitter2.
      */
     constructor(options = {}) {
         super(options.eventEmitterOptions);
 
-        // Validate required options
-        if (!options.id) throw new Error('Workspace ID is required');
-        if (!options.name) throw new Error('Workspace name is required');
+        // Essential dependencies: path and configStore
         if (!options.path) throw new Error('Workspace path is required');
-        if (!options.owner) throw new Error('Workspace owner is required');
-        if (!options.color || !this.#validateColor(options.color)) {
-            logger.error(`Workspace "${options.id}" created with invalid color format: ${options.color}`);
-            throw new Error('Invalid color format');
-        }
         if (!options.configStore) throw new Error('Config store (Conf instance) is required');
 
-        // Set properties
-        this.id = options.id;
-        this.name = options.name;
-        this.label = options.label || options.name;2
-        this.description = options.description || `Canvas Workspace ${this.name}`;
-        this.color = options.color;
-        this.locked = options.locked || false;
-        this.path = options.path;
-        this.type = options.type || 'workspace';
-        this.owner = options.owner;
-        this.acl = options.acl || {};
-        this.created = options.created;
-
-        // Rest API options for standalone operation
-        this.restApi = options.restApi || false;
-
-        // Bind config store
+        this.#path = options.path;
         this.#configStore = options.configStore;
 
-        // Set internal state
-        this.status = WORKSPACE_INSTANCE_STATUS.INACTIVE;
+        // Validate essential configuration loaded from configStore
+        if (!this.id) throw new Error('Workspace ID is missing in configStore');
+        if (!this.name) throw new Error('Workspace name is missing in configStore');
+        if (!this.owner) throw new Error('Workspace owner is missing in configStore');
+        if (!this.color || !this.#validateColor(this.color)) {
+            logger.error(`Workspace "${this.id}" config has invalid color format: ${this.color}`);
+            throw new Error('Invalid color format in config');
+        }
+
+        // Initial runtime status is INACTIVE, regardless of persisted status
+        this.#status = WORKSPACE_STATUS.INACTIVE;
 
         debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, Path: ${this.path}`);
-        debug(`Initial status: ${this.status}`);
+        debug(`Initial runtime status: ${this.#status}`);
     }
 
     /**
-     * Getters
-     *
-     * Provide access to configuration directly from the config store,
-     * and internal resources like DB and tree.
+     * Configuration Getters (reading from workspace.json via configStore)
      */
-
-    // Configuration Getters (reading from workspace.json via configStore)
     get config() { return this.#configStore?.store || {}; }
+    get id() { return this.#configStore?.get('id'); }
+    get name() { return this.#configStore?.get('name'); }
+    get label() { return this.#configStore?.get('label', this.name); } // Default label to name
+    get description() { return this.#configStore?.get('description', `Canvas Workspace ${this.name}`); }
+    get color() { return this.#configStore?.get('color'); }
+    get locked() { return this.#configStore?.get('locked', false); } // Default locked to false
+    get type() { return this.#configStore?.get('type', 'workspace'); } // Default type
+    get owner() { return this.#configStore?.get('owner'); }
+    get acl() { return this.#configStore?.get('acl', {}); } // Default acl to empty object
+    get created() { return this.#configStore?.get('created'); }
+    get restApi() { return this.#configStore?.get('restApi', {}); } // Default restApi to empty object
 
-    // Internal Resource Getters
+    /**
+     * Path Getter (set during construction)
+     */
+    get path() { return this.#path; }
+
+    /**
+     * Internal Resource Getters
+     */
     get db() { return this.#db; }
     get tree() { return this.#db?.tree; } // Access tree via db instance
     get jsonTree() { return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}'; }
 
-    // Status/State Getters
+    /**
+     * Status/State Getters
+     */
+    get status() { return this.#status; } // Returns the internal runtime status
+    get persistedStatus() { return this.#configStore?.get('status'); } // Gets status from workspace.json
     get isConfigLoaded() { return this.#configStore !== null; }
-    get isDeleted() { return this.status === WORKSPACE_INSTANCE_STATUS.DELETED; }
-    get isActive() { return this.status === WORKSPACE_INSTANCE_STATUS.ACTIVE; }
+    get isDeleted() {
+        // Check both internal state and persisted config, config takes precedence
+        const persisted = this.persistedStatus;
+        return persisted === WORKSPACE_STATUS.DELETED || this.#status === WORKSPACE_STATUS.DELETED;
+    }
+    get isActive() { return this.#status === WORKSPACE_STATUS.ACTIVE; }
 
     /**
      * Workspace controls
@@ -110,16 +119,17 @@ class Workspace extends EventEmitter {
 
     /**
      * Start the workspace: Initialize DB connection and load the tree.
-     * Updates the persisted status to ACTIVE.
+     * Updates the internal status and the persisted status to ACTIVE.
      * @returns {Promise<Workspace>} The started workspace instance.
      */
     async start() {
-        // Check persisted status first
-        if (this.status === WORKSPACE_INSTANCE_STATUS.ACTIVE) {
-            debug(`Workspace "${this.id}" is already active and open.`);
+        // Check internal runtime status first
+        if (this.isActive) {
+            debug(`Workspace "${this.id}" is already active.`);
             return this;
         }
-        if (this.status === WORKSPACE_INSTANCE_STATUS.DELETED) {
+        // Check persisted status for deleted flag
+        if (this.persistedStatus === WORKSPACE_STATUS.DELETED) {
             throw new Error(`Cannot start workspace "${this.id}" because it is marked as deleted.`);
         }
 
@@ -128,30 +138,40 @@ class Workspace extends EventEmitter {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder for future role initialization
 
-            this.setStatus(WORKSPACE_INSTANCE_STATUS.ACTIVE);
+            // Update both internal and persisted status
+            this.#setStatusInternal(WORKSPACE_STATUS.ACTIVE);
+            await this.#setStatusPersisted(WORKSPACE_STATUS.ACTIVE); // Persist status
+
             this.emit('workspace:started', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             logger.error(`Failed to start workspace "${this.id}": ${err.message}`);
             // Attempt to clean up partially initialized resources
-            await this.#shutdownResourcesOnError();
+            await this.#shutdownResources();
+            // Should we reset status? It failed to start, so internal should be INACTIVE.
+            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
+            // Do not persist INACTIVE here, as the start failed. Keep last known good persisted state.
             throw err; // Re-throw the error after cleanup attempt
         }
     }
 
     /**
      * Stop the workspace: Shutdown DB connection and release resources.
-     * Updates the persisted status to INACTIVE.
+     * Updates the internal status and the persisted status to INACTIVE.
      * @returns {Promise<boolean>} True if stopped successfully, false otherwise.
      */
     async stop() {
-        // Check persisted status - allow stopping even if not ACTIVE (e.g., from INITIALIZED)
-        if (this.status === WORKSPACE_INSTANCE_STATUS.INACTIVE) {
-            debug(`Workspace "${this.id}" is already not active.`);
+        // Check internal runtime status
+        if (this.status === WORKSPACE_STATUS.INACTIVE) {
+            debug(`Workspace "${this.id}" is already inactive.`);
+             // Ensure persisted status is also INACTIVE if instance is inactive
+             if (this.persistedStatus !== WORKSPACE_STATUS.INACTIVE) {
+                await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
+             }
             return true; // Considered successful if already stopped
         }
-        if (this.status === WORKSPACE_INSTANCE_STATUS.DELETED) {
+        if (this.isDeleted) { // Use getter that checks persisted
              debug(`Workspace "${this.id}" is marked as deleted, skipping stop.`);
              return true; // Nothing to stop
         }
@@ -161,17 +181,20 @@ class Workspace extends EventEmitter {
             await this.#shutdownResources();
             // await this.#shutdownRoles(); // Placeholder
 
-            this.setStatus(WORKSPACE_INSTANCE_STATUS.INACTIVE);
+            // Update both internal and persisted status
+            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
+            await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
+
             this.emit('workspace:stopped', { id: this.id });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
             logger.error(`Error stopping workspace "${this.id}": ${err.message}`);
-            // Even if shutdown fails, update status? Or leave as ACTIVE?
-            // Let's update status to INACTIVE to reflect intent, but log the error.
-            this.setStatus(WORKSPACE_INSTANCE_STATUS.INACTIVE);
+            // Even if shutdown fails, update internal status to INACTIVE
+            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
+            // Persist INACTIVE to reflect intent, but log the error.
+            await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
             this.emit('workspace:stopped', { id: this.id, error: err.message }); // Emit with error
-            // Decide whether to re-throw or return false
             return false; // Indicate stop had issues
         }
     }
@@ -179,12 +202,10 @@ class Workspace extends EventEmitter {
     /**
      * Tree methods
      *
-     * These methods proxy calls to the internal tree object, adding event emissions.
-     * They should only be called when the workspace is active/open.
      */
 
     insertPath(path, data = null, autoCreateLayers = true) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.insertPath(path, data, autoCreateLayers);
         this.emit('workspace:tree:updated', {
             operation: 'insertPath',
@@ -198,7 +219,7 @@ class Workspace extends EventEmitter {
     }
 
     removePath(path, recursive) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.removePath(path, recursive);
         if (result) {
             this.emit('workspace:tree:updated', {
@@ -215,7 +236,7 @@ class Workspace extends EventEmitter {
     }
 
     movePath(pathFrom, pathTo, recursive) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.movePath(pathFrom, pathTo, recursive);
         if (result) {
             this.emit('workspace:tree:updated', {
@@ -233,7 +254,7 @@ class Workspace extends EventEmitter {
     }
 
     copyPath(pathFrom, pathTo, recursive) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.copyPath(pathFrom, pathTo, recursive);
         if (result) {
             this.emit('workspace:tree:updated', {
@@ -251,12 +272,12 @@ class Workspace extends EventEmitter {
     }
 
     pathToIdArray(path) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         return this.#db.tree.pathToIdArray(path);
     }
 
     mergeUp(path) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.mergeUp(path);
         if (result) {
             this.emit('workspace:tree:updated', {
@@ -272,7 +293,7 @@ class Workspace extends EventEmitter {
     }
 
     mergeDown(path) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.mergeDown(path);
         if (result) {
             this.emit('workspace:tree:updated', {
@@ -292,8 +313,8 @@ class Workspace extends EventEmitter {
      * @returns {Array<string>} - Array of paths
      */
     get paths() {
-
-        return this.#db.tree.paths;
+        if (!this.isActive) return []; // Return empty if not active
+        return this.#db?.tree?.paths || [];
     }
 
     /**
@@ -304,7 +325,7 @@ class Workspace extends EventEmitter {
      * @returns {Object} - Result with canvas ID and updated tree
      */
     insertCanvas(parentPath, canvasName, options = {}) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         // Assuming createLayer adds the layer to the tree's internal layer store
         const canvasLayer = this.createLayer({
             name: canvasName,
@@ -340,7 +361,7 @@ class Workspace extends EventEmitter {
      * @returns {Object} - Result with workspace reference layer ID and updated tree
      */
     insertWorkspace(parentPath, workspaceRefName, targetWorkspaceId, options = {}) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const workspaceLayer = this.createLayer({
             name: workspaceRefName, // Use ref name for layer name?
             type: 'workspace', // Layer type indicates it's a reference
@@ -376,7 +397,7 @@ class Workspace extends EventEmitter {
      */
 
     createLayer(options) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const layer = this.#db.tree.createLayer(options);
         this.emit('workspace:layer:created', {
             layer,
@@ -386,17 +407,17 @@ class Workspace extends EventEmitter {
     }
 
     getLayer(name) {
-
-        return this.#db.tree.getLayer(name);
+        if (!this.isActive) return undefined;
+        return this.#db?.tree?.getLayer(name);
     }
 
     getLayerById(id) {
-
-        return this.#db.tree.getLayerById(id);
+        if (!this.isActive) return undefined;
+        return this.#db?.tree?.getLayerById(id);
     }
 
     renameLayer(name, newName) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.renameLayer(name, newName);
         if (result) {
             this.emit('workspace:layer:renamed', {
@@ -414,7 +435,7 @@ class Workspace extends EventEmitter {
     }
 
     updateLayer(name, options) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.updateLayer(name, options);
         if (result) {
             this.emit('workspace:layer:updated', {
@@ -432,7 +453,7 @@ class Workspace extends EventEmitter {
     }
 
     deleteLayer(name) {
-
+        if (!this.isActive) throw new Error('Workspace is not active');
         const result = this.#db.tree.deleteLayer(name);
         if (result) {
             this.emit('workspace:layer:deleted', {
@@ -454,13 +475,36 @@ class Workspace extends EventEmitter {
      * via the configStore.
      */
 
-    setStatus(status) {
-        if (!Object.values(WORKSPACE_INSTANCE_STATUS).includes(status)) {
-            logger.error(`Invalid status value provided: ${status}`);
+    /**
+     * Updates the persisted status in workspace.json.
+     * Prefer using start()/stop() which manage both internal and persisted status.
+     * Use this primarily for marking as DELETED.
+     * @param {string} status - The status to persist (must be a WORKSPACE_STATUS value).
+     * @returns {Promise<boolean>} Success status.
+     */
+    async #setStatusPersisted(status) {
+        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
+            logger.error(`Invalid status value provided for persistence: ${status}`);
             return false;
         }
         debug(`Setting persisted status for workspace "${this.id}" to: ${status}`);
         return this.#updateConfig('status', status);
+    }
+
+    /**
+     * Sets the internal runtime status of the Workspace instance.
+     * @param {string} status - The internal status (must be a WORKSPACE_STATUS value).
+     */
+     #setStatusInternal(status) {
+        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
+            logger.error(`Invalid internal status value provided: ${status}`);
+            return; // Don't throw, just log and ignore
+        }
+        if (this.#status !== status) {
+            debug(`Setting internal runtime status for workspace "${this.id}" to: ${status}`);
+            this.#status = status;
+            this.emit('workspace:status:changed', { id: this.id, status: this.#status });
+        }
     }
 
     setColor(color) {
@@ -490,42 +534,64 @@ class Workspace extends EventEmitter {
     // Generic config key setter
     setConfigKey(key, value) {
         // Add validation here for allowed keys if necessary
-        const allowedKeys = ['label', 'description', 'color', 'locked', 'acl', 'metadata']; // Example
+        const allowedKeys = ['label', 'description', 'color', 'locked', 'acl', 'metadata', 'restApi']; // Example, added restApi
         if (!allowedKeys.includes(key)) {
              debug(`Attempted to set disallowed config key: ${key}`);
+             return false;
+        }
+        // Special validation for color
+        if (key === 'color' && !this.#validateColor(value)) {
+             debug(`Invalid color format for key ${key}: ${value}`);
+             return false;
+        }
+        // Add validation for restApi structure if needed
+        if (key === 'restApi' && typeof value !== 'object') {
+             debug(`Invalid value type for key ${key}: must be an object.`);
              return false;
         }
         return this.#updateConfig(key, value);
     }
 
-    // Generic config key getter (already handled by `this.config` getter)
+    // Generic config key getter (already handled by specific getters like `this.id`, `this.name`, etc. and `this.config`)
     // getConfigKey(key, defaultValue) {
     //    return this.#configStore?.get(key, defaultValue);
     // }
 
     /**
      * Mark the workspace as deleted in its config file.
-     * This is called by the WorkspaceManager.
-     * @returns {boolean} Success status.
+     * This should typically be called by the WorkspaceManager.
+     * It also sets the internal status to DELETED.
+     * @returns {Promise<boolean>} Success status.
      */
-    markAsDeleted() {
+    async markAsDeleted() {
         debug(`Marking workspace "${this.id}" as deleted in its config.`);
-        return this.setStatus(WORKSPACE_INSTANCE_STATUS.DELETED);
+        // Set internal status immediately
+        this.#setStatusInternal(WORKSPACE_STATUS.DELETED);
+        // Persist the deleted status
+        const success = await this.#setStatusPersisted(WORKSPACE_STATUS.DELETED);
+        if (success) {
+            this.emit('workspace:deleted', { id: this.id });
+        }
+        return success;
     }
 
     /**
-     * Convert the workspace's persisted configuration to a plain JSON object.
-     * @returns {Object} - JSON object representing workspace.json content.
+     * Convert the workspace's configuration (via configStore) to a plain JSON object.
+     * Includes essential properties like id, name, path, etc.
+     * @returns {Object} - JSON object representing workspace configuration.
      */
     toJSON() {
-        // Return the content of the config store
+        // Return the content of the config store, ensuring key properties are present
         return {
-            ...this.config,
+            ...this.config, // Get all persisted config
+            // Ensure essential getters override any potentially missing keys in store
             id: this.id,
             name: this.name,
             path: this.path,
             owner: this.owner,
             created: this.created,
+            // Optionally add current runtime status?
+            // currentStatus: this.status,
         };
     }
 
@@ -533,12 +599,15 @@ class Workspace extends EventEmitter {
      * Private methods
      */
 
-    #updateConfig(key, value) {
+    async #updateConfig(key, value) { // Made async as set can be async
         if (!this.#configStore) {
             logger.error(`Cannot update config for "${this.id}". Config store not available.`);
             return false;
         }
         try {
+            // Conf doesn't return a promise from set, but file I/O is async inherently.
+            // Let's assume it's synchronous for now based on `conf` usage.
+            // If issues arise, might need to wrap `conf` or use its async methods if available.
             this.#configStore.set(key, value);
             this.#configStore.set('updated', new Date().toISOString());
             this.emit(`workspace:${key}:changed`, { id: this.id, [key]: value });
@@ -564,40 +633,47 @@ class Workspace extends EventEmitter {
     }
 
     /**
-     * Initialize workspace resources (Database, Tree).
+     * Initialize workspace resources (DB, Tree)
      * @private
      */
     async #initializeResources() {
+        // Prevent re-initialization if already active
+        if (this.#db) {
+            debug(`Resources already initialized for workspace "${this.id}".`);
+            return;
+        }
         try {
-            // 1. Initialize Database
             const dbPath = path.join(this.path, WORKSPACE_DIRECTORIES.db);
             debug(`Initializing database for workspace "${this.id}" at ${dbPath}`);
-            this.#db = new Db({ // Assuming Db constructor API
+            this.#db = new Db({
                 path: dbPath,
-                // Add other necessary DB options here
-                // backupOnOpen: false, // Example option
-                // backupOnClose: true, // Example option
-                // compression: true, // Example option
             });
-            await this.#db.start(); // Assuming start() is async
+
+            // Initialize the database
+            await this.#db.start();
+            // Map the tree instance only after successful DB start
             this.#tree = this.#db.tree;
+
             debug(`Database started for workspace "${this.id}".`);
             debug(`Workspace "${this.id}" resources initialized.`);
         } catch (err) {
              debug(`Error during resource initialization for "${this.id}": ${err.message}`);
-             // Rethrow to be caught by start() for cleanup
+             // Ensure partial resources are cleaned up if DB creation/start fails
+             this.#tree = null;
+             this.#db = null; // Clear DB instance on failure
              throw err;
         }
     }
 
     /**
-     * Shutdown workspace resources (Database, Tree).
+     * Shutdown workspace resources (DB, Tree)
      * @private
      */
     async #shutdownResources() {
         debug(`Shutting down resources for workspace "${this.id}"...`);
+        // Clear tree reference first
+        this.#tree = null;
         // Shutdown Database (SynapsD instance)
-        // The tree reference will be cleared when #db is set to null.
         if (this.#db) {
             try {
                 await this.#db.shutdown(); // Assuming shutdown() is async
@@ -608,23 +684,10 @@ class Workspace extends EventEmitter {
             } finally {
                 this.#db = null; // Ensure DB instance is cleared even if shutdown fails
             }
+        } else {
+            debug(`No active DB instance to shut down for workspace "${this.id}".`);
         }
         debug(`Workspace "${this.id}" resources shut down.`);
-    }
-
-    /**
-     * Attempt to shutdown resources after an initialization error.
-     * Used to prevent resource leaks if start() fails midway.
-     * @private
-     */
-     async #shutdownResourcesOnError() {
-        logger.warn(`Attempting resource cleanup after initialization error for workspace "${this.id}".`);
-        // Use the same shutdown logic, but suppress errors during cleanup itself
-        try {
-            await this.#shutdownResources();
-        } catch (cleanupErr) {
-            logger.error(`Error during cleanup after initialization failure for "${this.id}": ${cleanupErr.message}`);
-        }
     }
 
 }

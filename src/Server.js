@@ -22,12 +22,18 @@ const { productName, version, description, license } = pkg;
 import AuthService from './services/auth/index.js';
 import Db from './services/synapsd/src/backends/lmdb/index.js';
 
-// Create the main server database
+/**
+ * Server Database
+ */
+
 const db = new Db({
     path: env.CANVAS_SERVER_DB,
 });
 
-// Global Managers
+/**
+ * Global Manager singletons
+ */
+
 import UserManager from './managers/user/index.js';
 const userManager = new UserManager({
     rootPath: env.CANVAS_USER_HOME,
@@ -41,15 +47,27 @@ const sessionManager = new SessionManager(
     { sessionTimeout: 1000 * 60 * 60 * 24 * 7 }, // 7 days
 );
 
+import WorkspaceManager from './managers/workspace/index.js';
+const workspaceRootPath = env.CANVAS_WORKSPACE_HOME;
+const workspaceManager = new WorkspaceManager({
+    workspaceRootPath: workspaceRootPath,
+    configPath: path.join(env.CANVAS_SERVER_CONFIG, 'workspaces.json')
+});
+
 // Event Handlers
 import UserEventHandler from './services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
     userManager: userManager,
 });
 
-// Transports
+
+/**
+ * Transports
+ */
+
 import HttpTransport from './transports/http/index.js';
 import WsTransport from './transports/ws/index.js';
+
 
 /**
  * Canvas Server
@@ -114,10 +132,12 @@ class Server extends EventEmitter {
         // The userManager doesn't have a getCurrentUser method
         // Instead, return null for now - the individual route handlers
         // will get the workspace manager from the user when needed
-        return null;
+        // return null;
 
         // For routes, the workspaceManager is usually accessed like:
         // req.workspaceManager or from the current user instance
+        // NOW IT'S GLOBAL:
+        return workspaceManager;
     }
 
     // Database getter
@@ -270,6 +290,10 @@ class Server extends EventEmitter {
             // Initialize session manager
             await sessionManager.initialize();
             debug('Session manager initialized');
+
+            // Initialize Workspace Manager
+            await workspaceManager.initialize();
+            debug('Workspace manager initialized');
 
             logger.info('Managers initialized');
         } catch (error) {
@@ -645,6 +669,9 @@ const server = new Server();
 export default server;
 
 // Export managers for convenience
-export { userManager, sessionManager };
-
+export {
+    userManager,
+    sessionManager,
+    workspaceManager
+};
 
