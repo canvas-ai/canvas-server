@@ -36,8 +36,8 @@ const db = new Db({
 
 import UserManager from './managers/user/index.js';
 const userManager = new UserManager({
-    rootPath: env.CANVAS_USER_HOME,
-    db: db.createDataset('users'),
+    rootPath: env.CANVAS_SERVER_USER_HOMES,
+    configPath: path.join(env.CANVAS_SERVER_CONFIG)
 });
 
 import SessionManager from './managers/session/index.js';

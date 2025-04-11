@@ -242,8 +242,7 @@ export default function workspacesRoutes(options) {
         }
 
         // 2. Check if the user has at least read access to this workspace
-        // hasWorkspace now incorporates the access check
-        if (!req.workspaceManager.hasWorkspace(workspaceId, userId)) {
+        if (!req.workspaceManager.hasWorkspace(userId, workspaceId)) {
             debug(`ensureWorkspaceExists: User "${userId}" denied read access to workspace "${workspaceId}".`);
             const response = new ResponseObject().forbidden(`Access denied to workspace "${workspaceId}".`);
             return res.status(response.statusCode).json(response.getResponse());
@@ -269,7 +268,7 @@ export default function workspacesRoutes(options) {
         }
 
         // 1. Check existence and access (incorporates #checkAccess via hasWorkspace)
-        if (!req.workspaceManager.hasWorkspace(workspaceId, userId)) {
+        if (!req.workspaceManager.hasWorkspace(userId, workspaceId)) {
             // Determine if it's 404 or 403
             if (!req.workspaceManager.index[workspaceId]) {
                  debug(`ensureActiveWorkspace: Workspace "${workspaceId}" not found in index.`);
@@ -283,8 +282,8 @@ export default function workspacesRoutes(options) {
         }
 
         // 2. Check if it's active (implies loaded)
-        if (!req.workspaceManager.isActive(workspaceId, userId)) {
-            const status = req.workspaceManager.getWorkspaceStatus(workspaceId, userId);
+        if (!req.workspaceManager.isActive(userId, workspaceId)) {
+            const status = req.workspaceManager.getWorkspaceStatus(userId, workspaceId);
             debug(`ensureActiveWorkspace: Workspace "${workspaceId}" is not active for user "${userId}". Current status: ${status}`);
             // Use 409 Conflict as the resource exists but is not in the correct state
             const response = new ResponseObject().conflict(`Workspace "${workspaceId}" exists but is not active (Status: ${status}). Start it first.`);
@@ -292,7 +291,7 @@ export default function workspacesRoutes(options) {
         }
 
         // Get the active workspace instance
-        const workspace = req.workspaceManager.getWorkspace(workspaceId, userId);
+        const workspace = req.workspaceManager.getWorkspace(userId, workspaceId);
         if (!workspace || !workspace.db) { // Double check instance and DB are available
              logger.error(`Failed to get active workspace instance or DB for "${workspaceId}" despite isActive check passing.`);
              const response = new ResponseObject().serverError(`Internal error retrieving active workspace "${workspaceId}".`);
@@ -418,25 +417,20 @@ export default function workspacesRoutes(options) {
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        // Use name as the workspaceID
-        const workspaceId = name;
-
-        if (req.workspaceManager.hasWorkspace(workspaceId)) {
-             const response = new ResponseObject().conflict(`Workspace "${workspaceId}" already exists.`);
-             return res.status(response.statusCode).json(response.getResponse());
+        // hasWorkspace checks access and existence (userID first)
+        if (req.workspaceManager.hasWorkspace(userId, name)) {
+            const response = new ResponseObject().conflict(`Workspace "${name}" already exists.`);
+            return res.status(response.statusCode).json(response.getResponse());
         }
 
         // Create workspace definition in the manager
-        const workspaceMetadata = await req.workspaceManager.createWorkspace(workspaceId, {
-            ...initialConfig, // Pass label, color, description etc.
-            owner: userId, // Set owner from authenticated user
-        });
+        const workspaceMetadata = await req.workspaceManager.createWorkspace(userId, name, initialConfig);
 
         if (!workspaceMetadata) {
              throw new Error('Workspace creation returned no metadata.'); // Should not happen
         }
 
-        debug(`Created workspace definition: ${workspaceId} for user: ${userId}`);
+        debug(`Created workspace definition: ${name} for user: ${userId}`);
         const response = new ResponseObject().created(workspaceMetadata, 'Workspace created successfully');
         res.status(response.statusCode).json(response.getResponse());
     });
@@ -471,14 +465,15 @@ export default function workspacesRoutes(options) {
 
         try {
             let workspaceData;
-            if (req.workspaceManager.isLoaded(workspaceId)) {
-                const workspace = req.workspaceManager.getWorkspace(workspaceId);
+            if (req.workspaceManager.isLoaded(userId, workspaceId)) {
+                const workspace = req.workspaceManager.getWorkspace(userId, workspaceId);
                 workspaceData = workspace.toJSON(); // Get full config from loaded instance
                 // Add current runtime status to the response?
                 workspaceData.runtimeStatus = workspace.status;
                 debug(`Returning loaded workspace config for "${workspaceId}" for user ${userId}`);
             } else {
-                workspaceData = req.workspaceManager.getWorkspaceMetadata(workspaceId); // Get only metadata from index
+                // Get metadata from index (access already checked by middleware)
+                workspaceData = req.workspaceManager.index[workspaceId];
                 debug(`Returning workspace metadata for "${workspaceId}" (not loaded) for user ${userId}`);
             }
 
@@ -567,7 +562,7 @@ export default function workspacesRoutes(options) {
 
         for (const key of allowedUpdates) {
             if (updates.hasOwnProperty(key)) {
-                const success = await req.workspaceManager.setWorkspaceProperty(workspaceId, userId, key, updates[key]);
+                const success = await req.workspaceManager.setWorkspaceProperty(userId, workspaceId, key, updates[key]);
                 if (!success) {
                     updateErrors.push(`Failed to update ${key}.`);
                     debug(`Failed update for ${workspaceId}: key=${key}, value=${updates[key]}`);
@@ -584,7 +579,7 @@ export default function workspacesRoutes(options) {
         }
 
         // Fetch updated data to return (prefer loaded instance, fallback to index)
-        const finalWorkspaceData = req.workspaceManager.getWorkspace(workspaceId, userId)?.toJSON() || req.workspaceManager.index[workspaceId];
+        const finalWorkspaceData = req.workspaceManager.getWorkspace(userId, workspaceId)?.toJSON() || req.workspaceManager.index[workspaceId];
 
         const response = new ResponseObject(finalWorkspaceData);
         if (!updateSuccess && updateErrors.length > 0) {
@@ -641,7 +636,7 @@ export default function workspacesRoutes(options) {
 
         try {
             // destroyWorkspace requires write access (owner check internally)
-            const success = await req.workspaceManager.destroyWorkspace(workspaceId, userId);
+            const success = await req.workspaceManager.destroyWorkspace(userId, workspaceId);
             if (success) {
                 const response = new ResponseObject().success(`Workspace "${workspaceId}" destroyed successfully.`);
                 return res.json(response.getResponse());

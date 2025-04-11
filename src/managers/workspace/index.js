@@ -28,6 +28,7 @@ const pm2Delete = promisify(pm2.delete).bind(pm2);
 const pm2Describe = promisify(pm2.describe).bind(pm2);
 
 // Includes
+import env from '../../env.js';
 import Workspace from './lib/Workspace.js';
 
 /**
@@ -35,6 +36,9 @@ import Workspace from './lib/Workspace.js';
  */
 
 const WORKSPACE_TYPES = ['universe', 'workspace'];
+
+// Constants for workspace files
+const WORKSPACE_CONFIG_FILENAME = 'workspace.json';
 
 // Default configuration template for a new workspace's workspace.json
 const WORKSPACE_CONFIG_TEMPLATE = {
@@ -80,13 +84,16 @@ const WORKSPACE_DIRECTORIES = {
     data: 'Data',
     cache: 'Cache',
     home: 'Home',
+    apps: 'Apps',
     roles: 'Roles',
     dotfiles: 'Dotfiles',
+    workspaces: 'Workspaces',
 };
 
 /**
  * Workspace Manager
  */
+
 class WorkspaceManager extends EventEmitter {
 
     #rootPath;  // Root path for all user workspaces managed by this instance
@@ -104,14 +111,8 @@ class WorkspaceManager extends EventEmitter {
      */
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
-        // Validate essential options
-        if (!options.rootPath || typeof options.rootPath !== 'string') {
-            throw new Error('Workspace root path (rootPath) is required');
-        }
-        if (!options.configPath || typeof options.configPath !== 'string') {
-            throw new Error('Workspace index config path (configPath) is required');
-        }
 
+        this.#rootPath = options.rootPath || env.CANVAS_SERVER_WORKSPACES;
         this.#rootPath = options.rootPath;
         // configPath should be the full path to the JSON file, e.g., /path/to/config/workspaces.json
         this.#configPath = options.configPath;
@@ -199,7 +200,15 @@ class WorkspaceManager extends EventEmitter {
                 let configStore;
                 let configData;
                 try {
-                    configStore = new Conf({ configName: 'workspace', cwd: workspacePath });
+                    // Find the actual config file path
+                    const configFilePath = this.#findWorkspaceConfigPath(workspacePath);
+                    if (!configFilePath) {
+                        throw new Error('Workspace config file not found in standard locations.');
+                    }
+                    // Load Conf using the found path
+                    const configDir = path.dirname(configFilePath);
+                    const configName = path.basename(configFilePath, '.json');
+                    configStore = new Conf({ configName: configName, cwd: configDir });
                     configData = configStore.store; // Get the plain object
                     if (!this.#validateWorkspaceConfig(configData)) {
                         // Validation failed, error logged in validate method
@@ -212,7 +221,7 @@ class WorkspaceManager extends EventEmitter {
                     // 3. Load Workspace Instance (without starting)
                     try {
                         const workspace = new Workspace({
-                            path: workspacePath,
+                            rootPath: workspacePath, // Pass rootPath to constructor
                             configStore: configStore, // Pass the validated config store
                         });
                         this.#workspaces.set(workspaceID, workspace); // Add to loaded map
@@ -265,26 +274,32 @@ class WorkspaceManager extends EventEmitter {
      * Create a new workspace.
      * Creates the directory structure, workspace.json, and adds metadata to the global index.
      * Does NOT start the workspace.
+     * @param {string} userID - The ID of the user creating the workspace (becomes owner).
      * @param {string} name - Desired name for the workspace (used for ID and default path).
      * @param {Object} [options={}] - Configuration options (overrides defaults).
      * @param {string} [options.rootPath] - Optional custom path for the workspace.
      * @param {string} [options.owner] - Owner identifier (required).
      * @returns {Promise<Object>} Metadata of the created workspace from the global index.
      */
-    async createWorkspace(name, options = {}) {
-        const { restApi, ...otherOptions } = options;
+    async createWorkspace(userID, name, options = {}) {
+        if (!userID) {
+            throw new Error('UserID is required to create a workspace.');
+        }
         if (!name || typeof name !== 'string') {
             throw new Error('Workspace name (string) is required');
         }
-        if (!otherOptions.owner) {
-            // Enforce owner requirement based on user query
-            throw new Error('Workspace owner option is required');
+
+        // Combine options, ensuring provided owner (if any) matches userID or is ignored
+        const { restApi, owner, ...otherOptions } = options;
+        if (owner && owner !== userID) {
+            logger.warn(`Provided owner option (${owner}) does not match creating userID (${userID}). Ignoring owner option.`);
         }
+        const finalOptions = { owner: userID, ...otherOptions }; // Ensure userID is the owner
 
         const workspaceID = this.#sanitizeNameForID(name); // Use sanitized name as ID
-        const workspacePath = otherOptions.rootPath ?
-            path.resolve(otherOptions.rootPath) :
-            path.join(this.#rootPath, otherOptions.owner, workspaceID);
+        const workspacePath = finalOptions.rootPath ?
+            path.resolve(finalOptions.rootPath) :
+            path.join(this.#rootPath, finalOptions.owner, workspaceID); // Use finalOptions.owner (which is userID)
 
         // If workspaceID is already indexed, throw an error
         if (this.index[workspaceID]) {
@@ -306,7 +321,7 @@ class WorkspaceManager extends EventEmitter {
         let workspaceConfigData = this.#parseWorkspaceOptions({ // Use helper to merge defaults
             id: workspaceID,
             name: name, // Keep original name for display?
-            ...otherOptions, // User options override defaults
+            ...finalOptions, // User options override defaults
             // Ensure crucial fields are set
             created: creationTime,
             updated: creationTime,
@@ -326,19 +341,35 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // Create the workspace's own config file (workspace.json)
-        const workspaceConfigFile = path.join(workspacePath, 'workspace.json');
+        const workspaceConfigFile = path.join(workspacePath, WORKSPACE_CONFIG_FILENAME);
         try {
-            await fsPromises.writeFile(workspaceConfigFile, JSON.stringify(workspaceConfigData, null, 4));
-            debug(`Created workspace config at: ${workspaceConfigFile}`);
+            // Instantiate Conf - this will create the file with the data if it doesn't exist
+            const configDir = path.dirname(workspaceConfigFile);
+            const configName = path.basename(workspaceConfigFile, '.json');
+            const workspaceConf = new Conf({ configName: configName, cwd: configDir });
+
+            // Set all properties at once using the validated config data
+            for (const key in workspaceConfigData) {
+                 workspaceConf.set(key, workspaceConfigData[key]);
+            }
+
+            debug(`Created workspace config via Conf at: ${workspaceConf.path}`); // Conf.path gives the full path
         } catch (err) {
             // Clean up created directories if config write fails?
-            throw new Error(`Failed to write workspace config file at ${workspaceConfigFile}: ${err.message}`);
+            logger.error(`Failed to write workspace config file via Conf for ${workspaceID}: ${err.message}`);
+            // Attempt cleanup
+            try {
+                await fsPromises.rm(workspacePath, { recursive: true, force: true });
+            } catch (cleanupErr) {
+                logger.error(`Failed to clean up temp workspace directory ${workspacePath}: ${cleanupErr.message}`);
+            }
+            throw new Error(`Failed to write workspace config file via Conf for ${workspaceID}: ${err.message}`);
         }
 
         // Add entry to the global index (workspaces.json)
         const indexEntry = {
             id: workspaceID,
-            path: workspacePath,
+            rootPath: workspacePath, // Standardize on rootPath for the index entry
             status: WORKSPACE_STATUS.AVAILABLE,
             indexed: creationTime,
             lastAccessed: null,
@@ -356,13 +387,16 @@ class WorkspaceManager extends EventEmitter {
      * Get the loaded Workspace instance from memory.
      * Returns undefined if the workspace is not currently loaded or if the user lacks access.
      * Use `openWorkspace(id)` first to ensure the workspace is loaded.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user requesting access.
+     * @param {string} workspaceID The ID of the workspace.
      * @returns {Workspace|undefined} The loaded Workspace instance or undefined.
      */
-    getWorkspace(workspaceID, userID) {
+    getWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to get a workspace.');
+        }
         if (!this.#checkAccess(workspaceID, userID)) {
-            debug(`User ${userID} denied access to get workspace ${workspaceID}.`);
+            // Access denied message logged within #checkAccess
             return undefined;
         }
         // Returns the loaded Workspace instance if available in memory and accessible
@@ -376,7 +410,10 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} [status] - Optional status (from WORKSPACE_STATUS) to filter by.
      * @returns {Array<Object>} Array of accessible workspace metadata objects.
      */
-    listWorkspaces(userID, status) {
+    listWorkspaces(userID, status = null) {
+        if (!userID) {
+            throw new Error('UserID is required to list workspaces.');
+        }
         // Use Object.values to get an array of metadata objects from the index
         const allWorkspacesMetadata = Object.values(this.index);
 
@@ -402,7 +439,10 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} userID The ID of the user requesting the list.
      * @returns {Array<Workspace>} Array of open (loaded) Workspace instances.
      */
-    listOpenWorkspaces(userID) { return this.listLoadedWorkspaces(userID); }
+    listOpenWorkspaces(userID) {
+        // Note: No explicit userID check here as it delegates to listLoadedWorkspaces
+        return this.listLoadedWorkspaces(userID);
+    }
 
     /**
      * List all currently loaded (in-memory) Workspace instances accessible to the user.
@@ -410,6 +450,9 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Array<Workspace>} Array of loaded Workspace instances.
      */
     listLoadedWorkspaces(userID) {
+        if (!userID) {
+            throw new Error('UserID is required to list loaded workspaces.');
+        }
         return Array.from(this.#workspaces.values()).filter(ws =>
             this.#checkAccess(ws.id, userID, 'read', ws.config) // Use loaded config
         );
@@ -421,36 +464,48 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Array<Workspace>} Array of active Workspace instances.
      */
     listActiveWorkspaces(userID) {
+        if (!userID) {
+            throw new Error('UserID is required to list active workspaces.');
+        }
         return this.listLoadedWorkspaces(userID).filter(ws => ws.status === WORKSPACE_STATUS.ACTIVE);
     }
 
     /**
      * Checks if a workspace exists in the index AND the user has access.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user checking.
+     * @param {string} workspaceID The ID of the workspace.
      * @returns {boolean} True if the workspace exists and the user has access.
      */
-    hasWorkspace(workspaceID, userID) {
+    hasWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to check if workspace exists.');
+        }
         return this.index[workspaceID] !== undefined && this.#checkAccess(workspaceID, userID);
     }
 
     /**
      * Checks if a workspace is loaded in memory AND the user has access.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user checking.
+     * @param {string} workspaceID The ID of the workspace.
      * @returns {boolean} True if loaded and accessible.
      */
-    isLoaded(workspaceID, userID) {
+    isLoaded(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to check if workspace is loaded.');
+        }
         return this.#workspaces.has(workspaceID) && this.#checkAccess(workspaceID, userID);
     }
 
     /**
      * Checks if a workspace is active (loaded and started) AND the user has access.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user checking.
+     * @param {string} workspaceID The ID of the workspace.
      * @returns {boolean} True if active and accessible.
      */
-    isActive(workspaceID, userID) {
+    isActive(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to check if workspace is active.');
+        }
         const ws = this.#workspaces.get(workspaceID);
         return ws && ws.status === WORKSPACE_STATUS.ACTIVE && this.#checkAccess(workspaceID, userID);
     }
@@ -459,11 +514,14 @@ class WorkspaceManager extends EventEmitter {
      * Starts a workspace: Ensures it's loaded, calls its start() method (connects DB, etc.).
      * Updates index status to ACTIVE.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID - The ID of the workspace to start.
      * @param {string} userID - The ID of the user attempting to start the workspace.
+     * @param {string} workspaceID - The ID of the workspace to start.
      * @returns {Promise<Workspace|null>} The active Workspace instance, or null if starting failed or access denied.
      */
-    async startWorkspace(workspaceID, userID) {
+    async startWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to start a workspace.');
+        }
         // Access Check: Requires write access (owner only for now)
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to start workspace ${workspaceID}.`);
@@ -481,7 +539,7 @@ class WorkspaceManager extends EventEmitter {
         // If not loaded, try to open (load) it first (requires read access, implicitly checked by #checkAccess above)
         if (!workspace) {
             debug(`Workspace "${workspaceID}" is not loaded. Attempting to open...`);
-            workspace = await this.openWorkspace(workspaceID, userID); // Pass userID
+            workspace = await this.openWorkspace(userID, workspaceID); // Pass userID
             if (!workspace) {
                  // openWorkspace failed (logged error within method or access denied)
                  return null;
@@ -524,11 +582,14 @@ class WorkspaceManager extends EventEmitter {
      * Stops an active workspace: Calls its stop() method.
      * Requires 'write' access (owner only).
      * Note: Does not remove the instance from memory, use closeWorkspace for that.
-     * @param {string} workspaceID - The ID of the workspace to stop.
      * @param {string} userID - The ID of the user attempting to stop the workspace.
+     * @param {string} workspaceID - The ID of the workspace to stop.
      * @returns {Promise<boolean>} True if stopped successfully, false if not found, not active, or access denied.
      */
-    async stopWorkspace(workspaceID, userID) {
+    async stopWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to stop a workspace.');
+        }
         // Access Check: Requires write access
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to stop workspace ${workspaceID}.`);
@@ -570,7 +631,7 @@ class WorkspaceManager extends EventEmitter {
         this.emit('workspace:stopped', { id: workspaceID });
 
         // Stop the associated REST API if it exists
-        await this.stopRestApi(workspaceID, userID); // Pass userID
+        await this.stopRestApi(userID, workspaceID); // Pass userID
 
         // Previously, stopWorkspace called closeWorkspace implicitly.
         // This caused issues. Now stop only stops, close only closes.
@@ -590,11 +651,14 @@ class WorkspaceManager extends EventEmitter {
      * Remove a workspace from the global index. Stops it if active.
      * Does NOT delete files from disk.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID - Workspace ID/name to remove.
      * @param {string} userID - The ID of the user attempting to remove the workspace.
+     * @param {string} workspaceID - Workspace ID/name to remove.
      * @returns {Promise<boolean>} True if removed, false if not found or access denied.
      */
-    async removeWorkspace(workspaceID, userID) {
+    async removeWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to remove a workspace.');
+        }
         // Access Check: Requires write access
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to remove workspace ${workspaceID}.`);
@@ -609,13 +673,13 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // Stop the REST API service if it's running
-        await this.stopRestApi(workspaceID, userID); // Pass userID
+        await this.stopRestApi(userID, workspaceID); // Pass userID
 
         // Stop and close the workspace if it's loaded
         if (this.#workspaces.has(workspaceID)) {
             debug(`Workspace "${workspaceID}" is loaded. Stopping and closing before removing from index.`);
-            await this.stopWorkspace(workspaceID, userID);
-            await this.closeWorkspace(workspaceID, userID); // Close also removes from map
+            await this.stopWorkspace(userID, workspaceID);
+            await this.closeWorkspace(userID, workspaceID); // Close also removes from map
         }
 
         // Remove from the global index
@@ -630,12 +694,15 @@ class WorkspaceManager extends EventEmitter {
      * Destroy a workspace: Stops it if active, closes it, removes it from the index,
      * and deletes its directory from the filesystem.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID - Workspace ID/name to destroy.
      * @param {string} userID - The ID of the user attempting to destroy the workspace.
+     * @param {string} workspaceID - Workspace ID/name to destroy.
      * @param {boolean} [forceDestroy=false] - Skip checks and force deletion (use with caution, still checks ownership).
      * @returns {Promise<boolean>} True if destroyed, false if not found or access denied.
      */
-    async destroyWorkspace(workspaceID, userID, forceDestroy = false) {
+    async destroyWorkspace(userID, workspaceID, forceDestroy = false) {
+        if (!userID) {
+            throw new Error('UserID is required to destroy a workspace.');
+        }
          // Access Check: Requires write access, even if forcing
          if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to destroy workspace ${workspaceID}.`);
@@ -650,15 +717,15 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // Stop the REST API service first
-        await this.stopRestApi(workspaceID, userID); // Pass userID
+        await this.stopRestApi(userID, workspaceID); // Pass userID
 
         const workspacePath = indexEntry.rootPath;
 
         // Stop and close the workspace if it's loaded
         if (this.#workspaces.has(workspaceID)) {
              debug(`Workspace "${workspaceID}" is loaded. Stopping and closing before destroying.`);
-             await this.stopWorkspace(workspaceID, userID);
-             await this.closeWorkspace(workspaceID, userID); // Close also removes from map
+             await this.stopWorkspace(userID, workspaceID);
+             await this.closeWorkspace(userID, workspaceID); // Close also removes from map
         }
 
         // Remove from the global index *before* deleting files
@@ -722,7 +789,7 @@ class WorkspaceManager extends EventEmitter {
             }
 
             // Validate the source directory (original or extracted)
-            const configFilePath = path.join(importPath, 'workspace.json');
+            let configFilePath = this.#findWorkspaceConfigPath(importPath);
             if (!existsSync(configFilePath)) {
                 throw new Error(`Import source directory is missing workspace.json: ${importPath}`);
             }
@@ -794,8 +861,7 @@ class WorkspaceManager extends EventEmitter {
             // Add entry to the global index
             const indexEntry = {
                 id: workspaceID,
-                path: finalWorkspacePath,
-                // owner: userID, // Optionally store owner in index too?
+                rootPath: finalWorkspacePath, // Standardize on rootPath for the index entry
                 status: WORKSPACE_STATUS.AVAILABLE, // Set to available after successful import/copy
                 indexed: new Date().toISOString(),
                 lastAccessed: null,
@@ -826,12 +892,15 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Export a workspace as a zip file.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID - Source workspace id.
      * @param {string} userID - The ID of the user attempting the export.
+     * @param {string} workspaceID - Source workspace id.
      * @param {string} dstPath - Destination path for the zip file.
      * @returns {Promise<string>} Path to the created zip file.
      */
-    async exportWorkspace(workspaceID, userID, dstPath) {
+    async exportWorkspace(userID, workspaceID, dstPath) {
+        if (!userID) {
+            throw new Error('UserID is required to export a workspace.');
+        }
         // Access Check: Requires write access
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to export workspace ${workspaceID}.`);
@@ -853,7 +922,7 @@ class WorkspaceManager extends EventEmitter {
             // Automatically stop it? Or force user to stop?
             // Let's stop it automatically for convenience, as user has write access.
              debug(`Workspace ${workspaceID} is active. Stopping automatically before export.`);
-             await this.stopWorkspace(workspaceID, userID);
+             await this.stopWorkspace(userID, workspaceID);
             // throw new Error(`Workspace "${workspaceID}" is active. Stop it before exporting.`);
         }
         // Also check index status as a fallback if not loaded
@@ -902,11 +971,14 @@ class WorkspaceManager extends EventEmitter {
      /**
      * Get the status of a workspace from the global index.
      * Requires 'read' access.
-     * @param {string} workspaceID - The ID of the workspace.
      * @param {string} userID - The ID of the user requesting the status.
+     * @param {string} workspaceID - The ID of the workspace.
      * @returns {string|null} Status string (e.g., 'active', 'inactive') or null if not found or access denied.
      */
-    getWorkspaceStatus(workspaceID, userID) {
+    getWorkspaceStatus(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to get workspace status.');
+        }
         // Access Check: Requires read access
         if (!this.#checkAccess(workspaceID, userID, 'read')) {
             // Don't log warning here, just return null as if not found
@@ -921,13 +993,16 @@ class WorkspaceManager extends EventEmitter {
      * Update a specific property of a workspace's configuration.
      * Updates both the workspace.json file and the active instance if loaded.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID - The ID of the workspace.
      * @param {string} userID - The ID of the user attempting the update.
+     * @param {string} workspaceID - The ID of the workspace.
      * @param {string} property - The configuration key to set (e.g., 'name', 'description', 'color', 'acl').
      * @param {*} value - The new value for the property.
      * @returns {Promise<boolean>} True if successful, false otherwise or if access denied.
      */
-    async setWorkspaceProperty(workspaceID, userID, property, value) {
+    async setWorkspaceProperty(userID, workspaceID, property, value) {
+        if (!userID) {
+            throw new Error('UserID is required to set workspace property.');
+        }
         // Access Check: Requires write access
         // Special case: Allow non-owners to modify ACL? Maybe later.
         // For now, only owner can change anything.
@@ -983,7 +1058,7 @@ class WorkspaceManager extends EventEmitter {
 
         if (requiresApiRestart) {
              debug(`API property change requires restart for workspace ${workspaceID}. Stopping API...`);
-             await this.stopRestApi(workspaceID, userID); // Pass userID
+             await this.stopRestApi(userID, workspaceID); // Pass userID
         }
 
         // Update the active instance if it exists
@@ -1037,7 +1112,7 @@ class WorkspaceManager extends EventEmitter {
         // Restart API if necessary
         if (requiresApiRestart && updateSuccessful) {
             debug(`Restarting API for workspace ${workspaceID} after property change...`);
-            await this.#startRestApi(workspaceID, userID); // Pass userID
+            await this.startRestApi(userID, workspaceID); // Ensure public method is called
         }
 
         return updateSuccessful;
@@ -1108,13 +1183,13 @@ class WorkspaceManager extends EventEmitter {
             if (typeof workspaceMetadataOrConfig.get === 'function') { // Likely a Conf instance or Workspace instance config getter
                 owner = workspaceMetadataOrConfig.get('owner');
                 acl = workspaceMetadataOrConfig.get('acl');
-            } else if (workspaceMetadataOrConfig.owner !== undefined) { // Likely index metadata
+            } else if (workspaceMetadataOrConfig.id) { // Likely index metadata or plain config object
                  owner = workspaceMetadataOrConfig.owner;
-                 acl = workspaceMetadataOrConfig.acl; // Assumes acl is stored in index too (needs update if not)
-                 // TODO: Verify if ACL is reliably in the index entry or always requires config read. Assume config read is safer for now.
-                 // Let's force a read if only index metadata is provided for ACL check.
-                 acl = null; // Force read below if only index entry provided
-            }
+                 // If it's just index metadata, ACL might be missing or stale, so clear it to force a read
+                 // How to reliably distinguish index metadata from a full config object passed in?
+                 // Assume if `.get` is not present, it *might* be index metadata, force ACL read.
+                  acl = null; // Force read below if only index entry provided
+             }
         }
 
         // 2. If owner/acl not obtained, try loading from workspace.json
@@ -1126,7 +1201,13 @@ class WorkspaceManager extends EventEmitter {
             }
             // Only read config if necessary (not provided or only index metadata provided)
             try {
-                 const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.rootPath });
+                 const configFilePath = this.#findWorkspaceConfigPath(indexEntry.rootPath);
+                 if (!configFilePath) {
+                     throw new Error('Workspace config file not found.');
+                 }
+                 const configDir = path.dirname(configFilePath);
+                 const configName = path.basename(configFilePath, '.json');
+                 const wsConfig = new Conf({ configName: configName, cwd: configDir });
                  owner = wsConfig.get('owner');
                  acl = wsConfig.get('acl', {}); // Default to empty object if missing
             } catch (err) {
@@ -1315,11 +1396,12 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Starts the dedicated REST API server for a workspace using PM2.
      * Requires 'write' access to the workspace.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user attempting the action.
+     * @param {string} workspaceID The ID of the workspace.
+     * @param {Object} apiConfig - Optional API configuration overrides.
      * @returns {Promise<boolean>} True if API started successfully, false otherwise or if access denied.
      */
-    async #startRestApi(workspaceID, userID) {
+    async startRestApi(userID, workspaceID, apiConfig = {}) {
         // Access Check: Requires write access to the workspace to manage its API
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to start REST API for workspace ${workspaceID}.`);
@@ -1343,7 +1425,8 @@ class WorkspaceManager extends EventEmitter {
         try {
             const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.rootPath });
             port = wsConfig.get('restApi.port');
-            token = wsConfig.get('restApi.token');
+            // Use provided token if valid, otherwise from config
+            token = (apiConfig.token && typeof apiConfig.token === 'string' && apiConfig.token.length >= 16) ? apiConfig.token : wsConfig.get('restApi.token');
         } catch (err) {
             logger.error(`Failed to load workspace config for ${workspaceID} to start API: ${err.message}`);
             this.#index.set(`workspaces.${workspaceID}.restApiStatus`, WORKSPACE_API_STATUS.ERROR);
@@ -1400,11 +1483,11 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Stops the dedicated REST API server for a workspace using PM2.
      * Requires 'write' access to the workspace.
-     * @param {string} workspaceID The ID of the workspace.
      * @param {string} userID The ID of the user attempting the action.
+     * @param {string} workspaceID The ID of the workspace.
      * @returns {Promise<boolean>} True if API stopped successfully or was already stopped, false on error or access denied.
      */
-    async stopRestApi(workspaceID, userID) {
+    async stopRestApi(userID, workspaceID) {
         // Access Check: Requires write access to the workspace to manage its API
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to stop REST API for workspace ${workspaceID}.`);
@@ -1451,11 +1534,14 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Close a workspace: Stops it if active, and removes the instance from memory.
      * Requires 'write' access (owner only).
-     * @param {string} workspaceID The ID of the workspace to close.
      * @param {string} userID The ID of the user attempting to close the workspace.
+     * @param {string} workspaceID The ID of the workspace to close.
      * @returns {Promise<boolean>} True if closed successfully or already closed, false on error or access denied.
      */
-    async closeWorkspace(workspaceID, userID) {
+    async closeWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to close a workspace.');
+        }
         // Access Check: Requires write access
         if (!this.#checkAccess(workspaceID, userID, 'write')) {
             logger.warn(`User ${userID} denied write access to close workspace ${workspaceID}.`);
@@ -1474,7 +1560,7 @@ class WorkspaceManager extends EventEmitter {
         if (workspace.status === WORKSPACE_STATUS.ACTIVE) {
             debug(`Workspace "${workspaceID}" is active. Stopping before closing...`);
             // stopWorkspace already checks access, but call it anyway
-            const stopped = await this.stopWorkspace(workspaceID, userID);
+            const stopped = await this.stopWorkspace(userID, workspaceID);
             if (!stopped) {
                 logger.error(`Failed to stop workspace "${workspaceID}" during close operation. Aborting close.`);
                 // Should we still remove from map if stop failed? Probably not.
@@ -1505,11 +1591,14 @@ class WorkspaceManager extends EventEmitter {
      * Does NOT start the workspace (i.e., connect to DB).
      * Requires 'read' access.
      * Updates index status if errors are found (NOT_FOUND, ERROR).
-     * @param {string} workspaceID The ID of the workspace to open.
      * @param {string} userID The ID of the user attempting to open the workspace.
+     * @param {string} workspaceID The ID of the workspace to open.
      * @returns {Promise<Workspace|null>} The loaded Workspace instance or null if opening failed or access denied.
      */
-    async openWorkspace(workspaceID, userID) {
+    async openWorkspace(userID, workspaceID) {
+        if (!userID) {
+            throw new Error('UserID is required to open a workspace.');
+        }
         // Access Check: Requires read access
         if (!this.#checkAccess(workspaceID, userID, 'read')) {
             // No warning log here, just return null as if not found/accessible
@@ -1554,7 +1643,14 @@ class WorkspaceManager extends EventEmitter {
             // 4. Try Reading/Validating Config and Instantiating
             let configStore;
             try {
-                configStore = new Conf({ configName: 'workspace', cwd: workspacePath });
+                // Find the actual config file path
+                const configFilePath = this.#findWorkspaceConfigPath(workspacePath);
+                if (!configFilePath) {
+                     throw new Error('Workspace config file not found in standard locations.');
+                }
+                const configDir = path.dirname(configFilePath);
+                const configName = path.basename(configFilePath, '.json');
+                configStore = new Conf({ configName: configName, cwd: configDir });
                 const configData = configStore.store;
                 // Validate config (implicitly checks owner existence etc.)
                 if (!this.#validateWorkspaceConfig(configData)) {
@@ -1562,7 +1658,7 @@ class WorkspaceManager extends EventEmitter {
                 }
                 // Config valid, try instantiating
                 const workspace = new Workspace({
-                    path: workspacePath,
+                    rootPath: workspacePath, // Pass rootPath to constructor
                     configStore: configStore,
                 });
                 this.#workspaces.set(workspaceID, workspace); // Add to loaded map
@@ -1588,6 +1684,34 @@ class WorkspaceManager extends EventEmitter {
         }
 
         // If we reached here, opening failed
+        return null;
+    }
+
+    // --- Helpers ---
+
+    /**
+     * Finds the path to the workspace configuration file within a given directory.
+     * Checks standard locations in order: .workspace/workspace.json, .workspace.json, workspace.json
+     * @param {string} workspacePath - The root directory of the workspace.
+     * @returns {string|null} The full path to the found config file, or null if none is found.
+     * @private
+     */
+    #findWorkspaceConfigPath(workspacePath) {
+        const filename = WORKSPACE_CONFIG_FILENAME;
+        const locations = [
+            path.join(workspacePath, '.workspace', filename),
+            path.join(workspacePath, `.${filename}`), // .workspace.json
+            path.join(workspacePath, filename)      // workspace.json (default)
+        ];
+
+        for (const loc of locations) {
+            // Use synchronous check as this might be called during initial scan/constructor phases
+            if (existsSync(loc)) {
+                debug(`Found workspace config for ${workspacePath} at: ${loc}`);
+                return loc;
+            }
+        }
+        debug(`Workspace config not found for ${workspacePath} in standard locations.`);
         return null;
     }
 

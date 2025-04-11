@@ -52,7 +52,7 @@ class Workspace extends EventEmitter {
         if (!options.rootPath) throw new Error('Workspace rootPath is required');
         if (!options.configStore) throw new Error('Config store (Conf instance) is required');
 
-        this.#rootPath = options.path;
+        this.#rootPath = options.rootPath;
         this.#configStore = options.configStore;
 
         // Validate essential configuration loaded from configStore
