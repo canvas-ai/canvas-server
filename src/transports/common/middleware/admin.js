@@ -3,7 +3,7 @@
  * Provides admin check functionality for both HTTP and WebSocket transports
  */
 
-import { createDebug } from '@/utils/log/index.js';
+import { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('middleware:common:admin');
 
 /**

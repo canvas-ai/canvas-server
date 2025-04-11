@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('canvas:auth:session');
 
 /**

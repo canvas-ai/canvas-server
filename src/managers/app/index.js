@@ -1,4 +1,4 @@
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('app-manager');
 import EventEmitter from 'eventemitter2';
 import App from './lib/App.js';

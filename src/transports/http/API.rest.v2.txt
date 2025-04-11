@@ -34,9 +34,9 @@ baseUrl: /rest/v2
 ├── /users
 │   ├── /:id
 │   ├── /:id/status
-│   ├── /:id/start-container
-│   ├── /:id/stop-container
-│   ├── /:id/restart-container
+│   ├── /:id/start_container
+│   ├── /:id/stop_container
+│   ├── /:id/restart_container
 │   ├── /:id/logs
 │   ├── /:id/apps
 │   ├── /:id/roles
@@ -50,50 +50,40 @@ baseUrl: /rest/v2
 │   └── /:id/sessions
 │
 ├── /workspaces
-│   ├── /:id
-│   ├── /:id [POST] - Update workspace parameters
-│   ├── /:id/status
-│   ├── /:id/open
-│   ├── /:id/close
-│   ├── /:id/query [GET] - Natural language query for workspace information
-│   ├── /:id/apps [GET] - List apps in workspace
-│   ├── /:id/apps/:appId [GET] - Get app by ID
-│   ├── /:id/apps/:appId [POST] - Assign an app to a workspace
-│   ├── /:id/apps/:appId [PUT] - Update app in workspace
-│   ├── /:id/apps/:appId [DELETE] - Delete app from workspace
-│   ├── /:id/roles [GET] - List roles in workspace
-│   ├── /:id/roles/:roleId [GET] - Get role by ID
-│   ├── /:id/roles/:roleId [POST] - Assign a role to a workspace
-│   ├── /:id/roles/:roleId [PUT] - Update role in workspace
-│   ├── /:id/roles/:roleId [DELETE] - Delete role from workspace
-│   ├── /:id/agents [GET] - List agents in workspace
-│   ├── /:id/agents/:agentId [GET] - Get agent by ID
-│   ├── /:id/agents/:agentId [POST] - Assign an agent to a workspace
-│   ├── /:id/agents/:agentId [PUT] - Update agent in workspace
-│   ├── /:id/agents/:agentId [DELETE] - Delete agent from workspace
-│   ├── /:id/minions [GET] - List minions in workspace
-│   ├── /:id/minions/:minionId [GET] - Get minion by ID
-│   ├── /:id/minions/:minionId [POST] - Assign a minion to a workspace
-│   ├── /:id/minions/:minionId [PUT] - Update minion in workspace
-│   ├── /:id/minions/:minionId [DELETE] - Delete minion from workspace
-│   ├── /:id/documents [GET] - List documents in workspace
-│   ├── /:id/documents [POST] - Insert documents into workspace
-│   ├── /:id/documents [PUT] - Update documents in workspace
-│   ├── /:id/documents [DELETE] - Delete documents from workspace
-│   ├── /:id/documents/remove [DELETE] - Remove documents from workspace
-│   ├── /:id/documents/by-id/:id [GET] - Get document by ID
-│   ├── /:id/documents/by-abstraction/:abstraction [GET] - Get documents by abstraction
-│   ├── /:id/documents/by-hash/:hashString [GET] - Get documents by hash string
-│   ├── /:id/tree [GET] - Get workspace tree
-│   ├── /:id/tree/layers [GET] - Get workspace layers
-│   ├── /:id/tree/layers/:layerId [GET] - Get workspace layer by ID
-│   ├── /:id/tree/insert [POST] - Insert a path into the workspace tree
-│   ├── /:id/tree/copy [POST] - Copy workspace layer
-│   ├── /:id/tree/move [POST] - Move workspace layer
-│   ├── /:id/tree/remove [POST] - Remove workspace layer
-│   ├── /:id/tree/merge [POST] - Merge workspace layers
-│   ├── /:id/tree/subtract [POST] - Subtract workspace layers
-│   └── /:id/tree/intersect [POST] - Intersect workspace layers
+│   ├── / [GET] - List all workspaces (metadata)
+│   ├── / [POST] - Create a new workspace definition
+│   ├── /:id [GET] - Get workspace details (config and status)
+│   ├── /:id [PATCH] - Update workspace configuration (label, color, locked, acl, metadata, restApi)
+│   ├── /:id [DELETE] - Destroy workspace (stops, removes index entry, deletes files)
+│   ├── /:id/status [GET] - Get current workspace status (runtime or persisted)
+│   ├── /:id/actions/open [POST] - Load workspace into memory (status=INACTIVE)
+│   ├── /:id/actions/close [POST] - Unload workspace from memory (if inactive)
+│   ├── /:id/actions/start [POST] - Start an inactive workspace (loads DB, status=ACTIVE)
+│   ├── /:id/actions/stop [POST] - Stop an active workspace (shuts down DB, status=INACTIVE)
+│   │
+│   ├── /:id/documents [GET] - List documents (query: context, features, filters, limit) [ACTIVE]
+│   ├── /:id/documents [POST] - Insert one or more documents (query: context, features) [ACTIVE]
+│   ├── /:id/documents [PUT] - Update one or more documents (query: context, features) [ACTIVE]
+│   ├── /:id/documents/actions/remove [POST] - Remove document IDs from specified bitmaps (query: context, features) [ACTIVE]
+│   ├── /:id/documents/actions/delete [POST] - Permanently delete document data and all references [ACTIVE]
+│   ├── /:id/documents/:docId [GET] - Get a specific document by ID [ACTIVE]
+│   ├── /:id/documents/by-hash/:hashString [GET] - Get document by checksum hash [ACTIVE]
+│   │
+│   ├── /:id/tree [GET] - Get the workspace's hierarchical tree structure [ACTIVE]
+│   ├── /:id/tree/paths [POST] - Insert a path (body: { path, autoCreateLayers }) [ACTIVE]
+│   ├── /:id/tree/paths [DELETE] - Remove a path (query: path, recursive) [ACTIVE]
+│   ├── /:id/tree/paths/actions/move [POST] - Move a path (body: { from, to, recursive }) [ACTIVE]
+│   ├── /:id/tree/paths/actions/copy [POST] - Copy a path (body: { from, to, recursive }) [ACTIVE]
+│   ├── /:id/tree/paths/actions/merge-up [POST] - Merge layer bitmaps upwards (body: { path }) [ACTIVE]
+│   ├── /:id/tree/paths/actions/merge-down [POST] - Merge layer bitmaps downwards (body: { path }) [ACTIVE]
+│   │
+│   ├── /:id/layers [GET] - List all layer definitions [ACTIVE]
+│   ├── /:id/layers [POST] - Create a new layer definition (body: { name, type, ...options }) [ACTIVE]
+│   ├── /:id/layers/:layerName [GET] - Get layer definition by name [ACTIVE]
+│   ├── /:id/layers/:layerName [PATCH] - Update layer properties (body: { description, color, ... }) [ACTIVE]
+│   ├── /:id/layers/:layerName/actions/rename [POST] - Rename a layer (body: { newName }) [ACTIVE]
+│   ├── /:id/layers/:layerName [DELETE] - Delete layer definition (removes from tree) [ACTIVE]
+│   └── /:id/layers/by-id/:layerId [GET] - Get layer definition by ID [ACTIVE]
 │
 ├── /contexts
 │   ├── / [GET] - List all contexts
@@ -106,10 +96,9 @@ baseUrl: /rest/v2
 │   ├── /:id/path [GET] - Get context path (read-only)
 │   ├── /:id/path_array [GET] - Get context path array (read-only)
 │   ├── /:id/device [GET] - Get context device (read-only)
-│   ├── /:id/app [GET] - Get context app (read-only)
-│   ├── /:id/user [GET] - Get context user (read-only)
 │   ├── /:id/identity [GET] - Get context identity (read-only)
 │   ├── /:id/tree [GET] - Get context tree (read-only)
+│   ├── /:id/tree/layers [GET] - Get context tree layers (read-only)
 │   ├── /:id/status [GET] - Get context status (read-only)
 │   ├── /:id/workspace [GET] - Get context workspace (read-only)
 │   ├── /:id/bitmaps [GET] - Get bitmaps (read-only)

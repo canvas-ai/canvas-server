@@ -9,10 +9,14 @@ Tiny standalone wrapper that starts a canvas workspace in a selected folder with
 
 ```
 workspaced create --path /foo/bar/baz --port 8080 --auth-token random-auth-token
-    open <path>
-    destroy <pathOrID>
-    start <pathOrID>
-    stop <pathOrID>
+
+    create <pathOrID>
+    import
+    export
+    start 
+    stop
+    remove
+    destroy
     status <pathOrID>
     set <pathOrID> <name|description|owner|color|acl|token> <opts>
 ```

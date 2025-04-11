@@ -33,7 +33,7 @@ function uuid12(delimiter = true) {
     return delimiter ? id : id.replace(/-/g, '');
 }
 
-function ulid(charLength = 12, idCase = 'lower') {
+function _ulid(charLength = 12, idCase = 'lower') {
     const id = ulid();
     if (idCase === 'lower') {
         return id.substring(0, charLength).toLowerCase();
@@ -129,7 +129,7 @@ export {
     logger,
     uuid,
     uuid12,
-    ulid,
+    _ulid,
     pathArrayToTree,
     pathsToTree,    // To refactor?remove
     pathsToTree2,   // To remove

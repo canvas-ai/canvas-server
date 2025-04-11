@@ -1,10 +1,11 @@
 'use strict';
 
-import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import logger, { createDebug } from '@/utils/log/index.js';
+import { Router } from 'express';
+
+import logger, { createDebug } from '../../../../utils/log/index.js';
+import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:users');
-import ResponseObject from '@/transports/ResponseObject.js';
+
 import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
 
 /**
@@ -93,7 +94,7 @@ import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
  * @returns {express.Router} - Express router
  */
 export default function usersRoutes(options) {
-    const router = express.Router();
+    const userRouter = Router();
     const { auth, userManager, sessionManager } = options;
 
     if (!auth) {
@@ -109,7 +110,7 @@ export default function usersRoutes(options) {
     }
 
     // Apply auth middleware to all routes
-    router.use(auth.getAuthMiddleware());
+    userRouter.use(auth.getAuthMiddleware());
 
     // Create user managers middleware (but don't require them by default)
     const userManagersMiddleware = createUserManagersMiddleware({ userManager });
@@ -133,7 +134,7 @@ export default function usersRoutes(options) {
     };
 
     // Apply user middleware to all routes
-    router.use(getUserMiddleware);
+    userRouter.use(getUserMiddleware);
 
     /**
      * @swagger
@@ -153,7 +154,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/current', async (req, res) => {
+    userRouter.get('/current', async (req, res) => {
         try {
             if (!req.user || !req.user.id) {
                 return res.status(401).json(new ResponseObject().unauthorized('Unauthorized'));
@@ -214,7 +215,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/', async (req, res) => {
+    userRouter.get('/', async (req, res) => {
         try {
             const { limit = 50, offset = 0, status } = req.query;
             const options = {
@@ -278,7 +279,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.post('/', async (req, res) => {
+    userRouter.post('/', async (req, res) => {
         try {
             const { username, email, firstName, lastName, password } = req.body;
 
@@ -329,7 +330,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id', async (req, res) => {
+    userRouter.get('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
@@ -398,7 +399,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.put('/:id', async (req, res) => {
+    userRouter.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const { username, email, firstName, lastName, status } = req.body;
@@ -477,7 +478,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.patch('/:id', async (req, res) => {
+    userRouter.patch('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const updateData = req.body;
@@ -525,7 +526,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.delete('/:id', async (req, res) => {
+    userRouter.delete('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const result = await userManager.deleteUser(id);
@@ -570,7 +571,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id/workspaces', userManagersMiddleware, async (req, res) => {
+    userRouter.get('/:id/workspaces', userManagersMiddleware, async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
@@ -638,7 +639,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id/contexts', userManagersMiddleware, async (req, res) => {
+    userRouter.get('/:id/contexts', userManagersMiddleware, async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
@@ -706,7 +707,7 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/:id/sessions', async (req, res) => {
+    userRouter.get('/:id/sessions', async (req, res) => {
         try {
             const { id } = req.params;
             const user = await userManager.getUser(id);
@@ -723,5 +724,5 @@ export default function usersRoutes(options) {
         }
     });
 
-    return router;
+    return userRouter;
 }

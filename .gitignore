@@ -19,8 +19,7 @@
 !/multiverse/.keep
 
 # Test files and directories(well, non-production files)
-tests/**
-tests/**/*
+tests/data/**
 _test*
 
 # Dev

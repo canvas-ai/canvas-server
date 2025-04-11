@@ -2,15 +2,15 @@
 
 import path from 'path';
 import fs from 'fs/promises';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('user');
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 import Conf from 'conf';
 
 // Managers
-import WorkspaceManager from '@/managers/workspace/index.js';
-import ContextManager from '@/managers/context/index.js';
+import WorkspaceManager from '../../workspace/index.js';
+import ContextManager from '../../context/index.js';
 
 // Constants
 const USER_DIRECTORIES = {
@@ -27,6 +27,7 @@ const USER_DIRECTORIES = {
  * Manages workspaces, contexts, and other user-specific resources
  */
 class User extends EventEmitter {
+    // Immutable properties set at construction
     #id;
     #email;
     #homePath;
@@ -117,10 +118,10 @@ class User extends EventEmitter {
 
             // Initialize workspace manager
             this.#workspaceManager = new WorkspaceManager({
-                rootPath: workspacesPath,
-                owner: this.#id,
+                rootPath: path.join(this.#homePath, USER_DIRECTORIES.workspaces),
+                configPath: path.join(this.#homePath, USER_DIRECTORIES.config),
+                owner: this.#email,
             });
-            await this.#workspaceManager.initialize();
             debug(`Workspace manager initialized for user: ${this.#id}`);
 
             // Initialize context manager
@@ -136,26 +137,17 @@ class User extends EventEmitter {
 
             // Create universe workspace if it doesn't exist
             // Check both in-memory index and on disk
-            if (!this.#workspaceManager.hasWorkspace('universe') && !this.#workspaceManager.hasWorkspaceOnDisk('universe')) {
+            if (!this.#workspaceManager.hasWorkspace('universe')) {
                 await this.#workspaceManager.createWorkspace('universe', {
                     type: 'universe',
                     label: 'Universe',
                     color: '#fff',
                     owner: this.#id,
                 });
-                debug(`Created universe workspace for user: ${this.#id}`);
-            } else if (
-                this.#workspaceManager.hasWorkspaceOnDisk('universe') &&
-                !this.#workspaceManager.hasWorkspace('universe')
-            ) {
-                // If workspace exists on disk but not in memory, load it
-                await this.#workspaceManager.loadWorkspace('universe');
-                debug(`Loaded existing universe workspace for user: ${this.#id}`);
             }
 
             // Activate universe workspace
-            await this.#workspaceManager.openWorkspace('universe');
-            debug(`Activated universe workspace for user: ${this.#id}`);
+            await this.#workspaceManager.startWorkspace('universe');
 
             // Set up event listeners for workspace and context managers
             this.#setupEventListeners();
@@ -190,9 +182,9 @@ class User extends EventEmitter {
 
         try {
             // Close all open workspaces
-            const openWorkspaces = this.#workspaceManager.listOpenWorkspaces();
+            const openWorkspaces = this.#workspaceManager.listWorkspaces();
             for (const workspace of openWorkspaces) {
-                await this.#workspaceManager.closeWorkspace(workspace.id);
+                await this.#workspaceManager.stopWorkspace(workspace.id);
                 debug(`Closed workspace: ${workspace.id}`);
             }
 
@@ -378,7 +370,7 @@ class User extends EventEmitter {
             throw new Error('User runtime not active');
         }
 
-        return this.#workspaceManager.listOpenWorkspaces();
+        return this.#workspaceManager.listWorkspaces();
     }
 
     /**
@@ -702,7 +694,6 @@ class User extends EventEmitter {
                           id: w.id,
                           name: w.name,
                           type: w.type,
-                          isOpen: this.#workspaceManager.isOpen(w.id),
                       }))
                     : [],
         };

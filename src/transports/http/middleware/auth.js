@@ -3,8 +3,9 @@
  */
 
 import passport from 'passport';
-import { createDebug } from '@/utils/log/index.js';
-const debug = createDebug('canvas:transport:http:middleware:auth');
+import createAuthMiddleware from '../../common/middleware/auth.js';
+import { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('transport:http:auth');
 
 /**
  * Create HTTP auth middleware

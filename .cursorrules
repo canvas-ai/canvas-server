@@ -7,7 +7,6 @@
 - Prefer leveraging existing functionality over writing new code
 - Always check if the required functionality already exists in the codebase before implementing it
 - Consolidate duplicate or similar functionality when found
-- Favor composition over inheritance when reusing code
 - Use clear, consistent naming
 - Think thoroughly before coding, always consider multiple suitable options how to achieve a given goal and explain why you think the one you chose is preferred
 - Provide improvement suggestions or technologies you think would fit better to solve a given problem
@@ -26,7 +25,6 @@ We are building "Canvas", a cross-platform desktop overlay to help organize work
 Contexts are represented by a virtual file-system tree. Every tree node("directory") represents a layer linked to a roaring bitmap.
 Layers are unique - a `reports` layer of the `/work/acme/reports` and `/work/reports` context URLs is stored under the same uuid,
 Context layers filter different data based on where they are placed within the context tree.
-- Context URL structure: `sessionID@workspaceID://context/url`, for example `my-laptop@universe://work/acme/devops/jira-1234`
 
 - Canvas is split into the following components:
   - canvas-server: Main server runtime accessible via REST and websockets, current codebase
@@ -42,13 +40,13 @@ Context layers filter different data based on where they are placed within the c
 - We use ES6 vanilla JavaScript and may use TypeScript in the future
 - We use bash and powershell for scripting
 - We use Node.js v20 LTS for the server runtime
-- We use sqlite for the main server db backend for portability (`/server/db/canvas.sqlite`)
+- We use LMDB for the main server db backend `/server/db`)
 - We use Canvas-SynapsD for user workspace databases and as the default JSON document store
 - User data paths:
-  - `/server/data/multiverse/john.doe@email.com/universe/` is the default workspace directory for user data
-  - `/server/data/multiverse/john.doe@email.com/sample-workspace` is the example workspace directory for user
-  - `/server/data/orgname/john.doe@orgname.com/universe/` is the default workspace directory for a organization user
-  - `/server/data/orgname/teamname/` is the default workspace directory for a organization team
+  - `/users/john.doe@email.com/universe/` is the default workspace directory for user data
+  - `/users/john.doe@email.com/sample-workspace` is the example workspace directory for user
+  - `/users/orgname/john.doe@orgname.com/universe/` is the default workspace directory for a organization user
+  - `/users/orgname/teamname/` is the default workspace directory for a organization team
 
 ## Current project file structure
 

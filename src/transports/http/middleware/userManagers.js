@@ -5,9 +5,9 @@
  * are properly initialized and available for routes that need them.
  */
 
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('http:middleware:user-managers');
-import ResponseObject from '@/transports/ResponseObject.js';
+import ResponseObject from '../../ResponseObject.js';
 
 /**
  * Create middleware to ensure user managers are available

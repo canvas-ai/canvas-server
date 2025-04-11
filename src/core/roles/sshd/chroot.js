@@ -9,7 +9,7 @@ import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { createDebug } from '@/utils/log/index.js';
+import { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('canvas:role:sshd:chroot');
 
 /**

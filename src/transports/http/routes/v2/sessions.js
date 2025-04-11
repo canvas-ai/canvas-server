@@ -1,9 +1,9 @@
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import logger, { createDebug } from '@/utils/log/index.js';
 import passport from 'passport';
-import ResponseObject from '@/transports/ResponseObject.js';
 
+
+import logger, { createDebug } from '../../../../utils/log/index.js';
+import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:sessions');
 
 /**

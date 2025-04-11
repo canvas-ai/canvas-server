@@ -7,44 +7,68 @@ import env from './env.js';
 
 // Utils
 import path from 'path';
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
-import { defaultConfig as config } from '@/utils/config/index.js';
-import logger, { createDebug } from '@/utils/log/index.js';
+import { fileURLToPath, pathToFileURL } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { defaultConfig as config } from './utils/config/index.js';
+import logger, { createDebug } from './utils/log/index.js';
 const debug = createDebug('server');
 import EventEmitter from 'eventemitter2';
 
 // Package info
-import pkg from '../package.json' assert { type: 'json' };
+import pkg from '../package.json' with { type: 'json' };
 const { productName, version, description, license } = pkg;
 
 // Database
-import AuthService from '@/services/auth/index.js';
-import Db from '@/services/synapsd/src/backends/lmdb/index.js';
+import AuthService from './services/auth/index.js';
+import Db from './services/synapsd/src/backends/lmdb/index.js';
 
-// Create the main server database
+/**
+ * Server Database
+ */
+
 const db = new Db({
     path: env.CANVAS_SERVER_DB,
 });
 
-// Global Managers
-import UserManager from '@/managers/user/index.js';
+/**
+ * Global Manager singletons
+ */
+
+import UserManager from './managers/user/index.js';
 const userManager = new UserManager({
-    rootPath: env.CANVAS_USER_HOME,
-    db: db.createDataset('users'),
+    rootPath: env.CANVAS_SERVER_USER_HOMES,
+    configPath: path.join(env.CANVAS_SERVER_CONFIG)
 });
 
-import SessionManager from '@/managers/session/index.js';
+import SessionManager from './managers/session/index.js';
 const sessionManager = new SessionManager(
     db.createDataset('sessions'),
     // TODO: Move to config
-    { sessionTimeout: 1000 * 60 * 60 * 24 * 7 }, // 7 days
+    {
+        sessionTimeout: 1000 * 60 * 60 * 24 * 7 // 7 days
+    },
 );
 
+import WorkspaceManager from './managers/workspace/index.js';
+const workspaceManager = new WorkspaceManager({
+    rootPath: env.CANVAS_USER_HOME,
+    configPath: path.join(env.CANVAS_SERVER_CONFIG)
+});
+
 // Event Handlers
-import UserEventHandler from '@/services/events/UserEventHandler.js';
+import UserEventHandler from './services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
     userManager: userManager,
 });
+
+
+/**
+ * Transports
+ */
+
+import HttpTransport from './transports/http/index.js';
+import WsTransport from './transports/ws/index.js';
+
 
 /**
  * Canvas Server
@@ -109,10 +133,12 @@ class Server extends EventEmitter {
         // The userManager doesn't have a getCurrentUser method
         // Instead, return null for now - the individual route handlers
         // will get the workspace manager from the user when needed
-        return null;
+        // return null;
 
         // For routes, the workspaceManager is usually accessed like:
         // req.workspaceManager or from the current user instance
+        // NOW IT'S GLOBAL:
+        return workspaceManager;
     }
 
     // Database getter
@@ -265,6 +291,10 @@ class Server extends EventEmitter {
             // Initialize session manager
             await sessionManager.initialize();
             debug('Session manager initialized');
+
+            // Initialize Workspace Manager
+            await workspaceManager.initialize();
+            debug('Workspace manager initialized');
 
             logger.info('Managers initialized');
         } catch (error) {
@@ -512,17 +542,14 @@ class Server extends EventEmitter {
      * @private
      */
     async #loadModule(type, name, config) {
-        // Convert Windows paths to proper URL format
-        const modulePath = path
-            .join(__dirname, type, name, 'index.js')
-            .replace(/\\/g, '/') // Replace Windows backslashes with forward slashes
-            .replace(/^([A-Z]:)/, ''); // Remove drive letter if present
+        const absolutePath = path.join(__dirname, type, name, 'index.js');
+        const moduleUrl = pathToFileURL(absolutePath).href; // Convert path to file URL
 
         try {
-            debug(`Loading ${type} module: ${name}`);
+            debug(`Loading ${type} module: ${name} from ${moduleUrl}`);
             logger.debug(`${type} config:`, config);
 
-            const module = await import(modulePath);
+            const module = await import(moduleUrl); // Import using the file URL
             const instance = new module.default(config);
 
             debug(`Loaded ${type}: ${name}`);
@@ -530,7 +557,7 @@ class Server extends EventEmitter {
         } catch (error) {
             const isNotFound = error.code === 'ERR_MODULE_NOT_FOUND';
             const errorMessage = isNotFound
-                ? `${type} module not found: ${name}. Please ensure the module exists at ${modulePath}`
+                ? `${type} module not found: ${name}. Please ensure the module exists at ${absolutePath}` // Show original path in error
                 : `Error loading ${type} ${name}: ${error.message}`;
 
             logger.error(errorMessage);
@@ -643,6 +670,9 @@ const server = new Server();
 export default server;
 
 // Export managers for convenience
-export { userManager, sessionManager };
-
+export {
+    userManager,
+    sessionManager,
+    workspaceManager
+};
 

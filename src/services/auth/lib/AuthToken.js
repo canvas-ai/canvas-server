@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('canvas:auth:token');
 
 /**

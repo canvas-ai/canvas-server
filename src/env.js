@@ -28,14 +28,22 @@ const envConfig = {
     // Server paths (global server data)
     CANVAS_SERVER_HOME: SERVER_HOME,
     CANVAS_SERVER_CONFIG: process.env.CANVAS_SERVER_CONFIG || path.join(SERVER_HOME, 'config'),
+    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
     CANVAS_SERVER_CACHE: process.env.CANVAS_SERVER_CACHE || path.join(SERVER_HOME, 'cache'),
     CANVAS_SERVER_DB: process.env.CANVAS_SERVER_DB || path.join(SERVER_HOME, 'db'),
     CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
     CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
-    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
+    CANVAS_SERVER_USER_HOMES: process.env.CANVAS_SERVER_USER_HOMES || path.join(SERVER_ROOT, 'users'),
 
     // User paths (user data)
     CANVAS_USER_HOME: USER_HOME,
+    CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'Config'),
+    CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'Cache'),
+    CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'DB'),
+    CANVAS_USER_APPS: process.env.CANVAS_USER_APPS || path.join(USER_HOME, 'Apps'),
+    CANVAS_USER_ROLES: process.env.CANVAS_USER_ROLES || path.join(USER_HOME, 'Roles'),
+    CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'Data'),
+    CANVAS_USER_WORKSPACES: process.env.CANVAS_USER_WORKSPACES || path.join(USER_HOME, 'Workspaces'),
 
     // Admin user creation
     CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
@@ -104,15 +112,6 @@ function getUserHome() {
             return path.join(homeDir, '.canvas');
         }
     }
-    return path.join(SERVER_ROOT, 'users');
-}
 
-async function ensureDirectories(paths) {
-    for (const [key, dir] of Object.entries(paths)) {
-        try {
-            await fs.mkdir(dir, { recursive: true });
-        } catch (err) {
-            throw new Error(`Failed to create ${key} directory at ${dir}: ${err.message}`);
-        }
-    }
+    return path.join(SERVER_ROOT, 'users');
 }

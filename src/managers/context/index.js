@@ -1,6 +1,6 @@
 // Utils
 import EventEmitter from 'eventemitter2';
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('context-manager');
 
 // Includes

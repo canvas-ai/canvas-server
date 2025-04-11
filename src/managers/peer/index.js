@@ -1,6 +1,6 @@
 'use strict';
 
-import logger, { createDebug } from '@/utils/log/index.js';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('peer-manager');
 import EventEmitter from 'eventemitter2';
 import Peer from './lib/Peer.js';
