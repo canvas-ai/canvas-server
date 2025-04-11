@@ -27,15 +27,14 @@ import {
 
 class Workspace extends EventEmitter {
 
-    // Path is set at construction time based on manager info
-    #path;
+
 
     // Runtime state
     #status = WORKSPACE_STATUS.INACTIVE; // Internal runtime status
     #db = null;
     #tree = null;
 
-    // Injected config store
+    #rootPath;
     #configStore;
 
     /**
@@ -50,10 +49,10 @@ class Workspace extends EventEmitter {
         super(options.eventEmitterOptions);
 
         // Essential dependencies: path and configStore
-        if (!options.path) throw new Error('Workspace path is required');
+        if (!options.rootPath) throw new Error('Workspace rootPath is required');
         if (!options.configStore) throw new Error('Config store (Conf instance) is required');
 
-        this.#path = options.path;
+        this.#rootPath = options.path;
         this.#configStore = options.configStore;
 
         // Validate essential configuration loaded from configStore
@@ -91,8 +90,8 @@ class Workspace extends EventEmitter {
     /**
      * Path Getter (set during construction)
      */
-    get path() { return this.#path; }
-
+    get path() { return this.#rootPath; }
+    get rootPath() { return this.#rootPath; }
     /**
      * Internal Resource Getters
      */

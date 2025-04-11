@@ -105,14 +105,14 @@ class WorkspaceManager extends EventEmitter {
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
         // Validate essential options
-        if (!options.workspaceRootPath || typeof options.workspaceRootPath !== 'string') {
-            throw new Error('Workspace root path (workspaceRootPath) is required');
+        if (!options.rootPath || typeof options.rootPath !== 'string') {
+            throw new Error('Workspace root path (rootPath) is required');
         }
         if (!options.configPath || typeof options.configPath !== 'string') {
             throw new Error('Workspace index config path (configPath) is required');
         }
 
-        this.#rootPath = options.workspaceRootPath;
+        this.#rootPath = options.rootPath;
         // configPath should be the full path to the JSON file, e.g., /path/to/config/workspaces.json
         this.#configPath = options.configPath;
         const configDir = path.dirname(this.#configPath);
@@ -142,7 +142,7 @@ class WorkspaceManager extends EventEmitter {
                 // fileExtension: 'json', // Usually not needed if configName is correct
                 // projectVersion: pkg.version, // Optional: link config to app version
             });
-            debug(`Global workspace index loaded from: ${this.#index.path}`);
+            debug(`Global workspace index loaded from: ${this.#index.rootPath}`);
         } catch (confError) {
             throw new Error(`Failed to load global workspace index at ${this.#configPath}: ${confError.message}`);
         }
@@ -180,7 +180,7 @@ class WorkspaceManager extends EventEmitter {
 
         for (const workspaceID in workspaceIndex) {
             const indexEntry = workspaceIndex[workspaceID];
-            const workspacePath = indexEntry.path;
+            const workspacePath = indexEntry.rootPath;
             let currentStatus = indexEntry.status;
             let newStatus = currentStatus;
 
@@ -267,7 +267,7 @@ class WorkspaceManager extends EventEmitter {
      * Does NOT start the workspace.
      * @param {string} name - Desired name for the workspace (used for ID and default path).
      * @param {Object} [options={}] - Configuration options (overrides defaults).
-     * @param {string} [options.path] - Optional custom path for the workspace.
+     * @param {string} [options.rootPath] - Optional custom path for the workspace.
      * @param {string} [options.owner] - Owner identifier (required).
      * @returns {Promise<Object>} Metadata of the created workspace from the global index.
      */
@@ -282,14 +282,22 @@ class WorkspaceManager extends EventEmitter {
         }
 
         const workspaceID = this.#sanitizeNameForID(name); // Use sanitized name as ID
-        const workspacePath = otherOptions.path ? path.resolve(otherOptions.path) : path.join(this.#rootPath, workspaceID);
+        const workspacePath = otherOptions.rootPath ?
+            path.resolve(otherOptions.rootPath) :
+            path.join(this.#rootPath, otherOptions.owner, workspaceID);
 
-        // Check if workspace ID or path is already indexed
+        // If workspaceID is already indexed, throw an error
         if (this.index[workspaceID]) {
             throw new Error(`Workspace ID "${workspaceID}" already registered.`);
         }
+
+        // If workspacePath exists, throw an error
+        if (existsSync(workspacePath)) {
+            throw new Error(`Workspace path "${workspacePath}" already exists.`);
+        }
+
         // Use Object.values on the index getter to check metadata
-        if (Object.values(this.index).some(ws => ws.path === workspacePath)) {
+        if (Object.values(this.index).some(ws => ws.rootPath === workspacePath)) {
             throw new Error(`Workspace path "${workspacePath}" is already in use.`);
         }
 
@@ -644,7 +652,7 @@ class WorkspaceManager extends EventEmitter {
         // Stop the REST API service first
         await this.stopRestApi(workspaceID, userID); // Pass userID
 
-        const workspacePath = indexEntry.path;
+        const workspacePath = indexEntry.rootPath;
 
         // Stop and close the workspace if it's loaded
         if (this.#workspaces.has(workspaceID)) {
@@ -747,7 +755,7 @@ class WorkspaceManager extends EventEmitter {
                 finalWorkspacePath = importPath; // Use the source path directly
                 // Check if path conflicts with existing *indexed* paths
                 // Note: Access check isn't directly applicable here as we're checking global paths
-                if (Object.values(this.index).some(ws => ws.path === finalWorkspacePath)) {
+                if (Object.values(this.index).some(ws => ws.rootPath === finalWorkspacePath)) {
                     throw new Error(`Workspace path "${finalWorkspacePath}" is already indexed.`);
                 }
                 debug(`Importing workspace "${workspaceID}" in-place from: ${finalWorkspacePath}`);
@@ -853,7 +861,7 @@ class WorkspaceManager extends EventEmitter {
         //     throw new Error(`Workspace "${workspaceID}" is marked as active in index. Stop it before exporting.`);
         // }
 
-        const sourcePath = indexEntry.path;
+        const sourcePath = indexEntry.rootPath;
         let outputZipPath = dstPath;
 
         // If dstPath is a directory, create zip name based on workspace ID
@@ -1004,7 +1012,7 @@ class WorkspaceManager extends EventEmitter {
         // If not loaded OR instance update failed/not attempted, update workspace.json directly
         if (!workspaceInstance || !updateSuccessful) {
              debug(`Updating property "${property}" directly in workspace.json for "${workspaceID}".`);
-            const workspacePath = indexEntry.path;
+            const workspacePath = indexEntry.rootPath;
             try {
                 const configStore = new Conf({
                     configName: 'workspace',
@@ -1118,11 +1126,11 @@ class WorkspaceManager extends EventEmitter {
             }
             // Only read config if necessary (not provided or only index metadata provided)
             try {
-                 const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.path });
+                 const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.rootPath });
                  owner = wsConfig.get('owner');
                  acl = wsConfig.get('acl', {}); // Default to empty object if missing
             } catch (err) {
-                 logger.error(`Access check failed for ${workspaceID}: Could not read workspace config at ${indexEntry.path}: ${err.message}`);
+                 logger.error(`Access check failed for ${workspaceID}: Could not read workspace config at ${indexEntry.rootPath}: ${err.message}`);
                  return false; // Cannot determine access if config is unreadable
             }
         }
@@ -1333,7 +1341,7 @@ class WorkspaceManager extends EventEmitter {
         // Load workspace config to get API port and token
         let port, token;
         try {
-            const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.path });
+            const wsConfig = new Conf({ configName: 'workspace', cwd: indexEntry.rootPath });
             port = wsConfig.get('restApi.port');
             token = wsConfig.get('restApi.token');
         } catch (err) {
@@ -1355,7 +1363,7 @@ class WorkspaceManager extends EventEmitter {
             name: pm2Name,
             script: scriptPath,
             env: {
-                CANVAS_WS_PATH: indexEntry.path,
+                CANVAS_WS_PATH: indexEntry.rootPath,
                 CANVAS_WS_API_PORT: port,
                 CANVAS_WS_API_TOKEN: token, // Pass the actual token
                 NODE_ENV: process.env.NODE_ENV || 'development' // Pass environment
@@ -1524,7 +1532,7 @@ class WorkspaceManager extends EventEmitter {
         //     return null;
         // }
 
-        const workspacePath = indexEntry.path;
+        const workspacePath = indexEntry.rootPath;
         let newStatus = indexEntry.status;
 
         // Don't try to open if known bad state (checkAccess doesn't prevent this)

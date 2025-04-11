@@ -332,9 +332,24 @@ class Context extends EventEmitter {
                  }
             }
         }
-        // TODO: Implement Workspace Layer Locking logic here before committing the change
-        // await this.#workspace.releaseLock(this.#baseUrl, this.#id); // Release old lock if applicable
-        // await this.#workspace.acquireLock(newBaseUrl, this.#id); // Acquire new lock if applicable
+        /*
+         * TODO: Implement Workspace Layer Locking logic here before committing the change
+         * This needs careful thought about atomicity and error handling.
+         * The identifier should uniquely identify this context and user.
+         */
+        const lockIdentifier = `${this.#user.email}/${this.#id}`;
+        // Placeholder logic:
+        // try {
+        //     if (this.#baseUrl !== '/') {
+        //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
+        //     }
+        //     if (newBaseUrl !== '/') {
+        //         await this.#workspace.acquireLock(newBaseUrl, lockIdentifier);
+        //     }
+        // } catch (lockError) {
+        //     // Handle lock acquisition/release failure - potentially revert?
+        //     throw new Error(`Failed to update layer locks for base URL: ${lockError.message}`);
+        // }
 
 
         debug(`Setting base URL from "${this.#baseUrl}" to "${newBaseUrl}"`);
@@ -361,6 +376,21 @@ class Context extends EventEmitter {
     destroy() {
         // Perform any cleanup needed
         this.#isLocked = true;
+
+        /*
+         * TODO: Release base URL lock if held
+         * The identifier should uniquely identify this context and user.
+         */
+        // Placeholder logic:
+        // if (this.#baseUrl && this.#baseUrl !== '/') {
+        //     const lockIdentifier = `${this.#user.email}/${this.#id}`;
+        //     try {
+        //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
+        //     } catch (unlockError) {
+        //          logger.error(`Failed to release lock for context ${this.#id} on destroy: ${unlockError.message}`);
+        //          // Continue cleanup even if unlock fails?
+        //     }
+        // }
 
         // Clear references
         this.#db = null;
@@ -389,6 +419,21 @@ class Context extends EventEmitter {
 
         if (this.#workspaceManager.hasWorkspace(workspace)) {
             try {
+                /*
+                 * TODO: Release base URL lock in the *old* workspace if held before switching.
+                 * The identifier should uniquely identify this context and user.
+                 */
+                // Placeholder logic:
+                // if (this.#baseUrl && this.#baseUrl !== '/') {
+                //     const lockIdentifier = `${this.#user.email}/${this.#id}`;
+                //     try {
+                //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
+                //     } catch (unlockError) {
+                //          logger.warn(`Failed to release lock for context ${this.#id} before switching workspace: ${unlockError.message}`);
+                //          // Should we prevent the switch? Or just log?
+                //     }
+                // }
+
                 // Open the workspace asynchronously
                 this.#workspace = await this.#workspaceManager.openWorkspace(workspace);
                 this.#db = this.#workspace.db;

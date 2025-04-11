@@ -44,14 +44,15 @@ import SessionManager from './managers/session/index.js';
 const sessionManager = new SessionManager(
     db.createDataset('sessions'),
     // TODO: Move to config
-    { sessionTimeout: 1000 * 60 * 60 * 24 * 7 }, // 7 days
+    {
+        sessionTimeout: 1000 * 60 * 60 * 24 * 7 // 7 days
+    },
 );
 
 import WorkspaceManager from './managers/workspace/index.js';
-const workspaceRootPath = env.CANVAS_WORKSPACE_HOME;
 const workspaceManager = new WorkspaceManager({
-    workspaceRootPath: workspaceRootPath,
-    configPath: path.join(env.CANVAS_SERVER_CONFIG, 'workspaces.json')
+    rootPath: env.CANVAS_USER_HOME,
+    configPath: path.join(env.CANVAS_SERVER_CONFIG)
 });
 
 // Event Handlers
