@@ -5,6 +5,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { existsSync } from 'fs';
+import Jim from '../src/utils/jim/index.js';
+
+const jim = new Jim({
+    rootPath: path.join(os.tmpdir(), 'canvas-test-wsroot'),
+});
 
 const rootPath = path.join(os.tmpdir(), 'canvas-test-wsroot');
 const customPath = path.join(os.tmpdir(), 'canvas-test-custom-ws');
@@ -53,7 +58,7 @@ async function runTests() {
     // Create a new manager instance AFTER cleanup to ensure clean index
     const wm = new WorkspaceManager({
         rootPath: rootPath, // Use workspaceRootPath instead of rootPath
-        configPath: managerConfigPath // Explicitly provide config path
+        index: jim.createIndex('workspaces'),
     });
 
     // --- Test Initial State --- (Manager does initial scan)
@@ -70,21 +75,32 @@ async function runTests() {
     console.log('\n--- Testing createWorkspace ---');
     let ws1Meta, wsCustomMeta;
     try {
-        ws1Meta = await wm.createWorkspace(testUserID, 'test-ws-1', { description: 'My First Test WS' });
+        ws1Meta = await wm.createWorkspace('test-ws-1', testUserID, {
+            workspaceRootPath: rootPath, // Explicitly pass root path via options
+            description: 'My First Test WS'
+        });
         console.log('Created ws1 (metadata): ', ws1Meta);
         if (!existsSync(ws1Meta.rootPath)) throw new Error(`WS1 directory not created at ${ws1Meta.rootPath}`);
         if (!existsSync(path.join(ws1Meta.rootPath, 'workspace.json'))) throw new Error(`WS1 workspace.json not created`);
         console.log('WS1 directory and config file created successfully.');
-        if (!wm.index[ws1Meta.id]) throw new Error('WS1 not found in index after creation.');
+        if (!wm.index.find(ws => ws.id === ws1Meta.id)) throw new Error('WS1 not found in index after creation.');
         if (wm.isLoaded(testUserID, ws1Meta.id)) console.error('FAIL: Workspace loaded immediately after creation.');
         else console.log('PASS: Workspace not loaded immediately after creation.');
 
-        wsCustomMeta = await wm.createWorkspace(testUserID, 'custom-path-ws', { path: customPath });
+        // Create second workspace using the default rootPath (don't specify in options)
+        wsCustomMeta = await wm.createWorkspace('custom-path-ws', testUserID);
         console.log('Created custom path ws (metadata): ', wsCustomMeta);
         if (!existsSync(wsCustomMeta.rootPath)) throw new Error(`Custom WS directory not created at ${wsCustomMeta.rootPath}`);
         if (!existsSync(path.join(wsCustomMeta.rootPath, 'workspace.json'))) throw new Error(`Custom WS workspace.json not created`);
         console.log('Custom WS directory and config file created successfully.');
-        if (!wm.index[wsCustomMeta.id]) throw new Error('Custom WS not found in index after creation.');
+        // Check if it was created in the correct default location
+        const expectedCustomPath = path.join(rootPath, testUserID, 'custom-path-ws');
+        if (wsCustomMeta.rootPath !== expectedCustomPath) {
+             console.error(`FAIL: Custom WS created at wrong path. Expected ${expectedCustomPath}, got ${wsCustomMeta.rootPath}`);
+        } else {
+            console.log(`PASS: Custom WS created at default path ${expectedCustomPath}`);
+        }
+        if (!wm.index.find(ws => ws.id === wsCustomMeta.id)) throw new Error('Custom WS not found in index after creation.');
         if (wm.isLoaded(testUserID, wsCustomMeta.id)) console.error('FAIL: Custom workspace loaded immediately after creation.');
         else console.log('PASS: Custom workspace not loaded immediately after creation.');
 
@@ -97,13 +113,15 @@ async function runTests() {
     }
     // Test duplicate creation (should fail)
     try {
-        await wm.createWorkspace(testUserID, 'test-ws-1');
+        // Try creating with same name (implies same ID) in the default path
+        await wm.createWorkspace('test-ws-1', testUserID);
         console.error('FAIL: Allowed duplicate workspace ID creation.');
     } catch (err) {
         console.log('PASS: Prevented duplicate workspace ID creation:', err.message);
     }
      try {
-        await wm.createWorkspace(testUserID, 'another-ws-custom', { path: customPath });
+        // Try creating another workspace that would resolve to the same path as wsCustomMeta
+        await wm.createWorkspace('custom-path-ws', testUserID);
         console.error('FAIL: Allowed duplicate workspace path creation.');
     } catch (err) {
         console.log('PASS: Prevented duplicate workspace path creation:', err.message);
@@ -395,13 +413,13 @@ async function runTests() {
     try {
         // Use the imported workspace ID which should exist in index (status IMPORTED or AVAILABLE)
         const importedId = importedWsMeta?.id;
-        if (!importedId || !wm.index[importedId]) throw new Error('Imported workspace ID not available in index for remove test.');
-        const importedPath = wm.index[importedId].rootPath; // Get path before removing
+        if (!importedId || !wm.index.find(ws => ws.id === importedId)) throw new Error('Imported workspace ID not available in index for remove test.');
+        const importedPath = wm.index.find(ws => ws.id === importedId).rootPath; // Get path before removing
 
         const removed = await wm.removeWorkspace(testUserID, importedId);
         if (!removed) throw new Error(`removeWorkspace returned false for existing workspace ${importedId}`);
         console.log(`Removed workspace ${importedId} from index.`);
-        if (wm.index[importedId]) throw new Error('Workspace still present in index after removal.');
+        if (wm.index.find(ws => ws.id === importedId)) throw new Error('Workspace still present in index after removal.');
         console.log('PASS: Workspace removed from index.');
         // Verify files still exist (this is the CORRECT behavior for removeWorkspace)
         if (existsSync(importedPath)) {
@@ -419,11 +437,11 @@ async function runTests() {
     // --- Test destroyWorkspace --- Removes from index and deletes files
     console.log('\n--- Testing destroyWorkspace ---');
     try {
-        // Create one last workspace to destroy
-        const destroyMeta = await wm.createWorkspace(testUserID, 'to-be-destroyed');
+        // Create one last workspace to destroy (using default path)
+        const destroyMeta = await wm.createWorkspace('to-be-destroyed', testUserID);
         const destroyId = destroyMeta.id;
-        const destroyPath = destroyMeta.path;
-        console.log(`Created workspace ${destroyId} for destroy test.`);
+        const destroyPath = destroyMeta.rootPath; // Use rootPath from metadata
+        console.log(`Created workspace ${destroyId} at ${destroyPath} for destroy test.`);
 
         // Open and Start it first to test destroying an active workspace
         const destroyOpened = await wm.openWorkspace(testUserID, destroyId);
@@ -433,7 +451,7 @@ async function runTests() {
         const destroyed = await wm.destroyWorkspace(testUserID, destroyId);
         if (!destroyed) throw new Error(`destroyWorkspace returned false for existing workspace ${destroyId}`);
         console.log(`Destroyed workspace ${destroyId}.`);
-        if (wm.index[destroyId]) throw new Error('Workspace still present in index after destroy.');
+        if (wm.index.find(ws => ws.id === destroyId)) throw new Error('Workspace still present in index after destroy.');
         console.log('PASS: Workspace removed from index after destroy.');
         // Verify files are deleted
         if (existsSync(destroyPath)) {

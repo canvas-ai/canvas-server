@@ -13,6 +13,7 @@ import Session from './lib/Session.js';
  */
 
 class SessionManager extends EventEmitter {
+
     #sessionStore;
     #sessionOptions;
     #sessions = new Map();
@@ -21,9 +22,9 @@ class SessionManager extends EventEmitter {
     constructor(sessionStore, sessionOptions = {}) {
         super();
 
-        if (!sessionStore) {
-            throw new Error('Session store is required');
-        }
+        //if (!sessionStore) {
+        //    throw new Error('Session store is required');
+        //}
 
         this.#sessionStore = sessionStore;
         this.#sessionOptions = {

@@ -13,6 +13,7 @@ import { defaultConfig as config } from './utils/config/index.js';
 import logger, { createDebug } from './utils/log/index.js';
 const debug = createDebug('server');
 import EventEmitter from 'eventemitter2';
+import Jim from './utils/jim/index.js';
 
 // Package info
 import pkg from '../package.json' with { type: 'json' };
@@ -30,29 +31,29 @@ const db = new Db({
     path: env.CANVAS_SERVER_DB,
 });
 
+const jim = new Jim({
+    rootPath: env.CANVAS_SERVER_DB,
+});
+
 /**
  * Global Manager singletons
  */
 
-import UserManager from './managers/user/index.js';
-const userManager = new UserManager({
-    rootPath: env.CANVAS_SERVER_USER_HOMES,
-    configPath: path.join(env.CANVAS_SERVER_CONFIG)
+import SessionManager from './managers/session/index.js';
+const sessionManager = new SessionManager({
+    index: jim.createIndex('sessions')
 });
 
-import SessionManager from './managers/session/index.js';
-const sessionManager = new SessionManager(
-    db.createDataset('sessions'),
-    // TODO: Move to config
-    {
-        sessionTimeout: 1000 * 60 * 60 * 24 * 7 // 7 days
-    },
-);
+import UserManager from './managers/user/index.js';
+const userManager = new UserManager({
+    rootPath: env.CANVAS_SERVER_HOMES,
+    index: jim.createIndex('users')
+});
 
 import WorkspaceManager from './managers/workspace/index.js';
 const workspaceManager = new WorkspaceManager({
-    rootPath: env.CANVAS_USER_HOME,
-    configPath: path.join(env.CANVAS_SERVER_CONFIG)
+    rootPath: env.CANVAS_SERVER_HOMES,
+    index: jim.createIndex('workspaces')
 });
 
 // Event Handlers
@@ -98,53 +99,25 @@ class Server extends EventEmitter {
      */
     constructor(options = { mode: env.CANVAS_SERVER_MODE }) {
         super();
+        debug('Initializing canvas-server..');
         debug('Canvas server options:', options);
+        debug('Environment options:', JSON.stringify(env, null, 2));
         this.#mode = options.mode;
         this.#db = db;
     }
 
     // Getters
-    get mode() {
-        return this.#mode;
-    }
-    get version() {
-        return `${productName} v${version} | ${description}`;
-    }
-    get license() {
-        return license;
-    }
-    get status() {
-        return this.#status;
-    }
-
-    // Service getters
-    get services() {
-        return this.#services;
-    }
+    get mode() { return this.#mode; }
+    get version() { return `${productName} v${version} | ${description}`; }
+    get status() { return this.#status; }
+    get services() { return this.#services; }
+    get transports() { return this.#transports; }
+    get db() { return this.#db; }
 
     // Manager getters
-    get userManager() {
-        return userManager;
-    }
-    get sessionManager() {
-        return sessionManager;
-    }
-    get workspaceManager() {
-        // The userManager doesn't have a getCurrentUser method
-        // Instead, return null for now - the individual route handlers
-        // will get the workspace manager from the user when needed
-        // return null;
-
-        // For routes, the workspaceManager is usually accessed like:
-        // req.workspaceManager or from the current user instance
-        // NOW IT'S GLOBAL:
-        return workspaceManager;
-    }
-
-    // Database getter
-    get db() {
-        return this.#db;
-    }
+    get userManager() { return userManager; }
+    get sessionManager() { return sessionManager; }
+    get workspaceManager() { return workspaceManager; }
 
     /**
      * Initialize the server
@@ -253,27 +226,8 @@ class Server extends EventEmitter {
     }
 
     /**
-     * Get server status information
-     * @returns {Object} Server status
+     * Private methods
      */
-    getStatus() {
-        return {
-            app: {
-                appName: productName,
-                version,
-                description,
-                license,
-            },
-            mode: this.#mode,
-            status: this.#status,
-            users: {
-                count: userManager.users.size,
-            },
-            sessions: {
-                count: sessionManager.sessions.size,
-            },
-        };
-    }
 
     /**
      * Initialize managers
@@ -673,6 +627,7 @@ export default server;
 export {
     userManager,
     sessionManager,
-    workspaceManager
+    workspaceManager,
+    jim
 };
 
