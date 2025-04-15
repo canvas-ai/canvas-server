@@ -111,39 +111,13 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} options.configPath - Path to the configuration file (workspaces.json) for the index.
      * @param {object} [options.eventEmitterOptions] - Options for EventEmitter2.
      */
-    constructor(options = {}) {
-        super(options.eventEmitterOptions || {});
-
-        if (!options.rootPath) {
-            throw new Error('Root path is required');
-        }
-
-        if (!options.index) {
-            throw new Error('Index instance is required');
-        }
-
-        this.#rootPath = options.rootPath;
-        this.#index = options.index;
-
-        // Perform initial scan and load valid workspaces listed in the index
-        if (!Array.isArray(this.#index.get('workspaces'))) {
-            this.#index.set('workspaces', []);
-        }
-
+    constructor({ rootPath, index }) {
+        super();
+        if (!rootPath || !index) throw new Error('rootPath and index are required');
+        this.#rootPath = rootPath;
+        this.#index = index;
+        this.#workspaces = new Map();
         this.#performInitialScan();
-    }
-
-    /**
-     * Async initialization tasks (if any).
-     * Called by Server.js after constructor.
-     */
-    async initialize() {
-         // Currently, all essential setup is done in the constructor (#performInitialScan).
-         // This method is here to fulfill the interface expected by Server.js.
-         // Add any future async initialization steps here.
-         // Example: Load workspaces marked for auto-start?
-        // await this.startAutoStartWorkspaces();
-        debug(`WorkspaceManager initialized with rootPath: ${this.#rootPath}`);
     }
 
     /**
@@ -151,8 +125,7 @@ class WorkspaceManager extends EventEmitter {
      */
 
     get rootPath() { return this.#rootPath; }
-    // Updated getter for the index to return the array
-    get index() { return this.#getWorkspacesArrayIndex(); }
+    get index() { return this.#index.get('workspaces', []); }
     get workspaces() { return Array.from(this.#workspaces.values()); }
     get activeWorkspaces() {
         return this.workspaces.filter(ws => ws.status === WORKSPACE_STATUS.ACTIVE);
@@ -163,114 +136,33 @@ class WorkspaceManager extends EventEmitter {
      */
 
     async createWorkspace(name, owner, options = {}) {
-        const workspaceRootPath = options.workspaceRootPath || this.#rootPath;
-
-        if (!workspaceRootPath) {
-            throw new Error('Workspace rootPath is required to create a workspace. Either provide it in options or ensure the manager has a default rootPath.');
-        }
-
-        if (!name || typeof name !== 'string') {
-            throw new Error('Workspace name (string) is required');
-        }
-
-        if (!owner || typeof owner !== 'string') {
-            throw new Error('Workspace owner (string) is required');
-        }
-
         const workspaceID = this.#sanitizeWorkspaceName(name);
-        const workspacePath = path.join(workspaceRootPath, owner, workspaceID);
+        const workspacePath = path.join(this.#rootPath, owner, workspaceID);
 
-        // Check for conflicts using the new index structure (array)
-        const existingWorkspaces = this.index; // Use getter which calls #getWorkspacesArrayIndex()
-        if (existingWorkspaces.some(ws => ws.id === workspaceID)) {
-            throw new Error(`Workspace ID "${workspaceID}" already registered.`);
-        }
-        if (existingWorkspaces.some(ws => ws.rootPath === workspacePath)) {
-            throw new Error(`Workspace path "${workspacePath}" is already in use.`);
-        }
+        this.#validateWorkspaceDoesNotExist(workspaceID, workspacePath);
 
-        // If workspacePath exists on disk (but not indexed), throw an error
-        if (existsSync(workspacePath)) {
-            throw new Error(`Workspace path "${workspacePath}" already exists.`);
-        }
-
-        // Use Object.values on the index getter to check metadata
-        if (Object.values(this.index).some(ws => ws.rootPath === workspacePath)) {
-            throw new Error(`Workspace path "${workspacePath}" is already in use.`);
-        }
-
-        // Prepare configuration for workspace.json
-        const creationTime = new Date().toISOString();
-        // Remove workspaceRootPath from options before passing to parser
-        const creationOptions = { ...options };
-        delete creationOptions.workspaceRootPath;
-
-        let workspaceConfigData = this.#parseWorkspaceOptions({ // Use helper to merge defaults
+        const configData = this.#parseWorkspaceOptions({
             id: workspaceID,
-            name: name, // Keep original name for display?
-            owner: owner, // Explicitly pass owner
-            ...creationOptions, // User options override defaults
-            // Ensure crucial fields are set
-            created: creationTime,
-            updated: creationTime,
-            status: WORKSPACE_STATUS.AVAILABLE, // Initial status in workspace.json
-            // Ensure restApi structure exists if not provided in options
-            restApi: options?.restApi || { port: null, token: null },
+            name,
+            owner,
+            acl: { [owner]: 'owner' },
+            ...options
         });
 
-        // Validate the final config data *before* creating files
-        if (!this.#validateWorkspaceConfig(workspaceConfigData)) {
-            throw new Error('Invalid workspace configuration options provided.');
-        }
+        await this.#createWorkspaceDirectories(workspacePath);
+        await this.#writeWorkspaceConfig(workspacePath, configData);
 
-        // Create workspace directory and standard subdirectories
-        await this.#ensureDirectoryExists(workspacePath);
-        for (const dirName of Object.values(WORKSPACE_DIRECTORIES)) {
-            await this.#ensureDirectoryExists(path.join(workspacePath, dirName));
-        }
-
-        // Create the workspace's own config file (workspace.json)
-        const workspaceConfigFile = path.join(workspacePath, WORKSPACE_CONFIG_FILENAME);
-        try {
-            // Instantiate Conf - this will create the file with the data if it doesn't exist
-            const configDir = path.dirname(workspaceConfigFile);
-            const configName = path.basename(workspaceConfigFile, '.json');
-            const workspaceConf = new Conf({ configName: configName, cwd: configDir });
-
-            // Set all properties at once using the validated config data
-            for (const key in workspaceConfigData) {
-                 workspaceConf.set(key, workspaceConfigData[key]);
-            }
-
-            debug(`Created workspace config via Conf at: ${workspaceConf.path}`); // Conf.path gives the full path
-        } catch (err) {
-            // Clean up created directories if config write fails?
-            logger.error(`Failed to write workspace config file via Conf for ${workspaceID}: ${err.message}`);
-            // Attempt cleanup
-            try {
-                await fsPromises.rm(workspacePath, { recursive: true, force: true });
-            } catch (cleanupErr) {
-                logger.error(`Failed to clean up temp workspace directory ${workspacePath}: ${cleanupErr.message}`);
-            }
-            throw new Error(`Failed to write workspace config file via Conf for ${workspaceID}: ${err.message}`);
-        }
-
-        // Add entry to the global index (workspaces array)
-        const indexEntry = {
-            id: workspaceID,
-            rootPath: workspacePath, // Standardize on rootPath for the index entry
-            status: WORKSPACE_STATUS.AVAILABLE, // Set to available after successful import/copy
-            indexed: new Date().toISOString(),
-            lastAccessed: null,
-            restApiStatus: WORKSPACE_API_STATUS.STOPPED,
-            pm2Name: null,
-        };
-
-        this.#addIndexEntry(indexEntry);
-        debug(`Added workspace "${workspaceID}" to global index array.`);
-
+        const indexEntry = this.#addWorkspaceToIndex(workspaceID, workspacePath);
         this.emit('workspace:created', indexEntry);
-        return indexEntry; // Return the metadata added to the index
+        return indexEntry;
+    }
+
+    async removeWorkspace(userID, workspaceID) {
+        this.#validateUserAccess(userID, workspaceID, 'write');
+        await this.stopWorkspace(userID, workspaceID);
+        await this.closeWorkspace(userID, workspaceID);
+        this.#removeWorkspaceFromIndex(workspaceID);
+        this.emit('workspace:removed', { id: workspaceID });
     }
 
     /**
@@ -411,97 +303,17 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace|null>} The loaded Workspace instance or null if opening failed or access denied.
      */
     async openWorkspace(userID, workspaceID) {
-        if (!userID) {
-            throw new Error('UserID is required to open a workspace.');
-        }
-        // Access Check: Requires read access
-        if (!this.#checkAccess(workspaceID, userID, 'read')) {
-            // No warning log here, just return null as if not found/accessible
-            debug(`User ${userID} denied read access to open workspace ${workspaceID}.`);
-            return null;
-        }
+        this.#validateUserAccess(userID, workspaceID, 'read');
+        if (this.#workspaces.has(workspaceID)) return this.#workspaces.get(workspaceID);
 
-        debug(`Attempting to open workspace ${workspaceID}...`);
+        const workspacePath = this.#getWorkspacePath(workspaceID);
+        const configStore = this.#loadWorkspaceConfig(workspacePath);
+        const workspace = new Workspace({ rootPath: workspacePath, configStore });
 
-        // 1. Check if already loaded (access check already done)
-        if (this.#workspaces.has(workspaceID)) {
-            debug(`Workspace "${workspaceID}" is already loaded.`);
-            return this.#workspaces.get(workspaceID);
-        }
-
-        // 2. Get index entry from array
-        const indexEntry = this.#findIndexEntry(workspaceID);
-        if (!indexEntry) { // Should not happen if #checkAccess passed and index is consistent
-             logger.error(`Workspace "${workspaceID}" not found in index array after access check. Inconsistency?`);
-             return null;
-        }
-
-        const workspacePath = indexEntry.rootPath;
-        let newStatus = indexEntry.status;
-
-        // Don't try to open if known bad state (checkAccess doesn't prevent this)
-        if (newStatus === WORKSPACE_STATUS.NOT_FOUND || newStatus === WORKSPACE_STATUS.ERROR) {
-            logger.warn(`Attempted to open workspace "${workspaceID}" with status ${newStatus}. Aborting.`);
-            return null;
-        }
-        // Don't try to open if REMOVED
-         if (newStatus === WORKSPACE_STATUS.REMOVED) {
-            logger.warn(`Attempted to open workspace "${workspaceID}" which is marked as REMOVED. Aborting.`);
-            return null;
-        }
-
-        // 3. Check path existence
-        if (!existsSync(workspacePath)) {
-            debug(`Workspace path not found for ${workspaceID}: ${workspacePath}`);
-            newStatus = WORKSPACE_STATUS.NOT_FOUND;
-        } else {
-            // 4. Try Reading/Validating Config and Instantiating
-            let configStore;
-            try {
-                // Find the actual config file path
-                const configFilePath = this.#findWorkspaceConfigPath(workspacePath);
-                if (!configFilePath) {
-                     throw new Error('Workspace config file not found in standard locations.');
-                }
-                const configDir = path.dirname(configFilePath);
-                const configName = path.basename(configFilePath, '.json');
-                configStore = new Conf({ configName: configName, cwd: configDir });
-                const configData = configStore.store;
-                // Validate config (implicitly checks owner existence etc.)
-                if (!this.#validateWorkspaceConfig(configData)) {
-                    throw new Error('Workspace configuration validation failed.');
-                }
-                // Config valid, try instantiating
-                const workspace = new Workspace({
-                    rootPath: workspacePath, // Pass rootPath to constructor
-                    configStore: configStore,
-                });
-                this.#workspaces.set(workspaceID, workspace); // Add to loaded map
-                newStatus = WORKSPACE_STATUS.AVAILABLE; // Or INACTIVE? AVAILABLE seems better after load
-                debug(`Workspace instance loaded successfully for ${workspaceID}.`);
-                // Update index status if it changed (e.g., from IMPORTED)
-                if (newStatus !== indexEntry.status && indexEntry.status !== WORKSPACE_STATUS.ACTIVE) { // Don't override ACTIVE status
-                     // this.#index.set(`workspaces.${workspaceID}.status`, newStatus);
-                     this.#updateIndexEntry(workspaceID, { status: newStatus });
-                }
-                this.emit('workspace:opened', workspace);
-                return workspace; // Success!
-
-            } catch (err) {
-                logger.error(`Failed to load/validate/instantiate workspace ${workspaceID}: ${err.message}`);
-                newStatus = WORKSPACE_STATUS.ERROR;
-            }
-        }
-
-        // 5. Update index if status changed to NOT_FOUND or ERROR
-        if (newStatus !== indexEntry.status) {
-            // this.#index.set(`workspaces.${workspaceID}.status`, newStatus);
-            this.#updateIndexEntry(workspaceID, { status: newStatus });
-            debug(`Updated status for ${workspaceID} to ${newStatus} during open attempt.`);
-        }
-
-        // If we reached here, opening failed
-        return null;
+        this.#workspaces.set(workspaceID, workspace);
+        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.AVAILABLE);
+        this.emit('workspace:opened', workspace);
+        return workspace;
     }
 
     /**
@@ -512,50 +324,9 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<boolean>} True if closed successfully or already closed, false on error or access denied.
      */
     async closeWorkspace(userID, workspaceID) {
-        if (!userID) {
-            throw new Error('UserID is required to close a workspace.');
-        }
-        // Access Check: Requires write access
-        if (!this.#checkAccess(workspaceID, userID, 'write')) {
-            logger.warn(`User ${userID} denied write access to close workspace ${workspaceID}.`);
-            return false;
-        }
-
-        debug(`Attempting to close workspace ${workspaceID}...`);
-        const workspace = this.#workspaces.get(workspaceID);
-
-        if (!workspace) {
-            debug(`Workspace "${workspaceID}" is not loaded. Cannot close.`);
-            return true; // Already closed / not loaded
-        }
-
-        // Stop the workspace if it is active
-        if (workspace.status === WORKSPACE_STATUS.ACTIVE) {
-            debug(`Workspace "${workspaceID}" is active. Stopping before closing...`);
-            // stopWorkspace already checks access, but call it anyway
-            const stopped = await this.stopWorkspace(userID, workspaceID);
-            if (!stopped) {
-                logger.error(`Failed to stop workspace "${workspaceID}" during close operation. Aborting close.`);
-                // Should we still remove from map if stop failed? Probably not.
-                return false;
-            }
-        }
-
-        // Remove from the loaded map
+        this.#validateUserAccess(userID, workspaceID, 'write');
+        await this.stopWorkspace(userID, workspaceID);
         this.#workspaces.delete(workspaceID);
-        debug(`Removed workspace "${workspaceID}" from loaded map.`);
-
-        // Ensure index status is INACTIVE (stopWorkspace should handle this, but good safety check)
-        const indexEntry = this.#findIndexEntry(workspaceID);
-        if (indexEntry && indexEntry.status !== WORKSPACE_STATUS.REMOVED) { // Avoid overwriting REMOVED status
-             // Ensure status is INACTIVE after successful close/stop
-            if (indexEntry.status !== WORKSPACE_STATUS.INACTIVE) {
-                 // this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_STATUS.INACTIVE);
-                 this.#updateIndexEntry(workspaceID, { status: WORKSPACE_STATUS.INACTIVE });
-                 debug(`Ensured index status is INACTIVE for closed workspace ${workspaceID}.`);
-            }
-        }
-
         this.emit('workspace:closed', { id: workspaceID });
         return true;
     }
@@ -569,67 +340,11 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<Workspace|null>} The active Workspace instance, or null if starting failed or access denied.
      */
     async startWorkspace(userID, workspaceID) {
-        if (!userID) {
-            throw new Error('UserID is required to start a workspace.');
-        }
-        // Access Check: Requires write access (owner only for now)
-        if (!this.#checkAccess(workspaceID, userID, 'write')) {
-            logger.warn(`User ${userID} denied write access to start workspace ${workspaceID}.`);
-            return null;
-        }
-
-        let workspace = this.#workspaces.get(workspaceID);
-
-        // If already loaded and active, return it
-        if (workspace && workspace.status === WORKSPACE_STATUS.ACTIVE) {
-            debug(`Workspace "${workspaceID}" is already active.`);
-            return workspace;
-        }
-
-        // If not loaded, try to open (load) it first (requires read access, implicitly checked by #checkAccess above)
-        if (!workspace) {
-            debug(`Workspace "${workspaceID}" is not loaded. Attempting to open...`);
-            workspace = await this.openWorkspace(userID, workspaceID); // Pass userID
-            if (!workspace) {
-                 // openWorkspace failed (logged error within method or access denied)
-                 return null;
-            }
-             // If openWorkspace succeeded, the instance is now in #workspaces
-        }
-
-        // Now we have a loaded workspace instance (either pre-existing or just loaded)
-        // Check its status before trying to start (openWorkspace should handle bad states, but double-check)
-        if (workspace.status === WORKSPACE_STATUS.ERROR || workspace.status === WORKSPACE_STATUS.NOT_FOUND || workspace.status === WORKSPACE_STATUS.REMOVED) {
-             logger.error(`Cannot start workspace "${workspaceID}" due to its status: ${workspace.status}`);
-             return null;
-        }
-
-        // Start the workspace's internal resources (DB, etc.)
-        try {
-            await workspace.start(); // Workspace handles its internal status and persists ACTIVE
-            debug(`Workspace "${workspaceID}" instance started successfully.`);
-        } catch (err) {
-            // workspace.start() should log its own errors
-             logger.error(`Failed to start workspace "${workspaceID}" instance: ${err.message}`);
-             // Update index to ERROR state? Or rely on persisted status set by Workspace.start() error handling?
-             // Let's explicitly set index to ERROR for clarity from manager perspective.
-             // this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_STATUS.ERROR);
-             this.#updateIndexEntry(workspaceID, { status: WORKSPACE_STATUS.ERROR });
-             return null; // Starting failed
-        }
-
-        // Update global index status to ACTIVE and last accessed time
-        // Workspace.start() should persist ACTIVE to its own file, this updates the global index.
-        // this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_STATUS.ACTIVE);
-        // this.#index.set(`workspaces.${workspaceID}.lastAccessed`, new Date().toISOString());
-        this.#updateIndexEntry(workspaceID, {
-            status: WORKSPACE_STATUS.ACTIVE,
-            lastAccessed: new Date().toISOString(),
-        });
-        debug(`Updated global index for active workspace "${workspaceID}".`);
-
-        // Emit event (already emitted by Workspace.start, is this needed here? Maybe for manager level)
-        // this.emit('workspace:started', workspace);
+        this.#validateUserAccess(userID, workspaceID, 'write');
+        const workspace = await this.openWorkspace(userID, workspaceID);
+        await workspace.start();
+        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.ACTIVE);
+        this.emit('workspace:started', workspace);
         return workspace;
     }
 
@@ -642,119 +357,14 @@ class WorkspaceManager extends EventEmitter {
      * @returns {Promise<boolean>} True if stopped successfully, false if not found, not active, or access denied.
      */
     async stopWorkspace(userID, workspaceID) {
-        if (!userID) {
-            throw new Error('UserID is required to stop a workspace.');
-        }
-        // Access Check: Requires write access
-        if (!this.#checkAccess(workspaceID, userID, 'write')) {
-            logger.warn(`User ${userID} denied write access to stop workspace ${workspaceID}.`);
-            return false;
-        }
-
+        this.#validateUserAccess(userID, workspaceID, 'write');
         const workspace = this.#workspaces.get(workspaceID);
-        if (!workspace) {
-            // If not in the map, it's not loaded or already stopped/closed
-            debug(`Workspace "${workspaceID}" is not loaded or already stopped/closed.`);
-            // Ensure index status reflects inactivity if it exists and user had access
-            const indexEntry = this.#findIndexEntry(workspaceID);
-            if (indexEntry && indexEntry.status === WORKSPACE_STATUS.ACTIVE) {
-                 // Only update index if user actually had write access to the workspace ID
-                // this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_STATUS.INACTIVE);
-                this.#updateIndexEntry(workspaceID, { status: WORKSPACE_STATUS.INACTIVE });
-                debug(`Set index status to INACTIVE for non-loaded workspace "${workspaceID}".`);
-            }
-            return true; // Considered success if not active/loaded
-        }
+        if (!workspace) return true;
 
-        try {
-            await workspace.stop(); // Workspace handles its internal status
-            debug(`Workspace "${workspaceID}" instance stopped successfully.`);
-        } catch (err) {
-            // Log the error but continue cleanup
-            logger.error(`Error stopping workspace "${workspaceID}" instance: ${err.message}`);
-            // Decide if we should re-throw or just log - returning false indicates failure
-            return false;
-        }
-
-        // Workspace.stop() now handles setting internal and persisted status to INACTIVE.
-        // We just need to ensure the index reflects this if the stop was successful (or attempted).
-        // No need to remove from #workspaces map here, closeWorkspace will do that.
-        // if (this.index[workspaceID]) { // Check replaced by findIndexEntry
-        const indexEntry = this.#findIndexEntry(workspaceID);
-        if (indexEntry) {
-             // this.#index.set(`workspaces.${workspaceID}.status`, WORKSPACE_STATUS.INACTIVE);
-             this.#updateIndexEntry(workspaceID, { status: WORKSPACE_STATUS.INACTIVE });
-             debug(`Updated global index status to INACTIVE for workspace "${workspaceID}".`);
-        }
-
+        await workspace.stop();
+        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.INACTIVE);
         this.emit('workspace:stopped', { id: workspaceID });
-
-        // Stop the associated REST API if it exists
-        await this.stopRestApi(userID, workspaceID); // Pass userID
-
-        // Previously, stopWorkspace called closeWorkspace implicitly.
-        // This caused issues. Now stop only stops, close only closes.
-        // If the intention was to stop AND close, the caller should call both.
-        // Example: destroyWorkspace calls stopWorkspace then closeWorkspace.
-
-        // Stop and close the workspace if it's loaded
-        // if (this.#workspaces.has(workspaceID)) {
-        //     debug(`Workspace "${workspaceID}" is loaded. Closing before removing from index.`);
-        //     await this.closeWorkspace(workspaceID); // Stop and remove from map
-        // }
-
         return true;
-    }
-
-    /**
-     * Remove a workspace from the global index. Stops it if active.
-     * Does NOT delete files from disk.
-     * Requires 'write' access (owner only).
-     * @param {string} userID - The ID of the user attempting to remove the workspace.
-     * @param {string} workspaceID - Workspace ID/name to remove.
-     * @returns {Promise<boolean>} True if removed, false if not found or access denied.
-     */
-    async removeWorkspace(userID, workspaceID) {
-        if (!userID) {
-            throw new Error('UserID is required to remove a workspace.');
-        }
-        // Access Check: Requires write access
-        if (!this.#checkAccess(workspaceID, userID, 'write')) {
-            logger.warn(`User ${userID} denied write access to remove workspace ${workspaceID}.`);
-            return false;
-        }
-
-        debug(`Attempting to remove workspace ${workspaceID} from index by user ${userID}...`);
-        const indexEntry = this.#findIndexEntry(workspaceID);
-        if (!indexEntry) {
-            debug(`Workspace "${workspaceID}" not found in index. Cannot remove.`);
-            return false;
-        }
-
-        // Stop the REST API service if it's running
-        await this.stopRestApi(userID, workspaceID); // Pass userID
-
-        // Stop and close the workspace if it's loaded
-        if (this.#workspaces.has(workspaceID)) {
-            debug(`Workspace "${workspaceID}" is loaded. Stopping and closing before removing from index.`);
-            await this.stopWorkspace(userID, workspaceID);
-            await this.closeWorkspace(userID, workspaceID); // Close also removes from map
-        }
-
-        // Remove from the global index
-        // this.#index.delete(`workspaces.${workspaceID}`);
-        const removed = this.#removeIndexEntry(workspaceID);
-        if (removed) {
-            debug(`Removed workspace "${workspaceID}" from global index array.`);
-        } else {
-            debug(`Workspace "${workspaceID}" not found in index array for removal.`);
-            // Should we return false here? The check earlier should have caught it.
-            // Let's assume if we reach here, the earlier check passed, so removal should succeed or indicates inconsistency.
-            logger.warn(`Inconsistency: Workspace ${workspaceID} found initially but not during removal.`);
-        }
-
-        this.emit('workspace:removed', { id: workspaceID });
-        return removed; // Return true/false based on removal success
     }
 
     /**
@@ -1836,6 +1446,86 @@ class WorkspaceManager extends EventEmitter {
             return true;
         }
         return false;
+    }
+
+    #validateWorkspaceDoesNotExist(workspaceID, workspacePath) {
+        if (this.index.some(ws => ws.id === workspaceID || ws.rootPath === workspacePath)) {
+            throw new Error(`Workspace "${workspaceID}" already exists.`);
+        }
+        if (existsSync(workspacePath)) {
+            throw new Error(`Workspace path "${workspacePath}" already exists.`);
+        }
+    }
+
+    #validateUserAccess(userID, workspaceID, accessLevel) {
+        const workspacePath = this.#getWorkspacePath(workspaceID);
+        const configStore = this.#loadWorkspaceConfig(workspacePath);
+        const owner = configStore.get('owner');
+        const acl = configStore.get('acl', {});
+
+        if (!owner) throw new Error(`Workspace "${workspaceID}" has no owner defined.`);
+        if (accessLevel === 'write' && owner !== userID) {
+            throw new Error(`User "${userID}" lacks write access to workspace "${workspaceID}".`);
+        }
+        if (accessLevel === 'read' && owner !== userID && !acl[userID]) {
+            throw new Error(`User "${userID}" lacks read access to workspace "${workspaceID}".`);
+        }
+    }
+
+    #loadWorkspaceConfig(workspacePath) {
+        const configFilePath = this.#findWorkspaceConfigPath(workspacePath);
+        if (!configFilePath) throw new Error('Workspace config file not found.');
+        const configDir = path.dirname(configFilePath);
+        const configName = path.basename(configFilePath, '.json');
+        return new Conf({ configName, cwd: configDir });
+    }
+
+    #updateWorkspaceStatus(workspaceID, status) {
+        this.#updateIndexEntry(workspaceID, { status });
+    }
+
+    #cleanupWorkspaceOnError(workspacePath) {
+        fsPromises.rm(workspacePath, { recursive: true, force: true })
+            .catch(err => logger.error(`Cleanup failed for ${workspacePath}: ${err.message}`));
+    }
+
+    #addWorkspaceToIndex(workspaceID, workspacePath) {
+        const indexEntry = {
+            id: workspaceID,
+            rootPath: workspacePath,
+            status: WORKSPACE_STATUS.AVAILABLE,
+            indexed: new Date().toISOString(),
+            lastAccessed: null,
+            restApiStatus: WORKSPACE_API_STATUS.STOPPED,
+            pm2Name: null,
+        };
+        this.#addIndexEntry(indexEntry);
+        return indexEntry;
+    }
+
+    #removeWorkspaceFromIndex(workspaceID) {
+        this.#removeIndexEntry(workspaceID);
+    }
+
+    #getWorkspacePath(workspaceID) {
+        const entry = this.#findIndexEntry(workspaceID);
+        if (!entry) throw new Error(`Workspace "${workspaceID}" not found.`);
+        return entry.rootPath;
+    }
+
+    async #createWorkspaceDirectories(workspacePath) {
+        await this.#ensureDirectoryExists(workspacePath);
+        for (const dirName of Object.values(WORKSPACE_DIRECTORIES)) {
+            await this.#ensureDirectoryExists(path.join(workspacePath, dirName));
+        }
+    }
+
+    async #writeWorkspaceConfig(workspacePath, configData) {
+        const workspaceConfigFile = path.join(workspacePath, WORKSPACE_CONFIG_FILENAME);
+        const configDir = path.dirname(workspaceConfigFile);
+        const configName = path.basename(workspaceConfigFile, '.json');
+        const workspaceConf = new Conf({ configName, cwd: configDir });
+        Object.entries(configData).forEach(([key, value]) => workspaceConf.set(key, value));
     }
 
 }

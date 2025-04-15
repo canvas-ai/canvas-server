@@ -48,23 +48,24 @@ class Workspace extends EventEmitter {
     constructor(options = {}) {
         super(options.eventEmitterOptions);
 
-        // Essential dependencies: path and configStore
         if (!options.rootPath) throw new Error('Workspace rootPath is required');
         if (!options.configStore) throw new Error('Config store (Conf instance) is required');
 
         this.#rootPath = options.rootPath;
         this.#configStore = options.configStore;
 
+        // Set default color if not provided or invalid
+        if (!this.color || !this.#validateColor(this.color)) {
+            const defaultColor = WorkspaceManager.getRandomColor();
+            this.#configStore.set('color', defaultColor);
+            logger.info(`Workspace \"${this.id}\" color not provided or invalid. Set default color: ${defaultColor}`);
+        }
+
         // Validate essential configuration loaded from configStore
         if (!this.id) throw new Error('Workspace ID is missing in configStore');
         if (!this.name) throw new Error('Workspace name is missing in configStore');
         if (!this.owner) throw new Error('Workspace owner is missing in configStore');
-        if (!this.color || !this.#validateColor(this.color)) {
-            logger.error(`Workspace "${this.id}" config has invalid color format: ${this.color}`);
-            throw new Error('Invalid color format in config');
-        }
 
-        // Initial runtime status is INACTIVE, regardless of persisted status
         this.#status = WORKSPACE_STATUS.INACTIVE;
 
         debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, Path: ${this.path}`);
