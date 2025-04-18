@@ -1,5 +1,9 @@
+'use strict';
+
 // Utils
 import EventEmitter from 'eventemitter2';
+
+// Logging
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('context-manager');
 
@@ -9,20 +13,33 @@ import Url from './lib/Url.js';
 
 /**
  * Context Manager
- * Manages contexts for users across workspaces
  */
 
 class ContextManager extends EventEmitter {
+
     #user;
     #workspaceManager;
+
     #activeContexts = new Map();
 
     constructor(options = {}) {
         super(); // EventEmitter
         debug('Context manager initialized');
         this.#user = options.user;
-        this.#workspaceManager = options.workspaceManager;
+        this.#workspaceManager = getWorkspaceManager();
     }
+
+    /**
+     * Initialize manager
+     */
+
+    async initialize() {
+        return true;
+    }
+
+    /**
+     * Context Manager API
+     */
 
     async createContext(url = '/', options = {}) {
         // Check if a specific context ID was provided and if it already exists

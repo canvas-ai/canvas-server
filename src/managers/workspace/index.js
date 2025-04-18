@@ -11,8 +11,6 @@ import AdmZip from 'adm-zip';
 import os from 'os';
 import pm2 from 'pm2';
 import { promisify } from 'util';
-import fs from 'fs';
-import Jim from '../../utils/jim/index.js';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
@@ -133,6 +131,14 @@ class WorkspaceManager extends EventEmitter {
 
     static get workspaceDirectories() {
         return WORKSPACE_DIRECTORIES;
+    }
+
+    /**
+     * Initialize manager
+     */
+
+    async initialize() {
+        return true;
     }
 
     /**

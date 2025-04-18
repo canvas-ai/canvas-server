@@ -39,33 +39,15 @@ const jim = new Jim({
  * Global Manager singletons
  */
 
-// Maybe we should move the initialization to the managers themselves?
 import SessionManager from './managers/session/index.js';
-const sessionManager = new SessionManager({
-    index: jim.createIndex('sessions')
-});
-
 import UserManager from './managers/user/index.js';
-const userManager = new UserManager({
-    rootPath: env.CANVAS_SERVER_HOMES,
-    index: jim.createIndex('users')
-});
-
 import WorkspaceManager from './managers/workspace/index.js';
-const workspaceManager = new WorkspaceManager({
-    rootPath: env.CANVAS_SERVER_HOMES,
-    index: jim.createIndex('workspaces')
-});
 
 /**
  * Event Handlers
  */
 
 import UserEventHandler from './services/events/UserEventHandler.js';
-const userEventHandler = new UserEventHandler({
-    userManager: userManager,
-});
-
 
 /**
  * Transports
@@ -96,6 +78,14 @@ class Server extends EventEmitter {
     // Database
     #db;
 
+    // Managers
+    #userManager;
+    #sessionManager;
+    #workspaceManager;
+
+    // Event Handlers
+    #userEventHandler;
+
     /**
      * Create a new Canvas Server instance
      * @param {Object} options - Server options
@@ -119,9 +109,9 @@ class Server extends EventEmitter {
     get db() { return this.#db; }
 
     // Manager getters
-    get userManager() { return userManager; }
-    get sessionManager() { return sessionManager; }
-    get workspaceManager() { return workspaceManager; }
+    get userManager() { return this.#userManager; }
+    get sessionManager() { return this.#sessionManager; }
+    get workspaceManager() { return this.#workspaceManager; }
 
     /**
      * Initialize the server
@@ -242,17 +232,29 @@ class Server extends EventEmitter {
         logger.info('Initializing managers');
 
         try {
-            // Initialize user manager
-            //await userManager.initialize();
-            //debug('User manager initialized');
+            this.#sessionManager = new SessionManager({
+                index: jim.createIndex('sessions')
+            });
 
-            // Initialize session manager
-            //await sessionManager.initialize();
-            //debug('Session manager initialized');
+            await this.#sessionManager.initialize();
 
-            // Initialize Workspace Manager
-            //await workspaceManager.initialize();
-            //debug('Workspace manager initialized');
+            this.#userManager = new UserManager({
+                rootPath: env.CANVAS_SERVER_HOMES,
+                index: jim.createIndex('users')
+            });
+
+            await this.#userManager.initialize();
+
+            this.#workspaceManager = new WorkspaceManager({
+                rootPath: env.CANVAS_SERVER_HOMES,
+                index: jim.createIndex('workspaces')
+            });
+
+            await this.#workspaceManager.initialize();
+
+            this.#userEventHandler = new UserEventHandler({
+                userManager: this.#userManager,
+            });
 
             logger.info('Managers initialized');
         } catch (error) {
@@ -558,11 +560,36 @@ const server = new Server();
 // Export Server as singleton
 export default server;
 
-// Export managers for convenience
-export {
-    userManager,
-    sessionManager,
-    workspaceManager,
-    jim
-};
+// Export Jim directly
+export { jim };
 
+// Export managers accessors for convenience
+export function getUserManager() {
+    if (server.status !== 'initialized' && server.status !== 'running') {
+        throw new Error('Server not initialized: UserManager is not available');
+    }
+    if (!server.userManager) {
+        throw new Error('UserManager is not initialized');
+    }
+    return server.userManager;
+}
+
+export function getSessionManager() {
+    if (server.status !== 'initialized' && server.status !== 'running') {
+        throw new Error('Server not initialized: SessionManager is not available');
+    }
+    if (!server.sessionManager) {
+        throw new Error('SessionManager is not initialized');
+    }
+    return server.sessionManager;
+}
+
+export function getWorkspaceManager() {
+    if (server.status !== 'initialized' && server.status !== 'running') {
+        throw new Error('Server not initialized: WorkspaceManager is not available');
+    }
+    if (!server.workspaceManager) {
+        throw new Error('WorkspaceManager is not initialized');
+    }
+    return server.workspaceManager;
+}
