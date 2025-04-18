@@ -131,6 +131,10 @@ class WorkspaceManager extends EventEmitter {
         return this.workspaces.filter(ws => ws.status === WORKSPACE_STATUS.ACTIVE);
     }
 
+    static get workspaceDirectories() {
+        return WORKSPACE_DIRECTORIES;
+    }
+
     /**
      * Simplified Workspace Manager API
      */

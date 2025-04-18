@@ -62,6 +62,7 @@ class User extends EventEmitter {
         this.#email = options.email;
         this.#homePath = options.homePath;
         this.#userType = options.userType || 'user';
+        this.#status = options.status || 'inactive';
 
         debug(`User instance created: ${this.#id} (${this.#email})`);
     }
@@ -75,13 +76,7 @@ class User extends EventEmitter {
     get userType() { return this.#userType; }
     get homePath() { return this.#homePath; }
     get status() { return this.#status; }
-    get stats() { return this.#stats; }
-    get uptime() {
-        if (!this.#startTime) {
-            return 0;
-        }
-        return Date.now() - this.#startTime;
-    }
+    get stats() { return {}; }
 
     isAdmin() { return this.#userType === 'admin'; }
     isActive() { return this.#status === 'active'; }
@@ -97,7 +92,7 @@ class User extends EventEmitter {
             userType: this.#userType,
             homePath: this.#homePath,
             status: this.#status,
-            stats: this.#stats
+            stats: {}
         };
     }
 

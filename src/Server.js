@@ -39,6 +39,7 @@ const jim = new Jim({
  * Global Manager singletons
  */
 
+// Maybe we should move the initialization to the managers themselves?
 import SessionManager from './managers/session/index.js';
 const sessionManager = new SessionManager({
     index: jim.createIndex('sessions')
@@ -56,7 +57,10 @@ const workspaceManager = new WorkspaceManager({
     index: jim.createIndex('workspaces')
 });
 
-// Event Handlers
+/**
+ * Event Handlers
+ */
+
 import UserEventHandler from './services/events/UserEventHandler.js';
 const userEventHandler = new UserEventHandler({
     userManager: userManager,
@@ -138,7 +142,7 @@ class Server extends EventEmitter {
             await this.#initializeTransports();
 
             // Create initial admin user if needed
-            await this.#createInitialAdminUser();
+            await this.#createDefaultAdminUser();
 
             this.#status = 'initialized';
             this.emit('initialized');
@@ -239,16 +243,16 @@ class Server extends EventEmitter {
 
         try {
             // Initialize user manager
-            await userManager.initialize();
-            debug('User manager initialized');
+            //await userManager.initialize();
+            //debug('User manager initialized');
 
             // Initialize session manager
-            await sessionManager.initialize();
-            debug('Session manager initialized');
+            //await sessionManager.initialize();
+            //debug('Session manager initialized');
 
             // Initialize Workspace Manager
-            await workspaceManager.initialize();
-            debug('Workspace manager initialized');
+            //await workspaceManager.initialize();
+            //debug('Workspace manager initialized');
 
             logger.info('Managers initialized');
         } catch (error) {
@@ -519,71 +523,22 @@ class Server extends EventEmitter {
         }
     }
 
-    /**
-     * Create initial admin user if no users exist
-     * Automatically creates an admin user with a random password if none exists
-     * Environment variables can override the default behavior
-     * @private
-     */
-    async #createInitialAdminUser() {
+    async #createDefaultAdminUser() {
         debug('Checking for admin user...');
 
+        const email = env.CANVAS_ADMIN_EMAIL || 'me@canvas.local';
+        const password = env.CANVAS_ADMIN_PASSWORD || userManager.generateSecurePassword(8);
+
         try {
-            // Check if any users exist
-            const users = await userManager.listUsers({ includeInactive: true });
-
-            if (users.length > 0) {
-                debug('Users already exist, skipping admin creation');
-                return;
-            }
-
-            // Determine admin credentials
-            let email = env.CANVAS_ADMIN_EMAIL;
-            let password = env.CANVAS_ADMIN_PASSWORD;
-            let isRandomPassword = false;
-
-            // If email not provided, use default
-            if (!email) {
-                email = 'admin@canvas.local';
-                debug(`Using default admin email: ${email}`);
-            }
-
-            // If password not provided, generate a random one
-            if (!password) {
-                password = this.#generateSecurePassword();
-                isRandomPassword = true;
-                debug('Generated random password for admin user');
-            }
-
-            // Create the admin user
-            const adminUser = await userManager.createUser({
-                email,
-                userType: 'admin',
-            });
-
-            // Store the password in the auth service
-            if (adminUser && this.#services.has('auth')) {
-                const authService = this.#services.get('auth');
-                await authService.setPassword(adminUser.id, password);
-
-                if (isRandomPassword) {
-                    // Display the credentials prominently in the console
-                    console.log('\n' + '='.repeat(80));
-                    console.log('CANVAS ADMIN USER CREATED');
-                    console.log('='.repeat(80));
-                    console.log(`Email:    ${email}`);
-                    console.log(`Password: ${password}`);
-                    console.log('\nPLEASE CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN');
-                    console.log('='.repeat(80) + '\n');
-
-                    logger.info(`Initial admin user created with email: ${email} and a random password`);
-                } else {
-                    logger.info(`Initial admin user created with email: ${email}`);
-                }
-            }
+            console.log('\n' + '='.repeat(80));
+            console.log('Initial canvas admin user created');
+            console.log('='.repeat(80));
+            console.log(`Email(login ID):    ${email}`);
+            console.log(`Password: ${password}`);
+            console.log('='.repeat(80) + '\n');
+            logger.info(`Initial admin user created with email: ${email} and a random password`);
         } catch (error) {
-            logger.error(`Failed to create initial admin user: ${error.message}`);
-            // Don't throw error to allow server to continue starting
+            logger.error(`Failed to create initial user: ${error.message}`);
         }
     }
 
@@ -593,27 +548,7 @@ class Server extends EventEmitter {
      * @private
      */
     #generateSecurePassword() {
-        const length = 16;
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+';
-        let password = '';
 
-        // Ensure we have at least one of each character type
-        password += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
-        password += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
-        password += '0123456789'[Math.floor(Math.random() * 10)]; // digit
-        password += '!@#$%^&*()-_=+'[Math.floor(Math.random() * 14)]; // special
-
-        // Fill the rest randomly
-        for (let i = 4; i < length; i++) {
-            const randomIndex = Math.floor(Math.random() * charset.length);
-            password += charset[randomIndex];
-        }
-
-        // Shuffle the password characters
-        return password
-            .split('')
-            .sort(() => 0.5 - Math.random())
-            .join('');
     }
 }
 

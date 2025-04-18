@@ -36,8 +36,8 @@ const serverEnv = {
     CANVAS_SERVER_HOMES: process.env.CANVAS_SERVER_HOMES || path.join(SERVER_ROOT, 'users'),
 
     // Admin user creation
-    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
-    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || 'p@ssw0rd',
+    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'my@canvas.local',
+    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || null,
 };
 
 // User paths (user data), meant for SERVER_MODE === 'user'
