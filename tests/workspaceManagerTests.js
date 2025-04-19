@@ -58,17 +58,22 @@ async function runTests() {
     // Create a new manager instance AFTER cleanup to ensure clean index
     const wm = new WorkspaceManager({
         rootPath: rootPath, // Use workspaceRootPath instead of rootPath
-        index: jim.createIndex('workspaces'),
+        jim: jim, // Updated to pass jim directly
     });
+
+    // Verify composed ID format generation
+    console.log('\n--- Testing ID format ---');
+    const testName = 'My Test Workspace';
+    const composedId = `${testUserID}/${WorkspaceManager.sanitizeWorkspaceName(testName)}`;
+    console.log(`Example composed ID for "${testName}": ${composedId}`);
 
     // --- Test Initial State --- (Manager does initial scan)
     console.log('\n--- Testing Initial State ---');
     console.log('Root Path: ', wm.rootPath);
-    console.log('Config Path: ', wm.configPath);
-    console.log('Initial Index: ', JSON.stringify(wm.index, null, 2)); // Should be empty
+    console.log('Initial Index: ', JSON.stringify(wm.workspacesList, null, 2)); // Should be empty
     console.log('Initial Loaded Workspaces (wm.workspaces): ', wm.workspaces); // Should be empty array
     console.log('Initial Active Workspaces: ', wm.activeWorkspaces); // Should be empty array
-    if (Object.keys(wm.index).length !== 0) console.error('FAIL: Index not empty initially');
+    if (wm.workspacesList.length !== 0) console.error('FAIL: Index not empty initially');
     if (wm.listLoadedWorkspaces(testUserID).length !== 0) console.error('FAIL: Loaded workspaces not empty initially');
 
     // --- Test createWorkspace --- Creates entry in index, but NOT loaded initially
@@ -76,20 +81,37 @@ async function runTests() {
     let ws1Meta, wsCustomMeta;
     try {
         ws1Meta = await wm.createWorkspace('test-ws-1', testUserID, {
-            workspaceRootPath: rootPath, // Explicitly pass root path via options
             description: 'My First Test WS'
         });
         console.log('Created ws1 (metadata): ', ws1Meta);
+
+        // Check that ID follows the new format (user.email/workspace.id)
+        const expectedId = `${testUserID}/${WorkspaceManager.sanitizeWorkspaceName('test-ws-1')}`;
+        if (ws1Meta.id !== expectedId) {
+            console.error(`FAIL: Workspace ID ${ws1Meta.id} does not match expected format ${expectedId}`);
+        } else {
+            console.log(`PASS: Workspace ID ${ws1Meta.id} follows correct format`);
+        }
+
         if (!existsSync(ws1Meta.rootPath)) throw new Error(`WS1 directory not created at ${ws1Meta.rootPath}`);
         if (!existsSync(path.join(ws1Meta.rootPath, 'workspace.json'))) throw new Error(`WS1 workspace.json not created`);
         console.log('WS1 directory and config file created successfully.');
-        if (!wm.index.find(ws => ws.id === ws1Meta.id)) throw new Error('WS1 not found in index after creation.');
+        if (!wm.workspacesList.find(ws => ws.id === ws1Meta.id)) throw new Error('WS1 not found in index after creation.');
         if (wm.isLoaded(testUserID, ws1Meta.id)) console.error('FAIL: Workspace loaded immediately after creation.');
         else console.log('PASS: Workspace not loaded immediately after creation.');
 
         // Create second workspace using the default rootPath (don't specify in options)
         wsCustomMeta = await wm.createWorkspace('custom-path-ws', testUserID);
         console.log('Created custom path ws (metadata): ', wsCustomMeta);
+
+        // Check that ID follows the new format
+        const expectedCustomId = `${testUserID}/${WorkspaceManager.sanitizeWorkspaceName('custom-path-ws')}`;
+        if (wsCustomMeta.id !== expectedCustomId) {
+            console.error(`FAIL: Custom WS ID ${wsCustomMeta.id} does not match expected format ${expectedCustomId}`);
+        } else {
+            console.log(`PASS: Custom WS ID ${wsCustomMeta.id} follows correct format`);
+        }
+
         if (!existsSync(wsCustomMeta.rootPath)) throw new Error(`Custom WS directory not created at ${wsCustomMeta.rootPath}`);
         if (!existsSync(path.join(wsCustomMeta.rootPath, 'workspace.json'))) throw new Error(`Custom WS workspace.json not created`);
         console.log('Custom WS directory and config file created successfully.');
@@ -100,17 +122,34 @@ async function runTests() {
         } else {
             console.log(`PASS: Custom WS created at default path ${expectedCustomPath}`);
         }
-        if (!wm.index.find(ws => ws.id === wsCustomMeta.id)) throw new Error('Custom WS not found in index after creation.');
+        if (!wm.workspacesList.find(ws => ws.id === wsCustomMeta.id)) throw new Error('Custom WS not found in index after creation.');
         if (wm.isLoaded(testUserID, wsCustomMeta.id)) console.error('FAIL: Custom workspace loaded immediately after creation.');
         else console.log('PASS: Custom workspace not loaded immediately after creation.');
 
-        console.log('Index after creation: ', JSON.stringify(wm.index, null, 2));
+        console.log('Index after creation: ', JSON.stringify(wm.workspacesList, null, 2));
         console.log('Loaded Workspaces after creation: ', wm.listLoadedWorkspaces(testUserID).map(ws => ws.id));
 
     } catch (err) {
         console.error('Error during createWorkspace: ', err);
         return; // Stop test if creation fails
     }
+
+    // Test universe workspace unique constraint
+    try {
+        // Try creating a universe workspace for the user
+        await wm.createWorkspace('universe', testUserID);
+
+        // Then try creating another one - should fail
+        await wm.createWorkspace('universe', testUserID);
+        console.error('FAIL: Allowed creating multiple universe workspaces for the same user.');
+    } catch (err) {
+        if (err.message.includes('already has a universe workspace')) {
+            console.log('PASS: Prevented creating multiple universe workspaces for the same user:', err.message);
+        } else {
+            console.error('ERROR: Unexpected error during universe workspace test:', err.message);
+        }
+    }
+
     // Test duplicate creation (should fail)
     try {
         // Try creating with same name (implies same ID) in the default path
@@ -125,6 +164,38 @@ async function runTests() {
         console.error('FAIL: Allowed duplicate workspace path creation.');
     } catch (err) {
         console.log('PASS: Prevented duplicate workspace path creation:', err.message);
+    }
+
+    // --- Test getWorkspaceIdByName --- New format support
+    console.log('\n--- Testing getWorkspaceIdByName ---');
+
+    try {
+        // Test exact match
+        const exactId = wm.getWorkspaceIdByName(testUserID, 'test-ws-1');
+        if (exactId !== ws1Meta.id) {
+            console.error(`FAIL: getWorkspaceIdByName failed for exact match. Expected ${ws1Meta.id}, got ${exactId}`);
+        } else {
+            console.log(`PASS: getWorkspaceIdByName works for exact match: ${exactId}`);
+        }
+
+        // Test sanitized match
+        const sanitizedId = wm.getWorkspaceIdByName(testUserID, 'Test Ws 1');
+        if (sanitizedId !== ws1Meta.id) {
+            console.error(`FAIL: getWorkspaceIdByName failed for sanitized match. Expected ${ws1Meta.id}, got ${sanitizedId}`);
+        } else {
+            console.log(`PASS: getWorkspaceIdByName works for sanitized match: ${sanitizedId}`);
+        }
+
+        // Test non-existent
+        const nonExistentId = wm.getWorkspaceIdByName(testUserID, 'non-existent-ws');
+        if (nonExistentId) {
+            console.error(`FAIL: getWorkspaceIdByName returned ID for non-existent workspace: ${nonExistentId}`);
+        } else {
+            console.log('PASS: getWorkspaceIdByName returns null for non-existent workspace');
+        }
+
+    } catch (err) {
+        console.error('Error during getWorkspaceIdByName tests:', err);
     }
 
     // --- Test openWorkspace --- Loads instance into memory
@@ -147,13 +218,19 @@ async function runTests() {
          console.error('Error during openWorkspace: ', err);
          return; // Stop if open fails
     }
-    // Test opening already loaded
+
+    // Test opening with just the workspace name part (should work with our new format)
     try {
-        const ws1Again = await wm.openWorkspace(testUserID, ws1Meta.id);
-        if (ws1Again !== ws1Loaded) throw new Error('Opening already loaded WS did not return same instance.');
-        console.log('PASS: Opening already loaded workspace returned same instance.');
+        // Extract just the workspace name part from the composed ID
+        const workspaceNamePart = ws1Meta.id.split('/')[1];
+        const wsOpenedByName = await wm.openWorkspace(testUserID, workspaceNamePart);
+        if (!wsOpenedByName) {
+            console.error(`FAIL: Could not open workspace using just name part "${workspaceNamePart}"`);
+        } else {
+            console.log(`PASS: Successfully opened workspace using just name part "${workspaceNamePart}"`);
+        }
     } catch (err) {
-        console.error('FAIL: Error opening already loaded workspace: ', err);
+        console.error('Error opening workspace by name part:', err);
     }
 
     // --- Test startWorkspace --- Activates a loaded instance
@@ -234,12 +311,13 @@ async function runTests() {
         // Use wm.getWorkspace to check instance status after potential stop/close
         const stoppedWsInstance = wm.getWorkspace(testUserID, ws1Meta.id);
         console.log('WS1 instance status (after stop): ', stoppedWsInstance?.status); // Check instance status
-        console.log('WS1 index status: ', ws1StatusIndex); // Check index status
+        const ws1StatusAfterStop = wm.getWorkspaceStatus(testUserID, ws1Meta.id);
+        console.log('WS1 index status: ', ws1StatusAfterStop); // Check index status
         if (ws1Active.status !== WORKSPACE_STATUS.INACTIVE) {
             throw new Error(`Instance status not ${WORKSPACE_STATUS.INACTIVE} after stop.`);
         }
-        if (ws1StatusIndex !== WORKSPACE_STATUS.INACTIVE) {
-             throw new Error(`Index status not ${WORKSPACE_STATUS.INACTIVE} after stop.`);
+        if (ws1StatusAfterStop !== WORKSPACE_STATUS.INACTIVE) {
+            throw new Error(`Index status not ${WORKSPACE_STATUS.INACTIVE} after stop.`);
         }
     } catch (err) {
         console.error('Error during stopWorkspace: ', err);
@@ -413,20 +491,26 @@ async function runTests() {
     try {
         // Use the imported workspace ID which should exist in index (status IMPORTED or AVAILABLE)
         const importedId = importedWsMeta?.id;
-        if (!importedId || !wm.index.find(ws => ws.id === importedId)) throw new Error('Imported workspace ID not available in index for remove test.');
-        const importedPath = wm.index.find(ws => ws.id === importedId).rootPath; // Get path before removing
+        if (!importedId || !wm.workspacesList.find(ws => ws.id === importedId)) throw new Error('Imported workspace ID not available in index for remove test.');
+        const importedPath = wm.workspacesList.find(ws => ws.id === importedId).rootPath; // Get path before removing
 
+        // Make sure the workspace isn't loaded
+        if (wm.isLoaded(testUserID, importedId)) {
+            await wm.closeWorkspace(testUserID, importedId);
+        }
+
+        console.log(`Attempting to remove workspace ${importedId} from index...`);
         const removed = await wm.removeWorkspace(testUserID, importedId);
         if (!removed) throw new Error(`removeWorkspace returned false for existing workspace ${importedId}`);
         console.log(`Removed workspace ${importedId} from index.`);
-        if (wm.index.find(ws => ws.id === importedId)) throw new Error('Workspace still present in index after removal.');
+        if (wm.workspacesList.find(ws => ws.id === importedId)) throw new Error('Workspace still present in index after removal.');
         console.log('PASS: Workspace removed from index.');
         // Verify files still exist (this is the CORRECT behavior for removeWorkspace)
         if (existsSync(importedPath)) {
             console.log(`PASS: Workspace files correctly remain after removal at ${importedPath}.`);
-             // Clean up the leftover directory from the removed-but-not-destroyed WS
-             await fs.rm(importedPath, { recursive: true, force: true });
-             console.log(`Cleaned up directory for removed workspace: ${importedPath}`);
+            // Clean up the leftover directory from the removed-but-not-destroyed WS
+            await fs.rm(importedPath, { recursive: true, force: true });
+            console.log(`Cleaned up directory for removed workspace: ${importedPath}`);
         } else {
             console.error(`FAIL: removeWorkspace incorrectly deleted files at ${importedPath}`);
         }
@@ -451,7 +535,7 @@ async function runTests() {
         const destroyed = await wm.destroyWorkspace(testUserID, destroyId);
         if (!destroyed) throw new Error(`destroyWorkspace returned false for existing workspace ${destroyId}`);
         console.log(`Destroyed workspace ${destroyId}.`);
-        if (wm.index.find(ws => ws.id === destroyId)) throw new Error('Workspace still present in index after destroy.');
+        if (wm.workspacesList.find(ws => ws.id === destroyId)) throw new Error('Workspace still present in index after destroy.');
         console.log('PASS: Workspace removed from index after destroy.');
         // Verify files are deleted
         if (existsSync(destroyPath)) {

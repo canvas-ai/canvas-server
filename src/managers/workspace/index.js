@@ -37,6 +37,13 @@ import Workspace from './lib/Workspace.js';
  * Constants
  */
 
+// Workspace IDs format: user.email/workspace.id
+// Where workspace.id is the sanitized name of the workspace
+// Examples:
+// - john.doe@example.com/universe
+// - jane.smith@company.com/work-projects
+// - team@org.com/shared-workspace
+
 const WORKSPACE_TYPES = [
     'universe',
     'workspace'
@@ -47,13 +54,13 @@ const WORKSPACE_CONFIG_FILENAME = 'workspace.json';
 
 // Default configuration template for a new workspace's workspace.json
 const WORKSPACE_CONFIG_TEMPLATE = {
-    id: null,
+    id: null, // Will be set to user.email/workspace.id format
     name: null,
     type: 'workspace',
     label: 'Workspace',
     color: null,
     description: 'Canvas Workspace',
-    owner: null,
+    owner: null, // Owner email address
     // path is set dynamically
     restApi: { // Configuration for the optional dedicated REST API
         port: null, // Port number
@@ -172,8 +179,19 @@ class WorkspaceManager extends Manager {
      */
 
     async createWorkspace(name, owner, options = {}) {
-        // Generate a unique ID for the workspace using UUID
-        const workspaceID = options.id || `ws-${uuidv4()}`;
+        // Generate a composed ID for the workspace using email and name
+        // options.id can override this if explicitly provided
+        const workspaceID = options.id || this.#generateComposedWorkspaceId(owner, name);
+
+        // Check for unique universe workspace per user
+        if (this.#sanitizeWorkspaceName(name) === 'universe') {
+            const existingUniverse = this.workspacesList.find(ws =>
+                ws.id.endsWith('/universe') && ws.id.startsWith(owner)
+            );
+            if (existingUniverse) {
+                throw new Error(`User ${owner} already has a universe workspace (${existingUniverse.id})`);
+            }
+        }
 
         // Use the sanitized name for the filesystem path
         const sanitizedName = this.#sanitizeWorkspaceName(name);
@@ -209,8 +227,15 @@ class WorkspaceManager extends Manager {
         this.#validateUserAccess(userID, workspaceID, 'write');
         await this.stopWorkspace(userID, workspaceID);
         await this.closeWorkspace(userID, workspaceID);
-        this.#removeWorkspaceFromIndex(workspaceID);
+
+        // Remove from the index
+        const removed = this.#removeIndexEntry(workspaceID, userID);
+        if (!removed) {
+            throw new Error(`Failed to remove workspace ${workspaceID} from index.`);
+        }
+
         this.emit('workspace:removed', { id: workspaceID });
+        return removed;
     }
 
     /**
@@ -351,17 +376,44 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<Workspace|null>} The loaded Workspace instance or null if opening failed or access denied.
      */
     async openWorkspace(userID, workspaceID) {
-        this.#validateUserAccess(userID, workspaceID, 'read');
-        if (this.#workspaces.has(workspaceID)) return this.#workspaces.get(workspaceID);
+        // First check if it's already loaded
+        if (this.#workspaces.has(workspaceID)) {
+            // If it's already loaded, verify access
+            if (this.#checkAccess(workspaceID, userID, 'read')) {
+                return this.#workspaces.get(workspaceID);
+            } else {
+                logger.warn(`User ${userID} denied read access to already loaded workspace ${workspaceID}.`);
+                return null;
+            }
+        }
 
-        const workspacePath = this.#getWorkspacePath(workspaceID);
-        const configStore = this.#loadWorkspaceConfig(workspacePath);
-        const workspace = new Workspace({ rootPath: workspacePath, configStore });
+        // Try to find the workspace with our enhanced findIndexEntry method
+        const indexEntry = this.#findIndexEntry(workspaceID, userID);
+        if (!indexEntry) {
+            throw new Error(`Workspace "${workspaceID}" not found.`);
+        }
 
-        this.#workspaces.set(workspaceID, workspace);
-        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.AVAILABLE);
-        this.emit('workspace:opened', workspace);
-        return workspace;
+        // Now verify access
+        if (!this.#checkAccess(indexEntry.id, userID, 'read')) {
+            logger.warn(`User ${userID} denied read access to workspace ${indexEntry.id}.`);
+            return null;
+        }
+
+        // Load the workspace
+        const workspacePath = indexEntry.rootPath;
+        try {
+            const configStore = this.#loadWorkspaceConfig(workspacePath);
+            const workspace = new Workspace({ rootPath: workspacePath, configStore });
+
+            this.#workspaces.set(indexEntry.id, workspace);
+            this.#updateWorkspaceStatus(indexEntry.id, WORKSPACE_STATUS.AVAILABLE);
+            this.emit('workspace:opened', workspace);
+            return workspace;
+        } catch (err) {
+            logger.error(`Error opening workspace ${indexEntry.id}: ${err.message}`);
+            this.#updateWorkspaceStatus(indexEntry.id, WORKSPACE_STATUS.ERROR);
+            return null;
+        }
     }
 
     /**
@@ -372,10 +424,25 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<boolean>} True if closed successfully or already closed, false on error or access denied.
      */
     async closeWorkspace(userID, workspaceID) {
-        this.#validateUserAccess(userID, workspaceID, 'write');
-        await this.stopWorkspace(userID, workspaceID);
-        this.#workspaces.delete(workspaceID);
-        this.emit('workspace:closed', { id: workspaceID });
+        // Check if the workspace exists at all
+        const indexEntry = this.#findIndexEntry(workspaceID, userID);
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found. Nothing to close.`);
+            return true; // Return true for idempotency
+        }
+
+        // Check access if the workspace exists
+        if (!this.#checkAccess(indexEntry.id, userID, 'write')) {
+            logger.warn(`User ${userID} denied write access to close workspace ${indexEntry.id}.`);
+            return false;
+        }
+
+        // Stop it first if needed
+        await this.stopWorkspace(userID, indexEntry.id);
+
+        // Remove from loaded instances
+        this.#workspaces.delete(indexEntry.id);
+        this.emit('workspace:closed', { id: indexEntry.id });
         return true;
     }
 
@@ -388,10 +455,31 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<Workspace|null>} The active Workspace instance, or null if starting failed or access denied.
      */
     async startWorkspace(userID, workspaceID) {
-        this.#validateUserAccess(userID, workspaceID, 'write');
-        const workspace = await this.openWorkspace(userID, workspaceID);
+        // Check if the workspace exists at all
+        const indexEntry = this.#findIndexEntry(workspaceID, userID);
+        if (!indexEntry) {
+            throw new Error(`Workspace "${workspaceID}" not found.`);
+        }
+
+        // Check access if the workspace exists
+        if (!this.#checkAccess(indexEntry.id, userID, 'write')) {
+            logger.warn(`User ${userID} denied write access to start workspace ${indexEntry.id}.`);
+            return null;
+        }
+
+        // Make sure it's loaded
+        let workspace = this.#workspaces.get(indexEntry.id);
+        if (!workspace) {
+            workspace = await this.openWorkspace(userID, indexEntry.id);
+            if (!workspace) {
+                debug(`Failed to open workspace ${indexEntry.id} for starting.`);
+                return null;
+            }
+        }
+
+        // Start it
         await workspace.start();
-        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.ACTIVE);
+        this.#updateWorkspaceStatus(indexEntry.id, WORKSPACE_STATUS.ACTIVE);
         this.emit('workspace:started', workspace);
         return workspace;
     }
@@ -405,13 +493,30 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<boolean>} True if stopped successfully, false if not found, not active, or access denied.
      */
     async stopWorkspace(userID, workspaceID) {
-        this.#validateUserAccess(userID, workspaceID, 'write');
-        const workspace = this.#workspaces.get(workspaceID);
-        if (!workspace) return true;
+        // Check if the workspace exists at all
+        const indexEntry = this.#findIndexEntry(workspaceID, userID);
+        if (!indexEntry) {
+            debug(`Workspace "${workspaceID}" not found. Nothing to stop.`);
+            return true; // Return true for idempotency
+        }
 
+        // Check access if the workspace exists
+        if (!this.#checkAccess(indexEntry.id, userID, 'write')) {
+            logger.warn(`User ${userID} denied write access to stop workspace ${indexEntry.id}.`);
+            return false;
+        }
+
+        // Check if it's loaded
+        const workspace = this.#workspaces.get(indexEntry.id);
+        if (!workspace) {
+            debug(`Workspace ${indexEntry.id} is not loaded. Nothing to stop.`);
+            return true; // Already "stopped" (not active)
+        }
+
+        // Stop it
         await workspace.stop();
-        this.#updateWorkspaceStatus(workspaceID, WORKSPACE_STATUS.INACTIVE);
-        this.emit('workspace:stopped', { id: workspaceID });
+        this.#updateWorkspaceStatus(indexEntry.id, WORKSPACE_STATUS.INACTIVE);
+        this.emit('workspace:stopped', { id: indexEntry.id });
         return true;
     }
 
@@ -525,7 +630,7 @@ class WorkspaceManager extends Manager {
 
             // Validate the source directory (original or extracted)
             let configFilePath = this.#findWorkspaceConfigPath(importPath);
-            if (!existsSync(configFilePath)) {
+            if (!configFilePath) {
                 throw new Error(`Import source directory is missing workspace.json: ${importPath}`);
             }
 
@@ -537,15 +642,22 @@ class WorkspaceManager extends Manager {
                 throw new Error(`Failed to read/parse workspace.json in import source: ${err.message}`);
             }
 
-            // Temporarily set owner for validation, will be overridden later
+            // Generate a new composed ID based on importing user and workspace name
+            const originalId = workspaceConfigData.id;
+            const workspaceName = workspaceConfigData.name;
+            workspaceID = this.#generateComposedWorkspaceId(userID, workspaceName);
+
+            // Temporarily set ID and owner for validation, will be overridden in config
             const originalOwner = workspaceConfigData.owner;
+            workspaceConfigData.id = workspaceID;
             workspaceConfigData.owner = userID;
+
             if (!this.#validateWorkspaceConfig(workspaceConfigData, true)) {
                 // Restore original owner in error message if validation failed
+                workspaceConfigData.id = originalId;
                 workspaceConfigData.owner = originalOwner;
-                throw new Error(`Import source workspace.json is invalid (owner temporarily set to ${userID} for validation). Original: ${JSON.stringify(workspaceConfigData)}`);
+                throw new Error(`Import source workspace.json is invalid (ID/owner temporarily set to ${workspaceID}/${userID} for validation). Original: ${JSON.stringify(workspaceConfigData)}`);
             }
-            workspaceID = workspaceConfigData.id; // Use ID from the imported config
 
             // Check for conflicts (ID or target path)
             const existingWorkspaces = this.workspacesList; // Use getter
@@ -562,36 +674,40 @@ class WorkspaceManager extends Manager {
                     throw new Error(`Workspace path "${finalWorkspacePath}" is already indexed.`);
                 }
                 debug(`Importing workspace "${workspaceID}" in-place from: ${finalWorkspacePath}`);
-                // Overwrite owner in the existing workspace.json
-                 try {
-                     const conf = new Conf({configName: 'workspace', cwd: finalWorkspacePath});
-                     conf.set('owner', userID);
-                     conf.set('updated', new Date().toISOString());
-                     debug(`Updated owner to ${userID} in in-place workspace.json`);
-                 } catch(err) {
-                     throw new Error(`Failed to update owner in in-place workspace.json: ${err.message}`);
-                 }
+                // Overwrite owner and ID in the existing workspace.json
+                try {
+                    const conf = new Conf({configName: 'workspace', cwd: finalWorkspacePath});
+                    conf.set('id', workspaceID);
+                    conf.set('owner', userID);
+                    conf.set('updated', new Date().toISOString());
+                    debug(`Updated owner to ${userID} and ID to ${workspaceID} in in-place workspace.json`);
+                } catch(err) {
+                    throw new Error(`Failed to update owner/ID in in-place workspace.json: ${err.message}`);
+                }
             } else {
-                finalWorkspacePath = path.join(this.#rootPath, workspaceID);
-                // Check if target directory already exists (could be unrelated files)
+                // Use a path based on the sanitized workspace name
+                const sanitizedName = this.#sanitizeWorkspaceName(workspaceName);
+                finalWorkspacePath = path.join(this.#rootPath, userID, sanitizedName);
+
+                // Check if target directory already exists
                 if (existsSync(finalWorkspacePath)) {
                     throw new Error(`Target directory for import already exists: ${finalWorkspacePath}`);
                 }
-                 debug(`Copying workspace "${workspaceID}" from ${importPath} to ${finalWorkspacePath}`);
-                 // fsPromises.cp is available in Node 16.7+
-                 await fsPromises.cp(importPath, finalWorkspacePath, { recursive: true });
+                debug(`Copying workspace "${workspaceID}" from ${importPath} to ${finalWorkspacePath}`);
+                await fsPromises.cp(importPath, finalWorkspacePath, { recursive: true });
 
-                 // Ensure workspace.json includes restApi structure and correct owner after copy
-                 try {
-                     const conf = new Conf({configName: 'workspace', cwd: finalWorkspacePath});
-                     conf.set('owner', userID);
-                     conf.set('restApi', conf.get('restApi', { port: null, token: null })); // Ensure object exists
-                     conf.set('updated', new Date().toISOString());
-                     debug(`Set owner to ${userID} in copied workspace.json`);
-                 } catch(err) {
-                     throw new Error(`Failed to update owner/restApi in copied workspace.json: ${err.message}`);
-                 }
-                 debug(`Workspace copy complete.`);
+                // Update workspace.json with new ID, owner and ensure restApi structure
+                try {
+                    const conf = new Conf({configName: 'workspace', cwd: finalWorkspacePath});
+                    conf.set('id', workspaceID);
+                    conf.set('owner', userID);
+                    conf.set('restApi', conf.get('restApi', { port: null, token: null })); // Ensure object exists
+                    conf.set('updated', new Date().toISOString());
+                    debug(`Set owner to ${userID} and ID to ${workspaceID} in copied workspace.json`);
+                } catch(err) {
+                    throw new Error(`Failed to update owner/ID/restApi in copied workspace.json: ${err.message}`);
+                }
+                debug(`Workspace copy complete.`);
             }
 
             // Add entry to the global index (workspaces array)
@@ -639,35 +755,26 @@ class WorkspaceManager extends Manager {
         if (!userID) {
             throw new Error('UserID is required to export a workspace.');
         }
-        // Access Check: Requires write access
-        if (!this.#checkAccess(workspaceID, userID, 'write')) {
-            logger.warn(`User ${userID} denied write access to export workspace ${workspaceID}.`);
-            // Throw error instead of returning null for path?
-            throw new Error(`Access Denied: User ${userID} cannot export workspace ${workspaceID}.`);
-        }
 
-        if (!workspaceID) throw new Error('Workspace ID is required for export.');
-        if (!dstPath) throw new Error('Destination path is required for export.');
-
-        // const indexEntry = this.index[workspaceID];
+        // Find the workspace in the index
         const indexEntry = this.#findIndexEntry(workspaceID, userID);
         if (!indexEntry) {
             throw new Error(`Workspace "${workspaceID}" not found in index array.`);
         }
 
-        // Ensure workspace is not active (loaded instance status check)
-        const workspaceInstance = this.#workspaces.get(workspaceID);
-        if (workspaceInstance && workspaceInstance.status === WORKSPACE_STATUS.ACTIVE) {
-            // Automatically stop it? Or force user to stop?
-            // Let's stop it automatically for convenience, as user has write access.
-             debug(`Workspace ${workspaceID} is active. Stopping automatically before export.`);
-             await this.stopWorkspace(userID, workspaceID);
-            // throw new Error(`Workspace "${workspaceID}" is active. Stop it before exporting.`);
+        // Access Check: Requires write access
+        if (!this.#checkAccess(indexEntry.id, userID, 'write')) {
+            logger.warn(`User ${userID} denied write access to export workspace ${indexEntry.id}.`);
+            throw new Error(`Access Denied: User ${userID} cannot export workspace ${indexEntry.id}.`);
         }
-        // Also check index status as a fallback if not loaded
-        // if (!workspaceInstance && indexEntry.status === WORKSPACE_STATUS.ACTIVE) {
-        //     throw new Error(`Workspace "${workspaceID}" is marked as active in index. Stop it before exporting.`);
-        // }
+
+        if (!dstPath) throw new Error('Destination path is required for export.');
+
+        // Ensure workspace is not active (loaded instance status check)
+        const workspaceInstance = this.#workspaces.get(indexEntry.id);
+        if (workspaceInstance && workspaceInstance.status === WORKSPACE_STATUS.ACTIVE) {
+            throw new Error(`Workspace "${indexEntry.id}" is active. Stop it before exporting.`);
+        }
 
         const sourcePath = indexEntry.rootPath;
         let outputZipPath = dstPath;
@@ -676,7 +783,7 @@ class WorkspaceManager extends Manager {
         try {
             const stats = await fsPromises.stat(dstPath);
             if (stats.isDirectory()) {
-                 outputZipPath = path.join(dstPath, `${workspaceID}.zip`);
+                 outputZipPath = path.join(dstPath, `${indexEntry.id}.zip`);
             }
         } catch (e) {
             // If stat fails, dstPath likely doesn't exist, assume it's the full file path
@@ -692,7 +799,7 @@ class WorkspaceManager extends Manager {
              outputZipPath += '.zip';
         }
 
-        debug(`Exporting workspace "${workspaceID}" from ${sourcePath} to ${outputZipPath} by user ${userID}`);
+        debug(`Exporting workspace "${indexEntry.id}" from ${sourcePath} to ${outputZipPath} by user ${userID}`);
 
         try {
             const zip = new AdmZip();
@@ -700,7 +807,7 @@ class WorkspaceManager extends Manager {
             zip.addLocalFolder(sourcePath, ''); // Add content directly at zip root
             await zip.writeZipPromise(outputZipPath);
             debug(`Workspace export successful: ${outputZipPath}`);
-            this.emit('workspace:exported', { id: workspaceID, path: outputZipPath });
+            this.emit('workspace:exported', { id: indexEntry.id, path: outputZipPath });
             return outputZipPath;
         } catch (err) {
             throw new Error(`Failed to create workspace zip file at ${outputZipPath}: ${err.message}`);
@@ -915,57 +1022,62 @@ class WorkspaceManager extends Manager {
             return false;
         }
 
+        // Quick access check - if workspaceID starts with the userID, it's likely owned by this user
+        // This is true for the composed ID format: user.email/workspace.id
+        if (workspaceID.startsWith(`${userID}/`) && requiredLevel === 'read') {
+            return true;
+        }
+
         let owner = null;
         let acl = null;
 
         // 1. Try getting info from provided metadata/config
         if (workspaceMetadataOrConfig) {
-             // Check if it's a Workspace config object (has methods like get) or index metadata (plain object)
+            // Check if it's a Workspace config object (has methods like get) or index metadata (plain object)
             if (typeof workspaceMetadataOrConfig.get === 'function') { // Likely a Conf instance or Workspace instance config getter
                 owner = workspaceMetadataOrConfig.get('owner');
                 acl = workspaceMetadataOrConfig.get('acl');
             } else if (workspaceMetadataOrConfig.id) { // Likely index metadata or plain config object
-                 owner = workspaceMetadataOrConfig.owner;
-                 // If it's just index metadata, ACL might be missing or stale, so clear it to force a read
-                 // How to reliably distinguish index metadata from a full config object passed in?
-                 // Assume if `.get` is not present, it *might* be index metadata, force ACL read.
-                  acl = null; // Force read below if only index entry provided
-             }
+                owner = workspaceMetadataOrConfig.owner;
+                // If it's just index metadata, ACL might be missing or stale, so clear it to force a read
+                // How to reliably distinguish index metadata from a full config object passed in?
+                // Assume if `.get` is not present, it *might* be index metadata, force ACL read.
+                acl = null; // Force read below if only index entry provided
+            }
         }
 
         // 2. If owner/acl not obtained, try loading from workspace.json
         if (owner === null || acl === null) {
-            // const indexEntry = this.index[workspaceID];
             const indexEntry = this.#findIndexEntry(workspaceID, userID);
             if (!indexEntry) {
-                 debug(`Access check failed for ${workspaceID}: Workspace not found in index.`);
-                 return false; // Workspace doesn't even exist in index
+                debug(`Access check failed for ${workspaceID}: Workspace not found in index.`);
+                return false; // Workspace doesn't even exist in index
             }
             // Only read config if necessary (not provided or only index metadata provided)
             try {
-                 const configFilePath = this.#findWorkspaceConfigPath(indexEntry.rootPath);
-                 if (!configFilePath) {
-                     throw new Error('Workspace config file not found.');
-                 }
-                 const configDir = path.dirname(configFilePath);
-                 const configName = path.basename(configFilePath, '.json');
-                 const wsConfig = new Conf({ configName: configName, cwd: configDir });
-                 owner = wsConfig.get('owner');
-                 acl = wsConfig.get('acl', {}); // Default to empty object if missing
+                const configFilePath = this.#findWorkspaceConfigPath(indexEntry.rootPath);
+                if (!configFilePath) {
+                    throw new Error('Workspace config file not found.');
+                }
+                const configDir = path.dirname(configFilePath);
+                const configName = path.basename(configFilePath, '.json');
+                const wsConfig = new Conf({ configName: configName, cwd: configDir });
+                owner = wsConfig.get('owner');
+                acl = wsConfig.get('acl', {}); // Default to empty object if missing
             } catch (err) {
-                 logger.error(`Access check failed for ${workspaceID}: Could not read workspace config at ${indexEntry.rootPath}: ${err.message}`);
-                 return false; // Cannot determine access if config is unreadable
+                logger.error(`Access check failed for ${workspaceID}: Could not read workspace config at ${indexEntry.rootPath}: ${err.message}`);
+                return false; // Cannot determine access if config is unreadable
             }
         }
 
         // 3. Perform the access check
         if (!owner) {
-             logger.error(`Access check failed for ${workspaceID}: Workspace owner is not defined in config.`);
-             return false; // Invalid configuration
+            logger.error(`Access check failed for ${workspaceID}: Workspace owner is not defined in config.`);
+            return false; // Invalid configuration
         }
 
-        // Owner always has access
-        if (owner === userID) {
+        // Owner always has access - quick check for composed IDs
+        if (owner === userID || workspaceID.startsWith(`${userID}/`)) {
             return true;
         }
 
@@ -977,14 +1089,14 @@ class WorkspaceManager extends Manager {
 
         // For read access, check ACL
         if (requiredLevel === 'read') {
-             if (acl && typeof acl === 'object' && acl[userID]) {
-                 // User is explicitly listed in the ACL.
-                 // Future: Check acl[userID] value for 'read'/'write'/'admin'
-                 return true;
-             } else {
-                 debug(`Access check failed for ${workspaceID}: User ${userID} is not owner (${owner}) and not found in ACL.`);
-                 return false;
-             }
+            if (acl && typeof acl === 'object' && acl[userID]) {
+                // User is explicitly listed in the ACL.
+                // Future: Check acl[userID] value for 'read'/'write'/'admin'
+                return true;
+            } else {
+                debug(`Access check failed for ${workspaceID}: User ${userID} is not owner (${owner}) and not found in ACL.`);
+                return false;
+            }
         }
 
         // Should not reach here if requiredLevel is 'read' or 'write'
@@ -998,16 +1110,27 @@ class WorkspaceManager extends Manager {
      * @param {string} name
      * @returns {string}
      */
-     #sanitizeWorkspaceName(name) {
-        if (!name) return 'untitled';
-        return name
-            .toString()
-            .toLowerCase()
-            .replace(/\s+/g, '-')       // Replace spaces with -
-            .replace(/[^a-z0-9-]/g, '') // Remove all non-alphanumeric or hyphen characters
-            .replace(/--+/g, '-')      // Replace multiple - with single -
-            .replace(/^-+/, '')        // Trim - from start of text
-            .replace(/-+$/, '');       // Trim - from end of text
+    #sanitizeWorkspaceName(name) {
+        return WorkspaceManager.sanitizeWorkspaceName(name);
+    }
+
+    /**
+     * Generate a composed workspace ID from user email and workspace name
+     * Format: user.email/workspace.id
+     * @param {string} userEmail - User's email address
+     * @param {string} workspaceName - Name of the workspace
+     * @returns {string} Composed workspace ID
+     * @private
+     */
+    #generateComposedWorkspaceId(userEmail, workspaceName) {
+        if (!userEmail) throw new Error('User email is required to generate workspace ID');
+        if (!workspaceName) throw new Error('Workspace name is required to generate workspace ID');
+
+        // Sanitize the workspace name part to create a file-system safe ID
+        const sanitizedName = this.#sanitizeWorkspaceName(workspaceName);
+
+        // Create the composed ID in format: user.email/workspace.id
+        return `${userEmail}/${sanitizedName}`;
     }
 
     /**
@@ -1334,6 +1457,7 @@ class WorkspaceManager extends Manager {
 
         // for (const workspaceID in workspaceIndex) {
         for (let i = 0; i < updatedIndex.length; i++) {
+            debug(`Processing workspace ${updatedIndex[i].id}`);
             const indexEntry = updatedIndex[i];
             const workspaceID = indexEntry.id;
             const workspacePath = indexEntry.rootPath;
@@ -1442,13 +1566,43 @@ class WorkspaceManager extends Manager {
     #findIndexEntry(workspaceID, userID = null) {
         const workspaces = this.#getWorkspacesArrayIndex();
 
-        if (userID) {
-            // If userID is provided, filter by both ID and owner
-            return workspaces.find(ws => ws.id === workspaceID && ws.owner === userID);
-        } else {
-            // Otherwise, just filter by ID (used for backward compatibility)
-            return workspaces.find(ws => ws.id === workspaceID);
+        // First try to find by exact ID match
+        const exactMatch = workspaces.find(ws => ws.id === workspaceID);
+        if (exactMatch) {
+            // If userID is provided, ensure it's the owner or part of the composed ID
+            if (userID) {
+                const isOwner = exactMatch.owner === userID || workspaceID.startsWith(`${userID}/`);
+                return isOwner ? exactMatch : undefined;
+            }
+            return exactMatch;
         }
+
+        // If not found by exact ID and userID is provided, try these approaches:
+        if (userID) {
+            // 1. Check if workspaceID might be just the name part of a composed ID
+            if (!workspaceID.includes('/')) {
+                // Try to find by composed ID (userID/workspaceID)
+                const composedId = `${userID}/${workspaceID}`;
+                const composedMatch = workspaces.find(ws => ws.id === composedId);
+                if (composedMatch) return composedMatch;
+
+                // If not found by exact composed ID, also try with sanitized name
+                const sanitizedId = `${userID}/${this.#sanitizeWorkspaceName(workspaceID)}`;
+                if (sanitizedId !== composedId) {
+                    const sanitizedMatch = workspaces.find(ws => ws.id === sanitizedId);
+                    if (sanitizedMatch) return sanitizedMatch;
+                }
+            }
+
+            // 2. Try to match by name property if not found by ID
+            const nameMatch = workspaces.find(ws =>
+                ws.owner === userID &&
+                (ws.name === workspaceID || this.#sanitizeWorkspaceName(ws.name) === this.#sanitizeWorkspaceName(workspaceID))
+            );
+            if (nameMatch) return nameMatch;
+        }
+
+        return undefined;
     }
 
     /**
@@ -1506,28 +1660,24 @@ class WorkspaceManager extends Manager {
     }
 
     #validateWorkspaceDoesNotExist(workspaceID, workspacePath) {
-        // Only check for path conflicts and workspace ID conflicts within the same user's directory
-        // This allows different users to have workspaces with the same name (like 'universe')
-        const userDir = path.dirname(workspacePath);
+        // Check if this specific ID exists already
+        if (this.workspacesList.some(ws => ws.id === workspaceID)) {
+            throw new Error(`Workspace with ID "${workspaceID}" already exists.`);
+        }
 
         // Check if this specific path exists already
         if (existsSync(workspacePath)) {
             throw new Error(`Workspace path "${workspacePath}" already exists.`);
         }
-
-        // Only check for ID conflicts within the same user's directory by filtering workspaces
-        const workspacesForUser = this.workspacesList.filter(ws => {
-            const wsUserDir = path.dirname(ws.rootPath);
-            return wsUserDir === userDir && ws.id === workspaceID;
-        });
-
-        if (workspacesForUser.length > 0) {
-            throw new Error(`Workspace "${workspaceID}" already exists for this user.`);
-        }
     }
 
     #validateUserAccess(userID, workspaceID, accessLevel) {
-        const workspacePath = this.#getWorkspacePath(workspaceID);
+        const indexEntry = this.#findIndexEntry(workspaceID, userID);
+        if (!indexEntry) {
+            throw new Error(`Workspace "${workspaceID}" not found.`);
+        }
+
+        const workspacePath = indexEntry.rootPath;
         const configStore = this.#loadWorkspaceConfig(workspacePath);
         const owner = configStore.get('owner');
         const acl = configStore.get('acl', {});
@@ -1606,7 +1756,7 @@ class WorkspaceManager extends Manager {
     /**
      * Get a workspace ID by name for a specific user
      * This allows users to reference workspaces by their friendly names
-     * @param {string} userID - The user ID
+     * @param {string} userID - The user ID (email)
      * @param {string} workspaceName - The workspace name
      * @returns {string|null} - The workspace ID or null if not found
      */
@@ -1619,22 +1769,28 @@ class WorkspaceManager extends Manager {
         }
 
         const workspaces = this.listWorkspaces(userID);
+        const sanitizedName = this.#sanitizeWorkspaceName(workspaceName);
 
-        // First try exact match on name
-        const exactMatch = workspaces.find(ws => ws.name === workspaceName);
-        if (exactMatch) {
-            return exactMatch.id;
+        // 1. Try to find exact match with composed ID (userID/sanitizedName)
+        const composedId = `${userID}/${sanitizedName}`;
+        const exactIdMatch = workspaces.find(ws => ws.id === composedId);
+        if (exactIdMatch) {
+            return exactIdMatch.id;
         }
 
-        // For "universe" specifically, try to find the user's universe workspace
-        if (workspaceName.toLowerCase() === 'universe') {
-            // Look for workspace IDs with the pattern user-{userId-prefix}-universe
-            const userPrefix = userID.substring(0, 8);
-            const universeId = workspaces.find(ws =>
-                ws.id.includes(`user-${userPrefix}-universe`) ||
-                (ws.type === 'universe' && ws.owner === userID)
+        // 2. Try to find by name match
+        const nameMatch = workspaces.find(ws => this.#sanitizeWorkspaceName(ws.name) === sanitizedName);
+        if (nameMatch) {
+            return nameMatch.id;
+        }
+
+        // 3. Special handling for "universe"
+        if (sanitizedName === 'universe') {
+            const universeMatch = workspaces.find(ws =>
+                ws.id.endsWith('/universe') &&
+                ws.id.startsWith(userID)
             );
-            return universeId ? universeId.id : null;
+            return universeMatch ? universeMatch.id : null;
         }
 
         return null;
@@ -1668,6 +1824,26 @@ class WorkspaceManager extends Manager {
             return null;
         }
         return this.openWorkspace(userID, workspaceId);
+    }
+
+    /**
+     * Sanitize a workspace name for filesystem use and IDs.
+     * Makes the string lowercase, replaces spaces with hyphens,
+     * and removes special characters.
+     * @param {string} name - The workspace name to sanitize
+     * @returns {string} - The sanitized name
+     * @static
+     */
+    static sanitizeWorkspaceName(name) {
+        if (!name) return 'untitled';
+        return name
+            .toString()
+            .toLowerCase()
+            .replace(/\s+/g, '-')       // Replace spaces with -
+            .replace(/[^a-z0-9-]/g, '') // Remove all non-alphanumeric or hyphen characters
+            .replace(/--+/g, '-')      // Replace multiple - with single -
+            .replace(/^-+/, '')        // Trim - from start of text
+            .replace(/-+$/, '');       // Trim - from end of text
     }
 
 }
