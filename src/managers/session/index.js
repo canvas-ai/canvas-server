@@ -1,8 +1,14 @@
+'use strict';
+
 // Utils
+import { v4 as uuidv4 } from 'uuid';
+
+// Base Manager
+import Manager from '../base/Manager.js';
+
+// Logging
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('manager:session');
-import EventEmitter from 'eventemitter2';
-import { v4 as uuidv4 } from 'uuid';
 
 // Includes
 import Session from './lib/Session.js';
@@ -12,40 +18,47 @@ import Session from './lib/Session.js';
  * Handles user sessions and authentication
  */
 
-class SessionManager extends EventEmitter {
+class SessionManager extends Manager {
 
-    #sessionStore;
     #sessionOptions;
     #sessions = new Map();
-    #initialized = false;
 
-    constructor(sessionStore, sessionOptions = {}) {
-        super();
+    /**
+     * Create a new SessionManager
+     * @param {Object} options - Manager options
+     * @param {Object} options.jim - JSON Index Manager instance
+     * @param {Object} [options.sessionOptions] - Session configuration options
+     */
+    constructor(options = {}) {
+        super({
+            jim: options.jim,
+            indexName: 'sessions',
+            eventEmitterOptions: options.eventEmitterOptions
+        });
 
-        //if (!sessionStore) {
-        //    throw new Error('Session store is required');
-        //}
-
-        this.#sessionStore = sessionStore;
         this.#sessionOptions = {
             sessionTimeout: 7 * 24 * 60 * 60 * 1000, // Default 7 days
-            ...sessionOptions,
+            ...options.sessionOptions,
         };
 
         debug('Session Manager options', this.#sessionOptions);
     }
 
+    /**
+     * Initialize manager
+     * @override
+     */
     async initialize() {
-        if (this.#initialized) {
-            return;
+        if (this.initialized) {
+            return true;
         }
+
         debug('Initializing session manager');
 
         // Load active sessions from database
         await this.#loadSessionsFromStore();
 
-        this.#initialized = true;
-        debug('Session manager initialized');
+        return super.initialize();
     }
 
     /**
@@ -70,8 +83,8 @@ class SessionManager extends EventEmitter {
         };
 
         try {
-            // Create session in database
-            const session = new Session(this.#sessionStore, sessionData);
+            // Create session instance
+            const session = new Session(this.index, sessionData);
             await session.save();
 
             // Add to in-memory cache
@@ -112,9 +125,9 @@ class SessionManager extends EventEmitter {
 
         // Try to fetch from database
         try {
-            const sessionData = await this.#sessionStore.get(sessionId);
+            const sessionData = this.index.get(sessionId);
             if (sessionData) {
-                const session = new Session(this.#sessionStore, sessionData);
+                const session = new Session(this.index, sessionData);
 
                 // Only cache active sessions
                 if (session.isActive) {
@@ -148,10 +161,14 @@ class SessionManager extends EventEmitter {
         try {
             const allSessions = [];
             // Get all sessions from the store
-            for (const entry of this.#sessionStore.getRange()) {
-                const sessionData = entry.value;
+            const sessions = this.index.store || {};
+
+            // Skip 'sessions' key if it exists (this is where we might store metadata)
+            for (const [key, sessionData] of Object.entries(sessions)) {
+                if (key === 'sessions') continue;
+
                 if (sessionData && sessionData.userId === userId) {
-                    const session = new Session(this.#sessionStore, sessionData);
+                    const session = new Session(this.index, sessionData);
                     allSessions.push(session);
 
                     // Update cache with active sessions
@@ -253,13 +270,16 @@ class SessionManager extends EventEmitter {
         let count = 0;
 
         try {
-            // Find all active sessions
+            // Find all sessions in the store
+            const sessions = this.index.store || {};
             const activeSessions = [];
 
-            for (const entry of this.#sessionStore.getRange()) {
-                const sessionData = entry.value;
+            // Skip 'sessions' key if it exists (this is where we might store metadata)
+            for (const [key, sessionData] of Object.entries(sessions)) {
+                if (key === 'sessions') continue;
+
                 if (sessionData && sessionData.isActive) {
-                    const session = new Session(this.#sessionStore, sessionData);
+                    const session = new Session(this.index, sessionData);
                     activeSessions.push(session);
                 }
             }
@@ -279,6 +299,10 @@ class SessionManager extends EventEmitter {
             return 0;
         }
     }
+
+    /**
+     * Private methods
+     */
 
     /**
      * Check if a session is valid (not expired)
@@ -305,12 +329,14 @@ class SessionManager extends EventEmitter {
     async #loadSessionsFromStore() {
         try {
             const activeSessions = [];
+            const sessions = this.index.store || {};
 
-            // Iterate through all entries in the store
-            for (const entry of this.#sessionStore.getRange()) {
-                const sessionData = entry.value;
+            // Skip 'sessions' key if it exists (this is where we might store metadata)
+            for (const [key, sessionData] of Object.entries(sessions)) {
+                if (key === 'sessions') continue;
+
                 if (sessionData && sessionData.isActive) {
-                    const session = new Session(this.#sessionStore, sessionData);
+                    const session = new Session(this.index, sessionData);
 
                     // Only load valid sessions
                     if (this.#isSessionValid(session)) {
@@ -331,5 +357,4 @@ class SessionManager extends EventEmitter {
     }
 }
 
-// Export the singleton getter
 export default SessionManager;

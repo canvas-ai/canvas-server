@@ -1,21 +1,18 @@
 'use strict';
 
 // Utils
-import path from 'path';
-import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import Conf from 'conf';
 import EventEmitter from 'eventemitter2';
 
 // Logging
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('token-manager');
+const debug = createDebug('manager:token');
 
 /**
  * Constants
  */
 const API_TOKEN_STATUSES = ['active', 'revoked', 'expired'];
+const TOKEN_INDEX_PREFIX = 'auth:token:';
 
 /**
  * TokenManager Class
@@ -25,75 +22,60 @@ class TokenManager extends EventEmitter {
     // The user this token manager belongs to
     #userId;
 
-    // Path to user's home directory
-    #userHomePath;
+    // JIM instance
+    #jim;
 
-    // Configuration store
-    #tokenStore;
+    // Index name for token storage
+    #indexName;
 
     /**
      * Constructor - Initialize the token manager for a user
      * @param {Object} options - Configuration options
      * @param {string} options.userId - The ID of the user
-     * @param {string} options.userHomePath - Path to the user's home directory
+     * @param {string} options.userHomePath - Path to the user's home directory (not used in simplified version)
+     * @param {Object} options.jim - JSON Index Manager instance
      * @param {Object} [options.eventEmitterOptions] - Options for EventEmitter2
      */
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
 
         if (!options.userId) throw new Error('User ID is required');
-        if (!options.userHomePath) throw new Error('User home path is required');
+        if (!options.jim) throw new Error('JIM instance is required');
 
         this.#userId = options.userId;
-        this.#userHomePath = options.userHomePath;
-
-        // Initialize token store
-        this.#initializeTokenStore();
+        this.#jim = options.jim;
+        this.#indexName = 'users'; // Use the same index as UserManager
 
         debug(`TokenManager initialized for user: ${this.#userId}`);
     }
 
     /**
-     * Initialize the token store
+     * Helper to get the token storage key for this user
+     * @returns {string} Token storage key
      * @private
      */
-    #initializeTokenStore() {
-        try {
-            const configDir = path.join(this.#userHomePath, 'Config');
-            if (!existsSync(configDir)) {
-                debug(`Config directory does not exist for user ${this.#userId}, token store not initialized`);
-                return;
-            }
-
-            this.#tokenStore = new Conf({
-                configName: 'tokens',
-                cwd: configDir
-            });
-            debug(`Token store initialized for user ${this.#userId}`);
-        } catch (error) {
-            debug(`Failed to initialize token store: ${error.message}`);
-        }
+    #getTokenStorageKey() {
+        return `${TOKEN_INDEX_PREFIX}${this.#userId}`;
     }
 
     /**
-     * Ensure the token store exists and is initialized
+     * Get all tokens for the user
+     * @returns {Object} Map of token ID to token object
      * @private
      */
-    async #ensureTokenStore() {
-        if (this.#tokenStore) return;
+    #getTokens() {
+        const key = this.#getTokenStorageKey();
+        return this.#jim.getIndex(this.#indexName).get(key, {});
+    }
 
-        // Create Config directory if it doesn't exist
-        const configDir = path.join(this.#userHomePath, 'Config');
-        if (!existsSync(configDir)) {
-            await fs.mkdir(configDir, { recursive: true });
-        }
-
-        this.#tokenStore = new Conf({
-            configName: 'tokens',
-            cwd: configDir
-        });
-
-        debug(`Token store created for user ${this.#userId}`);
+    /**
+     * Save all tokens for the user
+     * @param {Object} tokens - Map of token ID to token object
+     * @private
+     */
+    #saveTokens(tokens) {
+        const key = this.#getTokenStorageKey();
+        this.#jim.getIndex(this.#indexName).set(key, tokens);
     }
 
     /**
@@ -106,10 +88,6 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<Object>} Created token
      */
     async createToken(options = {}) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
         if (!options.name) {
             throw new Error('Token name is required');
         }
@@ -136,12 +114,22 @@ class TokenManager extends EventEmitter {
             usageCount: 0
         };
 
-        // Store token
-        this.#tokenStore.set(`tokens.${tokenId}`, token);
+        // Get current tokens
+        const tokens = this.#getTokens();
+
+        // Add new token
+        tokens[tokenId] = token;
+
+        // Store updated tokens
+        this.#saveTokens(tokens);
 
         this.emit('token:created', { userId: this.#userId, tokenId });
 
-        return token;
+        // Return a copy of the token with the value to show to the user
+        return {
+            ...token,
+            value: tokenValue
+        };
     }
 
     /**
@@ -150,15 +138,12 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<Object>} Token object
      */
     async getToken(tokenId) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
         if (!tokenId) {
             throw new Error('Token ID is required');
         }
 
-        const token = this.#tokenStore.get(`tokens.${tokenId}`);
+        const tokens = this.#getTokens();
+        const token = tokens[tokenId];
 
         if (!token) {
             throw new Error(`Token not found: ${tokenId}`);
@@ -172,14 +157,11 @@ class TokenManager extends EventEmitter {
      * @param {Object} options - Filter options
      * @param {string} [options.status] - Filter by status
      * @param {Array<string>} [options.scopes] - Filter by scopes
+     * @param {boolean} [options.includeExpired=false] - Whether to include expired tokens
      * @returns {Promise<Array<Object>>} Array of tokens
      */
     async listTokens(options = {}) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
-        let tokens = Object.values(this.#tokenStore.get('tokens', {}));
+        let tokens = Object.values(this.#getTokens());
 
         // Apply filters
         if (options.status && API_TOKEN_STATUSES.includes(options.status)) {
@@ -189,6 +171,14 @@ class TokenManager extends EventEmitter {
         if (Array.isArray(options.scopes) && options.scopes.length > 0) {
             tokens = tokens.filter(token =>
                 options.scopes.some(scope => token.scopes.includes(scope))
+            );
+        }
+
+        // Filter out expired tokens unless specifically requested
+        if (!options.includeExpired) {
+            const now = new Date().toISOString();
+            tokens = tokens.filter(token =>
+                !token.expiresAt || token.expiresAt > now
             );
         }
 
@@ -202,10 +192,6 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<Object>} Updated token
      */
     async updateToken(tokenId, updates = {}) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
         if (!tokenId) {
             throw new Error('Token ID is required');
         }
@@ -214,7 +200,9 @@ class TokenManager extends EventEmitter {
             throw new Error('No updates provided');
         }
 
-        const token = this.#tokenStore.get(`tokens.${tokenId}`);
+        // Get all tokens
+        const tokens = this.#getTokens();
+        const token = tokens[tokenId];
 
         if (!token) {
             throw new Error(`Token not found: ${tokenId}`);
@@ -239,8 +227,11 @@ class TokenManager extends EventEmitter {
             updated: new Date().toISOString()
         };
 
-        // Save updates
-        this.#tokenStore.set(`tokens.${tokenId}`, updatedToken);
+        // Update token in the tokens object
+        tokens[tokenId] = updatedToken;
+
+        // Save updated tokens
+        this.#saveTokens(tokens);
 
         this.emit('token:updated', { userId: this.#userId, tokenId, updates: Object.keys(updates) });
 
@@ -253,22 +244,22 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<boolean>} True if deleted
      */
     async deleteToken(tokenId) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
         if (!tokenId) {
             throw new Error('Token ID is required');
         }
 
-        const token = this.#tokenStore.get(`tokens.${tokenId}`);
+        // Get all tokens
+        const tokens = this.#getTokens();
 
-        if (!token) {
+        if (!tokens[tokenId]) {
             return false; // Token doesn't exist
         }
 
         // Delete token
-        this.#tokenStore.delete(`tokens.${tokenId}`);
+        delete tokens[tokenId];
+
+        // Save updated tokens
+        this.#saveTokens(tokens);
 
         this.emit('token:deleted', { userId: this.#userId, tokenId });
 
@@ -281,15 +272,13 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<Object>} Updated token
      */
     async updateTokenUsage(tokenId) {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
         if (!tokenId) {
             throw new Error('Token ID is required');
         }
 
-        const token = this.#tokenStore.get(`tokens.${tokenId}`);
+        // Get all tokens
+        const tokens = this.#getTokens();
+        const token = tokens[tokenId];
 
         if (!token) {
             throw new Error(`Token not found: ${tokenId}`);
@@ -304,7 +293,8 @@ class TokenManager extends EventEmitter {
         if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
             // Update status to expired
             token.status = 'expired';
-            this.#tokenStore.set(`tokens.${tokenId}`, token);
+            tokens[tokenId] = token;
+            this.#saveTokens(tokens);
             throw new Error(`Token has expired: ${tokenId}`);
         }
 
@@ -315,8 +305,11 @@ class TokenManager extends EventEmitter {
             usageCount: (token.usageCount || 0) + 1
         };
 
-        // Save updates
-        this.#tokenStore.set(`tokens.${tokenId}`, updatedToken);
+        // Update token in tokens object
+        tokens[tokenId] = updatedToken;
+
+        // Save updated tokens
+        this.#saveTokens(tokens);
 
         return updatedToken;
     }
@@ -326,11 +319,7 @@ class TokenManager extends EventEmitter {
      * @returns {Promise<number>} Token count
      */
     async getTokenCount() {
-        if (!this.#tokenStore) {
-            await this.#ensureTokenStore();
-        }
-
-        const tokens = this.#tokenStore.get('tokens', {});
+        const tokens = this.#getTokens();
         return Object.keys(tokens).length;
     }
 
@@ -350,14 +339,14 @@ class TokenManager extends EventEmitter {
      * @static
      */
     static generateSecureToken(length = 16) {
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+';
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_=+';
         let token = '';
 
         // Ensure we have at least one of each character type
         token += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
         token += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
         token += '0123456789'[Math.floor(Math.random() * 10)]; // digit
-        token += '!@#$%^&*()-_=+'[Math.floor(Math.random() * 14)]; // special
+        token += '-_=+'[Math.floor(Math.random() * 4)]; // special
 
         // Fill the rest randomly
         for (let i = 4; i < length; i++) {

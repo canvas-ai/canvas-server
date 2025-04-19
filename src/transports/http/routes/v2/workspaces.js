@@ -221,6 +221,51 @@ export default function workspacesRoutes(options) {
     // === Helper Middleware ===
 
     /**
+     * Middleware to translate workspace name to ID and ensure existence
+     * This allows APIs to be called with human-readable names while using internal IDs
+     */
+    const translateWorkspaceNameToId = async (req, res, next) => {
+        const workspaceName = req.params.id;
+        const userId = req.user?.id;
+
+        if (!userId) {
+            const resp = new ResponseObject().unauthorized();
+            return res.status(resp.statusCode).json(resp.getResponse());
+        }
+
+        // If the ID looks like a UUID or namespaced ID, don't try to translate
+        if (workspaceName && (workspaceName.includes('-') || workspaceName.length > 20)) {
+            debug(`Using provided workspace ID directly: ${workspaceName}`);
+            return next();
+        }
+
+        // Try to find the workspace ID by name
+        try {
+            const workspaceId = req.workspaceManager.getWorkspaceIdByName(userId, workspaceName);
+
+            if (!workspaceId) {
+                debug(`translateWorkspaceNameToId: Workspace name "${workspaceName}" not found for user ${userId}`);
+                const response = new ResponseObject().notFound(`Workspace "${workspaceName}" not found.`);
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Replace the name with the actual ID in the request params
+            debug(`Translated workspace name "${workspaceName}" to ID "${workspaceId}"`);
+            req.params.id = workspaceId;
+            req.originalWorkspaceName = workspaceName; // Store original name for reference
+
+            next();
+        } catch (error) {
+            debug(`Error translating workspace name: ${error.message}`);
+            const response = new ResponseObject().serverError(`Error processing workspace name: ${error.message}`);
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+    };
+
+    // Insert translateWorkspaceNameToId middleware before other middleware
+    router.use('/:id*', translateWorkspaceNameToId);
+
+    /**
      * Middleware to ensure the requested workspace exists in the index and the user has access.
      * Returns 404 if not in index, 403 if exists but user lacks read access.
      */

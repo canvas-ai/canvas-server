@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('canvas:auth:token');
+const debug = createDebug('service:auth:token');
 
 /**
  * Auth Token Service
@@ -179,21 +179,27 @@ class AuthTokenService {
             }
 
             // If not in cache, we need to scan all users and their tokens
-            // This is inefficient but necessary for tokens created before this service was running
             const users = await this.#userManager.listUsers({ includeInactive: false });
 
             for (const userData of users) {
                 const userId = userData.id;
                 try {
-                    const user = await this.#userManager.getUserById(userId);
-                    const tokens = user.listApiTokens({ includeExpired: false });
+                    // Get all tokens for this user
+                    const tokens = await this.#userManager.listApiTokens(userId, { includeExpired: false });
 
-                    // We can't directly check token values since they're not stored
-                    // This is a limitation of the current design
-                    // In a real implementation, we would need to store a hash of the token value
+                    // Check each token
+                    for (const token of tokens) {
+                        // Compare with raw token value
+                        if (token.token === tokenValue) {
+                            // Found matching token, add to cache for future lookups
+                            this.#tokenCache.set(tokenValue, `${userId}:${token.id}`);
 
-                    // For now, we'll just return null
-                    debug('Token validation requires token value to be in cache');
+                            // Update last used timestamp
+                            await this.#userManager.updateApiTokenUsage(userId, token.id);
+
+                            return { userId, tokenId: token.id };
+                        }
+                    }
                 } catch (error) {
                     debug(`Error checking tokens for user ${userId}: ${error.message}`);
                 }

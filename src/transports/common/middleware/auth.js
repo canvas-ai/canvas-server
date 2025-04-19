@@ -63,15 +63,15 @@ export default function createAuthMiddleware(server) {
                 debug(`JWT token verified for user ID: ${jwtPayload.id}`);
 
                 // Get user from user manager
-                const user = await userManager.getUserById(jwtPayload.id);
+                const user = await userManager.getUser(jwtPayload.id);
                 if (!user) {
                     debug(`User not found for JWT token: ${jwtPayload.id}`);
                     req.isAuthenticated = false;
                     return next();
                 }
 
-                // Attach user to request
-                req.user = user;
+                // Attach user to request (convert User instance to plain object)
+                req.user = user.toJSON();
                 req.user.tokenPayload = jwtPayload;
                 req.isAuthenticated = true;
 
@@ -97,7 +97,7 @@ export default function createAuthMiddleware(server) {
                 const { userId, tokenId } = apiTokenResult;
 
                 // Get user from user manager
-                const user = await userManager.getUserById(userId);
+                const user = await userManager.getUser(userId);
                 if (!user) {
                     debug(`User not found for API token: ${userId}`);
                     req.isAuthenticated = false;
@@ -106,12 +106,25 @@ export default function createAuthMiddleware(server) {
 
                 // Get token details
                 const tokenDetails = await userManager.getApiToken(userId, tokenId);
+                if (!tokenDetails) {
+                    debug(`Token not found: ${tokenId}`);
+                    req.isAuthenticated = false;
+                    return next();
+                }
 
                 // Attach user and token info to request
-                req.user = user;
+                req.user = user.toJSON();
                 req.user.tokenId = tokenId;
-                req.user.tokenName = tokenDetails?.name || 'API Token';
+                req.user.tokenName = tokenDetails.name;
                 req.isAuthenticated = true;
+
+                // Update token usage
+                try {
+                    await userManager.updateApiTokenUsage(userId, tokenId);
+                } catch (error) {
+                    debug(`Failed to update token usage: ${error.message}`);
+                    // Continue even if token usage update fails
+                }
 
                 debug('API token authentication successful');
                 return next();

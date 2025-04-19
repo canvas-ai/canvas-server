@@ -4,19 +4,16 @@
 import path from 'path';
 import fs from 'fs/promises';
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('user');
+const debug = createDebug('manager:user');
 import EventEmitter from 'eventemitter2';
 import { existsSync } from 'fs';
-
-// Manager singletons
-import workspaceManager from '../../../Server.js';
-import contextManager from '../../../Server.js';
 
 // Local imports
 import TokenManager from './TokenManager.js';
 
 /**
  * User Class
+ * Represents a user in the system and provides access to user-specific resources
  */
 
 class User extends EventEmitter {
@@ -26,6 +23,7 @@ class User extends EventEmitter {
     #email;
     #userType;
     #homePath;
+    #jim; // JIM instance for token management
 
     // Manager instances
     #tokenManager;
@@ -45,17 +43,27 @@ class User extends EventEmitter {
             active: 0,
         },
         apiTokens: {
-            global: 0,
-            perWorkspace: 0,
+            total: 0,
         },
     };
 
+    /**
+     * Create a new User instance
+     * @param {Object} options - User options
+     * @param {string} options.id - User ID
+     * @param {string} options.email - User email
+     * @param {string} options.homePath - User home path (Universe workspace)
+     * @param {string} [options.userType='user'] - User type ('user' or 'admin')
+     * @param {string} [options.status='inactive'] - User status
+     * @param {Object} options.jim - JSON Index Manager instance
+     */
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
 
         if (!options.id) { throw new Error('User ID is required'); }
         if (!options.email) { throw new Error('Email is required'); }
         if (!options.homePath) { throw new Error('Home path is required'); }
+        if (!options.jim) { throw new Error('JIM instance is required'); }
 
         /**
          * User properties
@@ -66,8 +74,9 @@ class User extends EventEmitter {
         this.#homePath = options.homePath;
         this.#userType = options.userType || 'user';
         this.#status = options.status || 'inactive';
+        this.#jim = options.jim;
 
-        // Initialize token manager if home path exists
+        // Initialize token manager
         this.#initializeTokenManager();
 
         debug(`User instance created: ${this.#id} (${this.#email})`);
@@ -84,6 +93,14 @@ class User extends EventEmitter {
     get status() { return this.#status; }
     get stats() { return this.#stats; }
     get tokenManager() { return this.#tokenManager; }
+    get jim() { return this.#jim; }
+
+    // Utility getters
+    get configPath() { return path.join(this.#homePath, 'Config'); }
+
+    /**
+     * Utility methods
+     */
 
     isAdmin() { return this.#userType === 'admin'; }
     isActive() { return this.#status === 'active'; }
@@ -94,9 +111,14 @@ class User extends EventEmitter {
      */
     #initializeTokenManager() {
         try {
+            // Ensure Config directory exists
+            this.#ensureConfigDirectorySync();
+
+            // Create token manager with user-specific token store
             this.#tokenManager = new TokenManager({
                 userId: this.#id,
-                userHomePath: this.#homePath
+                userHomePath: this.#homePath,
+                jim: this.#jim // Pass JIM to TokenManager
             });
 
             // Listen to token manager events to update stats
@@ -111,6 +133,25 @@ class User extends EventEmitter {
             debug(`Token manager initialized for user ${this.#id}`);
         } catch (error) {
             debug(`Failed to initialize token manager: ${error.message}`);
+            // Don't throw here - allow User to be created even if token manager fails
+        }
+    }
+
+    /**
+     * Ensure the user's Config directory exists
+     * @private
+     */
+    #ensureConfigDirectorySync() {
+        const configDir = this.configPath;
+        if (!existsSync(configDir)) {
+            // Use sync method since this is called during construction
+            try {
+                fs.mkdirSync(configDir, { recursive: true });
+                debug(`Created config directory for user ${this.#id}: ${configDir}`);
+            } catch (error) {
+                debug(`Failed to create config directory: ${error.message}`);
+                throw error;
+            }
         }
     }
 
@@ -124,7 +165,7 @@ class User extends EventEmitter {
      * @private
      */
     #handleTokenCreated(data) {
-        this.#stats.apiTokens.global++;
+        this.#stats.apiTokens.total++;
     }
 
     /**
@@ -133,8 +174,8 @@ class User extends EventEmitter {
      * @private
      */
     #handleTokenDeleted(data) {
-        if (this.#stats.apiTokens.global > 0) {
-            this.#stats.apiTokens.global--;
+        if (this.#stats.apiTokens.total > 0) {
+            this.#stats.apiTokens.total--;
         }
     }
 
@@ -223,7 +264,7 @@ class User extends EventEmitter {
         if (this.#tokenManager) return;
 
         // Create Config directory if it doesn't exist
-        const configDir = path.join(this.#homePath, 'Config');
+        const configDir = this.configPath;
         if (!existsSync(configDir)) {
             await fs.mkdir(configDir, { recursive: true });
         }

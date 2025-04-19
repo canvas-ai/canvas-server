@@ -1,21 +1,21 @@
 'use strict';
 
 // Utils
-import EventEmitter from 'eventemitter2';
 import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import validator from 'validator';
 import { v4 as uuidv4 } from 'uuid';
-import Jim from '../../utils/jim/index.js';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('user-manager');
 
 // Includes
-import env from '../../env.js';
 import User from './lib/User.js';
+
+// Base Manager
+import Manager from '../base/Manager.js';
 
 /**
  * Constants
@@ -23,34 +23,43 @@ import User from './lib/User.js';
 
 const USER_TYPES = ['user', 'admin'];
 const USER_STATUS = ['active', 'inactive', 'deleted'];
-const USER_CONFIG_FILENAME = 'user.json';
 
 /**
  * User Manager
  */
 
-class UserManager extends EventEmitter {
+class UserManager extends Manager {
 
     #rootPath;
-    #index;
+    #users = new Map(); // Initialized User Instances, keeps this implementation as slim as possible
+    #workspaceManager; // Reference to workspace manager (injected)
 
-    #users = new Map(); // Initialized User Instances, lets keep this implementation as slim as possible
-
+    /**
+     * Create a new UserManager
+     * @param {Object} options - Manager options
+     * @param {string} options.rootPath - Root path for user homes
+     * @param {Object} options.jim - JSON Index Manager
+     * @param {Object} [options.workspaceManager] - Workspace manager (can be set later)
+     */
     constructor(options = {}) {
-        super(options.eventEmitterOptions || {});
+        super({
+            jim: options.jim,
+            indexName: 'users',
+            eventEmitterOptions: options.eventEmitterOptions
+        });
 
-        if (!options.rootPath) { throw new Error('Root path is required'); }
-        if (!options.index) { throw new Error('Index instance is required'); }
-
-        this.#rootPath = options.rootPath;
-        this.#index = options.index;
-
-        if (!Array.isArray(this.#index.get('workspaces'))) {
-            this.#index.set('workspaces', []);
+        if (!options.rootPath) {
+            throw new Error('Root path is required');
         }
 
-        if (!Array.isArray(this.#index.get('users'))) {
-            this.#index.set('users', []);
+        this.#rootPath = options.rootPath;
+
+        // Optional workspace manager - can be set later if needed
+        this.#workspaceManager = options.workspaceManager || null;
+
+        // Initialize the users array in the index if it doesn't exist
+        if (!Array.isArray(this.getConfig('users'))) {
+            this.setConfig('users', []);
         }
 
         debug(`UserManager initialized with rootPath: ${this.#rootPath}`);
@@ -61,31 +70,71 @@ class UserManager extends EventEmitter {
      */
 
     get rootPath() { return this.#rootPath; }
-    get index() { return this.#index.get('users', []); }
     get users() { return Array.from(this.#users.values()); }
+    get usersList() { return this.getConfig('users', []); }
+    get workspaceManager() { return this.#workspaceManager; }
+
+    /**
+     * Set the workspace manager reference
+     * This allows for lazy dependency injection
+     * @param {Object} workspaceManager - Workspace manager instance
+     */
+    setWorkspaceManager(workspaceManager) {
+        if (!workspaceManager) {
+            throw new Error('Workspace manager is required');
+        }
+        this.#workspaceManager = workspaceManager;
+        debug('Workspace manager reference set');
+    }
 
     /**
      * Initialize manager
+     * @override
      */
-
     async initialize() {
-        return true;
+        if (this.initialized) {
+            return true;
+        }
+
+        debug('Initializing UserManager');
+
+        // Any additional initialization logic can go here
+
+        // Call the parent initialize to mark as initialized
+        return super.initialize();
     }
 
     /**
      * User Manager API
      */
 
+    /**
+     * Create a new user with a Universe workspace
+     * @param {Object} userData - User data
+     * @param {string} userData.email - User email (required)
+     * @param {string} [userData.userType='user'] - User type: 'user' or 'admin'
+     * @param {string} [userData.status='active'] - User status
+     * @returns {Promise<User>} Newly created user
+     */
     async createUser(userData = {}) {
         try {
             this.#validateUserSettings(userData);
             const email = userData.email;
-            if (await this.hasUserByEmail(email)) {
-                throw new Error(`User already exists: ${email}`);
+
+            // Always perform a case-insensitive email check to ensure uniqueness
+            const lowerCaseEmail = email.toLowerCase();
+            const existingUser = this.usersList.find(
+                user => user.email.toLowerCase() === lowerCaseEmail
+            );
+
+            if (existingUser) {
+                throw new Error(`User already exists with email: ${email}`);
             }
 
             const userID = uuidv4();
-            const userHomePath = await this.#createUserHomeDirectory(userID);
+
+            // Create the user's Universe workspace
+            const userHomePath = await this.createUserHome(userID, email);
 
             const user = this.#initializeUser({
                 id: userID,
@@ -96,15 +145,79 @@ class UserManager extends EventEmitter {
             });
 
             // Update the global index
-            const userList = this.#index.get('users', []);
+            const userList = [...this.usersList];
             userList.push(user.toJSON());
-            this.#index.set('users', userList);
+            this.setConfig('users', userList);
+
+            // Create a generic API token for the user
+            const tokenName = 'default-token';
+            const tokenOptions = {
+                name: tokenName,
+                description: `Default API token for ${email}`,
+                expiresAt: null // No expiration
+            };
+
+            const apiToken = await user.createToken(tokenOptions);
+            debug(`Created default API token for user ${email}`);
+
+            // For admin users, log the token to console
+            if (userData.userType === 'admin') {
+                console.log('\n' + '='.repeat(80));
+                console.log('Canvas Admin User API Token');
+                console.log('='.repeat(80));
+                console.log(`Token: ${apiToken.token}`);
+                console.log('='.repeat(80) + '\n');
+            }
 
             this.emit('user:created', { id: userID, email });
             return user;
 
         } catch (error) {
             debug(`Error creating user: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a user's home structure as a Universe workspace
+     * @param {string} userId - User ID
+     * @param {string} userEmail - User email
+     * @returns {Promise<string>} Path to the user's home
+     */
+    async createUserHome(userId, userEmail) {
+        if (!this.#workspaceManager) {
+            throw new Error('WorkspaceManager is required to create a user home');
+        }
+
+        const userHomePath = path.join(this.#rootPath, userEmail);
+        debug(`Creating user home (Universe workspace) at: ${userHomePath}`);
+
+        try {
+            // Use a namespaced ID for the workspace to ensure uniqueness
+            // Format: user-{userId}-universe
+            const namespaceWorkspaceId = `user-${userId.substring(0, 8)}-universe`;
+
+            // Create Universe workspace for the user with namespaced ID
+            await this.#workspaceManager.createWorkspace('universe', userId, {
+                id: namespaceWorkspaceId,
+                rootPath: userHomePath,
+                type: 'universe',
+                description: `Default universe workspace for ${userEmail}`,
+                owner: userId
+            });
+
+            debug(`Universe workspace created for user: ${userId}`);
+            return userHomePath;
+        } catch (error) {
+            debug(`Error creating user home: ${error}`);
+            // Clean up directory if workspace creation failed
+            if (existsSync(userHomePath)) {
+                try {
+                    await fs.rm(userHomePath, { recursive: true, force: true });
+                } catch (cleanupError) {
+                    debug(`Failed to clean up user home directory: ${cleanupError}`);
+                }
+            }
             throw error;
         }
     }
@@ -121,7 +234,7 @@ class UserManager extends EventEmitter {
         }
 
         // Otherwise, try to find the user in the index and initialize it
-        const userData = this.index.find(user => user.id === id);
+        const userData = this.usersList.find(user => user.id === id);
         if (!userData) {
             throw new Error(`User not found: ${id}`);
         }
@@ -130,12 +243,21 @@ class UserManager extends EventEmitter {
     }
 
     /**
+     * Get a user by ID (wrapper for async getUser)
+     * @param {string} id - User ID
+     * @returns {Promise<User>} User instance
+     */
+    getUserById(id) {
+        return this.getUser(id);
+    }
+
+    /**
      * Get a user by email
      * @param {string} email - User email
      * @returns {Promise<User>} User instance
      */
     async getUserByEmail(email) {
-        const userData = this.index.find(user => user.email === email);
+        const userData = this.usersList.find(user => user.email === email);
         if (!userData) {
             throw new Error(`User not found: ${email}`);
         }
@@ -150,22 +272,107 @@ class UserManager extends EventEmitter {
     }
 
     /**
-     * Check if user exists by ID
+     * Check if user exists by ID and verify home directory
      * @param {string} id - User ID
-     * @returns {Promise<boolean>} True if user exists
+     * @returns {Promise<boolean>} True if user exists with valid home directory
      */
     async hasUser(id) {
-        if (this.#users.has(id)) return true;
-        return this.index.some(user => user.id === id);
+        // First check if user exists in memory or index
+        const userInMemory = this.#users.has(id);
+        const userInIndex = this.usersList.some(user => user.id === id);
+
+        if (!userInMemory && !userInIndex) {
+            return false; // User doesn't exist at all
+        }
+
+        // Get user data to check home path
+        let userData;
+        if (userInMemory) {
+            userData = this.#users.get(id);
+        } else {
+            userData = this.usersList.find(user => user.id === id);
+        }
+
+        // Check if home directory exists
+        if (userData && userData.homePath) {
+            const homeExists = existsSync(userData.homePath);
+
+            // If user exists in index but home doesn't exist, mark user as having issues
+            if (!homeExists && userInIndex) {
+                debug(`User ${id} exists in index but home directory ${userData.homePath} is missing`);
+
+                // Update user status in the index to indicate missing home
+                try {
+                    const userList = [...this.usersList];
+                    const userIndex = userList.findIndex(user => user.id === id);
+                    if (userIndex !== -1) {
+                        userList[userIndex] = {
+                            ...userList[userIndex],
+                            status: 'error',
+                            error: 'Home directory missing',
+                            updated: new Date().toISOString()
+                        };
+                        this.setConfig('users', userList);
+                        debug(`User ${id} marked as having error in index`);
+                    }
+                } catch (error) {
+                    logger.error(`Failed to update user status for ${id}: ${error.message}`);
+                }
+            }
+
+            return homeExists;
+        }
+
+        return false; // No home path in user data
     }
 
     /**
-     * Check if user exists by email
+     * Check if user exists by email and verify home directory
      * @param {string} email - User email
-     * @returns {Promise<boolean>} True if user exists
+     * @returns {Promise<boolean>} True if user exists with valid home directory
      */
     async hasUserByEmail(email) {
-        return this.index.some(user => user.email === email);
+        // Always perform a case-insensitive email check
+        const lowerCaseEmail = email.toLowerCase();
+
+        // Check if user exists in index
+        const userData = this.usersList.find(user => user.email.toLowerCase() === lowerCaseEmail);
+
+        if (!userData) {
+            return false; // User doesn't exist
+        }
+
+        // Check if home directory exists
+        if (userData.homePath) {
+            const homeExists = existsSync(userData.homePath);
+
+            // If user exists in index but home doesn't exist, mark user as having issues
+            if (!homeExists) {
+                debug(`User with email ${email} exists in index but home directory ${userData.homePath} is missing`);
+
+                // Update user status in the index to indicate missing home
+                try {
+                    const userList = [...this.usersList];
+                    const userIndex = userList.findIndex(user => user.id === userData.id);
+                    if (userIndex !== -1) {
+                        userList[userIndex] = {
+                            ...userList[userIndex],
+                            status: 'error',
+                            error: 'Home directory missing',
+                            updated: new Date().toISOString()
+                        };
+                        this.setConfig('users', userList);
+                        debug(`User ${userData.id} marked as having error in index`);
+                    }
+                } catch (error) {
+                    logger.error(`Failed to update user status for ${userData.id}: ${error.message}`);
+                }
+            }
+
+            return homeExists;
+        }
+
+        return false; // No home path in user data
     }
 
     /**
@@ -176,7 +383,7 @@ class UserManager extends EventEmitter {
      * @returns {Promise<Array<Object>>} Array of user objects (JSON representation)
      */
     async listUsers(options = {}) {
-        let users = this.index;
+        let users = this.usersList;
 
         // Apply filters if provided
         if (options.status && USER_STATUS.includes(options.status)) {
@@ -199,17 +406,24 @@ class UserManager extends EventEmitter {
     async updateUser(id, userData = {}) {
         if (!id) throw new Error('User ID is required');
 
-        const userIndex = this.index.findIndex(user => user.id === id);
+        const userList = this.usersList;
+        const userIndex = userList.findIndex(user => user.id === id);
+
         if (userIndex === -1) {
             throw new Error(`User not found: ${id}`);
         }
 
         // Get current user data
-        const currentUser = this.index[userIndex];
+        const currentUser = userList[userIndex];
 
-        // For email updates, check if it's already in use by another user
-        if (userData.email && userData.email !== currentUser.email) {
-            if (this.index.some(user => user.email === userData.email && user.id !== id)) {
+        // For email updates, check if it's already in use by another user (case-insensitive check)
+        if (userData.email && userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
+            const lowerCaseNewEmail = userData.email.toLowerCase();
+
+            if (userList.some(user =>
+                user.email.toLowerCase() === lowerCaseNewEmail &&
+                user.id !== id
+            )) {
                 throw new Error(`Email already in use: ${userData.email}`);
             }
         }
@@ -235,9 +449,9 @@ class UserManager extends EventEmitter {
         };
 
         // Update in index
-        const users = [...this.index];
+        const users = [...userList];
         users[userIndex] = updatedUserData;
-        this.#index.set('users', users);
+        this.setConfig('users', users);
 
         // Update in memory if loaded
         if (this.#users.has(id)) {
@@ -259,14 +473,20 @@ class UserManager extends EventEmitter {
     async deleteUser(id) {
         if (!id) throw new Error('User ID is required');
 
-        const userIndex = this.index.findIndex(user => user.id === id);
+        const userList = this.usersList;
+        const userIndex = userList.findIndex(user => user.id === id);
+
         if (userIndex === -1) {
             throw new Error(`User not found: ${id}`);
         }
 
+        // Get user for home path
+        const user = userList[userIndex];
+        const userHomePath = user.homePath;
+
         // Remove from index
-        const users = this.index.filter(user => user.id !== id);
-        this.#index.set('users', users);
+        const users = userList.filter(user => user.id !== id);
+        this.setConfig('users', users);
 
         // Remove from memory if loaded
         if (this.#users.has(id)) {
@@ -275,7 +495,6 @@ class UserManager extends EventEmitter {
 
         // Try to clean up user home directory
         try {
-            const userHomePath = path.join(this.#rootPath, id);
             if (existsSync(userHomePath)) {
                 await fs.rm(userHomePath, { recursive: true, force: true });
                 debug(`Deleted user home directory: ${userHomePath}`);
@@ -291,80 +510,33 @@ class UserManager extends EventEmitter {
 
 
     /**
-     * Token management
+     * Token management - delegated to User instance
      */
 
-    /**
-     * Create a new API token for a user
-     * @param {string} userId - User ID
-     * @param {Object} options - Token options
-     * @param {string} options.name - Token name
-     * @param {string} options.description - Token description
-     * @param {Date|string} [options.expiresAt] - Expiration date (ISO string or Date object)
-     * @param {Array<string>} [options.scopes] - Token scopes
-     * @returns {Promise<Object>} Created token object
-     */
     async createApiToken(userId, options = {}) {
         if (!userId) throw new Error('User ID is required');
         if (!options.name) throw new Error('Token name is required');
 
         // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token creation to User instance
         const token = await user.createToken(options);
-
         this.emit('user:token:created', { userId, tokenId: token.id });
         return token;
     }
 
-    /**
-     * Get an API token by ID
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object>} Token object
-     */
     async getApiToken(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-
-        // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token retrieval to User instance
         return user.getToken(tokenId);
     }
 
-    /**
-     * List API tokens for a user
-     * @param {string} userId - User ID
-     * @param {Object} options - Filtering options
-     * @param {string} [options.status] - Filter by status
-     * @param {Array<string>} [options.scopes] - Filter by scopes
-     * @returns {Promise<Array<Object>>} Array of token objects
-     */
     async listApiTokens(userId, options = {}) {
         if (!userId) throw new Error('User ID is required');
-
-        // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token listing to User instance
         return user.listTokens(options);
     }
 
-    /**
-     * Update an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @param {Object} updates - Updates to apply
-     * @param {string} [updates.name] - New token name
-     * @param {string} [updates.description] - New token description
-     * @param {string} [updates.status] - New token status
-     * @param {Array<string>} [updates.scopes] - New token scopes
-     * @param {Date|string} [updates.expiresAt] - New expiration date
-     * @returns {Promise<Object>} Updated token object
-     */
     async updateApiToken(userId, tokenId, updates = {}) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
@@ -372,117 +544,33 @@ class UserManager extends EventEmitter {
             throw new Error('No updates provided');
         }
 
-        // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token update to User instance
         const updatedToken = await user.updateToken(tokenId, updates);
-
         this.emit('user:token:updated', { userId, tokenId, updates: Object.keys(updates) });
         return updatedToken;
     }
 
-    /**
-     * Delete an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<boolean>} True if token was deleted
-     */
     async deleteApiToken(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-
-        // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token deletion to User instance
         const result = await user.deleteToken(tokenId);
-
         if (result) {
             this.emit('user:token:deleted', { userId, tokenId });
         }
-
         return result;
     }
 
-    /**
-     * Update token usage information
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object>} Updated token object
-     */
     async updateApiTokenUsage(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-
-        // Get User instance
         const user = await this.getUser(userId);
-
-        // Delegate token usage update to User instance
         return user.updateTokenUsage(tokenId);
     }
 
     /**
-     * Utils
-     */
-
-    /**
      * Private methods
      */
-
-    async #createUserHomeDirectory(userID) {
-        const userHomePath = path.join(this.#rootPath, userID);
-        debug(`Creating user home directory: ${userHomePath}`);
-
-        try {
-            // First create the basic user home directory
-            if (!existsSync(userHomePath)) {
-                await fs.mkdir(userHomePath, { recursive: true });
-                debug(`User home directory created: ${userHomePath}`);
-            }
-
-            // Create Config directory for tokens
-            const configDir = path.join(userHomePath, 'Config');
-            if (!existsSync(configDir)) {
-                await fs.mkdir(configDir, { recursive: true });
-                debug(`User config directory created: ${configDir}`);
-            }
-
-            // Create the universe workspace for the user using the workspace manager
-            try {
-                await workspaceManager.createWorkspace('universe', userID, {
-                    type: 'universe',
-                    description: 'Default user workspace'
-                });
-                debug(`Universe workspace created for user: ${userID}`);
-            } catch (wsError) {
-                // If workspace already exists, just log it
-                if (wsError.message && wsError.message.includes('already exists')) {
-                    debug(`Universe workspace already exists for user: ${userID}`);
-                } else {
-                    throw wsError;
-                }
-            }
-
-            return userHomePath;
-        } catch (error) {
-            debug(`Error creating user home directory: ${error}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Private utils
-     */
-
-    #getUserFromIndex(id) {
-        const userData = this.index.find(user => user.id === id);
-        if (!userData) {
-            throw new Error(`User not found in the global index: ${id}`);
-        }
-
-        return this.#initializeUser(userData);
-    }
 
     #initializeUser(userData) {
         const user = new User({
@@ -491,6 +579,7 @@ class UserManager extends EventEmitter {
             homePath: userData.homePath,
             userType: userData.userType,
             status: userData.status,
+            jim: this.jim  // Pass JIM to User instance for token management
         });
 
         this.#users.set(user.id, user);
@@ -528,7 +617,6 @@ class UserManager extends EventEmitter {
             throw new Error(`Invalid user status: ${userSettings.status}`);
         }
     }
-
 }
 
 export default UserManager;

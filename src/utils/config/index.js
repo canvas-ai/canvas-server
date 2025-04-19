@@ -23,7 +23,10 @@ import env from '../../env.js';
 import logger from '../log/index.js';
 
 class Config {
+
     constructor(options = {}) {
+
+        logger.info('Initializing Global Config module..');
         // Use environment variables with fallbacks
         this.serverConfigDir =
             options.serverConfigDir || env.CANVAS_SERVER_CONFIG || path.join(env.CANVAS_SERVER_HOME, 'config');
@@ -32,16 +35,16 @@ class Config {
         // Set configPriority based on server mode
         this.configPriority = options.configPriority || (env.CANVAS_SERVER_MODE === 'user' ? 'user' : 'server');
 
-        this.versioning = options.versioning ?? true;
+        this.versioning = options.versioning ?? false;
         this.device = dm.getCurrentDevice();
         this.stores = new Map();
 
-        logger.debug(`Config initialized with:
+        logger.debug(`Global Config module initialized with:
             - userConfigDir: ${this.userConfigDir}
             - serverConfigDir: ${this.serverConfigDir}
             - configPriority: ${this.configPriority}
             - versioning: ${this.versioning}
-            - device: ${this.device.id} (${this.device.os.platform})`);
+            - device ID: ${this.device.id} (${this.device.os.platform})`);
     }
 
     findFile(files) {

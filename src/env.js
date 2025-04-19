@@ -36,8 +36,9 @@ const serverEnv = {
     CANVAS_SERVER_HOMES: process.env.CANVAS_SERVER_HOMES || path.join(SERVER_ROOT, 'users'),
 
     // Admin user creation
-    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'my@canvas.local',
+    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
     CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || null,
+    CANVAS_ADMIN_RESET: process.env.CANVAS_ADMIN_RESET || false,
 };
 
 // User paths (user data), meant for SERVER_MODE === 'user'
@@ -65,6 +66,7 @@ function env() {
     // Only create .env if it doesn't exist
     if (envResult.error && !existsSync(envPath)) {
         const envContent = Object.entries(envConfig)
+            .filter(([key]) => key !== 'CANVAS_ADMIN_RESET') // Filter out CANVAS_ADMIN_RESET
             .map(([key, value]) => `${key}="${value}"`)
             .join('\n');
 
@@ -77,7 +79,7 @@ function env() {
     }
 
     // Merge .env values with defaults
-    const finalConfig = { ...envConfig, ...(envResult.parsed || {}) };
+    const finalConfig = { ...(envResult.parsed || {}), ...envConfig };
 
     // Update process.env with final values
     Object.entries(finalConfig).forEach(([key, value]) => {

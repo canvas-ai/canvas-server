@@ -27,8 +27,6 @@ import {
 
 class Workspace extends EventEmitter {
 
-
-
     // Runtime state
     #status = WORKSPACE_STATUS.INACTIVE; // Internal runtime status
     #db = null;
@@ -56,7 +54,7 @@ class Workspace extends EventEmitter {
 
         // Set default color if not provided or invalid
         if (!this.color || !this.#validateColor(this.color)) {
-            const defaultColor = WorkspaceManager.getRandomColor();
+            const defaultColor = (this.type === 'universe') ? '#fff' : WorkspaceManager.getRandomColor();
             this.#configStore.set('color', defaultColor);
             logger.info(`Workspace \"${this.id}\" color not provided or invalid. Set default color: ${defaultColor}`);
         }
@@ -75,6 +73,7 @@ class Workspace extends EventEmitter {
     /**
      * Configuration Getters (reading from workspace.json via configStore)
      */
+    
     get config() { return this.#configStore?.store || {}; }
     get id() { return this.#configStore?.get('id'); }
     get name() { return this.#configStore?.get('name'); }
@@ -651,7 +650,6 @@ class Workspace extends EventEmitter {
 
             // Initialize the database
             await this.#db.start();
-            // Map the tree instance only after successful DB start
             this.#tree = this.#db.tree;
 
             debug(`Database started for workspace "${this.id}".`);

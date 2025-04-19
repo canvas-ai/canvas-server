@@ -8,20 +8,28 @@ import env from './env.js';
 // Utils
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { existsSync } from 'fs';
+import * as fsPromises from 'fs/promises';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-import { defaultConfig as config } from './utils/config/index.js';
-import logger, { createDebug } from './utils/log/index.js';
-const debug = createDebug('server');
 import EventEmitter from 'eventemitter2';
-import Jim from './utils/jim/index.js';
 
 // Package info
 import pkg from '../package.json' with { type: 'json' };
 const { productName, version, description, license } = pkg;
 
-// Database
+// Logging
+import { defaultConfig as config } from './utils/config/index.js';
+import logger, { createDebug } from './utils/log/index.js';
+const debug = createDebug('server');
+
+// Services
 import AuthService from './services/auth/index.js';
 import Db from './services/synapsd/src/backends/lmdb/index.js';
+import Jim from './utils/jim/index.js';
+
+// Transports
+import HttpTransport from './transports/http/index.js';
+import WsTransport from './transports/ws/index.js';
 
 /**
  * Server Database
@@ -42,19 +50,13 @@ const jim = new Jim({
 import SessionManager from './managers/session/index.js';
 import UserManager from './managers/user/index.js';
 import WorkspaceManager from './managers/workspace/index.js';
+import ContextManager from './managers/context/index.js';
 
 /**
  * Event Handlers
  */
 
 import UserEventHandler from './services/events/UserEventHandler.js';
-
-/**
- * Transports
- */
-
-import HttpTransport from './transports/http/index.js';
-import WsTransport from './transports/ws/index.js';
 
 
 /**
@@ -67,6 +69,7 @@ import WsTransport from './transports/ws/index.js';
  */
 
 class Server extends EventEmitter {
+
     // Runtime state
     #mode; // user, standalone
     #status = 'stopped'; // initialized, running, stopping, stopped
@@ -82,6 +85,7 @@ class Server extends EventEmitter {
     #userManager;
     #sessionManager;
     #workspaceManager;
+    #contextManager;
 
     // Event Handlers
     #userEventHandler;
@@ -112,12 +116,12 @@ class Server extends EventEmitter {
     get userManager() { return this.#userManager; }
     get sessionManager() { return this.#sessionManager; }
     get workspaceManager() { return this.#workspaceManager; }
+    get contextManager() { return this.#contextManager; }
 
     /**
      * Initialize the server
      */
     async init() {
-        debug('Initializing Canvas Server..');
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
 
@@ -232,31 +236,45 @@ class Server extends EventEmitter {
         logger.info('Initializing managers');
 
         try {
+            // Initialize Session Manager
             this.#sessionManager = new SessionManager({
-                index: jim.createIndex('sessions')
+                jim: jim,
+                sessionOptions: {
+                    sessionTimeout: 7 * 24 * 60 * 60 * 1000 // 7 days
+                }
             });
-
             await this.#sessionManager.initialize();
+            debug('Session manager initialized');
 
+            // Initialize User Manager
             this.#userManager = new UserManager({
                 rootPath: env.CANVAS_SERVER_HOMES,
-                index: jim.createIndex('users')
+                jim: jim
             });
-
             await this.#userManager.initialize();
+            debug('User manager initialized');
 
+            // Initialize Workspace Manager
             this.#workspaceManager = new WorkspaceManager({
                 rootPath: env.CANVAS_SERVER_HOMES,
-                index: jim.createIndex('workspaces')
+                jim: jim
             });
-
             await this.#workspaceManager.initialize();
+            debug('Workspace manager initialized');
 
+            // Set cross-manager dependencies
+            this.#userManager.setWorkspaceManager(this.#workspaceManager);
+
+            // Note: ContextManager is initialized per-user when needed
+            // A factory method should be used to create instances
+
+            // Initialize User Event Handler
             this.#userEventHandler = new UserEventHandler({
                 userManager: this.#userManager,
             });
+            debug('User event handler initialized');
 
-            logger.info('Managers initialized');
+            logger.info('Managers initialized successfully');
         } catch (error) {
             logger.error(`Manager initialization failed: ${error.message}`);
             throw error;
@@ -280,8 +298,8 @@ class Server extends EventEmitter {
             };
 
             const authService = new AuthService(authConfig, {
-                sessionManager: sessionManager,
-                userManager: userManager,
+                sessionManager: this.#sessionManager,
+                userManager: this.#userManager,
             });
 
             await authService.initialize();
@@ -525,32 +543,146 @@ class Server extends EventEmitter {
         }
     }
 
+    /**
+     * Check if admin user exists, create if not, or reset if CANVAS_ADMIN_RESET is set
+     * @private
+     */
     async #createDefaultAdminUser() {
         debug('Checking for admin user...');
+        const adminEmail = env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local';
+        const forceReset = env.CANVAS_ADMIN_RESET == 'true' ||
+            env.CANVAS_ADMIN_RESET == '1' ||
+            env.CANVAS_ADMIN_RESET == 1 ||
+            env.CANVAS_ADMIN_RESET == 'yes';
 
-        const email = env.CANVAS_ADMIN_EMAIL || 'me@canvas.local';
-        const password = env.CANVAS_ADMIN_PASSWORD || userManager.generateSecurePassword(8);
+        debug(`Admin email: ${adminEmail}, Reset requested: ${forceReset}`);
 
         try {
+            // Get auth service
+            const authService = this.#services.get('auth');
+            if (!authService) { throw new Error('Auth service not found'); }
+
+            // Check if admin user already exists
+            const adminExists = await this.#userManager.hasUserByEmail(adminEmail);
+            debug(`Admin user exists: ${adminExists}`);
+
+            // Generate a password if none is provided
+            const password = (!env.CANVAS_ADMIN_PASSWORD || env.CANVAS_ADMIN_PASSWORD === 'null') ?
+                this.#generateSecurePassword(12) :
+                env.CANVAS_ADMIN_PASSWORD;
+
+            if (adminExists) {
+                if (forceReset) {
+                    debug(`*** ADMIN RESET REQUESTED - Updating admin user: ${adminEmail} ***`);
+
+                    // Get admin user
+                    const adminUser = await this.#userManager.getUserByEmail(adminEmail);
+
+                    // Update user status to ensure it's active
+                    await this.#userManager.updateUser(adminUser.id, {
+                        status: 'active',
+                        userType: 'admin'
+                    });
+
+                    // Reset password using the auth service
+                    await authService.setPassword(adminUser.id, password);
+
+                    // Log the updated admin info
+                    console.log('\n' + '='.repeat(80));
+                    console.log('Canvas Admin User RESET');
+                    console.log('='.repeat(80));
+                    console.log(`Email(login ID): ${adminEmail}`);
+                    console.log(`Password: ${password}`);
+                    console.log('='.repeat(80) + '\n');
+
+                    logger.info(`Admin user ${adminEmail} reset successfully`);
+                } else {
+                    // Admin exists and no reset requested
+                    debug(`Admin user with email ${adminEmail} already exists`);
+                    logger.info(`Admin user ${adminEmail} already exists, no action needed`);
+                }
+                return;
+            }
+
+            // Create a new admin user if none exists
+            debug(`Creating new admin user: ${adminEmail}`);
+            const userData = {
+                email: adminEmail,
+                userType: 'admin',
+                status: 'active'
+            };
+
+            const newUser = await this.#userManager.createUser(userData);
+            debug(`Admin user created with ID: ${newUser?.id}`);
+
+            // Set password for the new admin user
+            await authService.setPassword(newUser.id, password);
+
+            // Log the admin user details
             console.log('\n' + '='.repeat(80));
-            console.log('Initial canvas admin user created');
+            console.log('Canvas Admin User Created');
             console.log('='.repeat(80));
-            console.log(`Email(login ID):    ${email}`);
+            console.log(`Email(login ID): ${adminEmail}`);
             console.log(`Password: ${password}`);
             console.log('='.repeat(80) + '\n');
-            logger.info(`Initial admin user created with email: ${email} and a random password`);
+
+            logger.info(`Admin user ${adminEmail} created successfully`);
         } catch (error) {
-            logger.error(`Failed to create initial user: ${error.message}`);
+            logger.error(`Failed to handle admin user setup: ${error.message}`);
+            debug(`Admin user error details: ${error.stack}`);
         }
     }
 
     /**
      * Generate a secure random password
+     * @param {number} length - Length of the password
      * @returns {string} A random password
      * @private
      */
-    #generateSecurePassword() {
+    #generateSecurePassword(length = 8) {
+        const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+        const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        const numbers = '0123456789';
+        const symbols = '!@#$%^&*()_-+=<>?/[]{}';
 
+        const allChars = lowercase + uppercase + numbers + symbols;
+        let password = '';
+
+        // Ensure at least one character from each category
+        password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
+        password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+        password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+        password += symbols.charAt(Math.floor(Math.random() * symbols.length));
+
+        // Fill the rest randomly
+        for (let i = 4; i < length; i++) {
+            password += allChars.charAt(Math.floor(Math.random() * allChars.length));
+        }
+
+        // Shuffle the password characters
+        return password
+            .split('')
+            .sort(() => 0.5 - Math.random())
+            .join('');
+    }
+
+    /**
+     * Create a context manager for a user
+     * @param {Object} user - User instance
+     * @returns {ContextManager} Context manager instance
+     */
+    createContextManager(user) {
+        if (!user) {
+            throw new Error('User is required to create a context manager');
+        }
+
+        const contextManager = new ContextManager({
+            jim: jim,
+            user: user,
+            workspaceManager: this.#workspaceManager
+        });
+
+        return contextManager;
     }
 }
 
@@ -592,4 +724,16 @@ export function getWorkspaceManager() {
         throw new Error('WorkspaceManager is not initialized');
     }
     return server.workspaceManager;
+}
+
+/**
+ * Create a context manager for a user
+ * @param {Object} user - User instance
+ * @returns {ContextManager} Context manager instance
+ */
+export function createContextManager(user) {
+    if (server.status !== 'initialized' && server.status !== 'running') {
+        throw new Error('Server not initialized: Cannot create ContextManager');
+    }
+    return server.createContextManager(user);
 }

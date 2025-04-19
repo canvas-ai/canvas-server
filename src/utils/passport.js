@@ -1,8 +1,8 @@
 import passport from 'passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
 import { Strategy as CustomStrategy } from 'passport-custom';
-import logger, { createDebug } from './log/index.js';
 
+import logger, { createDebug } from './log/index.js';
 const debug = createDebug('auth:passport');
 
 /**

@@ -1,11 +1,11 @@
 'use strict';
 
-// Utils
-import EventEmitter from 'eventemitter2';
+// Base Manager
+import Manager from '../base/Manager.js';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('context-manager');
+const debug = createDebug('manager:context');
 
 // Includes
 import Context from './lib/Context.js';
@@ -13,34 +13,85 @@ import Url from './lib/Url.js';
 
 /**
  * Context Manager
+ * Manages active contexts that define user views of workspaces
  */
 
-class ContextManager extends EventEmitter {
+class ContextManager extends Manager {
 
     #user;
     #workspaceManager;
-
     #activeContexts = new Map();
 
+    /**
+     * Create a new ContextManager
+     * @param {Object} options - Manager options
+     * @param {Object} options.jim - JSON Index Manager instance
+     * @param {Object} options.user - User instance
+     * @param {Object} [options.workspaceManager] - Workspace manager reference
+     */
     constructor(options = {}) {
-        super(); // EventEmitter
-        debug('Context manager initialized');
+        super({
+            jim: options.jim,
+            indexName: 'contexts',
+            eventEmitterOptions: options.eventEmitterOptions
+        });
+
+        if (!options.user) {
+            throw new Error('User instance is required');
+        }
+
         this.#user = options.user;
-        this.#workspaceManager = getWorkspaceManager();
+        this.#workspaceManager = options.workspaceManager || null;
+
+        debug('Context manager initialized');
+    }
+
+    /**
+     * Getters
+     */
+    get user() { return this.#user; }
+    get workspaceManager() { return this.#workspaceManager; }
+
+    /**
+     * Set the workspace manager reference
+     * This allows for lazy dependency injection
+     * @param {Object} workspaceManager - Workspace manager instance
+     */
+    setWorkspaceManager(workspaceManager) {
+        if (!workspaceManager) {
+            throw new Error('Workspace manager is required');
+        }
+        this.#workspaceManager = workspaceManager;
+        debug('Workspace manager reference set');
     }
 
     /**
      * Initialize manager
+     * @override
      */
-
     async initialize() {
-        return true;
+        if (this.initialized) {
+            return true;
+        }
+
+        debug('Initializing context manager');
+
+        // Load active contexts for the user
+        await this.#loadActiveContexts();
+
+        return super.initialize();
     }
 
     /**
      * Context Manager API
      */
 
+    /**
+     * Create a new context
+     * @param {string} url - Context URL
+     * @param {Object} options - Context options
+     * @returns {Promise<Context>} Created context
+     */
     async createContext(url = '/', options = {}) {
         // Check if a specific context ID was provided and if it already exists
         if (options.id && this.#activeContexts.has(options.id)) {
@@ -48,6 +99,12 @@ class ContextManager extends EventEmitter {
             return this.#activeContexts.get(options.id);
         }
 
+        // Ensure we have a workspace manager
+        if (!this.#workspaceManager) {
+            throw new Error('WorkspaceManager is required to create a context');
+        }
+
+        // Parse the URL
         const parsed = new Url(url);
         debug(`Creating context with URL: ${parsed.url} for user: ${this.#user.email}`);
 
@@ -58,18 +115,25 @@ class ContextManager extends EventEmitter {
         }
 
         // Check if the workspace exists for the user
-        if (!this.#workspaceManager.hasWorkspace(parsed.workspaceID)) {
+        if (!this.#workspaceManager.hasWorkspace(this.#user.id, parsed.workspaceID)) {
             throw new Error(`Workspace not found: ${parsed.workspaceID}`);
         }
 
-        const workspace = await this.#workspaceManager.openWorkspace(parsed.workspaceID);
+        // Open the workspace
+        const workspace = await this.#workspaceManager.openWorkspace(this.#user.id, parsed.workspaceID);
         if (!workspace) {
-            throw new Error(`Workspace not found: ${parsed.workspaceID}`);
+            throw new Error(`Failed to open workspace: ${parsed.workspaceID}`);
         }
         debug(`Opened workspace: ${workspace.name}`);
 
         // Create the context with a specific ID if provided
-        const contextOptions = { ...options, workspace: workspace, workspaceManager: this.#workspaceManager };
+        const contextOptions = {
+            ...options,
+            workspace: workspace,
+            workspaceManager: this.#workspaceManager,
+            user: this.#user
+        };
+
         const context = new Context(url, contextOptions);
 
         // Initialize the context (handle any pending URL switch)
@@ -77,6 +141,9 @@ class ContextManager extends EventEmitter {
 
         // Add to contexts
         this.#activeContexts.set(context.id, context);
+
+        // Store context reference in the index
+        this.#storeContextReference(context);
 
         // Emit the created event
         this.emit('context:created', context.id);
@@ -91,15 +158,14 @@ class ContextManager extends EventEmitter {
      * @param {Object} options - Options
      * @param {boolean} options.autoCreate - Whether to auto-create the context if it doesn't exist
      * @param {string} options.url - URL to use when auto-creating (defaults to '/')
-     * @param {Object} options.user - User object to use when auto-creating
-     * @returns {Context} - Context instance
+     * @returns {Promise<Context>} Context instance
      */
-    getContext(id, options = {}) {
+    async getContext(id, options = {}) {
         debug(`Getting context with id "${id}", options: ${JSON.stringify(options)}`);
         const context = this.#activeContexts.get(id);
 
         if (!context) {
-            // If auto-create is enabled and we have a user, create the context
+            // If auto-create is enabled, create the context
             if (options.autoCreate) {
                 debug(`Context with id "${id}" not found, auto-creating`);
 
@@ -121,7 +187,7 @@ class ContextManager extends EventEmitter {
 
     /**
      * List all active contexts
-     * @returns {Array<Context>} - Array of context instances
+     * @returns {Array<Object>} Array of context metadata
      */
     listContexts() {
         debug(`Listing ${this.#activeContexts.size} active contexts`);
@@ -142,7 +208,7 @@ class ContextManager extends EventEmitter {
     /**
      * Remove a context
      * @param {string} id - Context ID
-     * @returns {boolean} - True if context was removed
+     * @returns {Promise<boolean>} True if context was removed
      */
     async removeContext(id) {
         const context = this.#activeContexts.get(id);
@@ -154,8 +220,80 @@ class ContextManager extends EventEmitter {
         await context.destroy();
         this.#activeContexts.delete(id);
 
+        // Remove the context reference from the index
+        this.#removeContextReference(id);
+
         this.emit('context:removed', id);
         return true;
+    }
+
+    /**
+     * Private methods
+     */
+
+    /**
+     * Load active contexts for the user
+     * @private
+     */
+    async #loadActiveContexts() {
+        try {
+            // Get user-specific contexts from the index
+            const userContexts = this.getConfig(`users.${this.#user.id}.contexts`, {});
+
+            debug(`Found ${Object.keys(userContexts).length} contexts for user ${this.#user.id}`);
+
+            // We don't actually load the contexts here, they will be loaded on-demand
+            // This is just to initialize any needed structures
+
+        } catch (error) {
+            debug(`Error loading active contexts: ${error.message}`);
+        }
+    }
+
+    /**
+     * Store a context reference in the index
+     * @param {Context} context - Context instance
+     * @private
+     */
+    #storeContextReference(context) {
+        if (!context || !context.id) return;
+
+        // Get existing contexts for the user
+        const userContexts = this.getConfig(`users.${this.#user.id}.contexts`, {});
+
+        // Add/update the context reference
+        userContexts[context.id] = {
+            id: context.id,
+            url: context.url,
+            workspace: context.workspace,
+            created: context.created,
+            updated: context.updated
+        };
+
+        // Update the index
+        this.setConfig(`users.${this.#user.id}.contexts`, userContexts);
+        debug(`Stored context reference for ${context.id}`);
+    }
+
+    /**
+     * Remove a context reference from the index
+     * @param {string} contextId - Context ID
+     * @private
+     */
+    #removeContextReference(contextId) {
+        if (!contextId) return;
+
+        // Get existing contexts for the user
+        const userContexts = this.getConfig(`users.${this.#user.id}.contexts`, {});
+
+        // Remove the context reference
+        if (userContexts[contextId]) {
+            delete userContexts[contextId];
+
+            // Update the index
+            this.setConfig(`users.${this.#user.id}.contexts`, userContexts);
+            debug(`Removed context reference for ${contextId}`);
+        }
     }
 }
 

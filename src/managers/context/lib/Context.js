@@ -153,45 +153,19 @@ class Context extends EventEmitter {
     }
 
     // Getters
-    get id() {
-        return this.#id;
-    }
-    get name() {
-        return this.#name;
-    }
-    get baseUrl() {
-        return this.#baseUrl;
-    }
-    get url() {
-        return this.#url;
-    }
-    get path() {
-        return this.#path;
-    }
-    get pathArray() {
-        return this.#pathArray;
-    }
-    get workspace() {
-        return this.#workspace.id;
-    }
-    get device() {
-        return this.#device.id;
-    }
-    get apps() {
-        return this.#device.apps;
-    }
-    get user() {
-        return this.#user;
-    }
-    get identity() {
-        return this.#user.identity;
-    }
-    get tree() {
-        return this.#tree.toJSON();
-    } // Legacy
-    get pendingUrl() {
-        return this.#pendingUrl;
-    } // Check if there's a pending URL switch
+    get id() { return this.#id; }
+    get name() { return this.#name; }
+    get baseUrl() { return this.#baseUrl; }
+    get url() { return this.#url; }
+    get path() { return this.#path; }
+    get pathArray() { return this.#pathArray; }
+    get workspace() { return this.#workspace.id; }
+    get device() { return this.#device.id; }
+    get apps() { return this.#device.apps; }
+    get user() { return this.#user; }
+    get identity() { return this.#user.identity; }
+    get tree() { return this.#tree.toJSON(); } // Legacy
+    get pendingUrl() { return this.#pendingUrl; } // Check if there's a pending URL switch
     get bitmapArrays() {
         return {
             server: this.#serverContextArray,
@@ -201,32 +175,12 @@ class Context extends EventEmitter {
             filter: this.#filterArray,
         };
     }
+    get serverContextArray() { return this.#serverContextArray; }
+    get clientContextArray() { return this.#clientContextArray; }
+    get contextBitmapArray() { return this.#contextBitmapArray; }
+    get featureBitmapArray() { return this.#featureBitmapArray; }
+    get filterArray() { return this.#filterArray; }
 
-    get serverContextArray() {
-        return this.#serverContextArray;
-    }
-    get clientContextArray() {
-        return this.#clientContextArray;
-    }
-    get contextBitmapArray() {
-        return this.#contextBitmapArray;
-    }
-    get featureBitmapArray() {
-        return this.#featureBitmapArray;
-    }
-    get filterArray() {
-        return this.#filterArray;
-    }
-
-    get created() {
-        return this.#created;
-    }
-    get updated() {
-        return this.#updated;
-    }
-    get status() {
-        return this.toJSON();
-    }
 
     /**
      * Context API

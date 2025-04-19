@@ -73,7 +73,7 @@ export default function (authService) {
      *         description: User already exists
      */
     router.post('/register', async (req, res) => {
-        const { email, password, name } = req.body;
+        const { email, password } = req.body;
         debug(`Registration attempt for email: ${email}`);
 
         // Validate credentials
@@ -101,10 +101,8 @@ export default function (authService) {
                     user: {
                         id: result.user.id,
                         email: result.user.email,
-                        name: result.user.name || name,
-                        role: result.user.role,
-                        createdAt: result.user.createdAt,
-                        updatedAt: result.user.updatedAt,
+                        userType: result.user.userType,
+                        status: result.user.status,
                     },
                     token: result.token,
                     session: result.session,
@@ -185,10 +183,8 @@ export default function (authService) {
                     user: {
                         id: result.user.id,
                         email: result.user.email,
-                        name: result.user.name,
-                        role: result.user.role,
-                        createdAt: result.user.createdAt,
-                        updatedAt: result.user.updatedAt,
+                        userType: result.user.userType,
+                        status: result.user.status,
                     },
                     token: result.token,
                     session: result.session,
@@ -253,13 +249,16 @@ export default function (authService) {
     router.get('/me', passport.authenticate(['jwt', 'api-token'], { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
+        const userData = {
+            id: req.user.id,
+            email: req.user.email,
+            userType: req.user.userType,
+            status: req.user.status,
+            tokenId: req.user.tokenId // Will be present if authenticated with API token
+        };
+
         const response = new ResponseObject().success(
-            {
-                id: req.user.id,
-                email: req.user.email,
-                userType: req.user.userType,
-                tokenId: req.user.tokenId, // Will be present if authenticated with API token
-            },
+            userData,
             'User information retrieved successfully',
         );
 
@@ -354,8 +353,6 @@ export default function (authService) {
                 {
                     tokens,
                     total: tokens.length,
-                    limit: tokens.length,
-                    offset: 0,
                 },
                 'API tokens retrieved successfully',
             );
@@ -381,13 +378,19 @@ export default function (authService) {
      *         application/json:
      *           schema:
      *             type: object
+     *             required:
+     *               - name
      *             properties:
      *               name:
      *                 type: string
-     *                 description: Name for the token (e.g. "Firefox" or "canvas-cli")
-     *               expiresInDays:
-     *                 type: integer
-     *                 description: Number of days until token expires (null for no expiration)
+     *                 description: Name for the token
+     *               description:
+     *                 type: string
+     *                 description: Description for the token
+     *               expiresAt:
+     *                 type: string
+     *                 format: date-time
+     *                 description: Date when token expires (null for no expiration)
      *     responses:
      *       201:
      *         description: API token generated successfully
@@ -398,13 +401,16 @@ export default function (authService) {
      */
     router.post('/tokens', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
         debug('Generate token endpoint called');
-        const { name, expiresInDays } = req.body;
+        const { name, description, expiresAt } = req.body;
 
         // Validate input
-        if (
-            name &&
-            (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))
-        ) {
+        if (!name) {
+            debug('Generate token validation failed: Missing token name');
+            const response = new ResponseObject().badRequest('Token name is required');
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+
+        if (name && (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))) {
             debug('Generate token validation failed: Invalid token name');
             const response = new ResponseObject().badRequest(
                 'Token name must be 1-100 alphanumeric characters, spaces, hyphens, or underscores',
@@ -412,25 +418,17 @@ export default function (authService) {
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        if (
-            expiresInDays !== null &&
-            expiresInDays !== undefined &&
-            (!validator.isInt(String(expiresInDays)) || expiresInDays < 1)
-        ) {
-            debug('Generate token validation failed: Invalid expiration days');
-            const response = new ResponseObject().badRequest('Expiration days must be a positive integer');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
         try {
-            const { token, tokenValue } = await authService.createApiToken(
-                req.user.id,
-                name || 'API Token',
-                expiresInDays || null,
-            );
+            const tokenOptions = {
+                name,
+                description: description || `API Token for ${req.user.email}`,
+                expiresAt: expiresAt || null
+            };
+
+            const token = await authService.createApiToken(req.user.id, tokenOptions);
 
             debug(`Generated new API token for user: ${req.user.email}, name: ${token.name}`);
-            const response = new ResponseObject().created({ token, value: tokenValue }, 'API token generated successfully');
+            const response = new ResponseObject().created(token, 'API token generated successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Generate token error: ${error.message}`);
@@ -467,10 +465,15 @@ export default function (authService) {
         debug(`Revoke token endpoint called for token ID: ${tokenId}`);
 
         try {
-            await authService.revokeAuthToken(req.user.id, tokenId);
+            const result = await authService.deleteApiToken(req.user.id, tokenId);
+
+            if (!result) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
 
             debug(`API token revoked successfully: ${tokenId}`);
-            const response = new ResponseObject().success(null, 'API token revoked successfully');
+            const response = new ResponseObject().success({ success: true }, 'API token revoked successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Revoke token error: ${error.message}`);

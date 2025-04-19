@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 
-const debug = debugInstance('canvas:transport:ws');
+const debug = debugInstance('transport:ws');
 
 const DEFAULT_CONFIG = {
     host: process.env.CANVAS_TRANSPORT_WS_HOST || '0.0.0.0',

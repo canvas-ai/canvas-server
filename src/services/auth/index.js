@@ -4,7 +4,7 @@ import configurePassport from '../../utils/passport.js';
 import bcrypt from 'bcrypt';
 
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('canvas:service:auth');
+const debug = createDebug('service:auth');
 
 import SessionService from './lib/SessionService.js';
 import AuthTokenService from './lib/AuthToken.js';
@@ -130,9 +130,9 @@ class AuthService extends EventEmitter {
             throw new Error('Password must be at least 8 characters long');
         }
 
-        // Check if user already exists
-        const existingUser = await this.#userManager.getUserByEmail(email);
-        if (existingUser) {
+        // Check if user already exists - use hasUserByEmail instead of getUserByEmail
+        const userExists = await this.#userManager.hasUserByEmail(email);
+        if (userExists) {
             throw new Error('User with this email already exists');
         }
 
@@ -459,10 +459,15 @@ class AuthService extends EventEmitter {
      * @private
      */
     async #storePassword(userId, passwordHash) {
-        await this.#userManager.db.put(`auth:password:${userId}`, {
+        // Create a config key for the password hash
+        const key = `auth:password:${userId}`;
+        const data = {
             hash: passwordHash,
             updatedAt: new Date().toISOString(),
-        });
+        };
+
+        // Use JIM to store the password hash (via userManager's index)
+        this.#userManager.setConfig(key, data);
     }
 
     /**
@@ -473,7 +478,9 @@ class AuthService extends EventEmitter {
      */
     async #getStoredPassword(userId) {
         try {
-            const data = await this.#userManager.db.get(`auth:password:${userId}`);
+            // Get the password hash data from JIM
+            const key = `auth:password:${userId}`;
+            const data = this.#userManager.getConfig(key, null);
             return data ? data.hash : null;
         } catch (error) {
             debug(`Error getting stored password: ${error.message}`);

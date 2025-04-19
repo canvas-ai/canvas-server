@@ -1,6 +1,6 @@
 // Utils
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('canvas:transport:http');
+const debug = createDebug('transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';

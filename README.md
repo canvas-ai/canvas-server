@@ -53,16 +53,15 @@ CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 
 When the Canvas server starts for the first time, it can automatically create an initial admin user if no users exist in the database. This is controlled by environment variables:
 
-1. Set `CANVAS_CREATE_ADMIN_USER=true` to enable initial admin user creation
-2. Set `CANVAS_ADMIN_EMAIL` to the desired admin email (defaults to 'admin@canvas.local')
-3. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
+1. Set `CANVAS_ADMIN_EMAIL` to the desired admin email (defaults to 'admin@canvas.local')
+2. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
 
 Example:
 ```bash
 # In .env file or environment variables
-CANVAS_CREATE_ADMIN_USER=true
 CANVAS_ADMIN_EMAIL=admin@example.com
 CANVAS_ADMIN_PASSWORD=securepassword
+CANVAS_ADMIN_RESET=false # Reset admin pass
 ```
 
 ## Update Canvas Server
