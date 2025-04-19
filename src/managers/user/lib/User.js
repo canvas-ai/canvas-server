@@ -47,6 +47,9 @@ class User extends EventEmitter {
         },
     };
 
+    // Additional properties
+    workspaceManager;
+
     /**
      * Create a new User instance
      * @param {Object} options - User options
@@ -257,6 +260,18 @@ class User extends EventEmitter {
     }
 
     /**
+     * Find a token by its raw value
+     * @param {string} tokenValue - Token value to find
+     * @returns {Promise<Object|null>} Token with ID information or null if not found
+     */
+    async findTokenByValue(tokenValue) {
+        if (!this.#tokenManager) {
+            await this.#ensureTokenManager();
+        }
+        return this.#tokenManager.findTokenByValue(tokenValue);
+    }
+
+    /**
      * Ensure the token manager exists and is initialized
      * @private
      */
@@ -289,6 +304,33 @@ class User extends EventEmitter {
             status: this.#status,
             stats: this.#stats
         };
+    }
+
+    /**
+     * Initialize workspace manager for the user
+     * This method is called by middleware when workspace manager access is required
+     * @returns {Promise<void>}
+     */
+    async initializeWorkspaceManager() {
+        if (this.workspaceManager) {
+            debug(`Workspace manager already initialized for user: ${this.#id}`);
+            return;
+        }
+
+        // Get the workspace manager reference from the user manager
+        const userManager = this.#jim?.parentManager;
+        if (!userManager || !userManager.getWorkspaceManager) {
+            throw new Error('User manager or getWorkspaceManager method not available');
+        }
+
+        const workspaceManager = userManager.getWorkspaceManager();
+        if (!workspaceManager) {
+            throw new Error('Workspace manager not available from user manager');
+        }
+
+        // Set the workspace manager reference
+        this.workspaceManager = workspaceManager;
+        debug(`Workspace manager initialized for user: ${this.#id}`);
     }
 }
 

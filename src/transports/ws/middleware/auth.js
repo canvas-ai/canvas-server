@@ -13,6 +13,11 @@ const debug = createDebug('transport:ws:auth');
  */
 export default function (server) {
     const commonAuthMiddleware = createAuthMiddleware(server);
+    const authService = server.services.get('auth');
+
+    if (!authService) {
+        throw new Error('Auth service not available for WebSocket middleware');
+    }
 
     /**
      * WebSocket authentication middleware
@@ -24,26 +29,48 @@ export default function (server) {
         try {
             debug(`Starting WebSocket authentication for socket: ${socket.id}`);
 
-            // Check if the socket handshake has auth data with a token
+            let token = null;
+
+            // Get token from different places
+            // First try auth token in handshake
             if (socket.handshake.auth && socket.handshake.auth.token) {
-                debug(`Found auth token in socket handshake`);
-                // Add the token to the headers
-                socket.handshake.headers.authorization = `Bearer ${socket.handshake.auth.token}`;
-            } else {
-                debug(`No auth token found in socket handshake`);
+                token = socket.handshake.auth.token;
+                debug(`Found auth token in socket handshake auth object`);
             }
+            // Try query parameter
+            else if (socket.handshake.query && socket.handshake.query.token) {
+                token = socket.handshake.query.token;
+                debug(`Found auth token in socket handshake query parameters`);
+            }
+            // Finally try authorization header
+            else if (socket.handshake.headers && socket.handshake.headers.authorization) {
+                const authHeader = socket.handshake.headers.authorization;
+                if (authHeader.startsWith('Bearer ')) {
+                    token = authHeader.substring(7);
+                    debug(`Found auth token in Authorization header`);
+                }
+            }
+
+            if (!token) {
+                debug(`No authentication token found in socket connection`);
+                return next(new Error('Authentication required'));
+            }
+
+            // Set the token in proper format if found
+            socket.handshake.headers.authorization = `Bearer ${token}`;
+
+            // Log details about the token for debugging
+            debug(`Using token: ${token.substring(0, 10)}...`);
 
             // Create mock request object with headers from socket handshake
             const mockReq = {
                 headers: socket.handshake.headers,
                 cookies: socket.handshake.cookies || {},
+                query: socket.handshake.query || {},
             };
 
             // Create mock response object
             const mockRes = {};
-
-            // Log the headers for debugging
-            debug(`Socket authentication headers: ${JSON.stringify(mockReq.headers)}`);
 
             // Run the common auth middleware
             await commonAuthMiddleware(mockReq, mockRes, (err) => {
@@ -59,22 +86,53 @@ export default function (server) {
 
                 debug(`WebSocket authenticated: ${socket.isAuthenticated ? 'Yes' : 'No'}`);
 
-                // Log user info if available
-                if (socket.user) {
+                // If authentication failed but we have a token, try direct API token validation
+                if (!socket.isAuthenticated && token) {
+                    debug(`Standard auth failed, trying direct API token validation`);
+
+                    // Try validating the token directly
+                    authService.validateApiToken(token)
+                        .then(result => {
+                            if (result && result.userId) {
+                                debug(`API token validated for user ${result.userId}`);
+
+                                // Get the user and attach to socket
+                                return server.userManager.getUser(result.userId)
+                                    .then(user => {
+                                        if (user) {
+                                            socket.user = user.toJSON ? user.toJSON() : user;
+                                            socket.user.tokenId = result.tokenId;
+                                            socket.user.type = 'api';
+                                            socket.isAuthenticated = true;
+
+                                            debug(`User attached to socket: ${socket.user.email || socket.user.id}`);
+                                            next();
+                                        } else {
+                                            debug(`User ${result.userId} not found after token validation`);
+                                            next(new Error('User not found'));
+                                        }
+                                    });
+                            } else {
+                                debug(`API token validation failed`);
+                                next(new Error('Invalid token'));
+                            }
+                        })
+                        .catch(error => {
+                            debug(`Error in direct token validation: ${error.message}`);
+                            next(error);
+                        });
+
+                    return; // Stop here since we're handling auth asynchronously
+                }
+
+                // If we're already authenticated, proceed with attached user
+                if (socket.isAuthenticated && socket.user) {
                     debug(`Authenticated user: ${socket.user.email || socket.user.id}`);
-                    debug(`User data: ${JSON.stringify(socket.user)}`);
+                    next();
                 } else {
-                    debug('No user data available after authentication');
+                    debug('Authentication required but no valid user found');
+                    next(new Error('Authentication failed'));
                 }
-
-                // Ensure we have a valid user attached
-                if (!socket.user || !socket.user.id) {
-                    debug('Auth middleware succeeded but no valid user found in socket');
-                    return next(new Error('Authentication failed: Valid user not found'));
-                }
-
-                debug(`WebSocket authentication successful for user: ${socket.user.id}`);
-                next();
             });
         } catch (error) {
             debug(`WebSocket authentication error: ${error.message}`);

@@ -121,6 +121,17 @@ class Manager extends EventEmitter {
             return false;
         }
     }
+
+    /**
+     * Set a parent manager reference on the JIM instance
+     * This allows for accessing the parent manager from child instances
+     * @param {Object} manager - The parent manager instance
+     */
+    setJimParentManager(manager) {
+        if (this.#jim) {
+            this.#jim.parentManager = manager;
+        }
+    }
 }
 
 export default Manager;

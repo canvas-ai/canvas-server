@@ -246,7 +246,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.get('/me', passport.authenticate(['jwt', 'api-token'], { session: false }), (req, res) => {
+    router.get('/me', passport.authenticate('api-token', { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
         const userData = {
@@ -254,6 +254,7 @@ export default function (authService) {
             email: req.user.email,
             userType: req.user.userType,
             status: req.user.status,
+            tokenType: req.user.type,
             tokenId: req.user.tokenId // Will be present if authenticated with API token
         };
 
@@ -296,7 +297,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.put('/password', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.put('/password', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Update password endpoint called');
         const { currentPassword, newPassword } = req.body;
 
@@ -342,7 +343,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.get('/tokens', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.get('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('List tokens endpoint called');
 
         try {
@@ -399,7 +400,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.post('/tokens', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.post('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Generate token endpoint called');
         const { name, description, expiresAt } = req.body;
 
@@ -460,7 +461,7 @@ export default function (authService) {
      *       404:
      *         description: Token not found
      */
-    router.delete('/tokens/:tokenId', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.delete('/tokens/:tokenId', passport.authenticate('api-token', { session: false }), async (req, res) => {
         const { tokenId } = req.params;
         debug(`Revoke token endpoint called for token ID: ${tokenId}`);
 
@@ -516,7 +517,38 @@ export default function (authService) {
         }
 
         try {
-            // First try as JWT token
+            // Validate as API token (preferred)
+            const apiTokenResult = await authService.validateApiToken(token);
+            if (apiTokenResult) {
+                const { userId, tokenId } = apiTokenResult;
+
+                try {
+                    // Get user and token details
+                    const userManager = req.app.get('userManager');
+                    const user = await userManager.getUserById(userId);
+                    const tokenDetails = await userManager.getApiToken(userId, tokenId);
+
+                    if (user && tokenDetails) {
+                        debug('API token verified successfully');
+                        const response = new ResponseObject().success(
+                            {
+                                valid: true,
+                                type: 'api',
+                                userId: userId,
+                                tokenId: tokenId,
+                                tokenName: tokenDetails.name,
+                            },
+                            'Token is valid',
+                        );
+                        return res.status(response.statusCode).json(response.getResponse());
+                    }
+                } catch (error) {
+                    debug(`Error getting user or token details: ${error.message}`);
+                    // Continue to try JWT token
+                }
+            }
+
+            // Try as JWT token (legacy support)
             const jwtPayload = authService.verifyToken(token);
             if (jwtPayload) {
                 debug('JWT token verified successfully');
@@ -531,32 +563,6 @@ export default function (authService) {
                 return res.status(response.statusCode).json(response.getResponse());
             }
 
-            // Then try as API token
-            const apiTokenResult = await authService.validateApiToken(token);
-            if (apiTokenResult) {
-                const { userId, tokenId } = apiTokenResult;
-
-                // Get user and token details
-                const userManager = req.app.get('userManager');
-                const user = await userManager.getUserById(userId);
-                const tokenDetails = await userManager.getApiToken(userId, tokenId);
-
-                if (user && tokenDetails) {
-                    debug('API token verified successfully');
-                    const response = new ResponseObject().success(
-                        {
-                            valid: true,
-                            type: 'api',
-                            userId: userId,
-                            tokenId: tokenId,
-                            tokenName: tokenDetails.name,
-                        },
-                        'Token is valid',
-                    );
-                    return res.status(response.statusCode).json(response.getResponse());
-                }
-            }
-
             // Token is invalid
             debug('Token verification failed: Invalid token');
             const response = new ResponseObject().unauthorized('Invalid token');
@@ -564,6 +570,96 @@ export default function (authService) {
         } catch (error) {
             debug(`Token verification error: ${error.message}`);
             const response = new ResponseObject().error(`Token verification error: ${error.message}`);
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /auth/token/exchange:
+     *   post:
+     *     summary: Exchange an API token for a JWT token
+     *     tags: [Authentication]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - apiToken
+     *             properties:
+     *               apiToken:
+     *                 type: string
+     *     responses:
+     *       200:
+     *         description: Token exchanged successfully
+     *       401:
+     *         description: Invalid API token
+     */
+    router.post('/token/exchange', async (req, res) => {
+        const { apiToken } = req.body;
+        debug('Token exchange endpoint called');
+
+        if (!apiToken) {
+            debug('Token exchange failed: No API token provided');
+            const response = new ResponseObject().badRequest('API token is required');
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+
+        try {
+            // Validate the API token
+            const apiTokenResult = await authService.validateApiToken(apiToken);
+            if (!apiTokenResult) {
+                debug('Token exchange failed: Invalid API token');
+                const response = new ResponseObject().unauthorized('Invalid API token');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const { userId, tokenId } = apiTokenResult;
+            debug(`API token validated for user: ${userId}`);
+
+            // Get user directly from auth service's user manager instead of req.app
+            // This ensures we're using the same userManager instance that's already configured
+            const user = await authService.getUserManager().getUserById(userId);
+            if (!user) {
+                debug(`User not found for API token: ${userId}`);
+                const response = new ResponseObject().notFound('User not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Generate a JWT token for the user
+            const token = await authService.createSession(user);
+            if (!token) {
+                debug('Failed to create JWT session');
+                const response = new ResponseObject().serverError('Failed to create session');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Set JWT token as cookie
+            authService.sessionService.setCookie(res, token.token, {
+                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                sameSite: 'lax',
+            });
+
+            debug(`API token exchanged for JWT token for user: ${user.email}`);
+            const response = new ResponseObject().success(
+                {
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        userType: user.userType,
+                        status: user.status,
+                    },
+                    token: token.token,
+                    session: token.session,
+                },
+                'Token exchanged successfully'
+            );
+            return res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Token exchange error: ${error.message}`);
+            const response = new ResponseObject().error(error.message);
             return res.status(response.statusCode).json(response.getResponse());
         }
     });

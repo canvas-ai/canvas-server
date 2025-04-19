@@ -250,7 +250,7 @@ class AuthService extends EventEmitter {
      * @returns {Function} - Authentication middleware
      */
     getAuthMiddleware() {
-        return this.#passport.authenticate('jwt', { session: false });
+        return this.#passport.authenticate('api-token', { session: false });
     }
 
     /**
@@ -486,6 +486,49 @@ class AuthService extends EventEmitter {
             debug(`Error getting stored password: ${error.message}`);
             return null;
         }
+    }
+
+    /**
+     * Create a session for a user and generate a JWT token
+     * This is used when exchanging an API token for a JWT token
+     * @param {Object} user - User object
+     * @returns {Promise<Object>} - Session and token object
+     */
+    async createSession(user) {
+        if (!user || !user.id) {
+            throw new Error('Valid user object is required');
+        }
+
+        debug(`Creating session for user: ${user.email} (${user.id})`);
+
+        try {
+            // Create session
+            const session = await this.#sessionManager.createSession(user.id, {
+                source: 'api-token-exchange',
+                userAgent: 'Canvas API Token Exchange',
+                ipAddress: '127.0.0.1',
+            });
+
+            // Generate JWT token
+            const token = this.#sessionService.generateToken(user, session);
+
+            debug(`Session created for user: ${user.email} (${user.id})`);
+            return {
+                session,
+                token
+            };
+        } catch (error) {
+            debug(`Error creating session: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get user manager
+     * @returns {Object} - User manager
+     */
+    getUserManager() {
+        return this.#userManager;
     }
 }
 

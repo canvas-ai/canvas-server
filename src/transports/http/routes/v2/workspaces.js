@@ -406,7 +406,7 @@ export default function workspacesRoutes(options) {
 
         try {
             const workspaces = req.workspaceManager.listWorkspaces(userId, statusFilter);
-            const response = new ResponseObject().ok(workspaces);
+            const response = new ResponseObject().success(workspaces);
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             logger.error(`Error listing workspaces for user ${userId}: ${error.message}`, error);

@@ -620,7 +620,7 @@ class Server extends EventEmitter {
 
             // Log the admin user details
             console.log('\n' + '='.repeat(80));
-            console.log('Canvas Admin User Created');
+            console.log('Canvas Admin User');
             console.log('='.repeat(80));
             console.log(`Email(login ID): ${adminEmail}`);
             console.log(`Password: ${password}`);

@@ -176,3 +176,50 @@ $ ./scripts/update-git.sh
 
 - https://avahi.org/
 - https://www.npmjs.com/package/mdns
+
+## Authentication
+
+Canvas Server supports two types of authentication:
+
+1. **JWT Token Authentication**: Used for web UI login and normal user sessions
+2. **API Token Authentication**: Used for programmatic access (CLI, Electron, browser extensions, curl-based scripts)
+
+### API Token Authentication
+
+API tokens are the recommended way to authenticate programmatic clients. They can be created in the web UI or via the API.
+
+#### Creating an API Token
+
+```bash
+# Create a new API token
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My CLI Token","description":"Token for CLI access"}' \
+  -b "token=YOUR_JWT_TOKEN" \
+  http://localhost:8001/rest/v2/auth/tokens
+```
+
+#### Using API Tokens
+
+API tokens can be used in two ways:
+
+1. **Direct Use**: Some endpoints support API tokens directly:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_TOKEN" http://localhost:8001/rest/v2/auth/me
+```
+
+2. **Token Exchange**: For endpoints that require full user context, exchange your API token for a JWT token:
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"apiToken":"YOUR_API_TOKEN"}' \
+  http://localhost:8001/rest/v2/auth/token/exchange
+```
+
+The response will include a JWT token that can be used for subsequent requests.
+
+#### Client Example
+
+See `examples/auth-client.js` for an example client implementation that handles the token exchange process automatically.

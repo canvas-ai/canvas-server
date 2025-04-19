@@ -3,7 +3,6 @@
  */
 
 import passport from 'passport';
-import createAuthMiddleware from '../../common/middleware/auth.js';
 import { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('transport:http:auth');
 
@@ -19,17 +18,31 @@ export default function (server) {
     return (req, res, next) => {
         debug('HTTP auth middleware called');
 
-        // Try JWT and API token authentication
-        passport.authenticate(['jwt', 'api-token'], { session: false }, (err, user, info) => {
+        // Use the unified api-token strategy that handles both JWT and API tokens
+        passport.authenticate('api-token', { session: false }, (err, user, info) => {
             if (err) {
                 debug(`Authentication error: ${err.message}`);
                 return next(err);
             }
 
             if (user) {
-                debug(`User authenticated: ${user.email}`);
+                debug(`User authenticated: ${user.email}, token type: ${user.type}`);
                 req.user = user;
                 req.isAuthenticated = true;
+
+                // Add session if available for JWT tokens
+                if (user.type === 'jwt' && user.sessionId && server.sessionManager) {
+                    server.sessionManager.getSession(user.sessionId)
+                        .then(session => {
+                            if (session) {
+                                req.session = session;
+                                // Touch session to update last active time
+                                server.sessionManager.touchSession(session.id)
+                                    .catch(err => debug(`Error touching session: ${err.message}`));
+                            }
+                        })
+                        .catch(err => debug(`Error getting session: ${err.message}`));
+                }
             } else {
                 debug('No authenticated user');
                 req.isAuthenticated = false;

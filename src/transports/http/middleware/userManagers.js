@@ -22,12 +22,6 @@ export function createUserManagersMiddleware(options = {}) {
         throw new Error('User manager is required for user managers middleware');
     }
 
-    /**
-     * Middleware to ensure user managers are available
-     * @param {Object} req - Request object
-     * @param {Object} res - Response object
-     * @param {Function} next - Next middleware function
-     */
     return async (req, res, next) => {
         try {
             // Skip if no authenticated user
@@ -86,7 +80,7 @@ export function createUserManagersMiddleware(options = {}) {
             debug(`User managers attached to request for user: ${userId}`);
             next();
         } catch (error) {
-            debug(`Error in user managers middleware: ${error.message}`);
+            debug(`Unexpected error in user managers middleware: ${error.message}`);
             return res.status(500).json(new ResponseObject().serverError(`Server error: ${error.message}`));
         }
     };

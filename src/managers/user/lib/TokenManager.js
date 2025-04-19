@@ -8,15 +8,20 @@ import EventEmitter from 'eventemitter2';
 import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('manager:token');
 
+// Add crypto module import
+import crypto from 'crypto';
+
 /**
  * Constants
  */
 const API_TOKEN_STATUSES = ['active', 'revoked', 'expired'];
 const TOKEN_INDEX_PREFIX = 'auth:token:';
+const TOKEN_PREFIX = 'canvas-';
 
 /**
  * TokenManager Class
  * Manages API tokens for a user
+ * Tokens are securely stored as hashes rather than raw values
  */
 class TokenManager extends EventEmitter {
     // The user this token manager belongs to
@@ -85,7 +90,7 @@ class TokenManager extends EventEmitter {
      * @param {string} options.description - Token description
      * @param {Date|string} [options.expiresAt] - Expiration date
      * @param {Array<string>} [options.scopes] - Token scopes
-     * @returns {Promise<Object>} Created token
+     * @returns {Promise<Object>} Created token with value (value only returned here, stored as hash)
      */
     async createToken(options = {}) {
         if (!options.name) {
@@ -96,16 +101,20 @@ class TokenManager extends EventEmitter {
         const tokenId = uuidv4();
         const tokenValue = TokenManager.generateSecureToken(32);
 
+        // Create hash of the token for storage
+        const tokenHash = this.#hashToken(tokenValue);
+
         const expiresAt = options.expiresAt
             ? (options.expiresAt instanceof Date ? options.expiresAt.toISOString() : options.expiresAt)
             : null;
 
-        // Create token object
+        // Create token object for storage (without raw value)
         const token = {
             id: tokenId,
             name: options.name,
             description: options.description || '',
-            token: tokenValue, // In production, should be hashed
+            // Store hash instead of raw token for security
+            tokenHash: tokenHash,
             created: new Date().toISOString(),
             lastUsed: null,
             expiresAt: expiresAt,
@@ -126,10 +135,95 @@ class TokenManager extends EventEmitter {
         this.emit('token:created', { userId: this.#userId, tokenId });
 
         // Return a copy of the token with the value to show to the user
+        // This is the only time the raw token value is returned
         return {
             ...token,
-            value: tokenValue
+            value: tokenValue,
+            tokenHash: undefined // Don't expose the hash
         };
+    }
+
+    /**
+     * Find a token by its raw value
+     * @param {string} tokenValue - The token value to find
+     * @returns {Promise<Object|null>} Token object with ID or null if not found
+     */
+    async findTokenByValue(tokenValue) {
+        if (!tokenValue) {
+            return null;
+        }
+
+        // Hash the provided token value
+        const tokenHash = this.#hashToken(tokenValue);
+
+        // Get all tokens
+        const tokens = this.#getTokens();
+
+        // Find token with matching hash or raw value (for backward compatibility)
+        const tokenEntry = Object.entries(tokens).find(([_, token]) =>
+            // Check for hash match (new format)
+            (token.tokenHash && token.tokenHash === tokenHash) ||
+            // Check for direct token match (old format)
+            (token.token && token.token === tokenValue)
+        );
+
+        if (!tokenEntry) {
+            debug(`No token found for value (hashed to ${tokenHash.substring(0, 10)}...)`);
+            return null;
+        }
+
+        const [tokenId, token] = tokenEntry;
+
+        // Check if token is active and not expired
+        if (token.status !== 'active') {
+            debug(`Token ${tokenId} found but status is ${token.status}, not active`);
+            return null;
+        }
+
+        if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
+            // Update status to expired
+            debug(`Token ${tokenId} found but has expired`);
+            await this.updateToken(tokenId, { status: 'expired' });
+            return null;
+        }
+
+        // Update usage
+        try {
+            await this.updateTokenUsage(tokenId);
+            debug(`Token ${tokenId} found and usage updated`);
+        } catch (error) {
+            debug(`Error updating token usage for ${tokenId}: ${error.message}`);
+            // Continue even if updating usage fails
+        }
+
+        // If token uses old format (has token property), upgrade it to use hash
+        if (token.token && !token.tokenHash) {
+            debug(`Upgrading token ${tokenId} from old format to new hashed format`);
+            try {
+                await this.updateToken(tokenId, {
+                    tokenHash: this.#hashToken(token.token),
+                    token: undefined  // Remove the plain text token
+                });
+            } catch (error) {
+                debug(`Error upgrading token ${tokenId}: ${error.message}`);
+                // Continue even if upgrade fails
+            }
+        }
+
+        return {
+            tokenId,
+            userId: this.#userId
+        };
+    }
+
+    /**
+     * Hash a token value for secure storage
+     * @param {string} tokenValue - Token value to hash
+     * @returns {string} Hashed token
+     * @private
+     */
+    #hashToken(tokenValue) {
+        return crypto.createHash('sha256').update(tokenValue).digest('hex');
     }
 
     /**
@@ -142,13 +236,16 @@ class TokenManager extends EventEmitter {
             throw new Error('Token ID is required');
         }
 
+        debug(`Getting token: ${tokenId} for user: ${this.#userId}`);
         const tokens = this.#getTokens();
         const token = tokens[tokenId];
 
         if (!token) {
+            debug(`Token not found: ${tokenId} for user: ${this.#userId}`);
             throw new Error(`Token not found: ${tokenId}`);
         }
 
+        debug(`Token retrieved: ${tokenId} for user: ${this.#userId}`);
         return token;
     }
 
@@ -338,27 +435,16 @@ class TokenManager extends EventEmitter {
      * @returns {string} Generated token
      * @static
      */
-    static generateSecureToken(length = 16) {
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_=+';
-        let token = '';
+    static generateSecureToken(length = 32) {
+        // Generate a more secure random token using Node's crypto module
+        const randomBytes = crypto.randomBytes(Math.ceil(length * 0.75)); // Buffer needs to be 3/4 the length since base64 expands
+        const base = randomBytes.toString('base64').replace(/[+/=]/g, ''); // Remove non-URL safe chars
 
-        // Ensure we have at least one of each character type
-        token += 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)]; // lowercase
-        token += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)]; // uppercase
-        token += '0123456789'[Math.floor(Math.random() * 10)]; // digit
-        token += '-_=+'[Math.floor(Math.random() * 4)]; // special
+        // Take only what we need for the desired length
+        const token = base.substring(0, length);
 
-        // Fill the rest randomly
-        for (let i = 4; i < length; i++) {
-            const randomIndex = Math.floor(Math.random() * charset.length);
-            token += charset[randomIndex];
-        }
-
-        // Shuffle the token characters
-        return token
-            .split('')
-            .sort(() => 0.5 - Math.random())
-            .join('');
+        // Add the prefix for easy identification
+        return TOKEN_PREFIX + token;
     }
 }
 

@@ -165,7 +165,7 @@ class UserManager extends Manager {
                 console.log('\n' + '='.repeat(80));
                 console.log('Canvas Admin User API Token');
                 console.log('='.repeat(80));
-                console.log(`Token: ${apiToken.token}`);
+                console.log(`Token: ${apiToken.value}`);
                 console.log('='.repeat(80) + '\n');
             }
 
@@ -569,6 +569,26 @@ class UserManager extends Manager {
     }
 
     /**
+     * Find an API token by its raw value
+     * @param {string} userId - User ID
+     * @param {string} tokenValue - Token value to find
+     * @returns {Promise<Object|null>} Token details with tokenId and userId if found, null otherwise
+     */
+    async findApiTokenByValue(userId, tokenValue) {
+        if (!userId) throw new Error('User ID is required');
+        if (!tokenValue) throw new Error('Token value is required');
+
+        try {
+            const user = await this.getUser(userId);
+            const result = await user.findTokenByValue(tokenValue);
+            return result;
+        } catch (error) {
+            debug(`Error finding token by value for user ${userId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
      * Private methods
      */
 
@@ -581,6 +601,9 @@ class UserManager extends Manager {
             status: userData.status,
             jim: this.jim  // Pass JIM to User instance for token management
         });
+
+        // Set reference to this user manager in the JIM instance
+        this.setJimParentManager(this);
 
         this.#users.set(user.id, user);
         return user;
@@ -616,6 +639,14 @@ class UserManager extends Manager {
         if (userSettings.status && !USER_STATUS.includes(userSettings.status)) {
             throw new Error(`Invalid user status: ${userSettings.status}`);
         }
+    }
+
+    /**
+     * Get the workspace manager reference
+     * @returns {Object} - Workspace manager instance
+     */
+    getWorkspaceManager() {
+        return this.#workspaceManager;
     }
 }
 
