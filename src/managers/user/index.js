@@ -29,9 +29,10 @@ const USER_STATUS = ['active', 'inactive', 'deleted'];
  */
 
 class UserManager extends Manager {
-    
+
     #rootPath;
     #users = new Map(); // Initialized User Instances, keeps this implementation as slim as possible
+
     #workspaceManager; // Reference to workspace manager (injected)
 
     /**
@@ -51,18 +52,19 @@ class UserManager extends Manager {
         if (!options.rootPath) {
             throw new Error('Root path is required');
         }
-
         this.#rootPath = options.rootPath;
 
-        // Optional workspace manager - can be set later if needed
-        this.#workspaceManager = options.workspaceManager || null;
+        if (!options.workspaceManager) {
+            throw new Error('Workspace manager is required');
+        }
+        this.#workspaceManager = options.workspaceManager;
 
         // Initialize the users array in the index if it doesn't exist
         if (!Array.isArray(this.getConfig('users'))) {
             this.setConfig('users', []);
         }
 
-        debug(`UserManager initialized with rootPath: ${this.#rootPath}`);
+        debug(`UserManager initialized with user home rootPath: ${this.#rootPath}`);
     }
 
     /**
@@ -83,19 +85,6 @@ class UserManager extends Manager {
     }
 
     /**
-     * Set the workspace manager reference
-     * This allows for lazy dependency injection
-     * @param {Object} workspaceManager - Workspace manager instance
-     */
-    setWorkspaceManager(workspaceManager) {
-        if (!workspaceManager) {
-            throw new Error('Workspace manager is required');
-        }
-        this.#workspaceManager = workspaceManager;
-        debug('Workspace manager reference set');
-    }
-
-    /**
      * Initialize manager
      * @override
      */
@@ -105,10 +94,6 @@ class UserManager extends Manager {
         }
 
         debug('Initializing UserManager');
-
-        // Any additional initialization logic can go here
-
-        // Call the parent initialize to mark as initialized
         return super.initialize();
     }
 
@@ -138,9 +123,10 @@ class UserManager extends Manager {
             }
 
             const userID = uuidv4();
+            const userHomePath = userData.homePath ||
+                path.join(this.#rootPath, email);
 
-            // Create the user's Universe workspace
-            const userHomePath = await this.createUserHome(userID, email);
+            await this.createUserHome(userHomePath, email);
 
             const user = this.#initializeUser({
                 id: userID,
@@ -185,44 +171,30 @@ class UserManager extends Manager {
 
     /**
      * Create a user's home structure as a Universe workspace
-     * @param {string} userId - User ID
+     * @param {string} homePath - Path to the user's home
      * @param {string} userEmail - User email
      * @returns {Promise<string>} Path to the user's home
      */
-    async createUserHome(userId, userEmail) {
+    async createUserHome(homePath, userEmail) {
         if (!this.#workspaceManager) {
             throw new Error('WorkspaceManager is required to create a user home');
         }
 
-        const userHomePath = path.join(this.#rootPath, userEmail);
+        const userHomePath = path.resolve(homePath);
         debug(`Creating user home (Universe workspace) at: ${userHomePath}`);
 
         try {
-            // Use a namespaced ID for the workspace to ensure uniqueness
-            // Format: user-{userId}-universe
-            const namespaceWorkspaceId = `user-${userId.substring(0, 8)}-universe`;
-
-            // Create Universe workspace for the user with namespaced ID
-            await this.#workspaceManager.createWorkspace('universe', userId, {
-                id: namespaceWorkspaceId,
-                rootPath: userHomePath,
+            await this.#workspaceManager.createWorkspace(userEmail, 'universe', {
+                id: '10000001-1001',
+                workspacePath: userHomePath,
                 type: 'universe',
-                description: `Default universe workspace for ${userEmail}`,
-                owner: userId,
+                owner: userEmail,
             });
 
-            debug(`Universe workspace created for user: ${userId}`);
+            debug(`Universe workspace created for user: ${userEmail}`);
             return userHomePath;
         } catch (error) {
             debug(`Error creating user home: ${error}`);
-            // Clean up directory if workspace creation failed
-            if (existsSync(userHomePath)) {
-                try {
-                    await fs.rm(userHomePath, { recursive: true, force: true });
-                } catch (cleanupError) {
-                    debug(`Failed to clean up user home directory: ${cleanupError}`);
-                }
-            }
             throw error;
         }
     }
@@ -570,23 +542,53 @@ class UserManager extends Manager {
     }
 
     /**
-     * Find an API token by its raw value
-     * @param {string} userId - User ID
-     * @param {string} tokenValue - Token value to find
-     * @returns {Promise<Object|null>} Token details with tokenId and userId if found, null otherwise
+     * Finds a user and their specific token ID based on the raw API token value.
+     * This searches across all users.
+     * @param {string} tokenValue - The raw API token value provided by the client.
+     * @returns {Promise<{userId: string, tokenId: string}|null>} Object with userId and tokenId if found and valid, otherwise null.
      */
-    async findApiTokenByValue(userId, tokenValue) {
-        if (!userId) throw new Error('User ID is required');
-        if (!tokenValue) throw new Error('Token value is required');
-
-        try {
-            const user = await this.getUser(userId);
-            const result = await user.findTokenByValue(tokenValue);
-            return result;
-        } catch (error) {
-            debug(`Error finding token by value for user ${userId}: ${error.message}`);
+    async findUserByApiTokenValue(tokenValue) {
+        if (!tokenValue) {
+            debug('findUserByApiTokenValue called with empty tokenValue.');
             return null;
         }
+
+        debug(`Searching for user by API token value: ${tokenValue.substring(0, 8)}...`);
+
+        const users = this.usersList; // Get all users from the index
+
+        for (const userData of users) {
+            // Skip inactive or problematic users if necessary (optional)
+            if (userData.status !== 'active') {
+                continue;
+            }
+
+            try {
+                // We need the User instance to access its TokenManager
+                // Avoid loading *all* users into memory if possible, but for validation, we might need to.
+                // This assumes getUser handles caching or efficient loading.
+                const user = await this.getUser(userData.id);
+
+                // Delegate the check (including hashing) to the user's TokenManager
+                // findTokenByValue should return { tokenId, userId } or null
+                const tokenInfo = await user.findTokenByValue(tokenValue);
+
+                if (tokenInfo) {
+                    debug(`Valid token found for user ${tokenInfo.userId} (Token ID: ${tokenInfo.tokenId})`);
+                    // IMPORTANT: Ensure the token is still valid (not revoked/expired) - findTokenByValue should handle this.
+                    // We found the user and token
+                    return tokenInfo; // { userId, tokenId }
+                }
+                // If tokenInfo is null, continue to the next user
+            } catch (error) {
+                // Log error fetching/checking user, but continue searching
+                logger.error(`Error checking tokens for user ${userData.id} (${userData.email}): ${error.message}`);
+            }
+        }
+
+        // If the loop completes without finding a match
+        debug('No user found for the provided API token value after checking all users.');
+        return null;
     }
 
     /**
@@ -642,13 +644,6 @@ class UserManager extends Manager {
         }
     }
 
-    /**
-     * Get the workspace manager reference
-     * @returns {Object} - Workspace manager instance
-     */
-    getWorkspaceManager() {
-        return this.#workspaceManager;
-    }
 }
 
 export default UserManager;

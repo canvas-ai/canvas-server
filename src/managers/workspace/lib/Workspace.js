@@ -58,13 +58,17 @@ class Workspace extends EventEmitter {
      * Configuration Getters (reading from workspace.json via configStore)
      */
 
+    // Runtime
     get config() { return this.#configStore?.store || {}; }
     get path() { return this.#rootPath; }
     get rootPath() { return this.#rootPath; }
+    get configPath() { return this.#configStore?.path; }
+
+    // Persisted
     get id() { return this.#configStore?.get('id'); }
     get name() { return this.#configStore?.get('name'); }
     get label() { return this.#configStore?.get('label', this.name); }
-    get description() { return this.#configStore?.get('description', `Canvas Workspace ${this.name}`); }
+    get description() { return this.#configStore?.get('description', `Canvas Workspace`); }
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); }
@@ -481,6 +485,7 @@ class Workspace extends EventEmitter {
             ...this.config, // Get all persisted config
             // Append runtime variables
             rootPath: this.rootPath,
+            configPath: this.configPath,
             status: this.status,
         };
     }

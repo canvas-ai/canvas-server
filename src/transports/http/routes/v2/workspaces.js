@@ -1,1318 +1,692 @@
 'use strict';
 
 import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-
 import logger, { createDebug } from '../../../../utils/log/index.js';
-import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:workspaces');
 
-import { requireWorkspaceManager } from '../../middleware/userManagers.js';
-import { WORKSPACE_STATUS } from '../../../../managers/workspace/index.js';
+import ResponseObject from '../../../ResponseObject.js';
+
+//
+// --- Middleware --- //
+//
 
 /**
- * @swagger
- * components:
- *   schemas:
- *     WorkspaceMetadata:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The workspace ID (matches name)
- *         name:
- *           type: string
- *           description: The workspace name
- *         path:
- *           type: string
- *           description: Filesystem path to the workspace
- *         owner:
- *           type: string
- *           description: The workspace owner ID
- *         created:
- *           type: string
- *           format: date-time
- *           description: Index creation timestamp
- *         status:
- *           type: string
- *           enum: [active, inactive, loading, unloading, error, not_found, deleted] # Updated Enum
- *           description: Workspace status in the manager index
- *         lastAccessed:
- *            type: string
- *            format: date-time
- *            nullable: true
- *            description: Timestamp of last access
- *     WorkspaceConfig:
- *       allOf:
- *         - $ref: '#/components/schemas/WorkspaceMetadata' # Inherit metadata
- *         - type: object
- *           properties:
- *             label:
- *               type: string
- *               description: User-defined label for the workspace
- *             description:
- *               type: string
- *               description: User-defined description
- *             color:
- *               type: string
- *               format: hex-color # Assuming #RRGGBB or #RGB
- *               description: User-defined color
- *             locked:
- *               type: boolean
- *               description: Whether the workspace is locked
- *             type:
- *               type: string
- *               description: Workspace type (e.g., 'workspace', 'template')
- *             acl:
- *               type: object
- *               additionalProperties: true
- *               description: Access control list
- *             metadata:
- *               type: object
- *               additionalProperties: true
- *               description: Custom metadata
- *             restApi:
- *               type: object
- *               properties:
- *                  enabled:
- *                     type: boolean
- *                  port:
- *                     type: integer
- *                  host:
- *                     type: string
- *               description: REST API specific settings
- *             updated:
- *               type: string
- *               format: date-time
- *               description: Last update timestamp of config
- *     WorkspaceDocument:
- *       type: object
- *       description: Represents a document within SynapsD (structure depends on schema)
- *       # Add specific document properties based on BaseDocument or common fields if known
- *     TreeLayer:
- *        type: object
- *        properties:
- *           id: { type: string, format: uuid }
- *           type: { type: string }
- *           name: { type: string }
- *           label: { type: string, nullable: true }
- *           description: { type: string, nullable: true }
- *           color: { type: string, format: hex-color, nullable: true }
- *           locked: { type: boolean, default: false }
- *     TreeNode:
- *        type: object
- *        properties:
- *          id: { type: string, format: uuid }
- *          type: { type: string }
- *          name: { type: string }
- *          label: { type: string, nullable: true }
- *          description: { type: string, nullable: true }
- *          color: { type: string, format: hex-color, nullable: true }
- *          locked: { type: boolean }
- *          children:
- *            type: array
- *            items:
- *              $ref: '#/components/schemas/TreeNode'
- *   parameters:
- *     WorkspaceIdParam:
- *       in: path
- *       name: id
- *       required: true
- *       schema:
- *         type: string
- *       description: The ID (name) of the workspace
- *     DocumentIdParam:
- *        in: path
- *        name: docId
- *        required: true
- *        schema:
- *          type: string
- *        description: The ID of the document
- *     DocumentHashParam:
- *       in: path
- *       name: hashString
- *       required: true
- *       schema:
- *         type: string
- *       description: The checksum hash string of the document
- *     LayerNameParam:
- *       in: path
- *       name: layerName
- *       required: true
- *       schema:
- *         type: string
- *       description: The name of the layer
- *     LayerIdParam:
- *       in: path
- *       name: layerId
- *       required: true
- *       schema:
- *         type: string
- *         format: uuid
- *       description: The ID of the layer
- *     ContextQueryParam:
- *        in: query
- *        name: context
- *        schema:
- *          type: string
- *        description: Context path (e.g., /proj/client) or comma-separated layer names (e.g., proj,client)
- *     FeaturesQueryParam:
- *        in: query
- *        name: features
- *        schema:
- *          type: string
- *        description: Comma-separated feature layer names (e.g., schema,tag)
- *     FiltersQueryParam:
- *        in: query
- *        name: filters
- *        schema:
- *          type: string
- *        description: Comma-separated filter layer names
- *     LimitQueryParam:
- *        in: query
- *        name: limit
- *        schema:
- *          type: integer
- *          default: 50
- *        description: Maximum number of items to return
- *     OffsetQueryParam:
- *        in: query
- *        name: offset
- *        schema:
- *          type: integer
- *          default: 0
- *        description: Number of items to skip
- *     RecursiveQueryParam:
- *        in: query
- *        name: recursive
- *        schema:
- *          type: boolean
- *          default: false
- *        description: Apply action recursively
- *     PathQueryParam:
- *        in: query
- *        name: path
- *        required: true
- *        schema:
- *          type: string
- *        description: The tree path for the operation
+ * Middleware to ensure the user is authenticated.
+ * @param {Object} authService - Authentication service instance.
+ * @returns {Function}
  */
-
-/**
- * Workspaces routes
- * @param {Object} options - Route options
- * @param {Object} options.auth - Auth service
- * @param {Object} options.userManager - User manager
- * @returns {express.Router} - Express router
- */
-export default function workspacesRoutes(options) {
-    const router = express.Router();
-    const { auth, userManager } = options;
-
-    if (!auth) {
-        throw new Error('Auth service is required');
-    }
-    if (!userManager) {
-        throw new Error('User manager is required');
-    }
-
-    // Apply auth middleware to all routes
-    router.use(auth.getAuthMiddleware());
-
-    // Apply workspace manager middleware to all routes
-    router.use(requireWorkspaceManager({ userManager }));
-
-    // === Helper Middleware ===
-
-    /**
-     * Middleware to translate workspace name to ID and ensure existence
-     * This allows APIs to be called with human-readable names while using internal IDs
-     */
-    const translateWorkspaceNameToId = async (req, res, next) => {
-        const workspaceName = req.params.id;
-        const userId = req.user?.id;
-        const userEmail = req.user?.email; // Use email for workspace ID composition
-
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
-
-        // If the ID looks like a fully composed ID (contains email and /)
-        if (workspaceName && workspaceName.includes('/')) {
-            debug(`Using provided composed workspace ID directly: ${workspaceName}`);
-            return next();
-        }
-
-        // Try to find the workspace ID by name
-        try {
-            // Use email for the workspace ID lookup
-            const workspaceId = req.workspaceManager.getWorkspaceIdByName(userEmail, workspaceName);
-
-            if (!workspaceId) {
-                debug(`translateWorkspaceNameToId: Workspace name "${workspaceName}" not found for user ${userEmail}`);
-                const response = new ResponseObject().notFound(`Workspace "${workspaceName}" not found.`);
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-
-            // Replace the name with the actual ID in the request params
-            debug(`Translated workspace name "${workspaceName}" to ID "${workspaceId}"`);
-            req.params.id = workspaceId;
-            req.originalWorkspaceName = workspaceName; // Store original name for reference
-
+const ensureAuthenticated = (authService) => {
+    if (!authService || !authService.passport) {
+        return (req, res, next) => {
+            logger.warn('Auth service or passport not available, skipping authentication');
             next();
-        } catch (error) {
-            debug(`Error translating workspace name: ${error.message}`);
-            const response = new ResponseObject().serverError(`Error processing workspace name: ${error.message}`);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-    };
+        };
+    }
+    // Assuming 'jwt' strategy is configured in authService
+    return authService.passport.authenticate('jwt', { session: false });
+};
 
-    // Insert translateWorkspaceNameToId middleware before other middleware
-    router.use('/:id*', translateWorkspaceNameToId);
+/**
+ * Middleware to load and attach the requested workspace instance (not necessarily active).
+ * @param {Object} userManager - User Manager instance.
+ * @returns {Function}
+ */
+const loadWorkspace = (userManager) => async (req, res, next) => {
+    const workspaceId = req.params.id;
+    const userId = req.user?.id;
+    const userEmail = req.user?.email;
+    const response = new ResponseObject();
 
-    /**
-     * Middleware to ensure the requested workspace exists in the index and the user has access.
-     * Returns 404 if not in index, 403 if exists but user lacks read access.
-     */
-    const ensureWorkspaceExists = async (req, res, next) => {
-        const workspaceId = req.params.id;
-        const userId = req.user?.id; // Keep for user authentication
-        const userEmail = req.user?.email; // Use email for workspace manager
+    if (!userEmail) {
+        return res.status(401).json(response.unauthorized('User not authenticated'));
+    }
+    if (!workspaceId) {
+        return res.status(400).json(response.badRequest('Workspace ID is required'));
+    }
 
-        if (!userId || !userEmail) {
-            logger.error('ensureWorkspaceExists: Missing user identification in request.');
-            const response = new ResponseObject().unauthorized('User authentication required.');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // Use workspacesList instead of direct index access
-        const workspaces = req.workspaceManager.workspacesList;
-        const workspaceEntry = workspaces.find((ws) => ws.id === workspaceId);
-
-        // 1. Check if workspace ID exists in the global index at all
-        if (!workspaceEntry) {
-            debug(`ensureWorkspaceExists: Workspace "${workspaceId}" not found in index.`);
-            const response = new ResponseObject().notFound(`Workspace "${workspaceId}" not found.`);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // 2. Check if the user has at least read access to this workspace
-        if (!req.workspaceManager.hasWorkspace(userEmail, workspaceId)) {
-            debug(`ensureWorkspaceExists: User "${userEmail}" denied read access to workspace "${workspaceId}".`);
-            const response = new ResponseObject().forbidden(`Access denied to workspace "${workspaceId}".`);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // User has access, proceed
-        next();
-    };
-
-    /**
-     * Middleware to ensure the requested workspace exists, user has access, and it's active (loaded and started).
-     * Attaches the workspace instance to req.workspace.
-     * Returns 404 if not in index, 403 if no access, 409 if not active.
-     */
-    const ensureActiveWorkspace = async (req, res, next) => {
-        const workspaceId = req.params.id;
-        const userId = req.user?.id; // Keep for user authentication
-        const userEmail = req.user?.email; // Use email for workspace manager
-
-        if (!userId || !userEmail) {
-            logger.error('ensureActiveWorkspace: Missing user identification in request.');
-            const response = new ResponseObject().unauthorized('User authentication required.');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // Use workspacesList instead of direct index access
-        const workspaces = req.workspaceManager.workspacesList;
-        const workspaceEntry = workspaces.find((ws) => ws.id === workspaceId);
-
-        // 1. Check existence and access (incorporates #checkAccess via hasWorkspace)
-        if (!req.workspaceManager.hasWorkspace(userEmail, workspaceId)) {
-            // Determine if it's 404 or 403
-            if (!workspaceEntry) {
-                debug(`ensureActiveWorkspace: Workspace "${workspaceId}" not found in index.`);
-                const response = new ResponseObject().notFound(`Workspace "${workspaceId}" not found.`);
-                return res.status(response.statusCode).json(response.getResponse());
-            } else {
-                debug(`ensureActiveWorkspace: User "${userEmail}" denied read access to workspace "${workspaceId}".`);
-                const response = new ResponseObject().forbidden(`Access denied to workspace "${workspaceId}".`);
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-        }
-
-        // 2. Check if it's active (implies loaded)
-        if (!req.workspaceManager.isActive(userEmail, workspaceId)) {
-            const status = req.workspaceManager.getWorkspaceStatus(userEmail, workspaceId);
-            debug(
-                `ensureActiveWorkspace: Workspace "${workspaceId}" is not active for user "${userEmail}". Current status: ${status}`,
-            );
-            // Use 409 Conflict as the resource exists but is not in the correct state
-            const response = new ResponseObject().conflict(
-                `Workspace "${workspaceId}" exists but is not active (Status: ${status}). Start it first.`,
-            );
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // Get the active workspace instance
-        const workspace = req.workspaceManager.getWorkspace(userEmail, workspaceId);
-        if (!workspace || !workspace.db) {
-            // Double check instance and DB are available
-            logger.error(`Failed to get active workspace instance or DB for "${workspaceId}" despite isActive check passing.`);
-            const response = new ResponseObject().serverError(`Internal error retrieving active workspace "${workspaceId}".`);
-            return res.status(response.statusCode).json(response.getResponse());
+    try {
+        const workspace = await userManager.workspaceManager.openWorkspace(userEmail, workspaceId);
+        if (!workspace) {
+            return res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or access denied.`));
         }
         req.workspace = workspace; // Attach workspace instance to request
-        req.db = workspace.db; // Attach db instance for convenience
         next();
-    };
+    } catch (error) {
+        logger.error(`Error loading workspace ${userEmail}/${workspaceName}: ${error.message}`);
+        return res.status(500).json(response.error('Internal server error loading workspace', [error.message]));
+    }
+};
 
-    // === Helper Functions ===
+/**
+ * Middleware to ensure the workspace attached to the request is active (started).
+ * It attempts to start the workspace if it's not already active.
+ * @param {Object} userManager - User Manager instance.
+ * @returns {Function}
+ */
+const ensureWorkspaceActive = (userManager) => async (req, res, next) => {
+    const workspaceId = req.params.id;
+    const userEmail = req.user?.email;
+    const response = new ResponseObject();
 
-    const parseCommaSeparated = (param) => {
-        if (!param) return [];
-        return param
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-    };
+    if (!req.workspace) {
+        // This should ideally be caught by loadWorkspace middleware first
+        logger.error(`ensureWorkspaceActive called without req.workspace for ${userEmail}/${workspaceId}`);
+        return res.status(500).json(response.error('Internal server error: Workspace not loaded'));
+    }
 
-    const parseContextSpec = (param) => {
-        if (!param) return '/'; // Default to root if not provided
-        // If it looks like a path, return as is. Otherwise, assume comma-separated layers.
-        return param.includes('/') ? param : parseCommaSeparated(param);
-    };
+    if (req.workspace.isActive) {
+        return next(); // Already active
+    }
 
-    // =======================================================================
-    // == Workspace Management & Configuration Routes (/ and /:id level)
-    // =======================================================================
+    // Attempt to start the workspace
+    debug(`Workspace ${workspaceId} not active, attempting to start...`);
+    try {
+        const startedWorkspace = await userManager.workspaceManager.startWorkspace(userEmail, workspaceId);
+        if (!startedWorkspace || !startedWorkspace.isActive) {
+             // startWorkspace should throw on failure, but double-check
+             return res.status(409).json(response.conflict(`Workspace '${workspaceId}' could not be started.`));
+        }
+        req.workspace = startedWorkspace; // Update req.workspace with the potentially new instance returned by startWorkspace
+        debug(`Workspace ${workspaceId} started successfully.`);
+        next();
+    } catch (error) {
+        logger.error(`Error starting workspace ${userEmail}/${workspaceId} for active check: ${error.message}`);
+        return res.status(500).json(response.error('Internal server error starting workspace', [error.message]));
+    }
+};
+
+
+//
+// --- Routes --- //
+//
+
+export default ({ auth, userManager, sessionManager }) => {
+    const router = express.Router();
+    const authMiddleware = ensureAuthenticated(auth);
+
+    if (!userManager) {
+        logger.error('UserManager not provided to workspace routes');
+        // Return a dummy router or throw an error?
+        return router;
+    }
+
+    const workspaceManager = userManager.workspaceManager;
+    if (!workspaceManager) {
+        logger.error('WorkspaceManager not available via UserManager');
+        return router;
+    }
+
+    // Middleware for routes requiring workspace ID
+    const loadWorkspaceMiddleware = loadWorkspace(userManager);
+    const ensureActiveMiddleware = ensureWorkspaceActive(userManager);
+
+    // Apply auth middleware to all workspace routes
+    router.use(authMiddleware);
+
+    // === Workspace Management ===
 
     /**
-     * @swagger
-     * /workspaces:
-     *   get:
-     *     summary: List all workspaces (metadata)
-     *     tags: [Workspaces]
-     *     parameters:
-     *       - $ref: '#/components/parameters/LimitQueryParam'
-     *       - $ref: '#/components/parameters/OffsetQueryParam'
-     *       - in: query
-     *         name: status
-     *         schema:
-     *           type: string
-     *           enum: [active, inactive, loading, unloading, error, not_found, deleted] # Updated Enum
-     *         description: Filter by workspace status
-     *     responses:
-     *       200:
-     *         description: List of workspace metadata
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: object
-     *               properties:
-     *                 payload:
-     *                   type: array
-     *                   items:
-     *                     $ref: '#/components/schemas/WorkspaceMetadata' # Use Metadata schema
-     *                 # Add pagination details if implemented (total, offset, limit)
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * GET / - List all workspaces (metadata) for the authenticated user
      */
     router.get('/', async (req, res) => {
-        const userId = req.user?.id;
         const userEmail = req.user?.email;
-        const statusFilter = req.query.status;
+        const response = new ResponseObject();
+        if (!userEmail) return res.status(401).json(response.unauthorized());
 
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
+        debug(`Listing workspaces for user ${userEmail}`);
 
         try {
-            const workspaces = req.workspaceManager.listWorkspaces(userEmail, statusFilter);
-            const response = new ResponseObject().success(workspaces);
-            res.status(response.statusCode).json(response.getResponse());
+            // Assuming workspaceManager.index gives the list filtered implicitly or explicitly
+            const userWorkspaces = workspaceManager.listWorkspaces(userEmail);
+            debug(`Found ${userWorkspaces.length} workspaces for user ${userEmail}`);
+            response.success(userWorkspaces, 'User workspaces retrieved successfully.');
+            res.json(response);
         } catch (error) {
-            logger.error(`Error listing workspaces for user ${userEmail}: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
+            logger.error(`Error listing workspaces for user ${userEmail}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error listing workspaces', [error.message]));
         }
     });
 
     /**
-     * @swagger
-     * /workspaces:
-     *   post:
-     *     summary: Create a new workspace definition
-     *     tags: [Workspaces]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required: [name]
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: The workspace name (will also be used as ID)
-     *               description: { type: string }
-     *               label: { type: string }
-     *               color: { type: string, format: hex-color }
-     *               # Add other initial config properties if needed
-     *     responses:
-     *       201:
-     *         description: Workspace created successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/WorkspaceMetadata' # Return metadata
-     *       400: { $ref: '#/components/responses/BadRequestError' }
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       409: { $ref: '#/components/responses/ConflictError' } # If workspace exists
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * POST / - Create a new workspace definition
      */
     router.post('/', async (req, res) => {
-        const userId = req.user?.id;
         const userEmail = req.user?.email;
-        const { name, ...initialConfig } = req.body;
+        const { name, label, color, description, type } = req.body;
+        const response = new ResponseObject();
 
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
-
-        if (!name) {
-            const response = new ResponseObject().badRequest('Workspace name is required');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // hasWorkspace checks access and existence (userID first)
-        if (req.workspaceManager.hasWorkspace(userEmail, name)) {
-            const response = new ResponseObject().conflict(`Workspace "${name}" already exists.`);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // Create workspace definition in the manager using email
-        const workspaceMetadata = await req.workspaceManager.createWorkspace(name, userEmail, initialConfig);
-
-        if (!workspaceMetadata) {
-            throw new Error('Workspace creation returned no metadata.'); // Should not happen
-        }
-
-        debug(`Created workspace definition: ${name} for user: ${userEmail}`);
-        const response = new ResponseObject().created(workspaceMetadata, 'Workspace created successfully');
-        res.status(response.statusCode).json(response.getResponse());
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}:
-     *   get:
-     *     summary: Get workspace details (config and status)
-     *     tags: [Workspaces]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *     responses:
-     *       200:
-     *         description: Workspace details
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/WorkspaceConfig' # Return full config if loaded, else metadata
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' }
-     *       500: { $ref: '#/components/responses/ServerError' }
-     */
-    router.get('/:id', ensureWorkspaceExists, async (req, res) => {
-        // Use middleware
-        const workspaceId = req.params.id;
-        const userId = req.user?.id;
-        const userEmail = req.user?.email;
-
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
+        if (!userEmail) return res.status(401).json(response.unauthorized());
+        if (!name) return res.status(400).json(response.badRequest('Workspace name is required.'));
 
         try {
-            let workspaceData;
-            if (req.workspaceManager.isLoaded(userEmail, workspaceId)) {
-                const workspace = req.workspaceManager.getWorkspace(userEmail, workspaceId);
-                workspaceData = workspace.toJSON(); // Get full config from loaded instance
-                // Add current runtime status to the response?
-                workspaceData.runtimeStatus = workspace.status;
-                debug(`Returning loaded workspace config for "${workspaceId}" for user ${userEmail}`);
-            } else {
-                // Get metadata from workspacesList (access already checked by middleware)
-                workspaceData = req.workspaceManager.workspacesList.find((ws) => ws.id === workspaceId);
-                debug(`Returning workspace metadata for "${workspaceId}" (not loaded) for user ${userEmail}`);
-            }
-
-            // Note: workspaceData could be either instance.toJSON() or index metadata here
-            return res.json(new ResponseObject(workspaceData));
-        } catch (err) {
-            debug(`Error getting workspace ${workspaceId}: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
-        }
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}:
-     *   patch:
-     *     summary: Update a workspace
-     *     tags: [Workspaces]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Workspace ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: The workspace name
-     *               description:
-     *                 type: string
-     *                 description: The workspace description
-     *               color:
-     *                 type: string
-     *                 format: hexcolor
-     *                 description: Workspace color
-     *               label:
-     *                 type: string
-     *                 description: Workspace label
-     *               locked:
-     *                 type: boolean
-     *                 description: Whether the workspace is locked
-     *     responses:
-     *       200:
-     *         description: Workspace updated successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/Workspace'
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       403:
-     *         description: Access denied
-     *       404:
-     *         description: Workspace not found
-     *       500:
-     *         description: Server error
-     */
-    router.put('/:id', ensureWorkspaceExists, async (req, res) => {
-        // ensureWorkspaceExists checks read access
-        const workspaceId = req.params.id;
-        const updates = req.body;
-        const userId = req.user?.id;
-        const userEmail = req.user?.email;
-
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
-
-        // Check if workspace exists in the index
-        if (!req.workspaceManager.workspacesList.find((ws) => ws.id === workspaceId)) {
-            debug(`Workspace ${workspaceId} not found in workspace list for PUT update.`);
-            return res.status(404).json(new ResponseObject(null, 'Workspace not found', 404));
-        }
-
-        // Apply updates property by property using setWorkspaceProperty
-        const allowedUpdates = ['name', 'description', 'color', 'label', 'locked', 'acl']; // Define updatable fields
-        let updateErrors = [];
-        let updateSuccess = false;
-
-        for (const key of allowedUpdates) {
-            if (updates.hasOwnProperty(key)) {
-                const success = await req.workspaceManager.setWorkspaceProperty(userEmail, workspaceId, key, updates[key]);
-                if (!success) {
-                    updateErrors.push(`Failed to update ${key}.`);
-                    debug(`Failed update for ${workspaceId}: key=${key}, value=${updates[key]}`);
-                } else {
-                    updateSuccess = true; // Mark if at least one update succeeded
-                }
-            }
-        }
-
-        if (updateErrors.length > 0) {
-            // Decide how to handle partial failures - here we'll report error but still return potentially updated data
-            logger.error(`Partial failure updating workspace ${workspaceId}: ${updateErrors.join(' ')}`);
-            // Consider returning 500 or 400 based on failure type?
-        }
-
-        // Fetch updated data to return (prefer loaded instance, fallback to index)
-        const finalWorkspaceData =
-            req.workspaceManager.getWorkspace(userEmail, workspaceId)?.toJSON() ||
-            req.workspaceManager.workspacesList.find((ws) => ws.id === workspaceId);
-
-        const response = new ResponseObject(finalWorkspaceData);
-        if (!updateSuccess && updateErrors.length > 0) {
-            // If no updates succeeded
-            response.serverError(updateErrors.join(' '));
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        // If some/all updates succeeded
-        response.success(
-            finalWorkspaceData,
-            updateErrors.length > 0 ? 'Workspace updated with some errors.' : 'Workspace updated successfully.',
-        );
-        return res.json(response.getResponse());
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}:
-     *   delete:
-     *     summary: Delete a workspace
-     *     tags: [Workspaces]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Workspace ID
-     *     responses:
-     *       200:
-     *         description: Workspace deleted successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: object
-     *               properties:
-     *                 success:
-     *                   type: boolean
-     *       401:
-     *         description: Unauthorized
-     *       403:
-     *         description: Access denied
-     *       404:
-     *         description: Workspace not found
-     *       500:
-     *         description: Server error
-     */
-    router.delete('/:id', ensureWorkspaceExists, async (req, res) => {
-        // ensureWorkspaceExists checks read access
-        const workspaceId = req.params.id;
-        const userId = req.user?.id;
-        const userEmail = req.user?.email;
-
-        if (!userId || !userEmail) {
-            const resp = new ResponseObject().unauthorized();
-            return res.status(resp.statusCode).json(resp.getResponse());
-        }
-
-        try {
-            // destroyWorkspace requires write access (owner check internally)
-            const success = await req.workspaceManager.destroyWorkspace(userEmail, workspaceId);
-            if (success) {
-                const response = new ResponseObject().success(`Workspace "${workspaceId}" destroyed successfully.`);
-                return res.json(response.getResponse());
-            }
+            const newWorkspaceEntry = await workspaceManager.createWorkspace(userEmail, name, { label, color, description, type });
+            response.success(newWorkspaceEntry, 'Workspace created successfully.', 201);
+            res.status(201).json(response);
         } catch (error) {
-            logger.error(`Error destroying workspace: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}/tree/paths/actions/copy:
-     *   post:
-     *     summary: Copy a path within the tree
-     *     tags: [Workspaces, Tree, Actions]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Workspace ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - pathFrom
-     *               - pathTo
-     *             properties:
-     *               pathFrom: { type: string }
-     *               pathTo: { type: string }
-     *               recursive: { type: boolean, default: false }
-     *     responses:
-     *       200:
-     *         description: Path copied
-     *         content:
-     *            application/json:
-     *              schema:
-     *                type: object
-     *                properties:
-     *                  success: { type: boolean }
-     *                  tree: { $ref: '#/components/schemas/TreeNode', nullable: true }
-     *       400: { $ref: '#/components/responses/BadRequestError' } # Invalid paths
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Source path not found
-     *       409: { $ref: '#/components/responses/ConflictError' } # Target path already exists
-     *       500: { $ref: '#/components/responses/ServerError' }
-     */
-    router.post('/:id/tree/paths/actions/copy', async (req, res) => {
-        const workspaceId = req.params.id;
-        const { pathFrom, pathTo, recursive = false } = req.body;
-
-        if (!pathFrom || !pathTo) {
-            const response = new ResponseObject().badRequest('Source and destination paths are required');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        try {
-            debug(
-                `Copying path from "${pathFrom}" to "${pathTo}" (recursive: ${recursive}) in workspace "${workspaceId}" tree for user ${req.user.id}`,
-            );
-
-            const result = req.workspace.copyPath(pathFrom, pathTo, recursive);
-
-            if (!result.success) {
-                const response = new ResponseObject().notFound('Path not found or copy operation failed');
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-
-            const response = new ResponseObject().success(result, 'Path copied successfully');
-            return res.json(response.getResponse());
-        } catch (error) {
-            logger.error(`Error copying path: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}/tree/paths/actions/merge-up:
-     *   post:
-     *     summary: Merge layer bitmaps upwards (Placeholder)
-     *     tags: [Workspaces, Tree, Actions]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Workspace ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required: [path]
-     *             properties:
-     *               path: { type: string }
-     *     responses:
-     *       501: { $ref: '#/components/responses/NotImplemented' }
-     */
-    router.post('/:id/tree/paths/actions/merge-up', async (req, res) => {
-        const response = new ResponseObject().notImplemented('Merge-up action not implemented yet.');
-        return res.status(response.statusCode).json(response.getResponse());
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}/tree/paths/actions/merge-down:
-     *   post:
-     *     summary: Merge layer bitmaps downwards (Placeholder)
-     *     tags: [Workspaces, Tree, Actions]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Workspace ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required: [path]
-     *             properties:
-     *               path: { type: string }
-     *     responses:
-     *       501: { $ref: '#/components/responses/NotImplemented' }
-     */
-    router.post('/:id/tree/paths/actions/merge-down', async (req, res) => {
-        const response = new ResponseObject().notImplemented('Merge-down action not implemented yet.');
-        return res.status(response.statusCode).json(response.getResponse());
-    });
-
-    // === Layer Routes ===
-
-    /**
-     * @swagger
-     * /workspaces/{id}/layers:
-     *   get:
-     *     summary: List all layer definitions
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *     responses:
-     *       200:
-     *         description: List of layer definitions
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: object
-     *               properties:
-     *                  payload:
-     *                      type: array
-     *                      items: { $ref: '#/components/schemas/TreeLayer' }
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' }
-     *       500: { $ref: '#/components/responses/ServerError' }
-     */
-    router.get('/:id/layers', async (req, res) => {
-        const workspaceId = req.params.id;
-        try {
-            debug(`Listing layers for workspace "${workspaceId}" for user ${req.user.id}`);
-            // Access layers via req.db.tree.layers (SynapsD -> ContextTree -> LayerIndex)
-            const layers = req.db.tree.layers.listLayers(); // Assuming listLayers() exists
-
-            const response = new ResponseObject().success(layers);
-            return res.json(response.getResponse());
-        } catch (error) {
-            logger.error(
-                `Error listing layers for workspace "${workspaceId}" for user ${req.user.id}: ${error.message}`,
-                error,
-            );
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-    });
-
-    /**
-     * @swagger
-     * /workspaces/{id}/layers:
-     *   post:
-     *     summary: Create a new layer definition
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required: [name]
-     *             properties:
-     *               name: { type: string }
-     *               type: { type: string, default: "context" }
-     *               id: { type: string, format: uuid, description: "Optional UUID, generated if omitted" }
-     *               label: { type: string }
-     *               description: { type: string }
-     *               color: { type: string, format: hex-color }
-     *               locked: { type: boolean }
-     *               # Add other layer options
-     *     responses:
-     *       201:
-     *         description: Layer created
-     *         content:
-     *           application/json:
-     *             schema: { $ref: '#/components/schemas/TreeLayer' }
-     *       400: { $ref: '#/components/responses/BadRequestError' } # Missing name, invalid options
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' }
-     *       409: { $ref: '#/components/responses/ConflictError' } # Layer name/ID exists
-     *       500: { $ref: '#/components/responses/ServerError' }
-     */
-    router.post('/:id/layers', async (req, res) => {
-        const workspaceId = req.params.id;
-        const layerOptions = req.body;
-
-        if (!layerOptions || !layerOptions.name) {
-            const response = new ResponseObject().badRequest('Layer "name" is required in request body.');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
-        try {
-            debug(`Creating layer "${layerOptions.name}" in workspace "${workspaceId}" for user ${req.user.id}`);
-            // Use workspace.createLayer which wraps db.tree.createLayer
-            const layer = req.workspace.createLayer(layerOptions); // createLayer handles ID generation
-
-            if (!layer) {
-                // Should throw on failure usually
-                throw new Error(`Failed to create layer "${layerOptions.name}".`);
-            }
-
-            const response = new ResponseObject().created(layer, `Layer "${layer.name}" created successfully.`);
-            return res.status(response.statusCode).json(response.getResponse());
-        } catch (error) {
-            logger.error(`Error creating layer in workspace "${workspaceId}" for user ${req.user.id}: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            // Handle conflict errors specifically? LayerIndex might throw specific errors.
+            logger.error(`Error creating workspace "${name}" for user ${userEmail}: ${error.message}`);
             if (error.message.includes('already exists')) {
-                // Crude check
-                response.conflict(error.message);
+                res.status(409).json(response.conflict('Workspace already exists', [error.message]));
+            } else {
+                res.status(500).json(response.error('Internal server error creating workspace', [error.message]));
             }
-            return res.status(response.statusCode).json(response.getResponse());
         }
     });
 
     /**
-     * @swagger
-     * /workspaces/{id}/layers/{layerName}:
-     *   get:
-     *     summary: Get layer definition by name
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *       - $ref: '#/components/parameters/LayerNameParam'
-     *     responses:
-     *       200:
-     *         description: Layer definition
-     *         content:
-     *           application/json:
-     *             schema: { $ref: '#/components/schemas/TreeLayer' }
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Layer or Workspace not found
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * GET /:id - Get workspace details (config and status)
+     * Uses loadWorkspace middleware
      */
-    router.get('/:id/layers/:layerName', async (req, res) => {
-        const workspaceId = req.params.id;
-        const layerName = req.params.layerName;
-        try {
-            debug(`Getting layer "${layerName}" in workspace "${workspaceId}" for user ${req.user.id}`);
-            const layer = req.workspace.getLayer(layerName); // Use Workspace wrapper
-
-            if (!layer) {
-                const response = new ResponseObject().notFound(`Layer "${layerName}" not found in workspace "${workspaceId}".`);
-                return res.status(response.statusCode).json(response.getResponse());
-            }
-
-            const response = new ResponseObject().success(layer);
-            return res.json(response.getResponse());
-        } catch (error) {
-            logger.error(`Error getting layer: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
-        }
+    router.get('/:id', loadWorkspaceMiddleware, async (req, res) => {
+        const response = new ResponseObject();
+        // req.workspace is attached by middleware
+        response.success(req.workspace.toJSON(), 'Workspace details retrieved successfully.');
+        res.json(response);
     });
 
     /**
-     * @swagger
-     * /workspaces/{id}/layers/{layerName}:
-     *   patch:
-     *     summary: Update layer properties
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *       - $ref: '#/components/parameters/LayerNameParam'
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               # List editable properties from TreeLayer schema
-     *               label: { type: string, nullable: true }
-     *               description: { type: string, nullable: true }
-     *               color: { type: string, format: hex-color, nullable: true }
-     *               locked: { type: boolean }
-     *               # Add other updatable options
-     *     responses:
-     *       200:
-     *         description: Layer updated
-     *         content:
-     *           application/json:
-     *             schema: { $ref: '#/components/schemas/TreeLayer' } # Return updated layer
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Layer not found
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * PATCH /:id - Update workspace configuration (label, color, locked, acl, metadata)
+     * Uses loadWorkspace middleware
      */
-    router.put('/:id/layers/:layerName', async (req, res) => {
-        const workspaceId = req.params.id;
-        const layerName = req.params.layerName;
+    router.patch('/:id', loadWorkspaceMiddleware, async (req, res) => {
+        const response = new ResponseObject();
+        const workspace = req.workspace;
         const updates = req.body;
+        const allowedUpdates = ['label', 'description', 'color', 'locked', 'acl', 'metadata'];
 
-        if (!updates || Object.keys(updates).length === 0) {
-            const response = new ResponseObject().badRequest('Request body must contain layer properties to update.');
-            return res.status(response.statusCode).json(response.getResponse());
+        const filteredUpdates = Object.keys(updates)
+            .filter(key => allowedUpdates.includes(key))
+            .reduce((obj, key) => {
+                obj[key] = updates[key];
+                return obj;
+            }, {});
+
+        if (Object.keys(filteredUpdates).length === 0) {
+            return res.status(400).json(response.badRequest('No valid fields provided for update.'));
         }
-        // Add validation for allowed update keys if needed
 
-        try {
-            debug(`Updating layer "${layerName}" in workspace "${workspaceId}" for user ${req.user.id} with:`, updates);
-            // Use workspace wrapper
-            const result = req.workspace.updateLayer(layerName, updates);
-
-            if (!result.success) {
-                // updateLayer returns success: false if layer not found
-                const response = new ResponseObject().notFound(`Layer "${layerName}" not found.`);
-                return res.status(response.statusCode).json(response.getResponse());
+        // Use the Workspace instance method to update config
+        let success = true;
+        for (const key in filteredUpdates) {
+             // Use the generic setConfigKey for validation
+            if (!workspace.setConfigKey(key, filteredUpdates[key])) {
+                success = false;
+                 // setConfigKey logs errors, return a general failure message
+                return res.status(400).json(response.badRequest(`Failed to update field '${key}'. Check server logs for details.`, [`Invalid value for ${key}`]));
             }
+        }
 
-            // Get the updated layer data to return
-            const updatedLayer = req.workspace.getLayer(layerName);
-            const response = new ResponseObject().success(updatedLayer, `Layer "${layerName}" updated successfully.`);
-            return res.json(response.getResponse());
-        } catch (error) {
-            logger.error(`Error updating layer: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            // Handle validation errors from updateLayer?
-            return res.status(response.statusCode).json(response.getResponse());
+        if (success) {
+             // Refresh workspace data after updates
+             const updatedWorkspace = await workspaceManager.openWorkspace(req.user.email, req.params.id);
+             response.success(updatedWorkspace.toJSON(), 'Workspace configuration updated successfully.');
+             res.json(response);
+        } else {
+             // Should have returned earlier on failure
+             res.status(500).json(response.error('An unexpected error occurred during update.'));
         }
     });
 
     /**
-     * @swagger
-     * /workspaces/{id}/layers/{layerName}/actions/rename:
-     *   post:
-     *     summary: Rename a layer
-     *     tags: [Workspaces, Layers, Actions]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *       - $ref: '#/components/parameters/LayerNameParam'
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required: [newName]
-     *             properties:
-     *               newName: { type: string }
-     *     responses:
-     *       200:
-     *         description: Layer renamed
-     *         content:
-     *           application/json:
-     *              schema:
-     *                  type: object
-     *                  properties:
-     *                      success: { type: boolean }
-     *                      oldName: { type: string }
-     *                      newName: { type: string }
-     *                      # Optionally return updated tree or layer?
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Layer not found
-     *       409: { $ref: '#/components/responses/ConflictError' } # newName already exists
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * DELETE /:id - Destroy workspace (stops, removes index entry, deletes files)
      */
-    router.post('/:id/layers/:layerName/actions/rename', async (req, res) => {
+    router.delete('/:id', async (req, res) => {
+        const userEmail = req.user?.email;
         const workspaceId = req.params.id;
-        const oldName = req.params.layerName;
-        const { newName } = req.body;
+        const destroyData = req.query.destroyData === 'true'; // Check query param
+        const response = new ResponseObject();
 
-        if (!newName || typeof newName !== 'string') {
-            const response = new ResponseObject().badRequest('Missing or invalid "newName" in request body.');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
+        if (!userEmail) return res.status(401).json(response.unauthorized());
 
         try {
-            debug(`Renaming layer "${oldName}" to "${newName}" in workspace "${workspaceId}" for user ${req.user.id}`);
-            const result = req.workspace.renameLayer(oldName, newName);
-
-            if (!result.success) {
-                // Distinguish between not found and conflict? renameLayer might return specific info or throw.
-                // Let's assume failure means conflict or not found for now.
-                // Check if newName exists to return Conflict
-                if (req.workspace.getLayer(newName)) {
-                    const response = new ResponseObject().conflict(`Layer with name "${newName}" already exists.`);
-                    return res.status(response.statusCode).json(response.getResponse());
-                } else {
-                    const response = new ResponseObject().notFound(`Layer "${oldName}" not found.`);
-                    return res.status(response.statusCode).json(response.getResponse());
-                }
+            const removed = await workspaceManager.removeWorkspace(userEmail, workspaceId, destroyData);
+            if (removed) {
+                response.success({ id: workspaceId, destroyed: destroyData }, `Workspace '${workspaceId}' removed successfully.`);
+                res.json(response);
+            } else {
+                // removeWorkspace logs warnings for not found/access denied
+                res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or removal failed.`));
             }
-
-            const response = new ResponseObject().success(
-                result,
-                `Layer renamed from "${oldName}" to "${newName}" successfully.`,
-            );
-            return res.json(response.getResponse());
         } catch (error) {
-            logger.error(`Error renaming layer: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
+            logger.error(`Error removing workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error removing workspace', [error.message]));
+        }
+    });
+
+    // === Workspace State Management ===
+
+    /**
+     * GET /:id/status - Get current workspace status
+     * Uses loadWorkspace middleware
+     */
+    router.get('/:id/status', loadWorkspaceMiddleware, async (req, res) => {
+        const response = new ResponseObject();
+        response.success({ id: req.workspace.id, status: req.workspace.status }, 'Workspace status retrieved successfully.');
+        res.json(response);
+    });
+
+    /**
+     * POST /:id/open - Load workspace into memory (status=INACTIVE)
+     * Implicitly handled by loadWorkspaceMiddleware, maybe just return current state?
+     */
+    router.post('/:id/open', loadWorkspaceMiddleware, async (req, res) => {
+        const response = new ResponseObject();
+        // loadWorkspaceMiddleware already loaded it. Return the state.
+        response.success(req.workspace.toJSON(), `Workspace '${req.workspace.id}' is open (loaded).`);
+        res.json(response);
+    });
+
+    /**
+     * POST /:id/close - Unload workspace from memory (if inactive)
+     */
+    router.post('/:id/close', async (req, res) => {
+        const userEmail = req.user?.email;
+        const workspaceId = req.params.id;
+        const response = new ResponseObject();
+        if (!userEmail) return res.status(401).json(response.unauthorized());
+
+        try {
+            const closed = await workspaceManager.closeWorkspace(userEmail, workspaceId);
+            if (closed) {
+                response.success({ id: workspaceManager.resolveWorkspaceId(userEmail, workspaceId) }, `Workspace '${workspaceId}' closed successfully.`); // Use manager method to resolve ID for response
+                res.json(response);
+            } else {
+                // closeWorkspace logs reasons for failure (e.g., failed to stop)
+                res.status(400).json(response.badRequest(`Failed to close workspace '${workspaceId}'. It might be active or encountered an error.`));
+            }
+        } catch (error) {
+            logger.error(`Error closing workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error closing workspace', [error.message]));
         }
     });
 
     /**
-     * @swagger
-     * /workspaces/{id}/layers/{layerName}:
-     *   delete:
-     *     summary: Delete layer definition (and removes from tree)
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *       - $ref: '#/components/parameters/LayerNameParam'
-     *     responses:
-     *       200:
-     *         description: Layer deleted
-     *         content:
-     *            application/json:
-     *              schema:
-     *                type: object
-     *                properties:
-     *                  success: { type: boolean }
-     *                  name: { type: string }
-     *                  tree: { $ref: '#/components/schemas/TreeNode', nullable: true } # Return updated tree
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Layer not found
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * POST /:id/start - Start an inactive workspace (loads DB, status=ACTIVE)
      */
-    router.delete('/:id/layers/:layerName', async (req, res) => {
+    router.post('/:id/start', loadWorkspaceMiddleware, async (req, res) => {
+        const userEmail = req.user?.email;
+        const workspaceId = req.params.id; // Use original ID from params for logging/response
+        const response = new ResponseObject();
+
+        if (req.workspace.isActive) {
+            return res.json(response.success(req.workspace.toJSON(), `Workspace '${workspaceId}' is already active.`));
+        }
+
+        try {
+            // Use startWorkspace from the manager, which also handles loading if needed
+            const startedWorkspace = await workspaceManager.startWorkspace(userEmail, workspaceId);
+            if (startedWorkspace) {
+                response.success(startedWorkspace.toJSON(), `Workspace '${workspaceId}' started successfully.`);
+                res.json(response);
+            } else {
+                // startWorkspace logs errors
+                res.status(500).json(response.error(`Failed to start workspace '${workspaceId}'.`));
+            }
+        } catch (error) {
+            logger.error(`Error starting workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error starting workspace', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/stop - Stop an active workspace (shuts down DB, status=INACTIVE)
+     */
+    router.post('/:id/stop', loadWorkspaceMiddleware, async (req, res) => {
+        const userEmail = req.user?.email;
         const workspaceId = req.params.id;
+        const response = new ResponseObject();
+
+        if (!req.workspace.isActive) {
+            return res.json(response.success({ id: req.workspace.id, status: req.workspace.status }, `Workspace '${workspaceId}' is already inactive.`));
+        }
+
+        try {
+            // Use stopWorkspace from the manager
+            const stopped = await workspaceManager.stopWorkspace(userEmail, workspaceId);
+            if (stopped) {
+                 // Fetch the workspace again to get the updated status (INACTIVE)
+                const stoppedWorkspace = await workspaceManager.openWorkspace(userEmail, workspaceId);
+                response.success(stoppedWorkspace.toJSON(), `Workspace '${workspaceId}' stopped successfully.`);
+                res.json(response);
+            } else {
+                 // stopWorkspace logs errors
+                res.status(500).json(response.error(`Failed to stop workspace '${workspaceId}'.`));
+            }
+        } catch (error) {
+            logger.error(`Error stopping workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error stopping workspace', [error.message]));
+        }
+    });
+
+
+    // === Tree Management (Requires Active Workspace) ===
+
+    // Apply active middleware to all /tree routes
+    router.use('/:id/tree*', loadWorkspaceMiddleware, ensureActiveMiddleware);
+
+    /**
+     * GET /:id/tree - Get the workspace's hierarchical tree structure
+     */
+    router.get('/:id/tree', (req, res) => {
+        const response = new ResponseObject();
+        try {
+            // Access tree via the active workspace instance
+            const treeJson = req.workspace.jsonTree;
+            response.success(JSON.parse(treeJson), 'Workspace tree retrieved successfully.');
+            res.json(response);
+        } catch (error) {
+            logger.error(`Error getting tree for workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error getting tree', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/tree/paths - Insert a path
+     */
+    router.post('/:id/tree/paths', (req, res) => {
+        const { path: targetPath, data = null, autoCreateLayers = true } = req.body;
+        const response = new ResponseObject();
+
+        if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
+
+        try {
+            const result = req.workspace.insertPath(targetPath, data, autoCreateLayers);
+            response.success(result, `Path '${targetPath}' inserted successfully.`);
+            res.status(201).json(response); // 201 Created
+        } catch (error) {
+            logger.error(`Error inserting path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error inserting path', [error.message]));
+        }
+    });
+
+    /**
+     * DELETE /:id/tree/paths - Remove a path
+     */
+    router.delete('/:id/tree/paths', (req, res) => {
+        const { path: targetPath, recursive = false } = req.query; // Get path/recursive from query parameters
+        const response = new ResponseObject();
+
+        if (!targetPath) return res.status(400).json(response.badRequest('Path query parameter is required.'));
+
+        try {
+            const result = req.workspace.removePath(targetPath, recursive === 'true' || recursive === true);
+            if (result.success) {
+                response.success(result, `Path '${targetPath}' removed successfully.`);
+                res.json(response);
+            } else {
+                 response.notFound(`Path '${targetPath}' not found or could not be removed.`);
+                 res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error removing path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error removing path', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/tree/paths/move - Move a path
+     */
+    router.post('/:id/tree/paths/move', (req, res) => {
+        const { from, to, recursive = false } = req.body;
+        const response = new ResponseObject();
+
+        if (!from || !to) return res.status(400).json(response.badRequest('Both "from" and "to" paths are required.'));
+
+        try {
+            const result = req.workspace.movePath(from, to, recursive);
+            if (result.success) {
+                response.success(result, `Path moved successfully from '${from}' to '${to}'.`);
+                res.json(response);
+            } else {
+                response.notFound(`Failed to move path from '${from}' to '${to}'. Source path might not exist or target path invalid.`);
+                res.status(404).json(response); // Or 400 Bad Request?
+            }
+        } catch (error) {
+            logger.error(`Error moving path from '${from}' to '${to}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error moving path', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/tree/paths/copy - Copy a path
+     */
+    router.post('/:id/tree/paths/copy', (req, res) => {
+        const { from, to, recursive = false } = req.body;
+        const response = new ResponseObject();
+
+        if (!from || !to) return res.status(400).json(response.badRequest('Both "from" and "to" paths are required.'));
+
+        try {
+            const result = req.workspace.copyPath(from, to, recursive);
+             if (result.success) {
+                response.success(result, `Path copied successfully from '${from}' to '${to}'.`);
+                res.json(response);
+            } else {
+                response.notFound(`Failed to copy path from '${from}' to '${to}'. Source path might not exist or target path invalid.`);
+                res.status(404).json(response); // Or 400 Bad Request?
+            }
+        } catch (error) {
+            logger.error(`Error copying path from '${from}' to '${to}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error copying path', [error.message]));
+        }
+    });
+
+     /**
+     * POST /:id/tree/paths/merge-up - Merge layer bitmaps upwards
+     */
+    router.post('/:id/tree/paths/merge-up', (req, res) => {
+        const { path: targetPath } = req.body;
+        const response = new ResponseObject();
+
+        if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
+
+        try {
+            const result = req.workspace.mergeUp(targetPath);
+            if (result.success) {
+                response.success(result, `Successfully merged up from path '${targetPath}'.`);
+                res.json(response);
+            } else {
+                response.notFound(`Failed to merge up from path '${targetPath}'. Path might not exist or has no parent.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error merging up path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error merging path up', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/tree/paths/merge-down - Merge layer bitmaps downwards
+     */
+    router.post('/:id/tree/paths/merge-down', (req, res) => {
+        const { path: targetPath } = req.body;
+        const response = new ResponseObject();
+
+        if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
+
+        try {
+            const result = req.workspace.mergeDown(targetPath);
+            if (result.success) {
+                response.success(result, `Successfully merged down from path '${targetPath}'.`);
+                res.json(response);
+            } else {
+                response.notFound(`Failed to merge down from path '${targetPath}'. Path might not exist or has no children.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error merging down path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error merging path down', [error.message]));
+        }
+    });
+
+
+    // === Layer Management (Requires Active Workspace) ===
+
+    // Apply active middleware to all /layers routes
+    router.use('/:id/layers*', loadWorkspaceMiddleware, ensureActiveMiddleware);
+
+    /**
+     * GET /:id/layers - List all layer definitions
+     */
+    router.get('/:id/layers', (req, res) => {
+        const response = new ResponseObject();
+        try {
+            // Assuming tree object has a method to list layers
+            const layers = req.workspace.tree?.layers; // Or db.tree.getLayers()
+            if (!layers) {
+                return res.status(500).json(response.error('Cannot access layers, tree not available.'));
+            }
+            response.success(layers, 'Workspace layers retrieved successfully.');
+            res.json(response);
+        } catch (error) {
+            logger.error(`Error listing layers for workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error listing layers', [error.message]));
+        }
+    });
+
+    /**
+     * POST /:id/layers - Create a new layer definition
+     */
+    router.post('/:id/layers', (req, res) => {
+        const { name, type, ...options } = req.body;
+        const response = new ResponseObject();
+
+        if (!name || !type) {
+            return res.status(400).json(response.badRequest('Layer name and type are required.'));
+        }
+
+        try {
+            const newLayer = req.workspace.createLayer({ name, type, ...options });
+            response.success(newLayer, `Layer '${name}' created successfully.`, 201);
+            res.status(201).json(response);
+        } catch (error) {
+            logger.error(`Error creating layer '${name}' in workspace ${req.workspace.id}: ${error.message}`);
+            if (error.message.includes('already exists')) { // Check for specific error if Tree throws it
+                 res.status(409).json(response.conflict(`Layer with name '${name}' already exists.`));
+            } else {
+                 res.status(500).json(response.error('Internal server error creating layer', [error.message]));
+            }
+        }
+    });
+
+    /**
+     * GET /:id/layers/:layerName - Get layer definition by name
+     */
+    router.get('/:id/layers/:layerName', (req, res) => {
         const layerName = req.params.layerName;
-
-        if (layerName === '/') {
-            // Prevent deleting root layer definition
-            const response = new ResponseObject().badRequest('Cannot delete the root layer definition.');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
+        const response = new ResponseObject();
         try {
-            debug(`Deleting layer "${layerName}" in workspace "${workspaceId}" for user ${req.user.id}`);
-            const result = req.workspace.deleteLayer(layerName); // Handles tree recalculation
-
-            if (!result.success) {
-                const response = new ResponseObject().notFound(`Layer "${layerName}" not found.`);
-                return res.status(response.statusCode).json(response.getResponse());
+            const layer = req.workspace.getLayer(layerName);
+            if (layer) {
+                response.success(layer, `Layer '${layerName}' retrieved successfully.`);
+                res.json(response);
+            } else {
+                response.notFound(`Layer '${layerName}' not found.`);
+                res.status(404).json(response);
             }
-
-            const response = new ResponseObject().success(result, `Layer "${layerName}" deleted successfully.`);
-            return res.json(response.getResponse());
         } catch (error) {
-            logger.error(`Error deleting layer: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
+            logger.error(`Error getting layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error getting layer', [error.message]));
         }
     });
 
     /**
-     * @swagger
-     * /workspaces/{id}/layers/by-id/{layerId}:
-     *   get:
-     *     summary: Get layer definition by ID
-     *     tags: [Workspaces, Layers]
-     *     parameters:
-     *       - $ref: '#/components/parameters/WorkspaceIdParam'
-     *       - $ref: '#/components/parameters/LayerIdParam'
-     *     responses:
-     *       200:
-     *         description: Layer definition
-     *         content:
-     *           application/json:
-     *             schema: { $ref: '#/components/schemas/TreeLayer' }
-     *       401: { $ref: '#/components/responses/UnauthorizedError' }
-     *       404: { $ref: '#/components/responses/NotFoundError' } # Layer or Workspace not found
-     *       500: { $ref: '#/components/responses/ServerError' }
+     * PATCH /:id/layers/:layerName - Update layer properties
      */
-    router.get('/:id/layers/by-id/:layerId', async (req, res) => {
-        const workspaceId = req.params.id;
+    router.patch('/:id/layers/:layerName', (req, res) => {
+        const layerName = req.params.layerName;
+        const options = req.body;
+        const response = new ResponseObject();
+
+        // Basic validation: Disallow changing name via PATCH, use renameLayer method
+        if (options.name && options.name !== layerName) {
+             return res.status(400).json(response.badRequest('Cannot change layer name via PATCH. Use rename endpoint if available.'));
+        }
+        delete options.name; // Remove name from options if present
+
+        if (Object.keys(options).length === 0) {
+            return res.status(400).json(response.badRequest('No update options provided.'));
+        }
+
+        try {
+            const result = req.workspace.updateLayer(layerName, options);
+            if (result.success) {
+                // Fetch updated layer data
+                 const updatedLayer = req.workspace.getLayer(layerName);
+                 response.success(updatedLayer, `Layer '${layerName}' updated successfully.`);
+                 res.json(response);
+            } else {
+                response.notFound(`Layer '${layerName}' not found or update failed.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error updating layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error updating layer', [error.message]));
+        }
+    });
+
+    /**
+     * DELETE /:id/layers/:layerName - Delete layer definition
+     */
+    router.delete('/:id/layers/:layerName', (req, res) => {
+        const layerName = req.params.layerName;
+        const response = new ResponseObject();
+        try {
+            const result = req.workspace.deleteLayer(layerName);
+            if (result.success) {
+                response.success({ name: layerName }, `Layer '${layerName}' deleted successfully.`);
+                res.json(response);
+            } else {
+                response.notFound(`Layer '${layerName}' not found or delete failed.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error deleting layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error deleting layer', [error.message]));
+        }
+    });
+
+    /**
+     * GET /:id/layers/by-id/:layerId - Get layer definition by ID
+     */
+    router.get('/:id/layers/by-id/:layerId', (req, res) => {
         const layerId = req.params.layerId;
+        const response = new ResponseObject();
         try {
-            debug(`Getting layer by ID "${layerId}" in workspace "${workspaceId}" for user ${req.user.id}`);
-            const layer = req.workspace.getLayerById(layerId); // Use Workspace wrapper
-
-            if (!layer) {
-                const response = new ResponseObject().notFound(
-                    `Layer with ID "${layerId}" not found in workspace "${workspaceId}".`,
-                );
-                return res.status(response.statusCode).json(response.getResponse());
+            const layer = req.workspace.getLayerById(layerId);
+            if (layer) {
+                response.success(layer, `Layer with ID '${layerId}' retrieved successfully.`);
+                res.json(response);
+            } else {
+                response.notFound(`Layer with ID '${layerId}' not found.`);
+                res.status(404).json(response);
             }
-
-            const response = new ResponseObject().success(layer);
-            return res.json(response.getResponse());
         } catch (error) {
-            logger.error(`Error getting layer: ${error.message}`, error);
-            const response = new ResponseObject().serverError(error.message);
-            return res.status(response.statusCode).json(response.getResponse());
+            logger.error(`Error getting layer by ID '${layerId}' in workspace ${req.workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error getting layer by ID', [error.message]));
         }
     });
 
-    // Add standard response components (can be in a separate file/setup)
-    /**
-     * @swagger
-     * components:
-     *   responses:
-     *     Success:
-     *       description: Operation successful
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               status: { type: integer, example: 200 }
-     *               message: { type: string }
-     *               payload: { nullable: true }
-     *     Created:
-     *       description: Resource created successfully
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               status: { type: integer, example: 201 }
-     *               message: { type: string }
-     *               payload: { } # Schema depends on created resource
-     *     BadRequestError:
-     *       description: Invalid request syntax or parameters
-     *       content:
-     *         application/json:
-     *           schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *     UnauthorizedError:
-     *       description: Authentication required or insufficient permissions
-     *       content:
-     *         application/json:
-     *           schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *     NotFoundError:
-     *       description: The specified resource was not found
-     *       content:
-     *         application/json:
-     *           schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *     ConflictError:
-     *       description: Request conflicts with the current state of the server (e.g., resource already exists)
-     *       content:
-     *         application/json:
-     *           schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *     ServerError:
-     *       description: An unexpected error occurred on the server
-     *       content:
-     *         application/json:
-     *           schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *     NotImplemented:
-     *        description: The requested functionality is not implemented
-     *        content:
-     *          application/json:
-     *            schema: { $ref: '#/components/schemas/ErrorResponse' }
-     *   schemas:
-     *      ErrorResponse:
-     *          type: object
-     *          properties:
-     *              status: { type: integer }
-     *              message: { type: string }
-     *              error: { type: string, nullable: true }
-     *              payload: { nullable: true }
-     */
+    // Placeholder for document routes - To be implemented separately
+    router.get('/:id/documents*', (req, res) => {
+        const response = new ResponseObject();
+        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+    });
+    router.post('/:id/documents*', (req, res) => {
+        const response = new ResponseObject();
+        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+    });
+    router.put('/:id/documents*', (req, res) => {
+        const response = new ResponseObject();
+        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+    });
+    router.patch('/:id/documents*', (req, res) => {
+        const response = new ResponseObject();
+        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+    });
+    router.delete('/:id/documents*', (req, res) => {
+        const response = new ResponseObject();
+        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+    });
 
     return router;
-}
+};

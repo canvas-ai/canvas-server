@@ -70,9 +70,9 @@ class User extends EventEmitter {
         if (!options.jim) { throw new Error('JIM instance is required'); }
 
         // Check for required managers
-        if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
-        if (!options.contextManager) { throw new Error('Context manager instance is required'); }
-        if (!options.sessionManager) { throw new Error('Session manager instance is required'); }
+        // if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
+        // if (!options.contextManager) { throw new Error('Context manager instance is required'); }
+        // if (!options.sessionManager) { throw new Error('Session manager instance is required'); }
 
         /**
          * User properties
@@ -86,9 +86,9 @@ class User extends EventEmitter {
         this.#jim = options.jim;
 
         // Bind manager instances
-        this.#workspaceManager = options.workspaceManager;
-        this.#contextManager = options.contextManager;
-        this.#sessionManager = options.sessionManager;
+        // this.#workspaceManager = options.workspaceManager;
+        // this.#contextManager = options.contextManager;
+        // this.#sessionManager = options.sessionManager;
 
         // Initialize token manager (to be moved out of User class)
         this.#initializeTokenManager();
@@ -116,15 +116,15 @@ class User extends EventEmitter {
      */
 
     listWorkspaces() {
-        return this.#workspaceManager.listWorkspaces(this.#id);
+        return []; // this.#workspaceManager.listWorkspaces(this.#id);
     }
 
     listContexts() {
-        return this.#contextManager.listContexts(this.#id);
+        return []; // this.#contextManager.listContexts(this.#id);
     }
 
     listSessions() {
-        return this.#sessionManager.listSessions(this.#id);
+        return []; // this.#sessionManager.listSessions(this.#id);
     }
 
     /**

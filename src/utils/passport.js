@@ -89,7 +89,7 @@ export default function configurePassport(jwtSecret, options = {}) {
 
                 // Try as API token first - our preferred auth method
                 debug(`Validating as API token: ${tokenValue.substring(0, 10)}...`);
-                const apiTokenResult = await authService.validateApiToken(tokenValue);
+                const apiTokenResult = await userManager.findUserByApiTokenValue(tokenValue);
 
                 if (apiTokenResult) {
                     const { userId, tokenId } = apiTokenResult;
@@ -178,10 +178,22 @@ export default function configurePassport(jwtSecret, options = {}) {
     // This is for backward compatibility with any routes still using 'jwt'
     passport.use(
         'jwt',
-        new CustomStrategy(async (req, done) => {
+        new CustomStrategy((req, done) => {
             debug('JWT strategy called (delegating to api-token)');
-            // Just delegate to the api-token strategy
-            return passport.authenticate('api-token', { session: false })(req, {}, () => {})(req, done);
+            // Delegate authentication to the 'api-token' strategy using a custom callback
+            passport.authenticate('api-token', { session: false }, (err, user, info) => {
+                // This callback receives the result from the 'api-token' strategy's execution
+                if (err) {
+                    // Pass any error to the 'jwt' strategy's done callback
+                    return done(err);
+                }
+                if (!user) {
+                    // Pass authentication failure (no user found) to the 'jwt' strategy's done callback
+                    return done(null, false, info);
+                }
+                // Pass authentication success (user found) to the 'jwt' strategy's done callback
+                return done(null, user, info);
+            })(req, {}, done); // Execute the 'api-token' middleware. req is passed, res is mocked, and the 'jwt' done callback acts as next.
         }),
     );
 

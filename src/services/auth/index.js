@@ -7,7 +7,6 @@ import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('service:auth');
 
 import SessionService from './lib/SessionService.js';
-import AuthTokenService from './lib/AuthToken.js';
 
 /**
  * Auth Service
@@ -18,7 +17,6 @@ class AuthService extends EventEmitter {
     #userManager;
     #sessionManager;
     #sessionService;
-    #authTokenService;
     #config;
     #passport;
     #initialized = false;
@@ -63,12 +61,6 @@ class AuthService extends EventEmitter {
             sessionManager: this.#sessionManager,
         });
 
-        // Initialize auth token service
-        this.#authTokenService = new AuthTokenService({
-            userManager: this.#userManager,
-        });
-        await this.#authTokenService.initialize();
-
         this.#initialized = true;
         debug('Auth service initialized');
     }
@@ -104,9 +96,6 @@ class AuthService extends EventEmitter {
 
         // Stop session service
         await this.#sessionService.stop();
-
-        // Stop auth token service
-        await this.#authTokenService.stop();
 
         this.#started = false;
         debug('Auth service stopped');
@@ -313,66 +302,6 @@ class AuthService extends EventEmitter {
 
         debug(`Password updated for user: ${userId}`);
         return true;
-    }
-
-    /**
-     * Create an API token for a user
-     * @param {string} userId - User ID
-     * @param {Object} options - Token options
-     * @returns {Promise<Object>} - Created token
-     */
-    async createApiToken(userId, options = {}) {
-        return this.#authTokenService.createToken(userId, options);
-    }
-
-    /**
-     * Get an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object|null>} - Token or null
-     */
-    async getApiToken(userId, tokenId) {
-        return this.#authTokenService.getToken(userId, tokenId);
-    }
-
-    /**
-     * List API tokens for a user
-     * @param {string} userId - User ID
-     * @param {Object} options - Filter options
-     * @returns {Promise<Array<Object>>} - List of tokens
-     */
-    async listApiTokens(userId, options = {}) {
-        return this.#authTokenService.listTokens(userId, options);
-    }
-
-    /**
-     * Update an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @param {Object} updates - Updates to apply
-     * @returns {Promise<Object|null>} - Updated token or null
-     */
-    async updateApiToken(userId, tokenId, updates = {}) {
-        return this.#authTokenService.updateToken(userId, tokenId, updates);
-    }
-
-    /**
-     * Delete an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<boolean>} - Success status
-     */
-    async deleteApiToken(userId, tokenId) {
-        return this.#authTokenService.deleteToken(userId, tokenId);
-    }
-
-    /**
-     * Validate an API token
-     * @param {string} tokenValue - Token value
-     * @returns {Promise<Object|null>} - User ID and token ID if valid, null if invalid
-     */
-    async validateApiToken(tokenValue) {
-        return this.#authTokenService.validateToken(tokenValue);
     }
 
     /**

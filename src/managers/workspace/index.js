@@ -11,7 +11,7 @@ import Conf from 'conf';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('manager:workspace:new');
+const debug = createDebug('manager:workspace');
 
 // Includes
 import Manager from '../base/Manager.js';
@@ -25,6 +25,7 @@ import Workspace from './lib/Workspace.js';
 // Example: john.doe@example.com/my-project
 
 const WORKSPACE_CONFIG_FILENAME = 'workspace.json'; // Name of the config file within the workspace directory
+
 const WORKSPACE_DIRECTORIES = {
     db: 'Db',
     config: 'Config',
@@ -96,8 +97,7 @@ class WorkspaceManager extends Manager {
         if (!Array.isArray(this.getConfig('workspaces')))
             this.setConfig('workspaces', []);
 
-        debug(`WorkspaceManager initialized with rootPath: ${this.#rootPath}`);
-        this.#performInitialScan();
+        debug(`Initializing WorkspaceManager with rootPath: ${this.#rootPath}`);
     }
 
     /**
@@ -108,14 +108,15 @@ class WorkspaceManager extends Manager {
     get index() { return this.getConfig('workspaces', []); }
 
     /**
-     * Initialization & Lifecycle
+     * Initialization
      */
 
     async initialize() {
-        if (this.initialized) return true;
-        debug('Initializing WorkspaceManager...');
-        // Initial scan is done in constructor for now
-        return super.initialize();
+        if (this.initialized) { return true; }
+        super.initialize();
+
+        await this.#scanIndexedWorkspaces();
+        debug(`WorkspaceManager initialized.`);
     }
 
     /**
@@ -158,17 +159,27 @@ class WorkspaceManager extends Manager {
      * @throws {Error} If workspace ID/path conflict, or creation fails.
      */
     async createWorkspace(userId, name, options = {}) {
-        if (!userId || !name) {
-            throw new Error('UserID and Name are required to create a workspace.');
+        if (!userId) { throw new Error('UserID required to create a workspace.'); }
+        if (!name) { throw new Error('Workspace name required to create a workspace.'); }
+
+        const sanitizedName = WorkspaceManager.sanitizeWorkspaceName(name);
+        const workspaceId = this.#generateIndexWorkspaceId(userId, sanitizedName);
+
+        let workspaceDir;
+        if (options.rootPath) {
+            // Support custom rootPaths
+            workspaceDir = path.join(options.rootPath, sanitizedName);
+        } else if (options.workspacePath) {
+            // Support out-of-tree workspaces
+            workspaceDir = options.workspacePath;
+        } else {
+            // Defaults to user's home directory (within the Universe "home" workspace)
+            workspaceDir = path.join(this.#rootPath, userId, WORKSPACE_DIRECTORIES.workspaces, sanitizedName); // Controversial!
         }
 
-        const sanitizedName = this.#sanitizeName(name);
-        const workspaceId = this.#generateWorkspaceId(userId, sanitizedName);
-        const workspaceDir = this.#getWorkspacePathFromComponents(userId, sanitizedName);
         const workspaceConfigPath = path.join(workspaceDir, WORKSPACE_CONFIG_FILENAME);
 
-        debug(`Attempting to create workspace: ID=${workspaceId}, Path=${workspaceDir}`);
-
+        debug(`Attempting to create workspace for ${userId}/${name} at path ${workspaceDir}`);
         if (this.#findIndexEntry(workspaceId)) {
             throw new Error(`Workspace with ID "${workspaceId}" already exists in the index.`);
         }
@@ -180,7 +191,7 @@ class WorkspaceManager extends Manager {
         try {
             await fsPromises.mkdir(workspaceDir, { recursive: true });
             debug(`Created workspace directory: ${workspaceDir}`);
-            await this.#preCreateSubdirectories(workspaceDir); // Pre-create all subdirectories defined in WORKSPACE_DIRECTORIES
+            await this.#createWorkspaceSubdirectories(workspaceDir); // Pre-create all subdirectories defined in WORKSPACE_DIRECTORIES
         } catch (err) {
             logger.error(`Failed to create directory ${workspaceDir}: ${err.message}`);
             throw new Error(`Failed to create workspace directory: ${err.message}`);
@@ -189,20 +200,26 @@ class WorkspaceManager extends Manager {
         const now = new Date().toISOString();
         const configData = {
             ...DEFAULT_WORKSPACE_CONFIG,
-            id: workspaceId,
+            id: options.id || workspaceId,
             name: name, // Store original name
             type: options.type || 'workspace',
             owner: userId,
             acl: {},
             label: options.label || name.charAt(0).toUpperCase() + name.slice(1), // Default label from name
-            color: options.color || this.getRandomColor(),
-            description: options.description || '',
+            color: (options.type === 'universe') ?
+                '#fff' : (options.color || WorkspaceManager.getRandomColor()), // Universe workspaces are white(contain all content aka colors)
+            description: (options.type === 'universe') ?
+                'And then there was geometry..' :
+                (options.description || 'Canvas Workspace'),
             created: now,
             updated: now,
         };
 
         try {
-            const conf = new Conf({ configName: path.basename(workspaceConfigPath, '.json'), cwd: workspaceDir });
+            const conf = new Conf({
+                configName: path.basename(workspaceConfigPath, '.json'),
+                cwd: workspaceDir
+            });
             conf.store = configData; // Set the entire store directly
             debug(`Created workspace config file: ${workspaceConfigPath}`);
         } catch (err) {
@@ -220,7 +237,8 @@ class WorkspaceManager extends Manager {
             name: name,
             type: configData.type,
             owner: userId,
-            path: workspaceConfigPath, // Store path to config file
+            rootPath: workspaceDir,
+            configPath: workspaceConfigPath, // Store path to config file
             status: WORKSPACE_STATUS_CODES.AVAILABLE,
             created: now,
             lastAccessed: null,
@@ -250,6 +268,24 @@ class WorkspaceManager extends Manager {
     }
 
     /**
+     * Lists all workspaces for a given user.
+     * @param {string} userId - The User ID (email) to filter workspaces by.
+     * @returns {Array<Object>} An array of workspace objects.
+     */
+    listWorkspaces(userId) {
+        debug(`Listing workspaces for user ${userId}`);
+        if (!userId) {
+            return [];
+        }
+
+        const workspaces = Array.from(this.#workspaces.values());
+        const result = workspaces.filter(ws => ws.owner === userId);
+        debug(`Found ${result.length} workspaces for user ${userId}`);
+        debug(`Workspaces: ${JSON.stringify(result)}`);
+        return result;
+    }
+
+    /**
      * Gets a loaded Workspace instance from memory, loading it from disk if necessary.
      * Does NOT start the workspace services.
      * Checks for user ownership.
@@ -263,47 +299,62 @@ class WorkspaceManager extends Manager {
 
         // Check cache using canonical ID
         if (this.#workspaces.has(canonicalId)) {
-            // TODO: Re-verify access here? If ACLs change while cached? For owner-only, it's likely fine.
-            debug(`Returning cached Workspace instance for ${canonicalId}`);
-            return this.#workspaces.get(canonicalId);
+            if (this.#checkAccess(userId, canonicalId, this.#findIndexEntry(canonicalId))) {
+                debug(`Returning cached Workspace instance for ${canonicalId}`);
+                return this.#workspaces.get(canonicalId);
+            }
+
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} is cached but access denied for user ${userId}.`);
+            return null;
         }
 
         // Find index entry & check access
         const entry = this.#findIndexEntry(canonicalId);
-        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
-            logger.warn(`openWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
+        if (!entry) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} not found in index.`);
             return null;
         }
 
-        // Check status and path
-        if (!entry.path || ![WORKSPACE_STATUS_CODES.AVAILABLE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ACTIVE].includes(entry.status)) {
-            logger.warn(`openWorkspace failed: Workspace ${canonicalId} path is missing or status is invalid (${entry.status}).`);
+        if (!this.#checkAccess(userId, canonicalId, entry)) {
+            logger.warn(`openWorkspace failed: Access denied for user ${userId} to workspace ${canonicalId}.`);
             return null;
         }
-        if (!existsSync(entry.path)) {
-            logger.warn(`openWorkspace failed: Config file path for ${canonicalId} does not exist: ${entry.path}`);
-            // TODO: update status
+
+        // Check rootPath
+        if (!entry.rootPath || !existsSync(entry.rootPath)) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} rootPath is missing or does not exist: ${entry.rootPath}`);
+            return null;
+        }
+
+        // Check configPath
+        if (!entry.configPath || !existsSync(entry.configPath)) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} configPath is missing or does not exist: ${entry.configPath}`);
+            return null;
+        }
+
+        // Check status
+        if (![WORKSPACE_STATUS_CODES.AVAILABLE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ACTIVE].includes(entry.status)) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} status is invalid (${entry.status}).`);
             return null;
         }
 
         // Load config
         let conf;
         try {
-            const workspaceDir = path.dirname(entry.path);
-            const configName = path.basename(entry.path, '.json');
-            conf = new Conf({ configName, cwd: workspaceDir });
-            // Optional: Deep validation of config content?
+            conf = new Conf({
+                configName: path.basename(entry.configPath, '.json'),
+                cwd: path.dirname(entry.configPath)
+            });
         } catch (err) {
-            logger.error(`openWorkspace failed: Could not load config for ${canonicalId} from ${entry.path}: ${err.message}`);
-            // TODO: update status
+            logger.error(`openWorkspace failed: Could not load config for ${canonicalId} from ${entry.configPath}: ${err.message}`);
             return null;
         }
 
         // Instantiate Workspace
         try {
             const workspace = new Workspace({
-                rootPath: workspaceDir, // Pass the directory containing workspace.json
-                configStore: conf,      // Pass the loaded Conf instance
+                rootPath: entry.rootPath,
+                configStore: conf, // Pass the loaded Conf instance
             });
 
             // Insert into cache
@@ -312,7 +363,6 @@ class WorkspaceManager extends Manager {
 
             // Return instance
             return workspace;
-
         } catch (err) {
             logger.error(`openWorkspace failed: Could not instantiate Workspace for ${canonicalId}: ${err.message}`);
             // TODO: update status
@@ -487,9 +537,7 @@ class WorkspaceManager extends Manager {
      * @returns {boolean} True if the workspace exists and the user is the owner, false otherwise.
      */
     hasWorkspace(userId, workspaceId) {
-        if (!userId || !workspaceId) {
-            return false;
-        }
+        if (!userId || !workspaceId) { return false; }
 
         // Resolve potential short name to canonical ID
         const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
@@ -716,36 +764,6 @@ class WorkspaceManager extends Manager {
      */
 
     /**
-     * Sanitizes a name for use in paths and IDs.
-     * Lowercase, replaces spaces/unsafe chars with hyphens, removes leading/trailing hyphens.
-     * @param {string} name
-     * @returns {string}
-     * @private
-     */
-    #sanitizeName(name) {
-        if (!name) return 'untitled';
-        return name
-            .toString()
-            .toLowerCase()
-            .replace(/\s+/g, '-') // Replace spaces with -
-            .replace(/[^a-z0-9-]/g, '') // Remove all non-alphanumeric or hyphen characters
-            .replace(/--+/g, '-') // Replace multiple - with single -
-            .replace(/^-+/, '') // Trim - from start of text
-            .replace(/-+$/, ''); // Trim - from end of text
-    }
-
-    /**
-     * Constructs the expected absolute path for a workspace directory.
-     * @param {string} userId
-     * @param {string} sanitizedName
-     * @returns {string} Absolute path (e.g., '/canvas/users/user@example.com/my-project').
-     * @private
-     */
-    #getWorkspacePathFromComponents(userId, sanitizedName) {
-        return path.join(this.#rootPath, userId, sanitizedName);
-    }
-
-    /**
      * Safely updates the global workspace index array.
      * @param {function(Array<Object>): Array<Object>} updaterFn
      * @private
@@ -806,67 +824,87 @@ class WorkspaceManager extends Manager {
      * Does NOT load workspaces into memory.
      * @private
      */
-    #performInitialScan() {
+    async #scanIndexedWorkspaces() {
         debug('Performing initial workspace scan...');
+
         let requiresUpdate = false;
-        const updatedWorkspaces = this.getConfig('workspaces', []).map(entry => {
-            if (entry.status === WORKSPACE_STATUS_CODES.REMOVED) {
-                return entry; // Skip removed entries
+        const workspaces = this.getConfig('workspaces', []);
+        debug(`Found ${workspaces.length} workspaces in index`);
+
+        const updatedWorkspaces = []; // Build a new array
+
+        for (const entry of workspaces) {
+            let updatedEntry = { ...entry }; // Create a copy to modify
+
+            if (updatedEntry.status === WORKSPACE_STATUS_CODES.REMOVED ||
+                updatedEntry.status === WORKSPACE_STATUS_CODES.DESTROYED
+            ) {
+                debug(`Skipping removed/destroyed workspace ${JSON.stringify(updatedEntry)}`);
+                updatedWorkspaces.push(updatedEntry); // Keep the original entry
+                continue; // Skip to the next entry
             }
 
-            let currentStatus = entry.status;
+            debug(`Processing workspace ID: ${updatedEntry.id} (${updatedEntry.name})`);
+            let currentStatus = updatedEntry.status;
             let newStatus = currentStatus;
-            let configFilePath = null;
 
-            // 1. Check if path exists
-            if (!entry.path || !existsSync(entry.path)) {
-                // Path might be missing, or maybe just config file path is missing
-                // Let's try constructing the expected path
-                const expectedDir = this.#getWorkspacePathFromComponents(entry.owner, this.#sanitizeName(entry.name));
-                const expectedConfigPath = path.join(expectedDir, WORKSPACE_CONFIG_FILENAME);
-
-                if (existsSync(expectedConfigPath)) {
-                    // Directory & config exist, update index entry path
-                    entry.path = expectedConfigPath;
-                    configFilePath = expectedConfigPath;
-                    newStatus = WORKSPACE_STATUS_CODES.AVAILABLE;
-                    debug(`Found workspace ${entry.id} at expected path: ${expectedConfigPath}. Updated index.`);
-                } else {
-                    debug(`Workspace path/config not found for ${entry.id} at index path ${entry.path} or expected path ${expectedConfigPath}`);
-                    newStatus = WORKSPACE_STATUS_CODES.NOT_FOUND;
+            // Check if stored workspace path exists
+            if (!updatedEntry.rootPath || !existsSync(updatedEntry.rootPath)) {
+                debug(`Workspace path not found for ${updatedEntry.id} at path ${updatedEntry.rootPath}, marking as NOT_FOUND`);
+                newStatus = WORKSPACE_STATUS_CODES.NOT_FOUND;
+                // Keep the original entry if status changed
+                if (newStatus !== currentStatus) {
+                    requiresUpdate = true;
+                    updatedEntry.status = newStatus;
+                    debug(`Updated status for ${updatedEntry.id} to ${newStatus}`);
                 }
-            } else {
-                configFilePath = entry.path;
-                newStatus = WORKSPACE_STATUS_CODES.AVAILABLE;
+                updatedWorkspaces.push(updatedEntry);
+                continue; // Skip further checks for this entry
             }
 
-            // 2. If path exists, try reading config (minimal validation)
-            if (newStatus === WORKSPACE_STATUS_CODES.AVAILABLE && configFilePath) {
-                try {
-                    // Minimal check: Can we instantiate Conf?
-                    const conf = new Conf({ configName: path.basename(configFilePath, '.json'), cwd: path.dirname(configFilePath) });
-                    // TODO: Add deeper validation if needed (e.g., check owner match)
-                    if (conf.get('id') !== entry.id || conf.get('owner') !== entry.owner) {
-                       logger.warn(`Config mismatch for ${entry.id} at ${configFilePath}. ID/Owner in file does not match index.`);
-                       newStatus = WORKSPACE_STATUS_CODES.ERROR; // Config doesn't match index
-                    }
-
-                } catch (err) {
-                    logger.error(`Error reading/validating config for ${entry.id} at ${configFilePath}: ${err.message}`);
-                    newStatus = WORKSPACE_STATUS_CODES.ERROR;
+            // Check if config file exists
+            if (!updatedEntry.configPath || !existsSync(updatedEntry.configPath)) {
+                debug(`Workspace config not found for ${updatedEntry.id} at path ${updatedEntry.configPath}, marking as ERROR`);
+                newStatus = WORKSPACE_STATUS_CODES.ERROR;
+                // Keep the original entry if status changed
+                if (newStatus !== currentStatus) {
+                    requiresUpdate = true;
+                    updatedEntry.status = newStatus;
+                    debug(`Updated status for ${updatedEntry.id} to ${newStatus}`);
                 }
+                updatedWorkspaces.push(updatedEntry);
+                continue; // Skip further checks for this entry
+            }
+
+            // Attempt to open workspace to validate config and structure implicitly
+            try {
+                const workspace = await this.openWorkspace(updatedEntry.owner, updatedEntry.id);
+                if (!workspace) {
+                    debug(`Workspace ${updatedEntry.id} failed to open, marking as ERROR`);
+                    newStatus = WORKSPACE_STATUS_CODES.ERROR;
+                } else {
+                    // If open succeeds, ensure status is AVAILABLE (if not already active/inactive)
+                    if (![WORKSPACE_STATUS_CODES.ACTIVE, WORKSPACE_STATUS_CODES.INACTIVE].includes(currentStatus)) {
+                        newStatus = WORKSPACE_STATUS_CODES.AVAILABLE;
+                    }
+                }
+            } catch (err) {
+                logger.error(`Error during openWorkspace validation for ${updatedEntry.id} at ${updatedEntry.configPath}: ${err.message}`);
+                newStatus = WORKSPACE_STATUS_CODES.ERROR;
             }
 
             if (newStatus !== currentStatus) {
                 requiresUpdate = true;
-                entry.status = newStatus;
-                debug(`Updated status for ${entry.id} to ${newStatus}`);
+                updatedEntry.status = newStatus;
+                debug(`Updated status for ${updatedEntry.id} to ${newStatus}`);
             }
-            return entry;
-        });
+
+            updatedWorkspaces.push(updatedEntry);
+        }
 
         if (requiresUpdate) {
-            this.setConfig('workspaces', updatedWorkspaces);
+            debug(`Updating index with ${updatedWorkspaces.length} workspaces`);
+            this.setConfig('workspaces', updatedWorkspaces); // Save the new array
             debug('Initial workspace scan complete. Index updated.');
         } else {
             debug('Initial workspace scan complete. No index changes required.');
@@ -883,7 +921,7 @@ class WorkspaceManager extends Manager {
     #resolveWorkspaceId(userId, workspaceId) {
         return workspaceId.includes('/')
             ? workspaceId
-            : this.#generateWorkspaceId(userId, workspaceId);
+            : this.#generateIndexWorkspaceId(userId, workspaceId);
     }
 
     /**
@@ -893,12 +931,28 @@ class WorkspaceManager extends Manager {
      * @returns {string} Composed ID (e.g., 'user@example.com/my-project').
      * @private
      */
-    #generateWorkspaceId(userId, workspaceName) {
+    #generateIndexWorkspaceId(userId, workspaceName) {
         if (!userId || !workspaceName) {
             throw new Error('UserID and WorkspaceName are required to generate workspace ID');
         }
-        const sanitizedName = this.#sanitizeName(workspaceName);
+        const sanitizedName = WorkspaceManager.sanitizeWorkspaceName(workspaceName);
         return `${userId}/${sanitizedName}`;
+    }
+
+    /**
+     * Sanitizes a workspace name.
+     * @param {string} name - The workspace name.
+     * @returns {string} The sanitized name.
+     * @static
+     */
+    static sanitizeWorkspaceName(name) {
+        if (!name) return 'untitled';
+        return name.toString().toLowerCase()
+            .replace(/\s+/g, '-')       // Replace spaces with hyphens
+            .replace(/[^a-z0-9-@]/g, '')   // Remove non-alphanumeric characters except @ and -
+            .replace(/--+/g, '-')         // Replace multiple hyphens with a single hyphen
+            .replace(/^-+/, '')           // Trim hyphens from the start
+            .replace(/-+$/, '');          // Trim hyphens from the end
     }
 
     /**
@@ -939,7 +993,7 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<void>}
      * @private
      */
-    async #preCreateSubdirectories(workspaceDir) {
+    async #createWorkspaceSubdirectories(workspaceDir) {
         for (const subdir in WORKSPACE_DIRECTORIES) {
             const subdirPath = path.join(workspaceDir, WORKSPACE_DIRECTORIES[subdir]);
             await fsPromises.mkdir(subdirPath, { recursive: true });

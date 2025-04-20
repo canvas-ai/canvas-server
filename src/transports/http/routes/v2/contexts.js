@@ -8,35 +8,6 @@ import ResponseObject from '../../../ResponseObject.js';
 import { requireContextManager } from '../../middleware/userManagers.js';
 
 /**
- * @swagger
- * components:
- *   schemas:
- *     Context:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The context ID
- *         url:
- *           type: string
- *           description: The context URL
- *         name:
- *           type: string
- *           description: The context name
- *         description:
- *           type: string
- *           description: The context description
- *         createdAt:
- *           type: string
- *           format: date-time
- *           description: The creation timestamp
- *         updatedAt:
- *           type: string
- *           format: date-time
- *           description: The last update timestamp
- */
-
-/**
  * Contexts routes
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
@@ -88,20 +59,6 @@ export default function contextsRoutes(options) {
         }
     };
 
-    /**
-     * @swagger
-     * /:
-     *   get:
-     *     summary: List all contexts
-     *     tags: [Contexts]
-     *     responses:
-     *       200:
-     *         description: Contexts retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     router.get('/', async (req, res) => {
         debug(`Listing contexts for user: ${req.user.email}`);
         try {
@@ -126,38 +83,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:
-     *   post:
-     *     summary: Create a new context
-     *     tags: [Contexts]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               url:
-     *                 type: string
-     *                 description: The context URL (e.g., "workspace://path/to/context")
-     *               id:
-     *                 type: string
-     *                 description: Optional id for the context
-     *               baseUrl:
-     *                 type: string
-     *                 description: Optional base URL for the context
-     *     responses:
-     *       201:
-     *         description: Context created successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     router.post('/', async (req, res) => {
         debug(`Creating context for user: ${req.user.email}`);
         try {
@@ -183,29 +108,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId:
-     *   get:
-     *     summary: Get a specific context by ID
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId', getContextMiddleware, async (req, res) => {
         debug(`Getting context ID "${req.params.contextId}" for user "${req.user.email}"`);
         try {
@@ -218,29 +120,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/documents:
-     *   get:
-     *     summary: Get documents in a specific context
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context documents retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/documents', getContextMiddleware, async (req, res) => {
         debug(`Getting context documents for contextID "${req.params.contextId}", user "${req.user.email}"`);
         try {
@@ -258,29 +137,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/url:
-     *   get:
-     *     summary: Get the context URL
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context URL retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/url', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success({ url: req.context.url }, 'Context URL retrieved successfully');
@@ -292,40 +148,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/url:
-     *   post:
-     *     summary: Set the context URL
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               url:
-     *                 type: string
-     *     responses:
-     *       200:
-     *         description: Context URL updated successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/url', getContextMiddleware, async (req, res) => {
         try {
             const { url } = req.body;
@@ -346,29 +168,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/base_url:
-     *   get:
-     *     summary: Get the context base URL
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context base URL retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/base_url', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -383,40 +182,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/base_url:
-     *   post:
-     *     summary: Set the context base URL
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               baseUrl:
-     *                 type: string
-     *     responses:
-     *       200:
-     *         description: Context base URL updated successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/base_url', getContextMiddleware, async (req, res) => {
         try {
             const { baseUrl } = req.body;
@@ -437,29 +202,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/path:
-     *   get:
-     *     summary: Get the context path (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context path retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/path', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success({ path: req.context.path }, 'Context path retrieved successfully');
@@ -471,29 +213,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/path_array:
-     *   get:
-     *     summary: Get the context path array (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context path array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/path_array', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -508,29 +227,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/device:
-     *   get:
-     *     summary: Get the context device (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context device retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/device', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -545,29 +241,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/app:
-     *   get:
-     *     summary: Get the context app (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context app retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/apps', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success({ apps: req.context.apps }, 'Context apps retrieved successfully');
@@ -579,29 +252,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/user:
-     *   get:
-     *     summary: Get the context user (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context user retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/user', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success({ user: req.context.user }, 'Context user retrieved successfully');
@@ -613,29 +263,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/identity:
-     *   get:
-     *     summary: Get the context identity (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context identity retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/identity', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -650,29 +277,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/tree:
-     *   get:
-     *     summary: Get the context tree (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context tree retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/tree', getContextMiddleware, async (req, res) => {
         debug(`Getting context tree for contextID "${req.params.contextId}", user "${req.user.email}"`);
         debug('Legacy route, will be removed in the upcomming update');
@@ -686,29 +290,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/status:
-     *   get:
-     *     summary: Get the context status (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context status retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/status', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -723,29 +304,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/workspace:
-     *   get:
-     *     summary: Get the context workspace (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context workspace retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/workspace', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -760,29 +318,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/bitmaps:
-     *   get:
-     *     summary: Get bitmaps (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context bitmaps retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/bitmaps', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -797,29 +332,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/context_bitmap_array:
-     *   get:
-     *     summary: Get context bitmap array (read-only)
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Context bitmap array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/context_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -834,29 +346,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/feature_bitmap_array:
-     *   get:
-     *     summary: Get feature bitmap array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Feature bitmap array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -871,42 +360,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/feature_bitmap_array:
-     *   put:
-     *     summary: Set the feature bitmap array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               featureArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *     responses:
-     *       200:
-     *         description: Feature bitmap array updated successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.put('/:contextId/feature_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
             const { featureArray } = req.body;
@@ -929,42 +382,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/feature_bitmap_array/append:
-     *   post:
-     *     summary: Append to the feature bitmap array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               featureArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *     responses:
-     *       200:
-     *         description: Feature bitmap array appended successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/feature_bitmap_array/append', getContextMiddleware, async (req, res) => {
         try {
             const { featureArray } = req.body;
@@ -987,42 +404,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/feature_bitmap_array/remove:
-     *   post:
-     *     summary: Remove from the feature bitmap array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               featureArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *     responses:
-     *       200:
-     *         description: Feature bitmap array removed successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/feature_bitmap_array/remove', getContextMiddleware, async (req, res) => {
         try {
             const { featureArray } = req.body;
@@ -1060,29 +441,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/filter_bitmap_array:
-     *   get:
-     *     summary: Get filter bitmap array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Filter bitmap array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/filter_bitmap_array', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -1173,54 +531,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/query:
-     *   post:
-     *     summary: Execute a query in the context
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               query:
-     *                 type: string
-     *                 description: The query to execute
-     *               featureArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *                 description: Array of features to include in the query
-     *               filterArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *                 description: Array of filters to apply to the query
-     *               options:
-     *                 type: object
-     *                 description: Additional query options
-     *     responses:
-     *       200:
-     *         description: Query executed successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/query', getContextMiddleware, async (req, res) => {
         try {
             const { query, featureArray = [], filterArray = [], options = {} } = req.body;
@@ -1239,54 +549,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/fts_query:
-     *   post:
-     *     summary: Execute a full-text search query in the context
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               query:
-     *                 type: string
-     *                 description: The FTS query to execute
-     *               featureArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *                 description: Array of features to include in the query
-     *               filterArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *                 description: Array of filters to apply to the query
-     *               options:
-     *                 type: object
-     *                 description: Additional query options
-     *     responses:
-     *       200:
-     *         description: FTS query executed successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.post('/:contextId/fts_query', getContextMiddleware, async (req, res) => {
         try {
             const { query, featureArray = [], filterArray = [], options = {} } = req.body;
@@ -1305,29 +567,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/client_context:
-     *   get:
-     *     summary: Get the client context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Client context array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/client_context', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -1342,42 +581,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/client_context:
-     *   put:
-     *     summary: Set the client context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               clientContextArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *     responses:
-     *       200:
-     *         description: Client context array updated successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.put('/:contextId/client_context', getContextMiddleware, async (req, res) => {
         try {
             const { clientContextArray } = req.body;
@@ -1400,29 +603,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/client_context/clear:
-     *   delete:
-     *     summary: Clear the client context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Client context array cleared successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.delete('/:contextId/client_context/clear', getContextMiddleware, async (req, res) => {
         try {
             req.context.clearClientContextArray();
@@ -1439,29 +619,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/server_context:
-     *   get:
-     *     summary: Get the server context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Server context array retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.get('/:contextId/server_context', getContextMiddleware, async (req, res) => {
         try {
             const response = new ResponseObject().success(
@@ -1476,42 +633,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/server_context:
-     *   put:
-     *     summary: Set the server context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               serverContextArray:
-     *                 type: array
-     *                 items:
-     *                   type: string
-     *     responses:
-     *       200:
-     *         description: Server context array updated successfully
-     *       400:
-     *         description: Bad request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.put('/:contextId/server_context', getContextMiddleware, async (req, res) => {
         try {
             const { serverContextArray } = req.body;
@@ -1534,29 +655,6 @@ export default function contextsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:contextId/server_context/clear:
-     *   delete:
-     *     summary: Clear the server context array
-     *     tags: [Contexts]
-     *     parameters:
-     *       - in: path
-     *         name: contextId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The context ID
-     *     responses:
-     *       200:
-     *         description: Server context array cleared successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Context not found
-     *       500:
-     *         description: Server error
-     */
     router.delete('/:contextId/server_context/clear', getContextMiddleware, async (req, res) => {
         try {
             req.context.clearServerContextArray();

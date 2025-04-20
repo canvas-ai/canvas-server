@@ -44,7 +44,7 @@ const jim = new Jim({
 });
 
 /**
- * Global Manager singletons
+ * Global Managers
  */
 
 import SessionManager from './managers/session/index.js';
@@ -103,9 +103,7 @@ class Server extends EventEmitter {
     }
 
     // Getters
-    get mode() {
-        return this.#mode;
-    }
+    get mode() { return this.#mode; }
     get version() {
         return `${productName} v${version} | ${description}`;
     }
@@ -139,7 +137,7 @@ class Server extends EventEmitter {
     /**
      * Initialize the server
      */
-    async init() {
+    async initialize() {
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
 
@@ -253,50 +251,40 @@ class Server extends EventEmitter {
         debug('Initializing managers');
         logger.info('Initializing managers');
 
-        try {
-            // Initialize Session Manager
-            this.#sessionManager = new SessionManager({
-                jim: jim,
-                sessionOptions: {
-                    sessionTimeout: 7 * 24 * 60 * 60 * 1000, // 7 days
-                },
-            });
-            await this.#sessionManager.initialize();
-            debug('Session manager initialized');
+        // Initialize Session Manager
+        this.#sessionManager = new SessionManager({
+            jim: jim,
+            sessionOptions: {
+                sessionTimeout: 7 * 24 * 60 * 60 * 1000, // 7 days
+            },
+        });
+        await this.#sessionManager.initialize();
+        debug('Session manager initialized');
 
-            // Initialize User Manager
-            this.#userManager = new UserManager({
-                rootPath: env.CANVAS_SERVER_HOMES,
-                jim: jim,
-            });
-            await this.#userManager.initialize();
-            debug('User manager initialized');
+        // Initialize Workspace Manager
+        this.#workspaceManager = new WorkspaceManager({
+            rootPath: env.CANVAS_SERVER_HOMES,
+            jim: jim,
+        });
+        await this.#workspaceManager.initialize();
+        debug('Workspace manager initialized');
 
-            // Initialize Workspace Manager
-            this.#workspaceManager = new WorkspaceManager({
-                rootPath: env.CANVAS_SERVER_HOMES,
-                jim: jim,
-            });
-            await this.#workspaceManager.initialize();
-            debug('Workspace manager initialized');
+        // Initialize User Manager
+        this.#userManager = new UserManager({
+            rootPath: env.CANVAS_SERVER_HOMES,
+            jim: jim,
+            workspaceManager: this.#workspaceManager,
+        });
+        await this.#userManager.initialize();
+        debug('User manager initialized');
 
-            // Set cross-manager dependencies
-            this.#userManager.setWorkspaceManager(this.#workspaceManager);
+        // Initialize User Event Handler
+        this.#userEventHandler = new UserEventHandler({
+            userManager: this.#userManager,
+        });
+        debug('User event handler initialized');
 
-            // Note: ContextManager is initialized per-user when needed
-            // A factory method should be used to create instances
-
-            // Initialize User Event Handler
-            this.#userEventHandler = new UserEventHandler({
-                userManager: this.#userManager,
-            });
-            debug('User event handler initialized');
-
-            logger.info('Managers initialized successfully');
-        } catch (error) {
-            logger.error(`Manager initialization failed: ${error.message}`);
-            throw error;
-        }
+        logger.info('Managers initialized successfully');
     }
 
     /**
