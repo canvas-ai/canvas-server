@@ -29,6 +29,7 @@ const USER_STATUS = ['active', 'inactive', 'deleted'];
  */
 
 class UserManager extends Manager {
+    
     #rootPath;
     #users = new Map(); // Initialized User Instances, keeps this implementation as slim as possible
     #workspaceManager; // Reference to workspace manager (injected)

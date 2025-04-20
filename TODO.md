@@ -27,12 +27,21 @@ Workspace config paths
 
 OK plan for today(20.4.25)
 
-- update contextManager(keep as a global - as in not user-scoped - manager), store contexts in a ID -> ctx map with persistence in CANVAS_SERVER_DB/contexts.json
-- update workspaceManager(keep as global), store a map of workspaces as id -> ws with persistence in CANVAS_SERVER_DB/workspaces.json;
+- update contextManager(keep as a global - as in not user-scoped - manager), store contexts in a ID -> ctx map with composite keys (user.email/context.id) with persistence in CANVAS_SERVER_DB/contexts.json
+  - On module start, we'll
+- update workspaceManager(keep as global), store a map of workspaces as id -> ws with persistence in CANVAS_SERVER_DB/workspaces.json, composite keys(user.email/workspace.name);
   - On start of the module, we'll loop through the index, mark workspaces based on whether the path is found and contains a valid workspace(config)
   - createWorkspace(name, rootPath = this.#rootPath, options = {})
     - rootPath can be relative or absolute or contain {{ CANVAS_SERVER_ }}  .. wait, strike that, KISS
   - we'll need a private method #resolveWorkspacePath(path)
   - we'll need a single private method to #loadWorkspaceConfig(workspaceRootPath)
+    - possible workspace paths to accommodate the 2 most common use-cases:
+      - $WORKSPACE_ROOT/.workspace/workspace.json
+        - Suited if you want to convert an existing directory to a workspace leaving all its current data in-tact, all workspace folders will be placed within .workspace/
+      - $WORKSPACE_ROOT/.workspace.json
+        - Same as above, we'll create a .workspace folder and place all our directories within it
+      - $WORKSPACE_ROOT/workspace.json
+        - Default vanilla workspace
 - User class will be a mere abstraction on top of CM and WM => listWorkspaces(), listContexts() will call this.#cm / this.#wm list* methods with this.id
+  - Well, not entirely, we will only initialize workspaces when a user logs-in (universe automatically, the rest on demand), same for contexts
 - We should move tokenManager out of the User class!

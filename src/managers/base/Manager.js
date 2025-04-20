@@ -2,6 +2,10 @@
 
 // Utils
 import EventEmitter from 'eventemitter2';
+import fs from 'fs/promises';
+import { existsSync, mkdirSync } from 'fs';
+import { v4 as uuidv4 } from 'uuid';
+
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('manager:base');
 
@@ -142,6 +146,10 @@ class Manager extends EventEmitter {
     }
 
     /**
+     * Common Utilities
+     */
+
+    /**
      * Generate a UUID
      * @param {string} [prefix] - Prefix for the UUID
      * @param {number} [length] - Length of the UUID
@@ -149,6 +157,18 @@ class Manager extends EventEmitter {
      */
     generateUUID(prefix = '', length = 8) {
         return `${prefix}-${uuidv4().replace(/-/g, '').slice(0, length)}`;
+    }
+
+    async ensureDirectoryExists(path) {
+        if (!existsSync(path)) {
+            await fs.mkdir(path, { recursive: true });
+        }
+    }
+
+    ensureDirectoryExistsSync(path) {
+        if (!existsSync(path)) {
+            fs.mkdirSync(path, { recursive: true });
+        }
     }
 }
 

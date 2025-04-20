@@ -132,9 +132,7 @@ class WorkspaceManager extends Manager {
      * Getters
      */
 
-    get rootPath() {
-        return this.#rootPath;
-    }
+    get rootPath() { return this.#rootPath; }
     get workspacesList() {
         return this.getConfig('workspaces', []);
     }

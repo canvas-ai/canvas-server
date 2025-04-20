@@ -326,8 +326,6 @@ class User extends EventEmitter {
         }
     }
 
-
-
     /**
      * Ensure the user's Config directory exists
      * @private
