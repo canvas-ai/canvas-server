@@ -21,7 +21,9 @@ export default function workspaceRoutes(socket, deps) {
 
     // Add connection timestamp for tracking
     socket.connectionTimestamp = Date.now();
-    debug(`Setting up workspace routes for client ${socket.id}, connected at ${new Date(socket.connectionTimestamp).toISOString()}`);
+    debug(
+        `Setting up workspace routes for client ${socket.id}, connected at ${new Date(socket.connectionTimestamp).toISOString()}`,
+    );
 
     // Handle custom ping from client (helps keep the connection alive)
     socket.on('ping', (callback) => {
@@ -79,7 +81,9 @@ export default function workspaceRoutes(socket, deps) {
                 wsTransport.setupWorkspaceListeners(workspaceId, workspaceInstance);
             }
 
-            debug(`Client ${socket.id} subscribed to workspace ${workspaceId}, total subscriptions: ${socket.subscribedWorkspaces.size}`);
+            debug(
+                `Client ${socket.id} subscribed to workspace ${workspaceId}, total subscriptions: ${socket.subscribedWorkspaces.size}`,
+            );
 
             // Send initial workspace data
             const response = new ResponseObject().success(workspaceInstance.toJSON());
@@ -107,7 +111,9 @@ export default function workspaceRoutes(socket, deps) {
                 wsTransport.removeWorkspaceSubscription(workspaceId, socket.id);
             }
 
-            debug(`Client ${socket.id} unsubscribed from workspace ${workspaceId}, remaining subscriptions: ${socket.subscribedWorkspaces.size}`);
+            debug(
+                `Client ${socket.id} unsubscribed from workspace ${workspaceId}, remaining subscriptions: ${socket.subscribedWorkspaces.size}`,
+            );
 
             const response = new ResponseObject().success({ unsubscribed: true });
             if (typeof callback === 'function') {
@@ -154,7 +160,9 @@ export default function workspaceRoutes(socket, deps) {
             }
 
             const tree = workspace.jsonTree;
-            debug(`Sending tree for workspace ${workspaceId} to client ${socket.id}, tree size: ${JSON.stringify(tree).length} bytes`);
+            debug(
+                `Sending tree for workspace ${workspaceId} to client ${socket.id}, tree size: ${JSON.stringify(tree).length} bytes`,
+            );
 
             const response = new ResponseObject().success({ tree });
             if (typeof callback === 'function') {
@@ -218,7 +226,9 @@ export default function workspaceRoutes(socket, deps) {
     // Clean up subscriptions when the client disconnects
     socket.on('disconnect', () => {
         const connectionDuration = (Date.now() - socket.connectionTimestamp) / 1000;
-        debug(`Client ${socket.id} disconnected after ${connectionDuration.toFixed(2)}s, cleaning up ${socket.subscribedWorkspaces.size} workspace subscriptions`);
+        debug(
+            `Client ${socket.id} disconnected after ${connectionDuration.toFixed(2)}s, cleaning up ${socket.subscribedWorkspaces.size} workspace subscriptions`,
+        );
 
         // Clean up socket's local subscriptions
         socket.subscribedWorkspaces.clear();

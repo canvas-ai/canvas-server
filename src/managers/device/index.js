@@ -23,9 +23,7 @@ class DeviceManager extends EventEmitter {
 
     constructor(options = {}) {
         super();
-        debug('Initializing device manager');
-
-        this.#configPath = options.configPath;
+        this.#configPath = options.configPath || null;
     }
 
     async initialize() {

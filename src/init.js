@@ -99,6 +99,8 @@ function setupProcessEventListeners() {
  * Set up server event handlers
  */
 function setupServerEventHandlers() {
+    // TODO: Streamline where to log what
+    /*
     server.on('initialized', () => {
         logger.info('Canvas server initialized successfully');
     });
@@ -114,4 +116,5 @@ function setupServerEventHandlers() {
     server.on('shutdown', () => {
         logger.info('Canvas server has shut down');
     });
+    */
 }

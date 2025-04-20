@@ -23,8 +23,8 @@
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
     "build": "npm run build -w src/ui/web",
     "postinstall": "npm run build -w src/ui/web",
-    "lint": "eslint \"**/*.js\"",
-    "lint:fix": "eslint \"**/*.js\" --fix",
+    "lint": "eslint \"**/*.{js,ts}\"",
+    "lint:fix": "eslint \"**/*.{js,ts}\" --fix",
     "format": "prettier --write \"**/*.js\""
   },
   "workspaces": [

@@ -16,9 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(url, {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
             });
             if (!response.ok) {
                 const errorData = await response.json();
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (node.children && node.children.length > 0) {
             const childrenList = document.createElement('ul');
-            node.children.forEach(child => renderTree(child, childrenList, nodePath));
+            node.children.forEach((child) => renderTree(child, childrenList, nodePath));
             listItem.appendChild(childrenList);
         }
 
@@ -68,13 +68,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (documents.length === 0) {
                 contentView.innerHTML = '<p>No documents found at this path.</p>';
             } else {
-                contentView.innerHTML = documents.map(doc =>
-                    `<pre>${JSON.stringify(doc, null, 2)}</pre>`
-                ).join('');
+                contentView.innerHTML = documents.map((doc) => `<pre>${JSON.stringify(doc, null, 2)}</pre>`).join('');
             }
         } else {
             // Error message handled by fetchData
-             contentView.innerHTML = '<p>Failed to load documents.</p>';
+            contentView.innerHTML = '<p>Failed to load documents.</p>';
         }
     }
 

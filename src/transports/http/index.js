@@ -1,6 +1,6 @@
 // Utils
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('canvas:transport:http');
+const debug = createDebug('transport:http');
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -219,6 +219,17 @@ class HttpRestTransport {
             const authService = this.#canvasServer.services.get('auth');
             const sessionManager = this.#canvasServer.sessionManager;
             const userManager = this.#canvasServer.userManager;
+
+            // Add important global objects to app context
+            app.set('authService', authService);
+            app.set('sessionManager', sessionManager);
+            app.set('userManager', userManager);
+
+            // Make sure passport is using the correct strategy
+            if (authService && authService.passport) {
+                debug('Attaching configured passport to app');
+                app.use(authService.passport.initialize());
+            }
 
             // Dynamically import and register routes
             if (authService) {

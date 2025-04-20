@@ -2,10 +2,9 @@
  * Common Authentication Middleware
  *
  * This middleware handles authentication for all transport layers (HTTP, REST, WS)
- * It verifies the session token and attaches user and session data to the request
+ * It verifies tokens and attaches user data to the request
  */
 
-import passport from 'passport';
 import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('transport:auth');
 
@@ -27,16 +26,6 @@ export default function createAuthMiddleware(server) {
         throw new Error('User manager is required for authentication middleware');
     }
 
-    if (!sessionManager) {
-        throw new Error('Session manager is required for authentication middleware');
-    }
-
-    // Get JWT secret from auth service
-    const jwtSecret = authService.sessionService.getJwtSecret();
-    if (!jwtSecret) {
-        throw new Error('JWT secret is required for authentication middleware');
-    }
-
     /**
      * Authentication middleware
      * @param {Object} req - Request object
@@ -48,7 +37,20 @@ export default function createAuthMiddleware(server) {
 
         // Extract token from request
         const authHeader = req.headers?.authorization;
-        const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : req.cookies?.token;
+        let token = null;
+
+        // Check Authorization header
+        if (authHeader?.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+        }
+        // Check cookies
+        else if (req.cookies?.token) {
+            token = req.cookies.token;
+        }
+        // Check query parameters
+        else if (req.query?.token) {
+            token = req.query.token;
+        }
 
         if (!token) {
             debug('No authentication token found');
@@ -57,13 +59,53 @@ export default function createAuthMiddleware(server) {
         }
 
         try {
-            // First try JWT token
+            // Try API token authentication
+            const apiTokenResult = await authService.validateApiToken(token);
+            if (apiTokenResult) {
+                const { userId, tokenId } = apiTokenResult;
+
+                // Get user from user manager
+                const user = await userManager.getUser(userId);
+                if (!user) {
+                    debug(`User not found for API token: ${userId}`);
+                    req.isAuthenticated = false;
+                    return next();
+                }
+
+                // Get token details
+                const tokenDetails = await userManager.getApiToken(userId, tokenId);
+                if (!tokenDetails) {
+                    debug(`Token not found: ${tokenId}`);
+                    req.isAuthenticated = false;
+                    return next();
+                }
+
+                // Attach user and token info to request
+                req.user = user.toJSON();
+                req.user.tokenId = tokenId;
+                req.user.tokenName = tokenDetails.name;
+                req.user.type = 'api';
+                req.isAuthenticated = true;
+
+                // Update token usage
+                try {
+                    await userManager.updateApiTokenUsage(userId, tokenId);
+                } catch (error) {
+                    debug(`Failed to update token usage: ${error.message}`);
+                    // Continue even if token usage update fails
+                }
+
+                debug('API token authentication successful');
+                return next();
+            }
+
+            // Try JWT fallback (for backwards compatibility)
             const jwtPayload = authService.verifyToken(token);
             if (jwtPayload) {
                 debug(`JWT token verified for user ID: ${jwtPayload.id}`);
 
                 // Get user from user manager
-                const user = await userManager.getUserById(jwtPayload.id);
+                const user = await userManager.getUser(jwtPayload.id);
                 if (!user) {
                     debug(`User not found for JWT token: ${jwtPayload.id}`);
                     req.isAuthenticated = false;
@@ -71,12 +113,13 @@ export default function createAuthMiddleware(server) {
                 }
 
                 // Attach user to request
-                req.user = user;
+                req.user = user.toJSON();
                 req.user.tokenPayload = jwtPayload;
+                req.user.type = 'jwt';
                 req.isAuthenticated = true;
 
                 // Get session if available
-                if (jwtPayload.sessionId) {
+                if (sessionManager && jwtPayload.sessionId) {
                     const session = await sessionManager.getSession(jwtPayload.sessionId);
                     if (session) {
                         debug(`Session found: ${session.id}`);
@@ -88,32 +131,6 @@ export default function createAuthMiddleware(server) {
                 }
 
                 debug('JWT authentication successful');
-                return next();
-            }
-
-            // Then try API token
-            const apiTokenResult = await authService.validateApiToken(token);
-            if (apiTokenResult) {
-                const { userId, tokenId } = apiTokenResult;
-
-                // Get user from user manager
-                const user = await userManager.getUserById(userId);
-                if (!user) {
-                    debug(`User not found for API token: ${userId}`);
-                    req.isAuthenticated = false;
-                    return next();
-                }
-
-                // Get token details
-                const tokenDetails = await userManager.getApiToken(userId, tokenId);
-
-                // Attach user and token info to request
-                req.user = user;
-                req.user.tokenId = tokenId;
-                req.user.tokenName = tokenDetails?.name || 'API Token';
-                req.isAuthenticated = true;
-
-                debug('API token authentication successful');
                 return next();
             }
 

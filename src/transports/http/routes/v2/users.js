@@ -18,30 +18,20 @@ import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
  *         id:
  *           type: string
  *           description: The user ID
- *         username:
- *           type: string
- *           description: The username
  *         email:
  *           type: string
  *           description: The user's email
- *         firstName:
+ *         userType:
  *           type: string
- *           description: The user's first name
- *         lastName:
- *           type: string
- *           description: The user's last name
- *         created:
- *           type: string
- *           format: date-time
- *           description: Creation timestamp
- *         updated:
- *           type: string
- *           format: date-time
- *           description: Last update timestamp
+ *           enum: [user, admin]
+ *           description: The user type
  *         status:
  *           type: string
- *           enum: [active, inactive, suspended]
+ *           enum: [active, inactive, deleted, error]
  *           description: User status
+ *         stats:
+ *           type: object
+ *           description: User statistics
  *     UserWorkspace:
  *       type: object
  *       properties:
@@ -169,7 +159,7 @@ export default function usersRoutes(options) {
                 return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            return res.json(new ResponseObject().success(user));
+            return res.json(new ResponseObject().success(user.toJSON()));
         } catch (err) {
             debug(`Error getting current user: ${err.message}`);
             return res.status(500).json(new ResponseObject().serverError(err.message));
@@ -184,23 +174,17 @@ export default function usersRoutes(options) {
      *     tags: [Users]
      *     parameters:
      *       - in: query
-     *         name: limit
-     *         schema:
-     *           type: integer
-     *           default: 50
-     *         description: Maximum number of users to return
-     *       - in: query
-     *         name: offset
-     *         schema:
-     *           type: integer
-     *           default: 0
-     *         description: Number of users to skip
-     *       - in: query
      *         name: status
      *         schema:
      *           type: string
-     *           enum: [active, inactive, suspended]
+     *           enum: [active, inactive, deleted, error]
      *         description: Filter by user status
+     *       - in: query
+     *         name: userType
+     *         schema:
+     *           type: string
+     *           enum: [user, admin]
+     *         description: Filter by user type
      *     responses:
      *       200:
      *         description: List of users
@@ -217,18 +201,17 @@ export default function usersRoutes(options) {
      */
     userRouter.get('/', async (req, res) => {
         try {
-            const { limit = 50, offset = 0, status } = req.query;
+            const { status, userType } = req.query;
             const options = {
-                limit: parseInt(limit, 10),
-                offset: parseInt(offset, 10),
                 status,
+                userType,
             };
 
             const users = await userManager.listUsers(options);
-            return res.json(new ResponseObject(users));
+            return res.json(new ResponseObject().success(users));
         } catch (err) {
             debug(`Error listing users: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -245,26 +228,16 @@ export default function usersRoutes(options) {
      *           schema:
      *             type: object
      *             required:
-     *               - username
      *               - email
      *             properties:
-     *               username:
-     *                 type: string
-     *                 description: The username
      *               email:
      *                 type: string
      *                 format: email
      *                 description: The user's email
-     *               firstName:
+     *               userType:
      *                 type: string
-     *                 description: The user's first name
-     *               lastName:
-     *                 type: string
-     *                 description: The user's last name
-     *               password:
-     *                 type: string
-     *                 format: password
-     *                 description: The user's password
+     *                 enum: [user, admin]
+     *                 description: The user type
      *     responses:
      *       201:
      *         description: User created successfully
@@ -281,25 +254,22 @@ export default function usersRoutes(options) {
      */
     userRouter.post('/', async (req, res) => {
         try {
-            const { username, email, firstName, lastName, password } = req.body;
+            const { email, userType } = req.body;
 
-            if (!username || !email) {
-                return res.status(400).json(new ResponseObject(null, 'Username and email are required', 400));
+            if (!email) {
+                return res.status(400).json(new ResponseObject().badRequest('Email is required'));
             }
 
             const userData = {
-                username,
                 email,
-                firstName,
-                lastName,
-                password,
+                userType,
             };
 
             const user = await userManager.createUser(userData);
-            return res.status(201).json(new ResponseObject(user));
+            return res.status(201).json(new ResponseObject().created(user.toJSON()));
         } catch (err) {
             debug(`Error creating user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -336,13 +306,13 @@ export default function usersRoutes(options) {
             const user = await userManager.getUser(id);
 
             if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            return res.json(new ResponseObject(user));
+            return res.json(new ResponseObject().success(user.toJSON()));
         } catch (err) {
             debug(`Error getting user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -366,22 +336,17 @@ export default function usersRoutes(options) {
      *           schema:
      *             type: object
      *             properties:
-     *               username:
-     *                 type: string
-     *                 description: The username
      *               email:
      *                 type: string
      *                 format: email
      *                 description: The user's email
-     *               firstName:
+     *               userType:
      *                 type: string
-     *                 description: The user's first name
-     *               lastName:
-     *                 type: string
-     *                 description: The user's last name
+     *                 enum: [user, admin]
+     *                 description: The user type
      *               status:
      *                 type: string
-     *                 enum: [active, inactive, suspended]
+     *                 enum: [active, inactive, deleted]
      *                 description: User status
      *     responses:
      *       200:
@@ -402,26 +367,24 @@ export default function usersRoutes(options) {
     userRouter.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
-            const { username, email, firstName, lastName, status } = req.body;
+            const { email, userType, status } = req.body;
 
             const userData = {
-                username,
                 email,
-                firstName,
-                lastName,
+                userType,
                 status,
             };
 
             const user = await userManager.updateUser(id, userData);
 
             if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            return res.json(new ResponseObject(user));
+            return res.json(new ResponseObject().success(user.toJSON()));
         } catch (err) {
             debug(`Error updating user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -445,22 +408,17 @@ export default function usersRoutes(options) {
      *           schema:
      *             type: object
      *             properties:
-     *               username:
-     *                 type: string
-     *                 description: The username
      *               email:
      *                 type: string
      *                 format: email
      *                 description: The user's email
-     *               firstName:
+     *               userType:
      *                 type: string
-     *                 description: The user's first name
-     *               lastName:
-     *                 type: string
-     *                 description: The user's last name
+     *                 enum: [user, admin]
+     *                 description: The user type
      *               status:
      *                 type: string
-     *                 enum: [active, inactive, suspended]
+     *                 enum: [active, inactive, deleted]
      *                 description: User status
      *     responses:
      *       200:
@@ -486,13 +444,13 @@ export default function usersRoutes(options) {
             const user = await userManager.updateUser(id, updateData);
 
             if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            return res.json(new ResponseObject(user));
+            return res.json(new ResponseObject().success(user.toJSON()));
         } catch (err) {
             debug(`Error updating user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -532,21 +490,21 @@ export default function usersRoutes(options) {
             const result = await userManager.deleteUser(id);
 
             if (!result) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 
-            return res.json(new ResponseObject({ success: true }));
+            return res.json(new ResponseObject().success({ success: true }));
         } catch (err) {
             debug(`Error deleting user: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
     /**
      * @swagger
-     * /{id}/workspaces:
+     * /{id}/tokens:
      *   get:
-     *     summary: List workspaces for a user
+     *     summary: List API tokens for a user
      *     tags: [Users]
      *     parameters:
      *       - in: path
@@ -557,13 +515,7 @@ export default function usersRoutes(options) {
      *         description: User ID
      *     responses:
      *       200:
-     *         description: List of workspaces for the user
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: array
-     *               items:
-     *                 $ref: '#/components/schemas/UserWorkspace'
+     *         description: List of API tokens for the user
      *       401:
      *         description: Unauthorized
      *       404:
@@ -571,50 +523,28 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    userRouter.get('/:id/workspaces', userManagersMiddleware, async (req, res) => {
+    userRouter.get('/:id/tokens', async (req, res) => {
         try {
             const { id } = req.params;
-            const user = await userManager.getUser(id);
 
-            if (!user) {
-                return res.status(404).json(new ResponseObject().notFound('User not found'));
-            }
-
-            // Check if the requested user is the authenticated user
-            if (id !== req.user.id && req.user.role !== 'admin') {
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
                 return res.status(403).json(new ResponseObject().forbidden('Access denied'));
             }
 
-            // If we're looking at the current user, use the already initialized workspaceManager
-            if (id === req.user.id && req.workspaceManager) {
-                const workspaces = await req.workspaceManager.listWorkspaces();
-                return res.json(new ResponseObject().success(workspaces));
-            }
-
-            // Otherwise, we need to get the user instance and activate it
-            const userInstance = await userManager.getUserById(id);
-            if (!userInstance) {
-                return res.status(404).json(new ResponseObject().notFound('User not found'));
-            }
-
-            // Activate the user if not already active
-            if (userInstance.status !== 'active') {
-                await userInstance.activate();
-            }
-
-            const workspaces = await userInstance.workspaceManager.listWorkspaces();
-            return res.json(new ResponseObject().success(workspaces));
-        } catch (error) {
-            debug(`Error listing user workspaces: ${error.message}`);
-            return res.status(500).json(new ResponseObject().serverError(error.message));
+            const tokens = await userManager.listApiTokens(id);
+            return res.json(new ResponseObject().success(tokens));
+        } catch (err) {
+            debug(`Error listing user tokens: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
     /**
      * @swagger
-     * /{id}/contexts:
-     *   get:
-     *     summary: List contexts for a user
+     * /{id}/tokens:
+     *   post:
+     *     summary: Create a new API token for a user
      *     tags: [Users]
      *     parameters:
      *       - in: path
@@ -623,15 +553,28 @@ export default function usersRoutes(options) {
      *         schema:
      *           type: string
      *         description: User ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - name
+     *             properties:
+     *               name:
+     *                 type: string
+     *                 description: Token name
+     *               description:
+     *                 type: string
+     *                 description: Token description
+     *               expiresAt:
+     *                 type: string
+     *                 format: date-time
+     *                 description: Token expiration date (null for no expiration)
      *     responses:
-     *       200:
-     *         description: List of contexts for the user
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: array
-     *               items:
-     *                 $ref: '#/components/schemas/UserContext'
+     *       201:
+     *         description: API token created successfully
      *       401:
      *         description: Unauthorized
      *       404:
@@ -639,42 +582,189 @@ export default function usersRoutes(options) {
      *       500:
      *         description: Server error
      */
-    userRouter.get('/:id/contexts', userManagersMiddleware, async (req, res) => {
+    userRouter.post('/:id/tokens', async (req, res) => {
         try {
             const { id } = req.params;
-            const user = await userManager.getUser(id);
+            const tokenOptions = req.body;
 
-            if (!user) {
-                return res.status(404).json(new ResponseObject().notFound('User not found'));
-            }
-
-            // Check if the requested user is the authenticated user
-            if (id !== req.user.id && req.user.role !== 'admin') {
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
                 return res.status(403).json(new ResponseObject().forbidden('Access denied'));
             }
 
-            // If we're looking at the current user, use the already initialized contextManager
-            if (id === req.user.id && req.contextManager) {
-                const contexts = await req.contextManager.listContexts();
-                return res.json(new ResponseObject().success(contexts));
+            if (!tokenOptions.name) {
+                return res.status(400).json(new ResponseObject().badRequest('Token name is required'));
             }
 
-            // Otherwise, we need to get the user instance and activate it
-            const userInstance = await userManager.getUserById(id);
-            if (!userInstance) {
-                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            const token = await userManager.createApiToken(id, tokenOptions);
+            return res.status(201).json(new ResponseObject().created(token));
+        } catch (err) {
+            debug(`Error creating user token: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/tokens/{tokenId}:
+     *   get:
+     *     summary: Get an API token by ID
+     *     tags: [Users]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: User ID
+     *       - in: path
+     *         name: tokenId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Token ID
+     *     responses:
+     *       200:
+     *         description: API token retrieved successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: User or token not found
+     *       500:
+     *         description: Server error
+     */
+    userRouter.get('/:id/tokens/:tokenId', async (req, res) => {
+        try {
+            const { id, tokenId } = req.params;
+
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
             }
 
-            // Activate the user if not already active
-            if (userInstance.status !== 'active') {
-                await userInstance.activate();
+            const token = await userManager.getApiToken(id, tokenId);
+            if (!token) {
+                return res.status(404).json(new ResponseObject().notFound('Token not found'));
             }
 
-            const contexts = await userInstance.contextManager.listContexts();
-            return res.json(new ResponseObject().success(contexts));
-        } catch (error) {
-            debug(`Error listing user contexts: ${error.message}`);
-            return res.status(500).json(new ResponseObject().serverError(error.message));
+            return res.json(new ResponseObject().success(token));
+        } catch (err) {
+            debug(`Error getting user token: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/tokens/{tokenId}:
+     *   put:
+     *     summary: Update an API token
+     *     tags: [Users]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: User ID
+     *       - in: path
+     *         name: tokenId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Token ID
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               name:
+     *                 type: string
+     *                 description: Token name
+     *               description:
+     *                 type: string
+     *                 description: Token description
+     *               expiresAt:
+     *                 type: string
+     *                 format: date-time
+     *                 description: Token expiration date (null for no expiration)
+     *     responses:
+     *       200:
+     *         description: API token updated successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: User or token not found
+     *       500:
+     *         description: Server error
+     */
+    userRouter.put('/:id/tokens/:tokenId', async (req, res) => {
+        try {
+            const { id, tokenId } = req.params;
+            const updates = req.body;
+
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
+            }
+
+            const token = await userManager.updateApiToken(id, tokenId, updates);
+            return res.json(new ResponseObject().success(token));
+        } catch (err) {
+            debug(`Error updating user token: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
+        }
+    });
+
+    /**
+     * @swagger
+     * /{id}/tokens/{tokenId}:
+     *   delete:
+     *     summary: Delete an API token
+     *     tags: [Users]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: User ID
+     *       - in: path
+     *         name: tokenId
+     *         required: true
+     *         schema:
+     *           type: string
+     *         description: Token ID
+     *     responses:
+     *       200:
+     *         description: API token deleted successfully
+     *       401:
+     *         description: Unauthorized
+     *       404:
+     *         description: User or token not found
+     *       500:
+     *         description: Server error
+     */
+    userRouter.delete('/:id/tokens/:tokenId', async (req, res) => {
+        try {
+            const { id, tokenId } = req.params;
+
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
+            }
+
+            const result = await userManager.deleteApiToken(id, tokenId);
+            if (!result) {
+                return res.status(404).json(new ResponseObject().notFound('Token not found'));
+            }
+
+            return res.json(new ResponseObject().success({ success: true }));
+        } catch (err) {
+            debug(`Error deleting user token: ${err.message}`);
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 
@@ -710,17 +800,22 @@ export default function usersRoutes(options) {
     userRouter.get('/:id/sessions', async (req, res) => {
         try {
             const { id } = req.params;
-            const user = await userManager.getUser(id);
 
-            if (!user) {
-                return res.status(404).json(new ResponseObject(null, 'User not found', 404));
+            // Check if user exists
+            if (!(await userManager.hasUser(id))) {
+                return res.status(404).json(new ResponseObject().notFound('User not found'));
+            }
+
+            // Check if the requested user is the authenticated user or admin
+            if (id !== req.user.id && req.user.userType !== 'admin') {
+                return res.status(403).json(new ResponseObject().forbidden('Access denied'));
             }
 
             const sessions = await sessionManager.listUserSessions(id);
-            return res.json(new ResponseObject(sessions));
+            return res.json(new ResponseObject().success(sessions));
         } catch (err) {
             debug(`Error listing user sessions: ${err.message}`);
-            return res.status(500).json(new ResponseObject(null, err.message, 500));
+            return res.status(500).json(new ResponseObject().serverError(err.message));
         }
     });
 

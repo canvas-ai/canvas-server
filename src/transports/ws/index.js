@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import http from 'http';
 import ResponseObject from '../ResponseObject.js';
 
-const debug = debugInstance('canvas:transport:ws');
+const debug = debugInstance('transport:ws');
 
 const DEFAULT_CONFIG = {
     host: process.env.CANVAS_TRANSPORT_WS_HOST || '0.0.0.0',
@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = {
     cors: {
         origin: '*',
         methods: ['GET', 'POST'],
-        credentials: true
+        credentials: true,
     },
     auth: {
         enabled: process.env.CANVAS_TRANSPORT_WS_AUTH_ENABLED === 'true' || false,
@@ -83,7 +83,7 @@ class WebSocketTransport {
 
         // Emit to each subscribed socket
         if (this.#io) {
-            subscribers.forEach(socketId => {
+            subscribers.forEach((socketId) => {
                 const socket = this.#io.sockets.sockets.get(socketId);
                 if (socket && socket.connected) {
                     socket.emit(`workspace:${eventName}`, { workspaceId, data });
@@ -103,7 +103,9 @@ class WebSocketTransport {
         }
 
         this.#workspaceSubscriptions.get(workspaceId).add(socketId);
-        debug(`Added subscription for workspace ${workspaceId} from socket ${socketId}, total subscribers: ${this.#workspaceSubscriptions.get(workspaceId).size}`);
+        debug(
+            `Added subscription for workspace ${workspaceId} from socket ${socketId}, total subscribers: ${this.#workspaceSubscriptions.get(workspaceId).size}`,
+        );
     }
 
     /**
@@ -115,7 +117,9 @@ class WebSocketTransport {
         const subscribers = this.#workspaceSubscriptions.get(workspaceId);
         if (subscribers) {
             subscribers.delete(socketId);
-            debug(`Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`);
+            debug(
+                `Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`,
+            );
 
             // Clean up the map entry if there are no more subscribers
             if (subscribers.size === 0) {
@@ -136,7 +140,9 @@ class WebSocketTransport {
         for (const [workspaceId, subscribers] of this.#workspaceSubscriptions.entries()) {
             if (subscribers.has(socketId)) {
                 subscribers.delete(socketId);
-                debug(`Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`);
+                debug(
+                    `Removed subscription for workspace ${workspaceId} from socket ${socketId}, remaining subscribers: ${subscribers.size}`,
+                );
 
                 // Clean up the map entry if there are no more subscribers
                 if (subscribers.size === 0) {
@@ -191,8 +197,8 @@ class WebSocketTransport {
                 name: 'canvas.sid',
                 httpOnly: true,
                 sameSite: 'lax',
-                maxAge: 86400 * 30 * 1000 // 30 days
-            }
+                maxAge: 86400 * 30 * 1000, // 30 days
+            },
         });
 
         // Set up debugging for connection events
@@ -277,14 +283,14 @@ class WebSocketTransport {
             return {
                 running: false,
                 connections: 0,
-                workspaces: 0
+                workspaces: 0,
             };
         }
 
         return {
             running: true,
             connections: this.#io.sockets.sockets.size,
-            workspaces: this.#workspaceSubscriptions.size
+            workspaces: this.#workspaceSubscriptions.size,
         };
     }
 
@@ -362,7 +368,7 @@ class WebSocketTransport {
             'workspace:label:changed',
             'workspace:locked',
             'workspace:unlocked',
-            'workspace:config:changed'
+            'workspace:config:changed',
         ];
 
         // First check if we already have listeners for this workspace
@@ -372,7 +378,7 @@ class WebSocketTransport {
         }
 
         // For each event, add a listener
-        events.forEach(eventName => {
+        events.forEach((eventName) => {
             // First remove any existing listeners to avoid duplicates
             workspace.removeAllListeners(`${eventName}:ws-bridge`);
 

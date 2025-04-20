@@ -19,7 +19,7 @@ class JsonIndexManager {
         }
 
         this.rootPath = options.rootPath;
-        this.driver = options.driver;
+        this.driver = options.driver || 'conf';
         debug('Initializing JsonIndexManager service with rootPath: ', this.rootPath);
         debug('Default driver: ', this.driver);
         this.indices = new Map();

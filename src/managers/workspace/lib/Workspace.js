@@ -12,11 +12,7 @@ const debug = createDebug('workspace');
 import Db from '../../../services/synapsd/src/index.js';
 
 // Constants
-import {
-    WORKSPACE_STATUS,
-    WORKSPACE_API_STATUS,
-    WORKSPACE_DIRECTORIES
-} from '../index.js';
+import { WORKSPACE_STATUS, WORKSPACE_API_STATUS, WORKSPACE_DIRECTORIES } from '../index.js';
 
 /**
  * Canvas Workspace
@@ -26,9 +22,6 @@ import {
  */
 
 class Workspace extends EventEmitter {
-
-
-
     // Runtime state
     #status = WORKSPACE_STATUS.INACTIVE; // Internal runtime status
     #db = null;
@@ -48,23 +41,24 @@ class Workspace extends EventEmitter {
     constructor(options = {}) {
         super(options.eventEmitterOptions);
 
-        // Essential dependencies: path and configStore
         if (!options.rootPath) throw new Error('Workspace rootPath is required');
         if (!options.configStore) throw new Error('Config store (Conf instance) is required');
 
         this.#rootPath = options.rootPath;
         this.#configStore = options.configStore;
 
+        // Set default color if not provided or invalid
+        if (!this.color || !this.#validateColor(this.color)) {
+            const defaultColor = this.type === 'universe' ? '#fff' : WorkspaceManager.getRandomColor();
+            this.#configStore.set('color', defaultColor);
+            logger.info(`Workspace \"${this.id}\" color not provided or invalid. Set default color: ${defaultColor}`);
+        }
+
         // Validate essential configuration loaded from configStore
         if (!this.id) throw new Error('Workspace ID is missing in configStore');
         if (!this.name) throw new Error('Workspace name is missing in configStore');
         if (!this.owner) throw new Error('Workspace owner is missing in configStore');
-        if (!this.color || !this.#validateColor(this.color)) {
-            logger.error(`Workspace "${this.id}" config has invalid color format: ${this.color}`);
-            throw new Error('Invalid color format in config');
-        }
 
-        // Initial runtime status is INACTIVE, regardless of persisted status
         this.#status = WORKSPACE_STATUS.INACTIVE;
 
         debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, Path: ${this.path}`);
@@ -74,43 +68,86 @@ class Workspace extends EventEmitter {
     /**
      * Configuration Getters (reading from workspace.json via configStore)
      */
-    get config() { return this.#configStore?.store || {}; }
-    get id() { return this.#configStore?.get('id'); }
-    get name() { return this.#configStore?.get('name'); }
-    get label() { return this.#configStore?.get('label', this.name); } // Default label to name
-    get description() { return this.#configStore?.get('description', `Canvas Workspace ${this.name}`); }
-    get color() { return this.#configStore?.get('color'); }
-    get locked() { return this.#configStore?.get('locked', false); } // Default locked to false
-    get type() { return this.#configStore?.get('type', 'workspace'); } // Default type
-    get owner() { return this.#configStore?.get('owner'); }
-    get acl() { return this.#configStore?.get('acl', {}); } // Default acl to empty object
-    get created() { return this.#configStore?.get('created'); }
-    get restApi() { return this.#configStore?.get('restApi', {}); } // Default restApi to empty object
+
+    get config() {
+        return this.#configStore?.store || {};
+    }
+    get id() {
+        return this.#configStore?.get('id');
+    }
+    get name() {
+        return this.#configStore?.get('name');
+    }
+    get label() {
+        return this.#configStore?.get('label', this.name);
+    } // Default label to name
+    get description() {
+        return this.#configStore?.get('description', `Canvas Workspace ${this.name}`);
+    }
+    get color() {
+        return this.#configStore?.get('color');
+    }
+    get locked() {
+        return this.#configStore?.get('locked', false);
+    } // Default locked to false
+    get type() {
+        return this.#configStore?.get('type', 'workspace');
+    } // Default type
+    get owner() {
+        return this.#configStore?.get('owner');
+    }
+    get acl() {
+        return this.#configStore?.get('acl', {});
+    } // Default acl to empty object
+    get created() {
+        return this.#configStore?.get('created');
+    }
+    get restApi() {
+        return this.#configStore?.get('restApi', {});
+    } // Default restApi to empty object
 
     /**
      * Path Getter (set during construction)
      */
-    get path() { return this.#rootPath; }
-    get rootPath() { return this.#rootPath; }
+    get path() {
+        return this.#rootPath;
+    }
+    get rootPath() {
+        return this.#rootPath;
+    }
     /**
      * Internal Resource Getters
      */
-    get db() { return this.#db; }
-    get tree() { return this.#db?.tree; } // Access tree via db instance
-    get jsonTree() { return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}'; }
+    get db() {
+        return this.#db;
+    }
+    get tree() {
+        return this.#db?.tree;
+    } // Access tree via db instance
+    get jsonTree() {
+        return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}';
+    }
 
     /**
      * Status/State Getters
      */
-    get status() { return this.#status; } // Returns the internal runtime status
-    get persistedStatus() { return this.#configStore?.get('status'); } // Gets status from workspace.json
-    get isConfigLoaded() { return this.#configStore !== null; }
+    get status() {
+        return this.#status;
+    } // Returns the internal runtime status
+    get persistedStatus() {
+        return this.#configStore?.get('status');
+    } // Gets status from workspace.json
+    get isConfigLoaded() {
+        return this.#configStore !== null;
+    }
     get isDeleted() {
         // Check both internal state and persisted config, config takes precedence
         const persisted = this.persistedStatus;
         return persisted === WORKSPACE_STATUS.DELETED || this.#status === WORKSPACE_STATUS.DELETED;
     }
-    get isActive() { return this.#status === WORKSPACE_STATUS.ACTIVE; }
+    get isActive() {
+        return this.#status === WORKSPACE_STATUS.ACTIVE;
+    }
 
     /**
      * Workspace controls
@@ -164,15 +201,16 @@ class Workspace extends EventEmitter {
         // Check internal runtime status
         if (this.status === WORKSPACE_STATUS.INACTIVE) {
             debug(`Workspace "${this.id}" is already inactive.`);
-             // Ensure persisted status is also INACTIVE if instance is inactive
-             if (this.persistedStatus !== WORKSPACE_STATUS.INACTIVE) {
+            // Ensure persisted status is also INACTIVE if instance is inactive
+            if (this.persistedStatus !== WORKSPACE_STATUS.INACTIVE) {
                 await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
-             }
+            }
             return true; // Considered successful if already stopped
         }
-        if (this.isDeleted) { // Use getter that checks persisted
-             debug(`Workspace "${this.id}" is marked as deleted, skipping stop.`);
-             return true; // Nothing to stop
+        if (this.isDeleted) {
+            // Use getter that checks persisted
+            debug(`Workspace "${this.id}" is marked as deleted, skipping stop.`);
+            return true; // Nothing to stop
         }
 
         debug(`Stopping workspace "${this.id}"...`);
@@ -209,11 +247,11 @@ class Workspace extends EventEmitter {
         this.emit('workspace:tree:updated', {
             operation: 'insertPath',
             path,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         });
         return {
             layerIds: result,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         };
     }
 
@@ -225,12 +263,12 @@ class Workspace extends EventEmitter {
                 operation: 'removePath',
                 path,
                 recursive,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -243,12 +281,12 @@ class Workspace extends EventEmitter {
                 pathFrom,
                 pathTo,
                 recursive,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -261,12 +299,12 @@ class Workspace extends EventEmitter {
                 pathFrom,
                 pathTo,
                 recursive,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -282,12 +320,12 @@ class Workspace extends EventEmitter {
             this.emit('workspace:tree:updated', {
                 operation: 'mergeUp',
                 path,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -298,12 +336,12 @@ class Workspace extends EventEmitter {
             this.emit('workspace:tree:updated', {
                 operation: 'mergeDown',
                 path,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -329,7 +367,7 @@ class Workspace extends EventEmitter {
         const canvasLayer = this.createLayer({
             name: canvasName,
             type: 'canvas',
-            ...options
+            ...options,
         });
 
         const canvasPath = parentPath === '/' ? `/${canvasName}` : `${parentPath}/${canvasName}`;
@@ -340,14 +378,14 @@ class Workspace extends EventEmitter {
             parentPath,
             canvasName,
             canvasId: canvasLayer.id,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         });
 
         return {
             canvasId: canvasLayer.id,
             path: canvasPath,
             canvasName,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         };
     }
 
@@ -366,9 +404,9 @@ class Workspace extends EventEmitter {
             type: 'workspace', // Layer type indicates it's a reference
             metadata: {
                 targetWorkspaceId,
-                ...options.metadata // Allow additional metadata
+                ...options.metadata, // Allow additional metadata
             },
-            ...options // Apply other layer options
+            ...options, // Apply other layer options
         });
 
         const workspacePath = parentPath === '/' ? `/${workspaceRefName}` : `${parentPath}/${workspaceRefName}`;
@@ -379,7 +417,7 @@ class Workspace extends EventEmitter {
             workspaceRefName,
             targetWorkspaceId,
             workspaceRefId: workspaceLayer.id,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         });
 
         return {
@@ -387,7 +425,7 @@ class Workspace extends EventEmitter {
             path: workspacePath,
             workspaceRefName,
             targetWorkspaceId,
-            tree: this.jsonTree
+            tree: this.jsonTree,
         };
     }
 
@@ -400,7 +438,7 @@ class Workspace extends EventEmitter {
         const layer = this.#db.tree.createLayer(options);
         this.emit('workspace:layer:created', {
             layer,
-            tree: this.jsonTree // Include tree state after creation
+            tree: this.jsonTree, // Include tree state after creation
         });
         return layer;
     }
@@ -422,14 +460,14 @@ class Workspace extends EventEmitter {
             this.emit('workspace:layer:renamed', {
                 oldName: name,
                 newName,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
             oldName: name,
             newName: result ? newName : null,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -440,14 +478,14 @@ class Workspace extends EventEmitter {
             this.emit('workspace:layer:updated', {
                 name,
                 options,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
             name,
             options: result ? options : null,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -457,13 +495,13 @@ class Workspace extends EventEmitter {
         if (result) {
             this.emit('workspace:layer:deleted', {
                 name,
-                tree: this.jsonTree
+                tree: this.jsonTree,
             });
         }
         return {
             success: result,
             name,
-            tree: result ? this.jsonTree : null
+            tree: result ? this.jsonTree : null,
         };
     }
 
@@ -494,7 +532,7 @@ class Workspace extends EventEmitter {
      * Sets the internal runtime status of the Workspace instance.
      * @param {string} status - The internal status (must be a WORKSPACE_STATUS value).
      */
-     #setStatusInternal(status) {
+    #setStatusInternal(status) {
         if (!Object.values(WORKSPACE_STATUS).includes(status)) {
             logger.error(`Invalid internal status value provided: ${status}`);
             return; // Don't throw, just log and ignore
@@ -535,18 +573,18 @@ class Workspace extends EventEmitter {
         // Add validation here for allowed keys if necessary
         const allowedKeys = ['label', 'description', 'color', 'locked', 'acl', 'metadata', 'restApi']; // Example, added restApi
         if (!allowedKeys.includes(key)) {
-             debug(`Attempted to set disallowed config key: ${key}`);
-             return false;
+            debug(`Attempted to set disallowed config key: ${key}`);
+            return false;
         }
         // Special validation for color
         if (key === 'color' && !this.#validateColor(value)) {
-             debug(`Invalid color format for key ${key}: ${value}`);
-             return false;
+            debug(`Invalid color format for key ${key}: ${value}`);
+            return false;
         }
         // Add validation for restApi structure if needed
         if (key === 'restApi' && typeof value !== 'object') {
-             debug(`Invalid value type for key ${key}: must be an object.`);
-             return false;
+            debug(`Invalid value type for key ${key}: must be an object.`);
+            return false;
         }
         return this.#updateConfig(key, value);
     }
@@ -598,7 +636,8 @@ class Workspace extends EventEmitter {
      * Private methods
      */
 
-    async #updateConfig(key, value) { // Made async as set can be async
+    async #updateConfig(key, value) {
+        // Made async as set can be async
         if (!this.#configStore) {
             logger.error(`Cannot update config for "${this.id}". Config store not available.`);
             return false;
@@ -612,8 +651,8 @@ class Workspace extends EventEmitter {
             this.emit(`workspace:${key}:changed`, { id: this.id, [key]: value });
             return true;
         } catch (err) {
-             logger.error(`Failed to update config key "${key}" for workspace "${this.id}": ${err.message}`);
-             return false;
+            logger.error(`Failed to update config key "${key}" for workspace "${this.id}": ${err.message}`);
+            return false;
         }
     }
 
@@ -650,17 +689,16 @@ class Workspace extends EventEmitter {
 
             // Initialize the database
             await this.#db.start();
-            // Map the tree instance only after successful DB start
             this.#tree = this.#db.tree;
 
             debug(`Database started for workspace "${this.id}".`);
             debug(`Workspace "${this.id}" resources initialized.`);
         } catch (err) {
-             debug(`Error during resource initialization for "${this.id}": ${err.message}`);
-             // Ensure partial resources are cleaned up if DB creation/start fails
-             this.#tree = null;
-             this.#db = null; // Clear DB instance on failure
-             throw err;
+            debug(`Error during resource initialization for "${this.id}": ${err.message}`);
+            // Ensure partial resources are cleaned up if DB creation/start fails
+            this.#tree = null;
+            this.#db = null; // Clear DB instance on failure
+            throw err;
         }
     }
 
@@ -688,7 +726,6 @@ class Workspace extends EventEmitter {
         }
         debug(`Workspace "${this.id}" resources shut down.`);
     }
-
 }
 
 export default Workspace;

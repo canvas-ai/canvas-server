@@ -1,7 +1,6 @@
 import express from 'express';
 import passport from 'passport';
 
-
 import logger, { createDebug } from '../../../../utils/log/index.js';
 import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:sessions');
@@ -99,7 +98,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.get('/', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.get('/', passport.authenticate('api-token', { session: false }), async (req, res) => {
         try {
             const userId = req.query.userId || req.user.id;
 
@@ -160,7 +159,7 @@ export default function sessionsRoutes(options) {
      *       500:
      *         description: Server error
      */
-    router.post('/', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.post('/', passport.authenticate('api-token', { session: false }), async (req, res) => {
         try {
             const { name, description } = req.body;
 
@@ -206,7 +205,7 @@ export default function sessionsRoutes(options) {
      */
     router.get(
         '/:sessionId',
-        passport.authenticate(['jwt', 'api-token'], { session: false }),
+        passport.authenticate('api-token', { session: false }),
         getSessionMiddleware,
         async (req, res) => {
             try {
@@ -247,7 +246,7 @@ export default function sessionsRoutes(options) {
      */
     router.delete(
         '/:sessionId',
-        passport.authenticate(['jwt', 'api-token'], { session: false }),
+        passport.authenticate('api-token', { session: false }),
         getSessionMiddleware,
         async (req, res) => {
             try {

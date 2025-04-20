@@ -73,7 +73,7 @@ export default function (authService) {
      *         description: User already exists
      */
     router.post('/register', async (req, res) => {
-        const { email, password, name } = req.body;
+        const { email, password } = req.body;
         debug(`Registration attempt for email: ${email}`);
 
         // Validate credentials
@@ -101,10 +101,8 @@ export default function (authService) {
                     user: {
                         id: result.user.id,
                         email: result.user.email,
-                        name: result.user.name || name,
-                        role: result.user.role,
-                        createdAt: result.user.createdAt,
-                        updatedAt: result.user.updatedAt,
+                        userType: result.user.userType,
+                        status: result.user.status,
                     },
                     token: result.token,
                     session: result.session,
@@ -185,10 +183,8 @@ export default function (authService) {
                     user: {
                         id: result.user.id,
                         email: result.user.email,
-                        name: result.user.name,
-                        role: result.user.role,
-                        createdAt: result.user.createdAt,
-                        updatedAt: result.user.updatedAt,
+                        userType: result.user.userType,
+                        status: result.user.status,
                     },
                     token: result.token,
                     session: result.session,
@@ -250,18 +246,19 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.get('/me', passport.authenticate(['jwt', 'api-token'], { session: false }), (req, res) => {
+    router.get('/me', passport.authenticate('api-token', { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
-        const response = new ResponseObject().success(
-            {
-                id: req.user.id,
-                email: req.user.email,
-                userType: req.user.userType,
-                tokenId: req.user.tokenId, // Will be present if authenticated with API token
-            },
-            'User information retrieved successfully',
-        );
+        const userData = {
+            id: req.user.id,
+            email: req.user.email,
+            userType: req.user.userType,
+            status: req.user.status,
+            tokenType: req.user.type,
+            tokenId: req.user.tokenId, // Will be present if authenticated with API token
+        };
+
+        const response = new ResponseObject().success(userData, 'User information retrieved successfully');
 
         res.status(response.statusCode).json(response.getResponse());
     });
@@ -297,7 +294,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.put('/password', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.put('/password', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Update password endpoint called');
         const { currentPassword, newPassword } = req.body;
 
@@ -343,7 +340,7 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.get('/tokens', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.get('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('List tokens endpoint called');
 
         try {
@@ -354,8 +351,6 @@ export default function (authService) {
                 {
                     tokens,
                     total: tokens.length,
-                    limit: tokens.length,
-                    offset: 0,
                 },
                 'API tokens retrieved successfully',
             );
@@ -381,13 +376,19 @@ export default function (authService) {
      *         application/json:
      *           schema:
      *             type: object
+     *             required:
+     *               - name
      *             properties:
      *               name:
      *                 type: string
-     *                 description: Name for the token (e.g. "Firefox" or "canvas-cli")
-     *               expiresInDays:
-     *                 type: integer
-     *                 description: Number of days until token expires (null for no expiration)
+     *                 description: Name for the token
+     *               description:
+     *                 type: string
+     *                 description: Description for the token
+     *               expiresAt:
+     *                 type: string
+     *                 format: date-time
+     *                 description: Date when token expires (null for no expiration)
      *     responses:
      *       201:
      *         description: API token generated successfully
@@ -396,11 +397,17 @@ export default function (authService) {
      *       401:
      *         description: Not authenticated
      */
-    router.post('/tokens', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.post('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Generate token endpoint called');
-        const { name, expiresInDays } = req.body;
+        const { name, description, expiresAt } = req.body;
 
         // Validate input
+        if (!name) {
+            debug('Generate token validation failed: Missing token name');
+            const response = new ResponseObject().badRequest('Token name is required');
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+
         if (
             name &&
             (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))
@@ -412,25 +419,17 @@ export default function (authService) {
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        if (
-            expiresInDays !== null &&
-            expiresInDays !== undefined &&
-            (!validator.isInt(String(expiresInDays)) || expiresInDays < 1)
-        ) {
-            debug('Generate token validation failed: Invalid expiration days');
-            const response = new ResponseObject().badRequest('Expiration days must be a positive integer');
-            return res.status(response.statusCode).json(response.getResponse());
-        }
-
         try {
-            const { token, tokenValue } = await authService.createApiToken(
-                req.user.id,
-                name || 'API Token',
-                expiresInDays || null,
-            );
+            const tokenOptions = {
+                name,
+                description: description || `API Token for ${req.user.email}`,
+                expiresAt: expiresAt || null,
+            };
+
+            const token = await authService.createApiToken(req.user.id, tokenOptions);
 
             debug(`Generated new API token for user: ${req.user.email}, name: ${token.name}`);
-            const response = new ResponseObject().created({ token, value: tokenValue }, 'API token generated successfully');
+            const response = new ResponseObject().created(token, 'API token generated successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Generate token error: ${error.message}`);
@@ -462,15 +461,20 @@ export default function (authService) {
      *       404:
      *         description: Token not found
      */
-    router.delete('/tokens/:tokenId', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
+    router.delete('/tokens/:tokenId', passport.authenticate('api-token', { session: false }), async (req, res) => {
         const { tokenId } = req.params;
         debug(`Revoke token endpoint called for token ID: ${tokenId}`);
 
         try {
-            await authService.revokeAuthToken(req.user.id, tokenId);
+            const result = await authService.deleteApiToken(req.user.id, tokenId);
+
+            if (!result) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
 
             debug(`API token revoked successfully: ${tokenId}`);
-            const response = new ResponseObject().success(null, 'API token revoked successfully');
+            const response = new ResponseObject().success({ success: true }, 'API token revoked successfully');
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Revoke token error: ${error.message}`);
@@ -513,7 +517,38 @@ export default function (authService) {
         }
 
         try {
-            // First try as JWT token
+            // Validate as API token (preferred)
+            const apiTokenResult = await authService.validateApiToken(token);
+            if (apiTokenResult) {
+                const { userId, tokenId } = apiTokenResult;
+
+                try {
+                    // Get user and token details
+                    const userManager = req.app.get('userManager');
+                    const user = await userManager.getUserById(userId);
+                    const tokenDetails = await userManager.getApiToken(userId, tokenId);
+
+                    if (user && tokenDetails) {
+                        debug('API token verified successfully');
+                        const response = new ResponseObject().success(
+                            {
+                                valid: true,
+                                type: 'api',
+                                userId: userId,
+                                tokenId: tokenId,
+                                tokenName: tokenDetails.name,
+                            },
+                            'Token is valid',
+                        );
+                        return res.status(response.statusCode).json(response.getResponse());
+                    }
+                } catch (error) {
+                    debug(`Error getting user or token details: ${error.message}`);
+                    // Continue to try JWT token
+                }
+            }
+
+            // Try as JWT token (legacy support)
             const jwtPayload = authService.verifyToken(token);
             if (jwtPayload) {
                 debug('JWT token verified successfully');
@@ -528,32 +563,6 @@ export default function (authService) {
                 return res.status(response.statusCode).json(response.getResponse());
             }
 
-            // Then try as API token
-            const apiTokenResult = await authService.validateApiToken(token);
-            if (apiTokenResult) {
-                const { userId, tokenId } = apiTokenResult;
-
-                // Get user and token details
-                const userManager = req.app.get('userManager');
-                const user = await userManager.getUserById(userId);
-                const tokenDetails = await userManager.getApiToken(userId, tokenId);
-
-                if (user && tokenDetails) {
-                    debug('API token verified successfully');
-                    const response = new ResponseObject().success(
-                        {
-                            valid: true,
-                            type: 'api',
-                            userId: userId,
-                            tokenId: tokenId,
-                            tokenName: tokenDetails.name,
-                        },
-                        'Token is valid',
-                    );
-                    return res.status(response.statusCode).json(response.getResponse());
-                }
-            }
-
             // Token is invalid
             debug('Token verification failed: Invalid token');
             const response = new ResponseObject().unauthorized('Invalid token');
@@ -561,6 +570,96 @@ export default function (authService) {
         } catch (error) {
             debug(`Token verification error: ${error.message}`);
             const response = new ResponseObject().error(`Token verification error: ${error.message}`);
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+    });
+
+    /**
+     * @swagger
+     * /auth/token/exchange:
+     *   post:
+     *     summary: Exchange an API token for a JWT token
+     *     tags: [Authentication]
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required:
+     *               - apiToken
+     *             properties:
+     *               apiToken:
+     *                 type: string
+     *     responses:
+     *       200:
+     *         description: Token exchanged successfully
+     *       401:
+     *         description: Invalid API token
+     */
+    router.post('/token/exchange', async (req, res) => {
+        const { apiToken } = req.body;
+        debug('Token exchange endpoint called');
+
+        if (!apiToken) {
+            debug('Token exchange failed: No API token provided');
+            const response = new ResponseObject().badRequest('API token is required');
+            return res.status(response.statusCode).json(response.getResponse());
+        }
+
+        try {
+            // Validate the API token
+            const apiTokenResult = await authService.validateApiToken(apiToken);
+            if (!apiTokenResult) {
+                debug('Token exchange failed: Invalid API token');
+                const response = new ResponseObject().unauthorized('Invalid API token');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const { userId, tokenId } = apiTokenResult;
+            debug(`API token validated for user: ${userId}`);
+
+            // Get user directly from auth service's user manager instead of req.app
+            // This ensures we're using the same userManager instance that's already configured
+            const user = await authService.getUserManager().getUserById(userId);
+            if (!user) {
+                debug(`User not found for API token: ${userId}`);
+                const response = new ResponseObject().notFound('User not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Generate a JWT token for the user
+            const token = await authService.createSession(user);
+            if (!token) {
+                debug('Failed to create JWT session');
+                const response = new ResponseObject().serverError('Failed to create session');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            // Set JWT token as cookie
+            authService.sessionService.setCookie(res, token.token, {
+                secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+                sameSite: 'lax',
+            });
+
+            debug(`API token exchanged for JWT token for user: ${user.email}`);
+            const response = new ResponseObject().success(
+                {
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        userType: user.userType,
+                        status: user.status,
+                    },
+                    token: token.token,
+                    session: token.session,
+                },
+                'Token exchanged successfully',
+            );
+            return res.status(response.statusCode).json(response.getResponse());
+        } catch (error) {
+            debug(`Token exchange error: ${error.message}`);
+            const response = new ResponseObject().error(error.message);
             return res.status(response.statusCode).json(response.getResponse());
         }
     });

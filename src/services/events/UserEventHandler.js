@@ -1,5 +1,5 @@
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('canvas:events:user');
+const debug = createDebug('service:events:user');
 
 /**
  * User Event Handler

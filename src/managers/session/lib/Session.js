@@ -1,3 +1,13 @@
+'use strict';
+
+// Utils
+import logger, { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('manager:session');
+
+/**
+ * Session Class
+ * Represents a user session in the system
+ */
 class Session {
     #id;
     #userId;
@@ -7,33 +17,44 @@ class Session {
     #lastActiveAt;
     #endedAt;
 
-    #sessionStore;
-    #sessionOptions;
+    #store; // Reference to the index store
 
-    constructor(sessionStore, sessionOptions = {}) {
-        this.#sessionStore = sessionStore;
-        this.#sessionOptions = sessionOptions;
+    /**
+     * Create a new Session instance
+     * @param {Object} store - JIM index store
+     * @param {Object} sessionData - Session data
+     */
+    constructor(store, sessionData = {}) {
+        if (!store) {
+            throw new Error('Store is required for Session');
+        }
 
-        this.#id = sessionOptions.id;
-        this.#userId = sessionOptions.userId;
+        this.#store = store;
+        this.#id = sessionData.id;
+        this.#userId = sessionData.userId;
 
         // Handle metadata - could be a string (from DB) or an object (from code)
-        if (typeof sessionOptions.metadata === 'string') {
+        if (typeof sessionData.metadata === 'string') {
             try {
-                this.#metadata = JSON.parse(sessionOptions.metadata);
+                this.#metadata = JSON.parse(sessionData.metadata);
             } catch (e) {
                 this.#metadata = {};
             }
         } else {
-            this.#metadata = sessionOptions.metadata || {};
+            this.#metadata = sessionData.metadata || {};
         }
 
-        this.#isActive = sessionOptions.isActive !== undefined ? sessionOptions.isActive : true;
-        this.#createdAt = sessionOptions.createdAt ? new Date(sessionOptions.createdAt) : new Date();
-        this.#lastActiveAt = sessionOptions.lastActiveAt ? new Date(sessionOptions.lastActiveAt) : new Date();
-        this.#endedAt = sessionOptions.endedAt ? new Date(sessionOptions.endedAt) : null;
+        this.#isActive = sessionData.isActive !== undefined ? sessionData.isActive : true;
+        this.#createdAt = sessionData.createdAt ? new Date(sessionData.createdAt) : new Date();
+        this.#lastActiveAt = sessionData.lastActiveAt ? new Date(sessionData.lastActiveAt) : new Date();
+        this.#endedAt = sessionData.endedAt ? new Date(sessionData.endedAt) : null;
+
+        debug(`Session instance created: ${this.#id} for user ${this.#userId}`);
     }
 
+    /**
+     * Getters
+     */
     get id() {
         return this.#id;
     }
@@ -55,11 +76,11 @@ class Session {
     get endedAt() {
         return this.#endedAt;
     }
-    get options() {
-        return this.#sessionOptions;
-    }
 
-    // Convert to a plain object for storage
+    /**
+     * Convert to a plain object for storage
+     * @returns {Object} Plain object representation
+     */
     toJSON() {
         return {
             id: this.#id,
@@ -72,7 +93,9 @@ class Session {
         };
     }
 
-    // For console.log and JSON.stringify
+    /**
+     * For console.log and JSON.stringify
+     */
     [Symbol.for('nodejs.util.inspect.custom')]() {
         return {
             id: this.#id,
@@ -85,30 +108,44 @@ class Session {
         };
     }
 
+    /**
+     * Save the session to the store
+     * @returns {Promise<boolean>} Success status
+     */
     async save() {
         try {
-            await this.#sessionStore.put(this.#id, this.toJSON());
+            this.#store.set(this.#id, this.toJSON());
             return true;
         } catch (error) {
-            console.error('Error saving session:', error);
+            debug(`Error saving session ${this.#id}: ${error.message}`);
             throw error;
         }
     }
 
+    /**
+     * Delete the session from the store
+     * @returns {Promise<boolean>} Success status
+     */
     async delete() {
         try {
-            await this.#sessionStore.remove(this.#id);
+            this.#store.delete(this.#id);
             return true;
         } catch (error) {
-            console.error('Error deleting session:', error);
+            debug(`Error deleting session ${this.#id}: ${error.message}`);
             throw error;
         }
     }
 
+    /**
+     * Update the session's last activity timestamp
+     */
     touch() {
         this.#lastActiveAt = new Date();
     }
 
+    /**
+     * End the session
+     */
     end() {
         this.#endedAt = new Date();
         this.#isActive = false;

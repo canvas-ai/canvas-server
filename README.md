@@ -1,10 +1,19 @@
 # Canvas Server
 
-Server component for the Canvas project
+Server runtime for the Canvas project
 
 ## ! Refactor in progress
 
-**! Use the dev branch for now**
+**! Use the dev branch for now**  
+
+**On every iteration(refactor) of this project, I actually loose(as in - BREAK -) functionality!**  
+We already had tab management implemented(great showcase for the bitmap-based context tree index), with named sessions and working browser extensions. I decided to **slightly** refactor the context? or workspace manager? Don't even remember(git history would show) - 6 months later we still have no working runtime and using AI actually makes things worse!  
+(as we are now in an attention-based economy(creds for coining the term _for me_ to @TechLead, I'll rant about it in some "coding-canvas" live stream session @idnc.streams soon))
+
+Sooo
+
+New approach: "**Do The Simplest Thing That Could Possibly Work(tm)"**  
+Sorry Universe for the delay..
 
 ## Installation
 
@@ -14,7 +23,6 @@ Server component for the Canvas project
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server
 $ npm install # or yarn install
-$ npm run db:setup # or yarn db:setup
 $ npm run start # or yarn start
 ```
 
@@ -34,13 +42,22 @@ $ docker-compose down --rmi all
 Supported ENV vars with their defaults:
 
 ```bash
+# Runtime variables (user | standalone)
+CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-"standalone"} 
+
+# Canvas server dirs
 CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
 CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-/opt/canvas-server/server/config}
+CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 CANVAS_SERVER_CACHE: ${CANVAS_SERVER_CACHE:-/opt/canvas-server/server/cache}
 CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
 CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
 CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
-CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
+CANVAS_SERVER_HOMES: ${CANVAS_SERVER_HOMES:-/opt/canvas-server/users}
+
+# Canvas USER dirs for single-user mode
+# See env.js for more info
+
 ```
 
 ## Configuration
@@ -53,16 +70,16 @@ CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 
 When the Canvas server starts for the first time, it can automatically create an initial admin user if no users exist in the database. This is controlled by environment variables:
 
-1. Set `CANVAS_CREATE_ADMIN_USER=true` to enable initial admin user creation
-2. Set `CANVAS_ADMIN_EMAIL` to the desired admin email (defaults to 'admin@canvas.local')
-3. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
+1. Set `CANVAS_ADMIN_EMAIL` to the desired admin email (defaults to 'admin@canvas.local')
+2. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
 
 Example:
+
 ```bash
 # In .env file or environment variables
-CANVAS_CREATE_ADMIN_USER=true
-CANVAS_ADMIN_EMAIL=admin@example.com
+CANVAS_ADMIN_EMAIL=your-email@example.com
 CANVAS_ADMIN_PASSWORD=securepassword
+CANVAS_ADMIN_RESET=false # Reset admin pass
 ```
 
 ## Update Canvas Server
@@ -153,6 +170,13 @@ This script updates the Canvas Server by pulling the latest changes from the git
 ```bash
 $ ./scripts/update-git.sh
 ```
+
+## Authentication
+
+Canvas Server supports two types of authentication:
+
+1. **JWT Token Authentication**: Used for web UI login and normal user sessions, see 
+2. **[API Token Authentication](docs/api-token-auth.md)**: Used for programmatic access (CLI, Electron, browser extensions, curl-based scripts)
 
 ## References
 

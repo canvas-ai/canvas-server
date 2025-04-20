@@ -60,7 +60,8 @@ export default function createApiRoutes(workspace) {
      * POST /tree/path
      * Insert a path in the workspace tree
      */
-    router.post('/tree/path', (req, res) => { // Changed from GET to POST as it modifies state
+    router.post('/tree/path', (req, res) => {
+        // Changed from GET to POST as it modifies state
         try {
             const { path, autoCreateLayers = true } = req.body;
             if (!path) {
@@ -71,14 +72,15 @@ export default function createApiRoutes(workspace) {
             const result = workspace.insertPath(path, null, autoCreateLayers);
             // Event emission happens within Workspace class
 
-            res.status(201).json({ // Use 201 Created status
+            res.status(201).json({
+                // Use 201 Created status
                 success: true,
                 data: {
                     path,
                     layerIds: result.layerIds,
                     tree: result.tree, // Include updated tree
                 },
-                message: 'Path inserted successfully'
+                message: 'Path inserted successfully',
             });
         } catch (err) {
             error(`Error inserting path for ${workspace.id}: ${err.message}`);
@@ -93,10 +95,14 @@ export default function createApiRoutes(workspace) {
     router.get('/tree/layers', (req, res) => {
         try {
             const layers = workspace.layers.list(); // Assuming layers object has list()
-            res.status(200).json({ success: true, data: {
-                layers,
-                tree: workspace.jsonTree // Include current tree state
-            }, message: 'Layers retrieved successfully' });
+            res.status(200).json({
+                success: true,
+                data: {
+                    layers,
+                    tree: workspace.jsonTree, // Include current tree state
+                },
+                message: 'Layers retrieved successfully',
+            });
         } catch (err) {
             error(`Error getting layers for ${workspace.id}: ${err.message}`);
             res.status(500).json({ success: false, message: err.message || 'Internal Server Error' });
@@ -111,10 +117,14 @@ export default function createApiRoutes(workspace) {
             if (!layer) {
                 return res.status(404).json({ success: false, message: 'Layer not found' });
             }
-            res.status(200).json({ success: true, data: {
-                layer,
-                tree: workspace.jsonTree
-            }, message: 'Layer retrieved successfully' });
+            res.status(200).json({
+                success: true,
+                data: {
+                    layer,
+                    tree: workspace.jsonTree,
+                },
+                message: 'Layer retrieved successfully',
+            });
         } catch (err) {
             error(`Error getting layer ${req.params.name} for ${workspace.id}: ${err.message}`);
             res.status(500).json({ success: false, message: err.message || 'Internal Server Error' });
@@ -130,7 +140,9 @@ export default function createApiRoutes(workspace) {
         const contextPath = req.query.path;
 
         if (!contextPath || typeof contextPath !== 'string' || !contextPath.startsWith('/')) {
-            return res.status(400).json({ success: false, message: 'Valid context path query parameter starting with / is required' });
+            return res
+                .status(400)
+                .json({ success: false, message: 'Valid context path query parameter starting with / is required' });
         }
 
         try {

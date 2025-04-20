@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('canvas:auth:token');
+const debug = createDebug('service:auth:token');
 
 /**
  * Auth Token Service
@@ -10,7 +10,7 @@ const debug = createDebug('canvas:auth:token');
  */
 class AuthTokenService {
     #userManager;
-    #tokenCache = new Map(); // Cache for token validation
+    #tokenCache = new Map(); // Cache for token validation: tokenValue -> {userId, tokenId}
     #initialized = false;
 
     /**
@@ -59,69 +59,21 @@ class AuthTokenService {
      * Create a new API token for a user
      * @param {string} userId - User ID
      * @param {Object} options - Token options
-     * @param {string} options.name - Token name
-     * @param {string} options.description - Token description
-     * @param {Array<string>} options.scopes - Token scopes/permissions
-     * @param {number|null} options.expiresInDays - Token expiration in days or null for no expiration
      * @returns {Promise<Object>} Created token with value
      */
     async createToken(userId, options = {}) {
         debug(`Creating API token for user ${userId}`);
 
-        // Calculate expiration date if provided
-        let expiresAt = null;
-        if (options.expiresInDays) {
-            expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + options.expiresInDays);
+        try {
+            // Create token using the user's token manager
+            const token = await this.#userManager.createApiToken(userId, options);
+
+            debug(`API token created for user ${userId}: ${token.id}`);
+            return token;
+        } catch (error) {
+            debug(`Error creating API token: ${error.message}`);
+            throw error;
         }
-
-        // Create token
-        const token = await this.#userManager.createApiToken(userId, {
-            name: options.name || 'API Token',
-            description: options.description || '',
-            scopes: options.scopes || ['*'],
-            expiresAt,
-        });
-
-        // Store token value in cache for validation
-        // Format: userId:tokenId:tokenValue
-        const cacheKey = `${userId}:${token.id}:${token.value}`;
-        this.#tokenCache.set(token.value, cacheKey);
-
-        debug(`API token created for user ${userId}: ${token.id}`);
-        return token;
-    }
-
-    /**
-     * Get an API token by ID
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object|null>} Token or null if not found
-     */
-    async getToken(userId, tokenId) {
-        return this.#userManager.getApiToken(userId, tokenId);
-    }
-
-    /**
-     * List all API tokens for a user
-     * @param {string} userId - User ID
-     * @param {Object} options - Filter options
-     * @param {boolean} options.includeExpired - Whether to include expired tokens
-     * @returns {Promise<Array<Object>>} List of tokens
-     */
-    async listTokens(userId, options = {}) {
-        return this.#userManager.listApiTokens(userId, options);
-    }
-
-    /**
-     * Update an API token
-     * @param {string} userId - User ID
-     * @param {string} tokenId - Token ID
-     * @param {Object} updates - Updates to apply
-     * @returns {Promise<Object|null>} Updated token or null if not found
-     */
-    async updateToken(userId, tokenId, updates = {}) {
-        return this.#userManager.updateApiToken(userId, tokenId, updates);
     }
 
     /**
@@ -131,15 +83,25 @@ class AuthTokenService {
      * @returns {Promise<boolean>} Success status
      */
     async deleteToken(userId, tokenId) {
-        // Remove from cache if exists
-        for (const [tokenValue, cacheKey] of this.#tokenCache.entries()) {
-            if (cacheKey.startsWith(`${userId}:${tokenId}:`)) {
+        // Remove from cache if it exists
+        this.#clearTokenFromCache(userId, tokenId);
+        return this.#userManager.deleteApiToken(userId, tokenId);
+    }
+
+    /**
+     * Clear token from cache
+     * @param {string} userId - User ID
+     * @param {string} tokenId - Token ID
+     * @private
+     */
+    #clearTokenFromCache(userId, tokenId) {
+        // Find and remove from cache if exists
+        for (const [tokenValue, cacheInfo] of this.#tokenCache.entries()) {
+            if (cacheInfo.userId === userId && cacheInfo.tokenId === tokenId) {
                 this.#tokenCache.delete(tokenValue);
                 break;
             }
         }
-
-        return this.#userManager.deleteApiToken(userId, tokenId);
     }
 
     /**
@@ -155,54 +117,47 @@ class AuthTokenService {
         debug('Validating API token');
 
         try {
-            // Check cache first
-            const cacheKey = this.#tokenCache.get(tokenValue);
-            if (cacheKey) {
-                const [userId, tokenId] = cacheKey.split(':');
-
-                // Get token from user
-                const token = await this.#userManager.getApiToken(userId, tokenId);
-
-                // Check if token exists and is not expired
-                if (token) {
-                    const now = new Date().toISOString();
-                    if (!token.expiresAt || token.expiresAt > now) {
-                        // Update last used timestamp
-                        await this.#userManager.updateApiTokenUsage(userId, tokenId);
-
-                        return { userId, tokenId };
-                    }
-                }
-
-                // Token expired or not found, remove from cache
-                this.#tokenCache.delete(tokenValue);
+            // Check cache first for faster validation
+            if (this.#tokenCache.has(tokenValue)) {
+                const cacheInfo = this.#tokenCache.get(tokenValue);
+                debug(`Token found in cache for user: ${cacheInfo.userId}`);
+                return cacheInfo;
             }
 
-            // If not in cache, we need to scan all users and their tokens
-            // This is inefficient but necessary for tokens created before this service was running
+            // Get all users
             const users = await this.#userManager.listUsers({ includeInactive: false });
 
-            for (const userData of users) {
-                const userId = userData.id;
+            // Check each user's tokens
+            for (const user of users) {
+                const userId = user.id;
                 try {
-                    const user = await this.#userManager.getUserById(userId);
-                    const tokens = user.listApiTokens({ includeExpired: false });
+                    // Check if the user's token manager has this token
+                    const result = await this.#userManager.findApiTokenByValue(userId, tokenValue);
 
-                    // We can't directly check token values since they're not stored
-                    // This is a limitation of the current design
-                    // In a real implementation, we would need to store a hash of the token value
+                    if (result) {
+                        // Token is valid, add to cache
+                        this.#tokenCache.set(tokenValue, {
+                            userId: result.userId,
+                            tokenId: result.tokenId,
+                        });
 
-                    // For now, we'll just return null
-                    debug('Token validation requires token value to be in cache');
+                        debug(`Valid token found for user: ${userId}`);
+                        return {
+                            userId: result.userId,
+                            tokenId: result.tokenId,
+                        };
+                    }
                 } catch (error) {
                     debug(`Error checking tokens for user ${userId}: ${error.message}`);
                 }
             }
+
+            debug('No valid token found');
+            return null;
         } catch (error) {
             debug(`Error validating token: ${error.message}`);
+            return null;
         }
-
-        return null;
     }
 }
 

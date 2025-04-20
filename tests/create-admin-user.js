@@ -29,7 +29,7 @@ async function main() {
         if (hasUsers) {
             console.log('Users already exist, retrieving all users:');
             const users = await userManager.getAllUsers();
-            users.forEach(user => {
+            users.forEach((user) => {
                 console.log(`- ${user.email} (${user.userType})`);
             });
         } else {
