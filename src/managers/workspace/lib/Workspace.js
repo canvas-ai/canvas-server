@@ -27,6 +27,7 @@ class Workspace extends EventEmitter {
     #db = null;
     #tree = null;
 
+    // Core configuration
     #rootPath;
     #configStore;
 
@@ -47,106 +48,94 @@ class Workspace extends EventEmitter {
         this.#rootPath = options.rootPath;
         this.#configStore = options.configStore;
 
-        // Set default color if not provided or invalid
-        if (!this.color || !this.#validateColor(this.color)) {
-            const defaultColor = this.type === 'universe' ? '#fff' : WorkspaceManager.getRandomColor();
-            this.#configStore.set('color', defaultColor);
-            logger.info(`Workspace \"${this.id}\" color not provided or invalid. Set default color: ${defaultColor}`);
-        }
-
-        // Validate essential configuration loaded from configStore
-        if (!this.id) throw new Error('Workspace ID is missing in configStore');
-        if (!this.name) throw new Error('Workspace name is missing in configStore');
-        if (!this.owner) throw new Error('Workspace owner is missing in configStore');
-
-        this.#status = WORKSPACE_STATUS.INACTIVE;
-
-        debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, Path: ${this.path}`);
-        debug(`Initial runtime status: ${this.#status}`);
+        debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, RootPath: ${this.rootPath}`);
     }
 
     /**
      * Configuration Getters (reading from workspace.json via configStore)
      */
 
-    get config() {
-        return this.#configStore?.store || {};
-    }
-    get id() {
-        return this.#configStore?.get('id');
-    }
-    get name() {
-        return this.#configStore?.get('name');
-    }
-    get label() {
-        return this.#configStore?.get('label', this.name);
-    } // Default label to name
-    get description() {
-        return this.#configStore?.get('description', `Canvas Workspace ${this.name}`);
-    }
-    get color() {
-        return this.#configStore?.get('color');
-    }
-    get locked() {
-        return this.#configStore?.get('locked', false);
-    } // Default locked to false
-    get type() {
-        return this.#configStore?.get('type', 'workspace');
-    } // Default type
-    get owner() {
-        return this.#configStore?.get('owner');
-    }
-    get acl() {
-        return this.#configStore?.get('acl', {});
-    } // Default acl to empty object
-    get created() {
-        return this.#configStore?.get('created');
-    }
-    get restApi() {
-        return this.#configStore?.get('restApi', {});
-    } // Default restApi to empty object
+    get config() { return this.#configStore?.store || {}; }
+    get path() { return this.#rootPath; }
+    get rootPath() { return this.#rootPath; }
+    get id() { return this.#configStore?.get('id'); }
+    get name() { return this.#configStore?.get('name'); }
+    get label() { return this.#configStore?.get('label', this.name); }
+    get description() { return this.#configStore?.get('description', `Canvas Workspace ${this.name}`); }
+    get color() { return this.#configStore?.get('color'); }
+    get type() { return this.#configStore?.get('type', 'workspace'); }
+    get owner() { return this.#configStore?.get('owner'); }
+    get acl() { return this.#configStore?.get('acl', {}); }
+    get created() { return this.#configStore?.get('created'); }
 
-    /**
-     * Path Getter (set during construction)
-     */
-    get path() {
-        return this.#rootPath;
-    }
-    get rootPath() {
-        return this.#rootPath;
-    }
     /**
      * Internal Resource Getters
      */
-    get db() {
-        return this.#db;
-    }
-    get tree() {
-        return this.#db?.tree;
-    } // Access tree via db instance
-    get jsonTree() {
-        return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}';
-    }
+
+    get db() { return this.#db; }
+    get tree() { return this.#db?.tree; }
+    get jsonTree() { return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}'; }
 
     /**
      * Status/State Getters
      */
-    get status() {
-        return this.#status;
-    } // Returns the internal runtime status
-    get persistedStatus() {
-        return this.#configStore?.get('status');
-    } // Gets status from workspace.json
-    get isConfigLoaded() {
-        return this.#configStore !== null;
+
+    get status() { return this.#status; }
+    get isConfigLoaded() { return this.#configStore !== null; }
+    get isActive() { return this.#status === WORKSPACE_STATUS.ACTIVE; }
+
+    /**
+     * Setters and configuration methods
+     */
+
+    setStatus(status) {
+        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
+            debug(`Invalid status value provided: ${status}`);
+            return false;
+        }
+        this.#status = status;
     }
-    get isDeleted() {
-        // Check both internal state and persisted config, config takes precedence
-        const persisted = this.persistedStatus;
-        return persisted === WORKSPACE_STATUS.DELETED || this.#status === WORKSPACE_STATUS.DELETED;
+
+    setColor(color) {
+        if (!this.#validateColor(color)) {
+            debug(`Invalid color format: ${color}`);
+            return false;
+        }
+        return this.#updateConfig('color', color);
     }
-    get isActive() {
-        return this.#status === WORKSPACE_STATUS.ACTIVE;
+
+    setDescription(description) {
+        return this.#updateConfig('description', description);
+    }
+
+    setLabel(label) {
+        return this.#updateConfig('label', label);
+    }
+
+    // Generic config key setter
+    setConfigKey(key, value) {
+        // Add validation here for allowed keys if necessary
+        const allowedKeys = [
+            'label',
+            'description',
+            'color',
+            'locked',
+            'acl',
+            'metadata',
+        ];
+
+        if (!allowedKeys.includes(key)) {
+            debug(`Attempted to set disallowed config key: ${key}`);
+            return false;
+        }
+
+        // Special validation for color
+        if (key === 'color' && !this.#validateColor(value)) {
+            debug(`Invalid color format for key ${key}: ${value}`);
+            return false;
+        }
+
+        return this.#updateConfig(key, value);
     }
 
     /**
@@ -164,31 +153,20 @@ class Workspace extends EventEmitter {
             debug(`Workspace "${this.id}" is already active.`);
             return this;
         }
-        // Check persisted status for deleted flag
-        if (this.persistedStatus === WORKSPACE_STATUS.DELETED) {
-            throw new Error(`Cannot start workspace "${this.id}" because it is marked as deleted.`);
-        }
 
         debug(`Starting workspace "${this.id}"...`);
         try {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder for future role initialization
-
-            // Update both internal and persisted status
-            this.#setStatusInternal(WORKSPACE_STATUS.ACTIVE);
-            await this.#setStatusPersisted(WORKSPACE_STATUS.ACTIVE); // Persist status
-
+            this.#status = WORKSPACE_STATUS.ACTIVE;
             this.emit('workspace:started', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             logger.error(`Failed to start workspace "${this.id}": ${err.message}`);
-            // Attempt to clean up partially initialized resources
             await this.#shutdownResources();
-            // Should we reset status? It failed to start, so internal should be INACTIVE.
-            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
-            // Do not persist INACTIVE here, as the start failed. Keep last known good persisted state.
-            throw err; // Re-throw the error after cleanup attempt
+            this.#status = WORKSPACE_STATUS.INACTIVE;
+            throw err;
         }
     }
 
@@ -199,38 +177,23 @@ class Workspace extends EventEmitter {
      */
     async stop() {
         // Check internal runtime status
-        if (this.status === WORKSPACE_STATUS.INACTIVE) {
+        if (this.#status === WORKSPACE_STATUS.INACTIVE) {
             debug(`Workspace "${this.id}" is already inactive.`);
-            // Ensure persisted status is also INACTIVE if instance is inactive
-            if (this.persistedStatus !== WORKSPACE_STATUS.INACTIVE) {
-                await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
-            }
             return true; // Considered successful if already stopped
-        }
-        if (this.isDeleted) {
-            // Use getter that checks persisted
-            debug(`Workspace "${this.id}" is marked as deleted, skipping stop.`);
-            return true; // Nothing to stop
         }
 
         debug(`Stopping workspace "${this.id}"...`);
         try {
             await this.#shutdownResources();
             // await this.#shutdownRoles(); // Placeholder
-
-            // Update both internal and persisted status
-            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
-            await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
-
+            this.#status = WORKSPACE_STATUS.INACTIVE;
             this.emit('workspace:stopped', { id: this.id });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
             logger.error(`Error stopping workspace "${this.id}": ${err.message}`);
             // Even if shutdown fails, update internal status to INACTIVE
-            this.#setStatusInternal(WORKSPACE_STATUS.INACTIVE);
-            // Persist INACTIVE to reflect intent, but log the error.
-            await this.#setStatusPersisted(WORKSPACE_STATUS.INACTIVE);
+            this.#status = WORKSPACE_STATUS.INACTIVE;
             this.emit('workspace:stopped', { id: this.id, error: err.message }); // Emit with error
             return false; // Indicate stop had issues
         }
@@ -238,7 +201,6 @@ class Workspace extends EventEmitter {
 
     /**
      * Tree methods
-     *
      */
 
     insertPath(path, data = null, autoCreateLayers = true) {
@@ -506,113 +468,6 @@ class Workspace extends EventEmitter {
     }
 
     /**
-     * Setters and configuration methods
-     *
-     * These methods update the persisted configuration in workspace.json
-     * via the configStore.
-     */
-
-    /**
-     * Updates the persisted status in workspace.json.
-     * Prefer using start()/stop() which manage both internal and persisted status.
-     * Use this primarily for marking as DELETED.
-     * @param {string} status - The status to persist (must be a WORKSPACE_STATUS value).
-     * @returns {Promise<boolean>} Success status.
-     */
-    async #setStatusPersisted(status) {
-        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
-            logger.error(`Invalid status value provided for persistence: ${status}`);
-            return false;
-        }
-        debug(`Setting persisted status for workspace "${this.id}" to: ${status}`);
-        return this.#updateConfig('status', status);
-    }
-
-    /**
-     * Sets the internal runtime status of the Workspace instance.
-     * @param {string} status - The internal status (must be a WORKSPACE_STATUS value).
-     */
-    #setStatusInternal(status) {
-        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
-            logger.error(`Invalid internal status value provided: ${status}`);
-            return; // Don't throw, just log and ignore
-        }
-        if (this.#status !== status) {
-            debug(`Setting internal runtime status for workspace "${this.id}" to: ${status}`);
-            this.#status = status;
-            this.emit('workspace:status:changed', { id: this.id, status: this.#status });
-        }
-    }
-
-    setColor(color) {
-        if (!this.#validateColor(color)) {
-            debug(`Invalid color format: ${color}`);
-            return false;
-        }
-        return this.#updateConfig('color', color);
-    }
-
-    setDescription(description) {
-        return this.#updateConfig('description', description);
-    }
-
-    setLabel(label) {
-        return this.#updateConfig('label', label);
-    }
-
-    lock() {
-        return this.#updateConfig('locked', true);
-    }
-
-    unlock() {
-        return this.#updateConfig('locked', false);
-    }
-
-    // Generic config key setter
-    setConfigKey(key, value) {
-        // Add validation here for allowed keys if necessary
-        const allowedKeys = ['label', 'description', 'color', 'locked', 'acl', 'metadata', 'restApi']; // Example, added restApi
-        if (!allowedKeys.includes(key)) {
-            debug(`Attempted to set disallowed config key: ${key}`);
-            return false;
-        }
-        // Special validation for color
-        if (key === 'color' && !this.#validateColor(value)) {
-            debug(`Invalid color format for key ${key}: ${value}`);
-            return false;
-        }
-        // Add validation for restApi structure if needed
-        if (key === 'restApi' && typeof value !== 'object') {
-            debug(`Invalid value type for key ${key}: must be an object.`);
-            return false;
-        }
-        return this.#updateConfig(key, value);
-    }
-
-    // Generic config key getter (already handled by specific getters like `this.id`, `this.name`, etc. and `this.config`)
-    // getConfigKey(key, defaultValue) {
-    //    return this.#configStore?.get(key, defaultValue);
-    // }
-
-    /**
-     * Mark the workspace as deleted in its config file.
-     * This should typically be called by the WorkspaceManager.
-     * It also sets the internal status to DELETED.
-     * @returns {Promise<boolean>} Success status.
-     */
-    async markAsDeleted() {
-        debug(`Marking workspace "${this.id}" as deleted in its config.`);
-        // Set internal status immediately
-        this.#setStatusInternal(WORKSPACE_STATUS.DELETED);
-        // Persist the deleted status
-        const success = await this.#setStatusPersisted(WORKSPACE_STATUS.DELETED);
-        if (success) {
-            this.emit('workspace:deleted', { id: this.id });
-        }
-        return success;
-    }
-
-    /**
      * Convert the workspace's configuration (via configStore) to a plain JSON object.
      * Includes essential properties like id, name, path, etc.
      * @returns {Object} - JSON object representing workspace configuration.
@@ -621,14 +476,9 @@ class Workspace extends EventEmitter {
         // Return the content of the config store, ensuring key properties are present
         return {
             ...this.config, // Get all persisted config
-            // Ensure essential getters override any potentially missing keys in store
-            id: this.id,
-            name: this.name,
-            path: this.path,
-            owner: this.owner,
-            created: this.created,
-            // Optionally add current runtime status?
-            // currentStatus: this.status,
+            // Append runtime variables
+            rootPath: this.rootPath,
+            status: this.status,
         };
     }
 

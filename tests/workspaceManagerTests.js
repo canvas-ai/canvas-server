@@ -1,6 +1,5 @@
 'use strict';
 
-import WorkspaceManager, { WORKSPACE_STATUS } from '../src/managers/workspace/index.old.js';
 import WorkspaceManager, { WORKSPACE_STATUS_CODES } from '../src/managers/workspace/index.js';
 import fs from 'fs/promises';
 import path from 'path';

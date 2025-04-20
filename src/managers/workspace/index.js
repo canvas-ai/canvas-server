@@ -46,7 +46,7 @@ const DEFAULT_WORKSPACE_CONFIG = {
     label: 'Workspace',
     color: null,
     description: '',
-    // acl: {}, // Simplified: Owner has full access, maybe add later
+    acl: {},
     created: null,
     updated: null,
 };
@@ -95,6 +95,17 @@ class WorkspaceManager extends Manager {
 
     get rootPath() { return this.#rootPath; }
     get index() { return this.getConfig('workspaces', []); }
+
+    /**
+     * Initialization & Lifecycle
+     */
+
+    async initialize() {
+        if (this.initialized) return true;
+        debug('Initializing WorkspaceManager...');
+        // Initial scan is done in constructor for now
+        return super.initialize();
+    }
 
     /**
      * Public API
@@ -170,8 +181,9 @@ class WorkspaceManager extends Manager {
             name: name, // Store original name
             type: options.type || 'workspace',
             owner: userId,
+            acl: {},
             label: options.label || name.charAt(0).toUpperCase() + name.slice(1), // Default label from name
-            color: options.color || randomcolor({ luminosity: 'light', format: 'hex' }),
+            color: options.color || this.getRandomColor(),
             description: options.description || '',
             created: now,
             updated: now,
@@ -226,6 +238,115 @@ class WorkspaceManager extends Manager {
     }
 
     /**
+     * Gets a loaded Workspace instance from memory, loading it from disk if necessary.
+     * Does NOT start the workspace services.
+     * Checks for user ownership.
+     * @param {string} userId - The User ID (email) requesting the instance.
+     * @param {string} workspaceId - The ID of the workspace.
+     * @returns {Promise<Workspace|null>} The loaded Workspace instance, or null if not found, access denied, or load error.
+     */
+    async openWorkspace(userId, workspaceId) {
+        // Resolve potential short name to canonical ID
+        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+
+        // Check cache using canonical ID
+        if (this.#workspaces.has(canonicalId)) {
+            // TODO: Re-verify access here? If ACLs change while cached? For owner-only, it's likely fine.
+            debug(`Returning cached Workspace instance for ${canonicalId}`);
+            return this.#workspaces.get(canonicalId);
+        }
+
+        // Find index entry & check access
+        const entry = this.#findIndexEntry(canonicalId);
+        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
+            return null;
+        }
+
+        // Check status and path
+        if (!entry.path || ![WORKSPACE_STATUS_CODES.AVAILABLE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ACTIVE].includes(entry.status)) {
+            logger.warn(`openWorkspace failed: Workspace ${canonicalId} path is missing or status is invalid (${entry.status}).`);
+            return null;
+        }
+        if (!existsSync(entry.path)) {
+            logger.warn(`openWorkspace failed: Config file path for ${canonicalId} does not exist: ${entry.path}`);
+            // TODO: update status
+            return null;
+        }
+
+        // Load config
+        let conf;
+        try {
+            const workspaceDir = path.dirname(entry.path);
+            const configName = path.basename(entry.path, '.json');
+            conf = new Conf({ configName, cwd: workspaceDir });
+            // Optional: Deep validation of config content?
+        } catch (err) {
+            logger.error(`openWorkspace failed: Could not load config for ${canonicalId} from ${entry.path}: ${err.message}`);
+            // TODO: update status
+            return null;
+        }
+
+        // Instantiate Workspace
+        try {
+            const workspace = new Workspace({
+                rootPath: workspaceDir, // Pass the directory containing workspace.json
+                configStore: conf,      // Pass the loaded Conf instance
+            });
+
+            // Insert into cache
+            this.#workspaces.set(canonicalId, workspace);
+            debug(`Loaded and cached Workspace instance for ${canonicalId}`);
+
+            // Return instance
+            return workspace;
+
+        } catch (err) {
+            logger.error(`openWorkspace failed: Could not instantiate Workspace for ${canonicalId}: ${err.message}`);
+            // TODO: update status
+            return null;
+        }
+    }
+
+    /**
+     * Stops a workspace if active and removes it from the memory cache.
+     * Updates the index status to INACTIVE.
+     * @param {string} userId - The User ID (email) closing the workspace.
+     * @param {string} workspaceId - The workspace ID (short name or canonical).
+     * @returns {Promise<boolean>} True if closed/removed from cache successfully, false otherwise.
+     */
+    async closeWorkspace(userId, workspaceId) {
+        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+
+        // Check if it's even loaded
+        if (!this.#workspaces.has(canonicalId)) {
+            debug(`closeWorkspace: Workspace ${canonicalId} is not loaded in memory.`);
+            // Update index status just in case? No, stopWorkspace handles that if needed.
+            return true; // Already closed
+        }
+
+        // Stop it first (checks access internally)
+        const stopped = await this.stopWorkspace(userId, canonicalId);
+        if (!stopped) {
+            logger.warn(`closeWorkspace: Failed to stop workspace ${canonicalId} before closing. Aborting close.`);
+            return false;
+        }
+
+        // Remove from cache
+        const deleted = this.#workspaces.delete(canonicalId);
+        if (deleted) {
+            debug(`closeWorkspace: Removed workspace ${canonicalId} from memory cache.`);
+            this.emit('workspace:closed', { id: canonicalId });
+            // Status should already be INACTIVE due to stopWorkspace call
+        } else {
+            // This shouldn't happen if .has(canonicalId) was true earlier
+             logger.warn(`closeWorkspace: Failed to delete workspace ${canonicalId} from cache, though it was present.`);
+        }
+
+        return deleted;
+    }
+
+    /**
      * Ensures a workspace is loaded and then starts its services (e.g., connects DB).
      * Checks for user ownership.
      * @param {string} userId - The User ID (email) starting the workspace.
@@ -233,7 +354,7 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<Workspace|null>} The started Workspace instance, or null on failure.
      */
     async startWorkspace(userId, workspaceId) {
-        const workspace = await this.getWorkspace(userId, workspaceId);
+        const workspace = await this.openWorkspace(userId, workspaceId);
 
         if (!workspace) {
             // getWorkspace logs the reason
@@ -279,6 +400,196 @@ class WorkspaceManager extends Manager {
     }
 
     /**
+     * Stops a running workspace's services (e.g., disconnects DB).
+     * Checks for user ownership.
+     * Does NOT remove the workspace instance from memory cache.
+     * @param {string} userId - The User ID (email) stopping the workspace.
+     * @param {string} workspaceId - The ID of the workspace.
+     * @returns {Promise<boolean>} True if stopped successfully or already stopped, false on failure.
+     */
+    async stopWorkspace(userId, workspaceId) {
+        // Resolve potential short name to canonical ID
+        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+        const entry = this.#findIndexEntry(canonicalId);
+        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
+            logger.warn(`stopWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
+            return false;
+        }
+
+        // Check if loaded in cache
+        const workspace = this.#workspaces.get(canonicalId);
+        if (!workspace) {
+            debug(`Workspace ${canonicalId} is not loaded in memory, considered stopped.`);
+            // Ensure index status reflects this
+            if (entry.status !== WORKSPACE_STATUS_CODES.INACTIVE && entry.status !== WORKSPACE_STATUS_CODES.AVAILABLE) {
+                 this.#updateIndex(workspaces => workspaces.map(ws =>
+                     ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.INACTIVE } : ws
+                 ));
+            }
+            return true;
+        }
+
+        // Check current status of Workspace instance
+        if (workspace.status === WORKSPACE_STATUS_CODES.INACTIVE || workspace.status === WORKSPACE_STATUS_CODES.AVAILABLE) {
+             debug(`Workspace ${canonicalId} is already stopped (status: ${workspace.status}).`);
+             // Ensure index status reflects this
+             if (entry.status !== workspace.status) {
+                  this.#updateIndex(workspaces => workspaces.map(ws =>
+                      ws.id === canonicalId ? { ...ws, status: workspace.status } : ws
+                  ));
+             }
+             return true;
+        }
+
+        // Attempt to stop
+        debug(`Stopping workspace ${canonicalId}...`);
+        try {
+            await workspace.stop();
+
+            // Update status in global index
+            this.#updateIndex(workspaces => workspaces.map(ws =>
+                ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.INACTIVE } : ws
+            ));
+
+            debug(`Workspace ${canonicalId} stopped successfully.`);
+            this.emit('workspace:stopped', { id: canonicalId });
+            return true;
+
+        } catch (err) {
+            logger.error(`Failed to stop workspace ${canonicalId}: ${err.message}`);
+
+            // Update status in global index to ERROR
+            this.#updateIndex(workspaces => workspaces.map(ws =>
+                ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.ERROR } : ws
+            ));
+
+            this.emit('workspace:stop_failed', { id: canonicalId, error: err.message });
+            return false;
+        }
+    }
+
+    /**
+     * Checks if a workspace exists in the index and belongs to the specified user.
+     * @param {string} userId - The User ID (email) to check ownership against.
+     * @param {string} workspaceId - The workspace ID (e.g., 'user@example.com/my-project').
+     * @returns {boolean} True if the workspace exists and the user is the owner, false otherwise.
+     */
+    hasWorkspace(userId, workspaceId) {
+        if (!userId || !workspaceId) {
+            return false;
+        }
+
+        // Resolve potential short name to canonical ID
+        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+        const entry = this.#findIndexEntry(canonicalId);
+        // Check entry exists AND owner matches the provided userId
+        return !!entry && entry.owner === userId;
+    }
+
+    /**
+     * Removes a workspace from the index and optionally deletes its data from disk.
+     * Ensures the workspace is stopped first.
+     * Requires ownership.
+     * @param {string} userId - The User ID (email) removing the workspace.
+     * @param {string} workspaceId - The ID of the workspace to remove.
+     * @param {boolean} [destroyData=false] - If true, deletes the workspace directory from disk.
+     * @returns {Promise<boolean>} True if removal from index was successful, false otherwise.
+     */
+    async removeWorkspace(userId, workspaceId, destroyData = false) {
+        // Resolve potential short name to canonical ID
+        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+        const entry = this.#findIndexEntry(canonicalId);
+        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
+            logger.warn(`removeWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
+            return false;
+        }
+
+        // Stop Workspace (Idempotent)
+        // Pass canonicalId to stopWorkspace as it now expects it
+        const stopped = await this.stopWorkspace(userId, canonicalId);
+        if (!stopped && this.#workspaces.has(canonicalId)) {
+            // If stop failed AND it was actually loaded, we have a problem.
+            logger.error(`removeWorkspace failed: Could not stop workspace ${canonicalId} before removal.`);
+            return false;
+        }
+
+        // Remove from Cache
+        if (this.#workspaces.has(canonicalId)) {
+            this.#workspaces.delete(canonicalId);
+            debug(`Removed workspace ${canonicalId} from memory cache.`);
+        }
+
+        let workspaceDir = null;
+        if (entry.path) {
+             workspaceDir = path.dirname(entry.path);
+        }
+
+        // Handle Data Destruction
+        let deletionError = null;
+        if (destroyData) {
+            if (!workspaceDir) {
+                logger.warn(`Cannot destroy data for ${canonicalId}: Workspace directory path not found in index.`);
+                // Proceed to remove from index anyway?
+            } else {
+                 // Basic Safety Checks
+                if (workspaceDir === this.#rootPath || workspaceDir === '/' || !workspaceDir.includes(entry.owner)) {
+                    logger.error(`Safety check failed! Aborting deletion of potentially dangerous path: ${workspaceDir}`);
+                    this.emit('workspace:destroy_failed', { id: canonicalId, error: 'Safety check failed' });
+                    return false; // Abort dangerous deletion
+                }
+
+                debug(`Destroying data for workspace ${canonicalId} at ${workspaceDir}...`);
+                try {
+                    await fsPromises.rm(workspaceDir, { recursive: true, force: true });
+                    debug(`Successfully deleted workspace directory: ${workspaceDir}`);
+                } catch (err) {
+                    logger.error(`Failed to delete workspace directory ${workspaceDir}: ${err.message}`);
+                    deletionError = err;
+                    // Proceed to remove from index despite deletion error
+                }
+            }
+        }
+
+        // Remove from Index
+        let removedFromIndex = false;
+        try {
+            this.#updateIndex(workspaces => {
+                const initialLength = workspaces.length;
+                const filteredWorkspaces = workspaces.filter(ws => ws.id !== canonicalId);
+                removedFromIndex = filteredWorkspaces.length < initialLength;
+                return filteredWorkspaces;
+            });
+        } catch (err) {
+            logger.error(`Failed to remove workspace ${canonicalId} from index: ${err.message}`);
+            // If index update fails, the state is inconsistent.
+            // Should we try to re-add if deletion happened? Complex.
+            return false; // Indicate failure
+        }
+
+        if (!removedFromIndex) {
+            // This shouldn't happen if the entry existed initially, but check anyway.
+            logger.warn(`Workspace ${canonicalId} was not found in the index during removal update.`);
+            // Consider this a success? Or should it be an error?
+            // Let's say true, as the end state (not in index) is achieved.
+            // removedFromIndex = true;
+        }
+
+        // Emit Event
+        if (destroyData) {
+            if (deletionError) {
+                 this.emit('workspace:destroy_failed', { id: canonicalId, error: deletionError.message });
+            } else {
+                 this.emit('workspace:destroyed', { id: canonicalId });
+            }
+        } else {
+            this.emit('workspace:removed', { id: canonicalId });
+        }
+
+        debug(`Workspace ${canonicalId} ${destroyData ? (deletionError ? 'index removed after delete error' : 'destroyed') : 'removed'}.`);
+        return true; // Return true if index removal was processed
+    }
+
+    /**
      * Retrieves the configuration object from a workspace's workspace.json file.
      * Checks for user ownership before loading.
      * @param {string} userId - The User ID (email) requesting the config.
@@ -288,7 +599,6 @@ class WorkspaceManager extends Manager {
     async getWorkspaceConfig(userId, workspaceId) {
         // Resolve potential short name to canonical ID
         const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
         const entry = this.#findIndexEntry(canonicalId);
 
         if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
@@ -318,7 +628,7 @@ class WorkspaceManager extends Manager {
             return conf.store; // Return the plain config object
         } catch (err) {
             logger.error(`Failed to load workspace config for ${canonicalId} from ${entry.path}: ${err.message}`);
-            // Optionally update status in index here?
+            // TODO: Update status in index to ERROR
             return null;
         }
     }
@@ -331,9 +641,7 @@ class WorkspaceManager extends Manager {
      * @returns {Promise<boolean>} True if the update was successful, false otherwise.
      */
     async updateWorkspaceConfig(userId, workspaceId, updates) {
-        // Resolve potential short name to canonical ID
         const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
         const entry = this.#findIndexEntry(canonicalId);
 
         if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
@@ -360,7 +668,6 @@ class WorkspaceManager extends Manager {
         }
 
         // TODO: Add validation for specific keys like color, label format, etc. if needed
-
         try {
             const configDir = path.dirname(entry.path);
             const configName = path.basename(entry.path, '.json');
@@ -393,22 +700,7 @@ class WorkspaceManager extends Manager {
     }
 
     /**
-     * =================================================================
-     * Initialization & Lifecycle
-     * =================================================================
-     */
-
-    async initialize() {
-        if (this.initialized) return true;
-        debug('Initializing WorkspaceManager...');
-        // Initial scan is done in constructor for now
-        return super.initialize();
-    }
-
-    /**
-     * =================================================================
      * Private Helper Methods
-     * =================================================================
      */
 
     /**
@@ -570,274 +862,6 @@ class WorkspaceManager extends Manager {
     }
 
     /**
-     * Checks if a workspace exists in the index and belongs to the specified user.
-     * @param {string} userId - The User ID (email) to check ownership against.
-     * @param {string} workspaceId - The workspace ID (e.g., 'user@example.com/my-project').
-     * @returns {boolean} True if the workspace exists and the user is the owner, false otherwise.
-     */
-    hasWorkspace(userId, workspaceId) {
-        if (!userId || !workspaceId) {
-            return false;
-        }
-
-        // Resolve potential short name to canonical ID
-        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
-        const entry = this.#findIndexEntry(canonicalId);
-        // Check entry exists AND owner matches the provided userId
-        return !!entry && entry.owner === userId;
-    }
-
-    /**
-     * Gets a loaded Workspace instance from memory, loading it from disk if necessary.
-     * Does NOT start the workspace services.
-     * Checks for user ownership.
-     * @param {string} userId - The User ID (email) requesting the instance.
-     * @param {string} workspaceId - The ID of the workspace.
-     * @returns {Promise<Workspace|null>} The loaded Workspace instance, or null if not found, access denied, or load error.
-     */
-    async openWorkspace(userId, workspaceId) {
-        // Resolve potential short name to canonical ID
-        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
-        // 1. Check cache using canonical ID
-        if (this.#workspaces.has(canonicalId)) {
-            // TODO: Re-verify access here? If ACLs change while cached? For owner-only, it's likely fine.
-            debug(`Returning cached Workspace instance for ${canonicalId}`);
-            return this.#workspaces.get(canonicalId);
-        }
-
-        // 2. Find index entry & check access
-        const entry = this.#findIndexEntry(canonicalId);
-        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
-            logger.warn(`openWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
-            return null;
-        }
-
-        // 3. Check status and path
-        if (!entry.path || ![WORKSPACE_STATUS_CODES.AVAILABLE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ACTIVE].includes(entry.status)) {
-            logger.warn(`openWorkspace failed: Workspace ${canonicalId} path is missing or status is invalid (${entry.status}).`);
-            return null;
-        }
-        if (!existsSync(entry.path)) {
-            logger.warn(`openWorkspace failed: Config file path for ${canonicalId} does not exist: ${entry.path}`);
-            // Optionally update status
-            return null;
-        }
-
-        // 4. Load config
-        let conf;
-        try {
-            const workspaceDir = path.dirname(entry.path);
-            const configName = path.basename(entry.path, '.json');
-            conf = new Conf({ configName, cwd: workspaceDir });
-            // Optional: Deep validation of config content?
-        } catch (err) {
-            logger.error(`openWorkspace failed: Could not load config for ${canonicalId} from ${entry.path}: ${err.message}`);
-            // Optionally update status
-            return null;
-        }
-
-        // 5. Instantiate Workspace
-        try {
-            const workspace = new Workspace({
-                rootPath: workspaceDir, // Pass the directory containing workspace.json
-                configStore: conf,      // Pass the loaded Conf instance
-                // Pass other dependencies like jim, eventEmitter if Workspace needs them?
-                // For now, assume Workspace only needs path and config.
-            });
-
-            // 6. Cache instance
-            this.#workspaces.set(canonicalId, workspace);
-            debug(`Loaded and cached Workspace instance for ${canonicalId}`);
-
-            // 7. Return instance
-            return workspace;
-
-        } catch (err) {
-            logger.error(`openWorkspace failed: Could not instantiate Workspace for ${canonicalId}: ${err.message}`);
-            // Optionally update status
-            return null;
-        }
-    }
-
-    /**
-     * Stops a running workspace's services (e.g., disconnects DB).
-     * Checks for user ownership.
-     * Does NOT remove the workspace instance from memory cache.
-     * @param {string} userId - The User ID (email) stopping the workspace.
-     * @param {string} workspaceId - The ID of the workspace.
-     * @returns {Promise<boolean>} True if stopped successfully or already stopped, false on failure.
-     */
-    async stopWorkspace(userId, workspaceId) {
-        // Resolve potential short name to canonical ID
-        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
-        // 1. Find entry and check access
-        const entry = this.#findIndexEntry(canonicalId);
-        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
-            logger.warn(`stopWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
-            return false;
-        }
-
-        // 2. Check if loaded in cache
-        const workspace = this.#workspaces.get(canonicalId);
-        if (!workspace) {
-            debug(`Workspace ${canonicalId} is not loaded in memory, considered stopped.`);
-            // Ensure index status reflects this
-            if (entry.status !== WORKSPACE_STATUS_CODES.INACTIVE && entry.status !== WORKSPACE_STATUS_CODES.AVAILABLE) {
-                 this.#updateIndex(workspaces => workspaces.map(ws =>
-                     ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.INACTIVE } : ws
-                 ));
-            }
-            return true;
-        }
-
-        // 3. Check current status of Workspace instance
-        if (workspace.status === WORKSPACE_STATUS_CODES.INACTIVE || workspace.status === WORKSPACE_STATUS_CODES.AVAILABLE) {
-             debug(`Workspace ${canonicalId} is already stopped (status: ${workspace.status}).`);
-             // Ensure index status reflects this
-             if (entry.status !== workspace.status) {
-                  this.#updateIndex(workspaces => workspaces.map(ws =>
-                      ws.id === canonicalId ? { ...ws, status: workspace.status } : ws
-                  ));
-             }
-             return true;
-        }
-
-        // 4. Attempt to stop
-        debug(`Stopping workspace ${canonicalId}...`);
-        try {
-            await workspace.stop(); // Assuming workspace.stop() exists and is async
-
-            // Update status in global index
-            this.#updateIndex(workspaces => workspaces.map(ws =>
-                ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.INACTIVE } : ws
-            ));
-
-            debug(`Workspace ${canonicalId} stopped successfully.`);
-            this.emit('workspace:stopped', { id: canonicalId });
-            return true;
-
-        } catch (err) {
-            logger.error(`Failed to stop workspace ${canonicalId}: ${err.message}`);
-
-            // Update status in global index to ERROR
-            this.#updateIndex(workspaces => workspaces.map(ws =>
-                ws.id === canonicalId ? { ...ws, status: WORKSPACE_STATUS_CODES.ERROR } : ws
-            ));
-
-            this.emit('workspace:stop_failed', { id: canonicalId, error: err.message });
-            return false;
-        }
-    }
-
-    /**
-     * Removes a workspace from the index and optionally deletes its data from disk.
-     * Ensures the workspace is stopped first.
-     * Requires ownership.
-     * @param {string} userId - The User ID (email) removing the workspace.
-     * @param {string} workspaceId - The ID of the workspace to remove.
-     * @param {boolean} [destroyData=false] - If true, deletes the workspace directory from disk.
-     * @returns {Promise<boolean>} True if removal from index was successful, false otherwise.
-     */
-    async removeWorkspace(userId, workspaceId, destroyData = false) {
-        // Resolve potential short name to canonical ID
-        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
-
-        // 1. Find entry and check access (using canonical ID)
-        const entry = this.#findIndexEntry(canonicalId);
-        if (!entry || !this.#checkAccess(userId, canonicalId, entry)) {
-            logger.warn(`removeWorkspace failed: Workspace ${canonicalId} not found or access denied for user ${userId}.`);
-            return false;
-        }
-
-        // 2. Stop Workspace (Idempotent)
-        // Pass canonicalId to stopWorkspace as it now expects it
-        const stopped = await this.stopWorkspace(userId, canonicalId);
-        if (!stopped && this.#workspaces.has(canonicalId)) {
-            // If stop failed AND it was actually loaded, we have a problem.
-            logger.error(`removeWorkspace failed: Could not stop workspace ${canonicalId} before removal.`);
-            return false;
-        }
-
-        // 3. Remove from Cache
-        if (this.#workspaces.has(canonicalId)) {
-            this.#workspaces.delete(canonicalId);
-            debug(`Removed workspace ${canonicalId} from memory cache.`);
-        }
-
-        let workspaceDir = null;
-        if (entry.path) {
-             workspaceDir = path.dirname(entry.path);
-        }
-
-        // 4. Handle Data Destruction
-        let deletionError = null;
-        if (destroyData) {
-            if (!workspaceDir) {
-                logger.warn(`Cannot destroy data for ${canonicalId}: Workspace directory path not found in index.`);
-                // Proceed to remove from index anyway?
-            } else {
-                 // Basic Safety Checks
-                if (workspaceDir === this.#rootPath || workspaceDir === '/' || !workspaceDir.includes(entry.owner)) {
-                    logger.error(`Safety check failed! Aborting deletion of potentially dangerous path: ${workspaceDir}`);
-                    this.emit('workspace:destroy_failed', { id: canonicalId, error: 'Safety check failed' });
-                    return false; // Abort dangerous deletion
-                }
-
-                debug(`Destroying data for workspace ${canonicalId} at ${workspaceDir}...`);
-                try {
-                    await fsPromises.rm(workspaceDir, { recursive: true, force: true });
-                    debug(`Successfully deleted workspace directory: ${workspaceDir}`);
-                } catch (err) {
-                    logger.error(`Failed to delete workspace directory ${workspaceDir}: ${err.message}`);
-                    deletionError = err;
-                    // Proceed to remove from index despite deletion error
-                }
-            }
-        }
-
-        // 5. Remove from Index
-        let removedFromIndex = false;
-        try {
-            this.#updateIndex(workspaces => {
-                const initialLength = workspaces.length;
-                const filteredWorkspaces = workspaces.filter(ws => ws.id !== canonicalId);
-                removedFromIndex = filteredWorkspaces.length < initialLength;
-                return filteredWorkspaces;
-            });
-        } catch (err) {
-            logger.error(`Failed to remove workspace ${canonicalId} from index: ${err.message}`);
-            // If index update fails, the state is inconsistent.
-            // Should we try to re-add if deletion happened? Complex.
-            return false; // Indicate failure
-        }
-
-        if (!removedFromIndex) {
-            // This shouldn't happen if the entry existed initially, but check anyway.
-            logger.warn(`Workspace ${canonicalId} was not found in the index during removal update.`);
-            // Consider this a success? Or should it be an error?
-            // Let's say true, as the end state (not in index) is achieved.
-            // removedFromIndex = true;
-        }
-
-        // 6. Emit Event
-        if (destroyData) {
-            if (deletionError) {
-                 this.emit('workspace:destroy_failed', { id: canonicalId, error: deletionError.message });
-            } else {
-                 this.emit('workspace:destroyed', { id: canonicalId });
-            }
-        } else {
-            this.emit('workspace:removed', { id: canonicalId });
-        }
-
-        debug(`Workspace ${canonicalId} ${destroyData ? (deletionError ? 'index removed after delete error' : 'destroyed') : 'removed'}.`);
-        return true; // Return true if index removal was processed
-    }
-
-    /**
      * Resolves a workspace ID to its canonical form.
      * @param {string} userId - User ID (email).
      * @param {string} workspaceId - Original workspace ID.
@@ -866,41 +890,35 @@ class WorkspaceManager extends Manager {
     }
 
     /**
-     * Stops a workspace if active and removes it from the memory cache.
-     * Updates the index status to INACTIVE.
-     * @param {string} userId - The User ID (email) closing the workspace.
-     * @param {string} workspaceId - The workspace ID (short name or canonical).
-     * @returns {Promise<boolean>} True if closed/removed from cache successfully, false otherwise.
+     * Get a random color for workspace
+     * @returns {string} Random color
+     * @static
      */
-    async closeWorkspace(userId, workspaceId) {
-        const canonicalId = this.#resolveWorkspaceId(userId, workspaceId);
+    static getRandomColor() {
+        return randomcolor({
+            luminosity: 'light',
+            format: 'hex',
+        });
+    }
 
-        // Check if it's even loaded
-        if (!this.#workspaces.has(canonicalId)) {
-            debug(`closeWorkspace: Workspace ${canonicalId} is not loaded in memory.`);
-            // Update index status just in case? No, stopWorkspace handles that if needed.
-            return true; // Already closed
-        }
-
-        // Stop it first (checks access internally)
-        const stopped = await this.stopWorkspace(userId, canonicalId);
-        if (!stopped) {
-            logger.warn(`closeWorkspace: Failed to stop workspace ${canonicalId} before closing. Aborting close.`);
+    /**
+     * Validate workspace color
+     * @param {string} color - Color to validate
+     * @returns {boolean} True if color is a valid hex color, false otherwise
+     * @static
+     */
+    static validateWorkspaceColor(color) {
+        if (typeof color !== 'string') {
+            debug('Workspace color must be a string');
             return false;
         }
 
-        // Remove from cache
-        const deleted = this.#workspaces.delete(canonicalId);
-        if (deleted) {
-            debug(`closeWorkspace: Removed workspace ${canonicalId} from memory cache.`);
-            this.emit('workspace:closed', { id: canonicalId });
-            // Status should already be INACTIVE due to stopWorkspace call
-        } else {
-            // This shouldn't happen if .has(canonicalId) was true earlier
-             logger.warn(`closeWorkspace: Failed to delete workspace ${canonicalId} from cache, though it was present.`);
+        if (!color.match(/^#(?:[0-9a-fA-F]{3}){1,2}$/)) {
+            debug('Workspace color must be a valid hex color (e.g., #RRGGBB or #RGB)');
+            return false;
         }
 
-        return deleted;
+        return true;
     }
 
 }
