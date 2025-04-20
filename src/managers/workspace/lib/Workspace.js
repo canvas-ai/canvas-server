@@ -12,7 +12,7 @@ const debug = createDebug('workspace');
 import Db from '../../../services/synapsd/src/index.js';
 
 // Constants
-import { WORKSPACE_STATUS, WORKSPACE_API_STATUS, WORKSPACE_DIRECTORIES } from '../index.js';
+import { WORKSPACE_STATUS, WORKSPACE_API_STATUS, WORKSPACE_DIRECTORIES } from '../index.old.js';
 
 /**
  * Canvas Workspace
