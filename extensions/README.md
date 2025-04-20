@@ -1,6 +1,6 @@
 # Canvas Extensions
 
-## Install
+## Install a canvas role
 
-Copy extension template to your CANVAS_HOME folder
+Copy role config to your CANVAS_SERVER_ROLES folder
 $ cp ./extensions/roles/docker.ollama ~/.canvas/roles/docker.ollama

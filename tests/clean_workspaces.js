@@ -22,71 +22,70 @@ import Jim from '../src/utils/jim/index.js';
 const execPromise = promisify(exec);
 
 async function main() {
-  console.log('Starting workspace cleanup...');
+    console.log('Starting workspace cleanup...');
 
-  // 1. Use find to locate all universe directories
-  try {
-    const { stdout } = await execPromise('find /pub -type d -name universe 2>/dev/null | grep -v "node_modules"');
-    const universeDirs = stdout.split('\n').filter(dir => dir.trim() !== '');
-
-    console.log(`Found ${universeDirs.length} universe directories to clean up`);
-
-    // 2. Remove each universe directory
-    for (const dir of universeDirs) {
-      if (existsSync(dir)) {
-        console.log(`Removing: ${dir}`);
-        try {
-          await fsPromises.rm(dir, { recursive: true, force: true });
-          console.log(`Successfully removed: ${dir}`);
-        } catch (error) {
-          console.error(`Failed to remove ${dir}: ${error.message}`);
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`Error searching for universe directories: ${error.message}`);
-  }
-
-  // 3. Clean up the users directory completely
-  const usersDir = path.join(process.cwd(), 'users');
-  if (existsSync(usersDir)) {
-    console.log(`Cleaning users directory: ${usersDir}`);
+    // 1. Use find to locate all universe directories
     try {
-      // Read directory contents
-      const entries = await fsPromises.readdir(usersDir, { withFileTypes: true });
+        const { stdout } = await execPromise('find /pub -type d -name universe 2>/dev/null | grep -v "node_modules"');
+        const universeDirs = stdout.split('\n').filter((dir) => dir.trim() !== '');
 
-      // Delete all entries except the .keep file
-      for (const entry of entries) {
-        if (entry.name !== '.keep') {
-          const fullPath = path.join(usersDir, entry.name);
-          console.log(`Removing: ${fullPath}`);
-          await fsPromises.rm(fullPath, { recursive: true, force: true });
-          console.log(`Successfully removed: ${fullPath}`);
+        console.log(`Found ${universeDirs.length} universe directories to clean up`);
+
+        // 2. Remove each universe directory
+        for (const dir of universeDirs) {
+            if (existsSync(dir)) {
+                console.log(`Removing: ${dir}`);
+                try {
+                    await fsPromises.rm(dir, { recursive: true, force: true });
+                    console.log(`Successfully removed: ${dir}`);
+                } catch (error) {
+                    console.error(`Failed to remove ${dir}: ${error.message}`);
+                }
+            }
         }
-      }
     } catch (error) {
-      console.error(`Error cleaning users directory: ${error.message}`);
+        console.error(`Error searching for universe directories: ${error.message}`);
     }
-  }
 
-  // 4. Clear the workspace index from the database
-  try {
-    console.log('Clearing workspace indexes from database...');
+    // 3. Clean up the users directory completely
+    const usersDir = path.join(process.cwd(), 'users');
+    if (existsSync(usersDir)) {
+        console.log(`Cleaning users directory: ${usersDir}`);
+        try {
+            // Read directory contents
+            const entries = await fsPromises.readdir(usersDir, { withFileTypes: true });
 
-    // Initialize Jim for direct database access
-    const jim = new Jim({
-      rootPath: env.CANVAS_SERVER_DB,
-    });
+            // Delete all entries except the .keep file
+            for (const entry of entries) {
+                if (entry.name !== '.keep') {
+                    const fullPath = path.join(usersDir, entry.name);
+                    console.log(`Removing: ${fullPath}`);
+                    await fsPromises.rm(fullPath, { recursive: true, force: true });
+                    console.log(`Successfully removed: ${fullPath}`);
+                }
+            }
+        } catch (error) {
+            console.error(`Error cleaning users directory: ${error.message}`);
+        }
+    }
 
-    // Clear the workspaces array
-    jim.set('workspaces', []);
-    console.log('Workspace index cleared successfully');
+    // 4. Clear the workspace index from the database
+    try {
+        console.log('Clearing workspace indexes from database...');
 
-  } catch (error) {
-    console.error(`Error clearing workspace index: ${error.message}`);
-  }
+        // Initialize Jim for direct database access
+        const jim = new Jim({
+            rootPath: env.CANVAS_SERVER_DB,
+        });
 
-  console.log('Cleanup complete. Try creating an admin user now.');
+        // Clear the workspaces array
+        jim.set('workspaces', []);
+        console.log('Workspace index cleared successfully');
+    } catch (error) {
+        console.error(`Error clearing workspace index: ${error.message}`);
+    }
+
+    console.log('Cleanup complete. Try creating an admin user now.');
 }
 
 main().catch(console.error);

@@ -204,7 +204,7 @@ export default function usersRoutes(options) {
             const { status, userType } = req.query;
             const options = {
                 status,
-                userType
+                userType,
             };
 
             const users = await userManager.listUsers(options);
@@ -262,7 +262,7 @@ export default function usersRoutes(options) {
 
             const userData = {
                 email,
-                userType
+                userType,
             };
 
             const user = await userManager.createUser(userData);
@@ -802,7 +802,7 @@ export default function usersRoutes(options) {
             const { id } = req.params;
 
             // Check if user exists
-            if (!await userManager.hasUser(id)) {
+            if (!(await userManager.hasUser(id))) {
                 return res.status(404).json(new ResponseObject().notFound('User not found'));
             }
 

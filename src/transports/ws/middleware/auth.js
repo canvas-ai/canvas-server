@@ -91,33 +91,33 @@ export default function (server) {
                     debug(`Standard auth failed, trying direct API token validation`);
 
                     // Try validating the token directly
-                    authService.validateApiToken(token)
-                        .then(result => {
+                    authService
+                        .validateApiToken(token)
+                        .then((result) => {
                             if (result && result.userId) {
                                 debug(`API token validated for user ${result.userId}`);
 
                                 // Get the user and attach to socket
-                                return server.userManager.getUser(result.userId)
-                                    .then(user => {
-                                        if (user) {
-                                            socket.user = user.toJSON ? user.toJSON() : user;
-                                            socket.user.tokenId = result.tokenId;
-                                            socket.user.type = 'api';
-                                            socket.isAuthenticated = true;
+                                return server.userManager.getUser(result.userId).then((user) => {
+                                    if (user) {
+                                        socket.user = user.toJSON ? user.toJSON() : user;
+                                        socket.user.tokenId = result.tokenId;
+                                        socket.user.type = 'api';
+                                        socket.isAuthenticated = true;
 
-                                            debug(`User attached to socket: ${socket.user.email || socket.user.id}`);
-                                            next();
-                                        } else {
-                                            debug(`User ${result.userId} not found after token validation`);
-                                            next(new Error('User not found'));
-                                        }
-                                    });
+                                        debug(`User attached to socket: ${socket.user.email || socket.user.id}`);
+                                        next();
+                                    } else {
+                                        debug(`User ${result.userId} not found after token validation`);
+                                        next(new Error('User not found'));
+                                    }
+                                });
                             } else {
                                 debug(`API token validation failed`);
                                 next(new Error('Invalid token'));
                             }
                         })
-                        .catch(error => {
+                        .catch((error) => {
                             debug(`Error in direct token validation: ${error.message}`);
                             next(error);
                         });

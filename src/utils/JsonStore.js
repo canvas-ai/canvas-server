@@ -22,7 +22,7 @@ class JsonStore {
     static async exportToJson(data, dataType, outputPath) {
         const exportData = {
             [dataType]: data,
-            exportedAt: new Date().toISOString()
+            exportedAt: new Date().toISOString(),
         };
 
         if (outputPath) {

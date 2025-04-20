@@ -1,10 +1,19 @@
 # Canvas Server
 
-Server component for the Canvas project
+Server runtime for the Canvas project
 
 ## ! Refactor in progress
 
-**! Use the dev branch for now**
+**! Use the dev branch for now**  
+
+**On every iteration(refactor) of this project, I actually loose(as in - BREAK -) functionality!**  
+We already had tab management implemented(great showcase for the bitmap-based context tree index), with named sessions and working browser extensions. I decided to **slightly** refactor the context? or workspace manager? Don't even remember(git history would show) - 6 months later we still have no working runtime and using AI actually makes things worse!  
+(as we are now in an attention-based economy(creds for coining the term _for me_ to @TechLead, I'll rant about it in some "coding-canvas" live stream session @idnc.streams soon))
+
+Sooo
+
+New approach: "**Do The Simplest Thing That Could Possibly Work(tm)"**  
+Sorry Universe for the delay..
 
 ## Installation
 
@@ -14,7 +23,6 @@ Server component for the Canvas project
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server
 $ npm install # or yarn install
-$ npm run db:setup # or yarn db:setup
 $ npm run start # or yarn start
 ```
 
@@ -34,13 +42,22 @@ $ docker-compose down --rmi all
 Supported ENV vars with their defaults:
 
 ```bash
+# Runtime variables (user | standalone)
+CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-"standalone"} 
+
+# Canvas server dirs
 CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
 CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-/opt/canvas-server/server/config}
+CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
 CANVAS_SERVER_CACHE: ${CANVAS_SERVER_CACHE:-/opt/canvas-server/server/cache}
 CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
 CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
 CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
-CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
+CANVAS_SERVER_HOMES: ${CANVAS_SERVER_HOMES:-/opt/canvas-server/users}
+
+# Canvas USER dirs for single-user mode
+# See env.js for more info
+
 ```
 
 ## Configuration
@@ -57,9 +74,10 @@ When the Canvas server starts for the first time, it can automatically create an
 2. Set `CANVAS_ADMIN_PASSWORD` to the desired admin password (required if admin creation is enabled)
 
 Example:
+
 ```bash
 # In .env file or environment variables
-CANVAS_ADMIN_EMAIL=admin@example.com
+CANVAS_ADMIN_EMAIL=your-email@example.com
 CANVAS_ADMIN_PASSWORD=securepassword
 CANVAS_ADMIN_RESET=false # Reset admin pass
 ```
@@ -153,6 +171,13 @@ This script updates the Canvas Server by pulling the latest changes from the git
 $ ./scripts/update-git.sh
 ```
 
+## Authentication
+
+Canvas Server supports two types of authentication:
+
+1. **JWT Token Authentication**: Used for web UI login and normal user sessions, see 
+2. **[API Token Authentication](docs/api-token-auth.md)**: Used for programmatic access (CLI, Electron, browser extensions, curl-based scripts)
+
 ## References
 
 ### DB / Index
@@ -176,50 +201,3 @@ $ ./scripts/update-git.sh
 
 - https://avahi.org/
 - https://www.npmjs.com/package/mdns
-
-## Authentication
-
-Canvas Server supports two types of authentication:
-
-1. **JWT Token Authentication**: Used for web UI login and normal user sessions
-2. **API Token Authentication**: Used for programmatic access (CLI, Electron, browser extensions, curl-based scripts)
-
-### API Token Authentication
-
-API tokens are the recommended way to authenticate programmatic clients. They can be created in the web UI or via the API.
-
-#### Creating an API Token
-
-```bash
-# Create a new API token
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"name":"My CLI Token","description":"Token for CLI access"}' \
-  -b "token=YOUR_JWT_TOKEN" \
-  http://localhost:8001/rest/v2/auth/tokens
-```
-
-#### Using API Tokens
-
-API tokens can be used in two ways:
-
-1. **Direct Use**: Some endpoints support API tokens directly:
-
-```bash
-curl -H "Authorization: Bearer YOUR_API_TOKEN" http://localhost:8001/rest/v2/auth/me
-```
-
-2. **Token Exchange**: For endpoints that require full user context, exchange your API token for a JWT token:
-
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"apiToken":"YOUR_API_TOKEN"}' \
-  http://localhost:8001/rest/v2/auth/token/exchange
-```
-
-The response will include a JWT token that can be used for subsequent requests.
-
-#### Client Example
-
-See `examples/auth-client.js` for an example client implementation that handles the token exchange process automatically.

@@ -12,7 +12,7 @@ API tokens are the primary authentication method for:
 - automated scripts and integrations
 - all remote access
 
-Each token is associated with a specific user account and has a unique identifier. Tokens start with the prefix `cvs_` for easy identification and use secure cryptographic methods for generation and validation.
+Each token is associated with a specific user account and has a unique identifier. Tokens start with the prefix `canvas-` for easy identification and use secure cryptographic methods for generation and validation.
 
 ## Creating an API Token
 
@@ -29,7 +29,7 @@ Each token is associated with a specific user account and has a unique identifie
 ```bash
 # First authenticate with existing token or credentials
 curl -X POST https://your-canvas-server/api/v2/auth/tokens \
-  -H "Authorization: Bearer cvs_your_existing_token" \
+  -H "Authorization: Bearer canvas-your_existing_token" \
   -H "Content-Type: application/json" \
   -d '{"name": "My CLI Token", "description": "Token for CLI access"}'
 ```
@@ -44,13 +44,13 @@ Add the token in the Authorization header:
 
 ```bash
 curl https://your-canvas-server/api/v2/auth/me \
-  -H "Authorization: Bearer cvs_your_token_here"
+  -H "Authorization: Bearer canvas-your_token_here"
 ```
 
 ### 2. Query Parameter (For GET requests only)
 
 ```bash
-curl https://your-canvas-server/api/v2/auth/me?token=cvs_your_token_here
+curl https://your-canvas-server/api/v2/auth/me?token=canvas-your_token_here
 ```
 
 ### 3. For Canvas Tools
@@ -59,20 +59,20 @@ curl https://your-canvas-server/api/v2/auth/me?token=cvs_your_token_here
 
 ```bash
 # Set token permanently
-canvas config set token cvs_your_token_here
+canvas config set token canvas-your_token_here
 
 # Or use environment variable
-CANVAS_TOKEN=cvs_your_token_here canvas status
+CANVAS_TOKEN=canvas-your_token_here canvas status
 ```
 
 #### canvas-shell
 
 ```bash
 # Set token permanently
-cs config token cvs_your_token_here
+cs config token canvas-your_token_here
 
 # Or provide with each command
-cs --token=cvs_your_token_here status
+cs --token=canvas-your_token_here status
 ```
 
 ## Managing Tokens
@@ -81,14 +81,14 @@ cs --token=cvs_your_token_here status
 
 ```bash
 curl https://your-canvas-server/api/v2/auth/tokens \
-  -H "Authorization: Bearer cvs_your_token_here"
+  -H "Authorization: Bearer canvas-your_token_here"
 ```
 
 ### Revoking a Token
 
 ```bash
 curl -X DELETE https://your-canvas-server/api/v2/auth/tokens/TOKEN_ID \
-  -H "Authorization: Bearer cvs_your_token_here"
+  -H "Authorization: Bearer canvas-your_token_here"
 ```
 
 ## Security Features
@@ -97,7 +97,7 @@ Canvas API tokens include several security features:
 
 1. **Secure Generation**: Tokens are created using cryptographically secure methods
 2. **Secure Storage**: Tokens are stored as SHA-256 hashes, not raw values
-3. **Standard Format**: All tokens use the `cvs_` prefix for easy identification
+3. **Standard Format**: All tokens use the `canvas-` prefix for easy identification
 4. **Expiration Support**: Optional expiration dates can be set for sensitive tokens
 5. **Usage Tracking**: Each use of a token is logged with timestamps
 
@@ -117,7 +117,7 @@ If you're having issues with API token authentication:
 
 1. Verify the token is active in the Canvas Web UI
 2. Check that the token is being sent correctly (correct format, not expired)
-3. Make sure you're including the full token including the `cvs_` prefix
+3. Make sure you're including the full token including the `canvas-` prefix
 4. Check server logs for authentication errors
 5. Verify you're making HTTPS requests when connecting to remote servers
 

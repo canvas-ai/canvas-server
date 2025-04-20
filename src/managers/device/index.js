@@ -16,7 +16,6 @@ import GenericDevice from './lib/Generic.js';
  * Manages device information and connections
  */
 class DeviceManager extends EventEmitter {
-
     #devices = new Map();
     #currentDevice;
     #initialized = false;

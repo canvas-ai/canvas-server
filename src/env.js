@@ -42,16 +42,19 @@ const serverEnv = {
 };
 
 // User paths (user data), meant for SERVER_MODE === 'user'
-const userEnv = (SERVER_MODE === 'user') ? {
-    CANVAS_USER_HOME: USER_HOME,
-    CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'Config'),
-    CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'Cache'),
-    CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'Db'),
-    CANVAS_USER_APPS: process.env.CANVAS_USER_APPS || path.join(USER_HOME, 'Apps'),
-    CANVAS_USER_ROLES: process.env.CANVAS_USER_ROLES || path.join(USER_HOME, 'Roles'),
-    CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'Data'),
-    CANVAS_USER_WORKSPACES: process.env.CANVAS_USER_WORKSPACES || path.join(USER_HOME, 'Workspaces'),
-} : null;
+const userEnv =
+    SERVER_MODE === 'user'
+        ? {
+              CANVAS_USER_HOME: USER_HOME,
+              CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'Config'),
+              CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'Cache'),
+              CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'Db'),
+              CANVAS_USER_APPS: process.env.CANVAS_USER_APPS || path.join(USER_HOME, 'Apps'),
+              CANVAS_USER_ROLES: process.env.CANVAS_USER_ROLES || path.join(USER_HOME, 'Roles'),
+              CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'Data'),
+              CANVAS_USER_WORKSPACES: process.env.CANVAS_USER_WORKSPACES || path.join(USER_HOME, 'Workspaces'),
+          }
+        : null;
 
 const envConfig = { ...serverEnv, ...userEnv };
 

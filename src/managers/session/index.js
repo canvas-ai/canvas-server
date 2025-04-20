@@ -19,7 +19,6 @@ import Session from './lib/Session.js';
  */
 
 class SessionManager extends Manager {
-
     #sessionOptions;
     #sessions = new Map();
 
@@ -33,7 +32,7 @@ class SessionManager extends Manager {
         super({
             jim: options.jim,
             indexName: 'sessions',
-            eventEmitterOptions: options.eventEmitterOptions
+            eventEmitterOptions: options.eventEmitterOptions,
         });
 
         this.#sessionOptions = {

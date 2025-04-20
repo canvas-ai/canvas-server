@@ -16,9 +16,7 @@ import ip from 'ip';
 const MACHINE_ID = machineIdSync(true);
 const APP_ID = 'canvas-electron';
 
-const CANVAS_USER_HOME = os.platform() === 'win32' ?
-    path.join(os.homedir(), 'Canvas') :
-    path.join(os.homedir(), '.canvas');
+const CANVAS_USER_HOME = os.platform() === 'win32' ? path.join(os.homedir(), 'Canvas') : path.join(os.homedir(), '.canvas');
 
 const CANVAS_USER_CONFIG = path.join(CANVAS_USER_HOME, 'config');
 const DEFAULT_CONFIG = {
@@ -33,7 +31,7 @@ const DEFAULT_CONFIG = {
         context: {
             id: `canvas-electron.${MACHINE_ID}`,
             clientArray: generateClientContextArray(),
-        }
+        },
     },
     connectors: {
         ollama: {
@@ -46,14 +44,14 @@ const DEFAULT_CONFIG = {
             driver: 'docker',
             host: 'unix:///var/run/docker.sock',
         },
-    }
-}
+    },
+};
 
 const CLIENT_CONTEXT_ARRAY = generateClientContextArray();
 
 const config = new Conf({
     configName: 'canvas-electron',
-    cwd: CANVAS_USER_CONFIG
+    cwd: CANVAS_USER_CONFIG,
 });
 
 if (config.get('server')) {
@@ -78,7 +76,7 @@ function generateClientContextArray() {
     const networkCidr =
         Object.values(os.networkInterfaces())
             .flat()
-            .find(({ family, address, cidr }) => family === 'IPv4' && (address === publicIp ))?.cidr || 'unknown';
+            .find(({ family, address, cidr }) => family === 'IPv4' && address === publicIp)?.cidr || 'unknown';
 
     return [
         `client/app/${APP_ID}`,
@@ -89,12 +87,14 @@ function generateClientContextArray() {
         `client/os/user/${os.userInfo().username}`,
         `client/network/cidr/${networkCidr}`,
         `client/ephemeral/timezone/${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
-        `client/ephemeral/datetime/${new Date().toISOString()}`
+        `client/ephemeral/datetime/${new Date().toISOString()}`,
     ];
 }
 
 function getNetworkCidr() {
-    return Object.values(os.networkInterfaces())
-        .flat()
-        .find(({ family, internal }) => family === 'IPv4' && !internal)?.cidr || 'unknown';
+    return (
+        Object.values(os.networkInterfaces())
+            .flat()
+            .find(({ family, internal }) => family === 'IPv4' && !internal)?.cidr || 'unknown'
+    );
 }

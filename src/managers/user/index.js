@@ -29,7 +29,6 @@ const USER_STATUS = ['active', 'inactive', 'deleted'];
  */
 
 class UserManager extends Manager {
-
     #rootPath;
     #users = new Map(); // Initialized User Instances, keeps this implementation as slim as possible
     #workspaceManager; // Reference to workspace manager (injected)
@@ -45,7 +44,7 @@ class UserManager extends Manager {
         super({
             jim: options.jim,
             indexName: 'users',
-            eventEmitterOptions: options.eventEmitterOptions
+            eventEmitterOptions: options.eventEmitterOptions,
         });
 
         if (!options.rootPath) {
@@ -69,10 +68,18 @@ class UserManager extends Manager {
      * Getters
      */
 
-    get rootPath() { return this.#rootPath; }
-    get users() { return Array.from(this.#users.values()); }
-    get usersList() { return this.getConfig('users', []); }
-    get workspaceManager() { return this.#workspaceManager; }
+    get rootPath() {
+        return this.#rootPath;
+    }
+    get users() {
+        return Array.from(this.#users.values());
+    }
+    get usersList() {
+        return this.getConfig('users', []);
+    }
+    get workspaceManager() {
+        return this.#workspaceManager;
+    }
 
     /**
      * Set the workspace manager reference
@@ -123,9 +130,7 @@ class UserManager extends Manager {
 
             // Always perform a case-insensitive email check to ensure uniqueness
             const lowerCaseEmail = email.toLowerCase();
-            const existingUser = this.usersList.find(
-                user => user.email.toLowerCase() === lowerCaseEmail
-            );
+            const existingUser = this.usersList.find((user) => user.email.toLowerCase() === lowerCaseEmail);
 
             if (existingUser) {
                 throw new Error(`User already exists with email: ${email}`);
@@ -154,7 +159,7 @@ class UserManager extends Manager {
             const tokenOptions = {
                 name: tokenName,
                 description: `Default API token for ${email}`,
-                expiresAt: null // No expiration
+                expiresAt: null, // No expiration
             };
 
             const apiToken = await user.createToken(tokenOptions);
@@ -171,7 +176,6 @@ class UserManager extends Manager {
 
             this.emit('user:created', { id: userID, email });
             return user;
-
         } catch (error) {
             debug(`Error creating user: ${error}`);
             throw error;
@@ -203,7 +207,7 @@ class UserManager extends Manager {
                 rootPath: userHomePath,
                 type: 'universe',
                 description: `Default universe workspace for ${userEmail}`,
-                owner: userId
+                owner: userId,
             });
 
             debug(`Universe workspace created for user: ${userId}`);
@@ -234,7 +238,7 @@ class UserManager extends Manager {
         }
 
         // Otherwise, try to find the user in the index and initialize it
-        const userData = this.usersList.find(user => user.id === id);
+        const userData = this.usersList.find((user) => user.id === id);
         if (!userData) {
             throw new Error(`User not found: ${id}`);
         }
@@ -257,7 +261,7 @@ class UserManager extends Manager {
      * @returns {Promise<User>} User instance
      */
     async getUserByEmail(email) {
-        const userData = this.usersList.find(user => user.email === email);
+        const userData = this.usersList.find((user) => user.email === email);
         if (!userData) {
             throw new Error(`User not found: ${email}`);
         }
@@ -279,7 +283,7 @@ class UserManager extends Manager {
     async hasUser(id) {
         // First check if user exists in memory or index
         const userInMemory = this.#users.has(id);
-        const userInIndex = this.usersList.some(user => user.id === id);
+        const userInIndex = this.usersList.some((user) => user.id === id);
 
         if (!userInMemory && !userInIndex) {
             return false; // User doesn't exist at all
@@ -290,7 +294,7 @@ class UserManager extends Manager {
         if (userInMemory) {
             userData = this.#users.get(id);
         } else {
-            userData = this.usersList.find(user => user.id === id);
+            userData = this.usersList.find((user) => user.id === id);
         }
 
         // Check if home directory exists
@@ -304,13 +308,13 @@ class UserManager extends Manager {
                 // Update user status in the index to indicate missing home
                 try {
                     const userList = [...this.usersList];
-                    const userIndex = userList.findIndex(user => user.id === id);
+                    const userIndex = userList.findIndex((user) => user.id === id);
                     if (userIndex !== -1) {
                         userList[userIndex] = {
                             ...userList[userIndex],
                             status: 'error',
                             error: 'Home directory missing',
-                            updated: new Date().toISOString()
+                            updated: new Date().toISOString(),
                         };
                         this.setConfig('users', userList);
                         debug(`User ${id} marked as having error in index`);
@@ -336,7 +340,7 @@ class UserManager extends Manager {
         const lowerCaseEmail = email.toLowerCase();
 
         // Check if user exists in index
-        const userData = this.usersList.find(user => user.email.toLowerCase() === lowerCaseEmail);
+        const userData = this.usersList.find((user) => user.email.toLowerCase() === lowerCaseEmail);
 
         if (!userData) {
             return false; // User doesn't exist
@@ -353,13 +357,13 @@ class UserManager extends Manager {
                 // Update user status in the index to indicate missing home
                 try {
                     const userList = [...this.usersList];
-                    const userIndex = userList.findIndex(user => user.id === userData.id);
+                    const userIndex = userList.findIndex((user) => user.id === userData.id);
                     if (userIndex !== -1) {
                         userList[userIndex] = {
                             ...userList[userIndex],
                             status: 'error',
                             error: 'Home directory missing',
-                            updated: new Date().toISOString()
+                            updated: new Date().toISOString(),
                         };
                         this.setConfig('users', userList);
                         debug(`User ${userData.id} marked as having error in index`);
@@ -387,11 +391,11 @@ class UserManager extends Manager {
 
         // Apply filters if provided
         if (options.status && USER_STATUS.includes(options.status)) {
-            users = users.filter(user => user.status === options.status);
+            users = users.filter((user) => user.status === options.status);
         }
 
         if (options.userType && USER_TYPES.includes(options.userType)) {
-            users = users.filter(user => user.userType === options.userType);
+            users = users.filter((user) => user.userType === options.userType);
         }
 
         return users;
@@ -407,7 +411,7 @@ class UserManager extends Manager {
         if (!id) throw new Error('User ID is required');
 
         const userList = this.usersList;
-        const userIndex = userList.findIndex(user => user.id === id);
+        const userIndex = userList.findIndex((user) => user.id === id);
 
         if (userIndex === -1) {
             throw new Error(`User not found: ${id}`);
@@ -420,10 +424,7 @@ class UserManager extends Manager {
         if (userData.email && userData.email.toLowerCase() !== currentUser.email.toLowerCase()) {
             const lowerCaseNewEmail = userData.email.toLowerCase();
 
-            if (userList.some(user =>
-                user.email.toLowerCase() === lowerCaseNewEmail &&
-                user.id !== id
-            )) {
+            if (userList.some((user) => user.email.toLowerCase() === lowerCaseNewEmail && user.id !== id)) {
                 throw new Error(`Email already in use: ${userData.email}`);
             }
         }
@@ -431,7 +432,7 @@ class UserManager extends Manager {
         // Prepare the update data
         const updateData = {
             ...userData,
-            homePath: currentUser.homePath // Ensure homePath remains unchanged
+            homePath: currentUser.homePath, // Ensure homePath remains unchanged
         };
 
         // Validate the update data
@@ -445,7 +446,7 @@ class UserManager extends Manager {
         const updatedUserData = {
             ...currentUser,
             ...updateData,
-            updated: new Date().toISOString()
+            updated: new Date().toISOString(),
         };
 
         // Update in index
@@ -474,7 +475,7 @@ class UserManager extends Manager {
         if (!id) throw new Error('User ID is required');
 
         const userList = this.usersList;
-        const userIndex = userList.findIndex(user => user.id === id);
+        const userIndex = userList.findIndex((user) => user.id === id);
 
         if (userIndex === -1) {
             throw new Error(`User not found: ${id}`);
@@ -485,7 +486,7 @@ class UserManager extends Manager {
         const userHomePath = user.homePath;
 
         // Remove from index
-        const users = userList.filter(user => user.id !== id);
+        const users = userList.filter((user) => user.id !== id);
         this.setConfig('users', users);
 
         // Remove from memory if loaded
@@ -507,7 +508,6 @@ class UserManager extends Manager {
         this.emit('user:deleted', { id });
         return true;
     }
-
 
     /**
      * Token management - delegated to User instance
@@ -599,7 +599,7 @@ class UserManager extends Manager {
             homePath: userData.homePath,
             userType: userData.userType,
             status: userData.status,
-            jim: this.jim  // Pass JIM to User instance for token management
+            jim: this.jim, // Pass JIM to User instance for token management
         });
 
         // Set reference to this user manager in the JIM instance

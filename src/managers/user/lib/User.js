@@ -17,7 +17,6 @@ import TokenManager from './TokenManager.js';
  */
 
 class User extends EventEmitter {
-
     // Immutable properties set at construction
     #id;
     #email;
@@ -47,8 +46,10 @@ class User extends EventEmitter {
         },
     };
 
-    // Additional properties
-    workspaceManager;
+    // Managers
+    #workspaceManager;
+    #contextManager;
+    #sessionManager;
 
     /**
      * Create a new User instance
@@ -68,6 +69,11 @@ class User extends EventEmitter {
         if (!options.homePath) { throw new Error('Home path is required'); }
         if (!options.jim) { throw new Error('JIM instance is required'); }
 
+        // Check for required managers
+        if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
+        if (!options.contextManager) { throw new Error('Context manager instance is required'); }
+        if (!options.sessionManager) { throw new Error('Session manager instance is required'); }
+
         /**
          * User properties
          */
@@ -79,7 +85,12 @@ class User extends EventEmitter {
         this.#status = options.status || 'inactive';
         this.#jim = options.jim;
 
-        // Initialize token manager
+        // Bind manager instances
+        this.#workspaceManager = options.workspaceManager;
+        this.#contextManager = options.contextManager;
+        this.#sessionManager = options.sessionManager;
+
+        // Initialize token manager (to be moved out of User class)
         this.#initializeTokenManager();
 
         debug(`User instance created: ${this.#id} (${this.#email})`);
@@ -97,16 +108,58 @@ class User extends EventEmitter {
     get stats() { return this.#stats; }
     get tokenManager() { return this.#tokenManager; }
     get jim() { return this.#jim; }
-
-    // Utility getters
     get configPath() { return path.join(this.#homePath, 'Config'); }
+
+    /**
+     * Main User module (abstraction as of now) API
+     * "You ain't gonna need it!" so list methods only
+     */
+
+    listWorkspaces() {
+        return this.#workspaceManager.listWorkspaces(this.#id);
+    }
+
+    listContexts() {
+        return this.#contextManager.listContexts(this.#id);
+    }
+
+    listSessions() {
+        return this.#sessionManager.listSessions(this.#id);
+    }
 
     /**
      * Utility methods
      */
 
-    isAdmin() { return this.#userType === 'admin'; }
-    isActive() { return this.#status === 'active'; }
+    isAdmin() {
+        return this.#userType === 'admin';
+    }
+
+    isActive() {
+        return this.#status === 'active';
+    }
+
+    /**
+     * Convert user to JSON
+     * @returns {Object} User JSON representation
+     */
+    toJSON() {
+        return {
+            id: this.#id,
+            email: this.#email,
+            userType: this.#userType,
+            homePath: this.#homePath,
+            status: this.#status,
+            stats: this.#stats,
+            // workspaces: this.#workspaceManager.listWorkspaces(this.#id),
+            // contexts: this.#contextManager.listContexts(this.#id),
+            // sessions: this.#sessionManager.listSessions(this.#id),
+        };
+    }
+
+    /**
+     * Token Management (to be moved out of User class)
+     */
 
     /**
      * Initialize the token manager for this user
@@ -121,7 +174,7 @@ class User extends EventEmitter {
             this.#tokenManager = new TokenManager({
                 userId: this.#id,
                 userHomePath: this.#homePath,
-                jim: this.#jim // Pass JIM to TokenManager
+                jim: this.#jim, // Pass JIM to TokenManager
             });
 
             // Listen to token manager events to update stats
@@ -137,48 +190,6 @@ class User extends EventEmitter {
         } catch (error) {
             debug(`Failed to initialize token manager: ${error.message}`);
             // Don't throw here - allow User to be created even if token manager fails
-        }
-    }
-
-    /**
-     * Ensure the user's Config directory exists
-     * @private
-     */
-    #ensureConfigDirectorySync() {
-        const configDir = this.configPath;
-        if (!existsSync(configDir)) {
-            // Use sync method since this is called during construction
-            try {
-                fs.mkdirSync(configDir, { recursive: true });
-                debug(`Created config directory for user ${this.#id}: ${configDir}`);
-            } catch (error) {
-                debug(`Failed to create config directory: ${error.message}`);
-                throw error;
-            }
-        }
-    }
-
-    /**
-     * Token event handlers
-     */
-
-    /**
-     * Handle token created event
-     * @param {Object} data - Event data
-     * @private
-     */
-    #handleTokenCreated(data) {
-        this.#stats.apiTokens.total++;
-    }
-
-    /**
-     * Handle token deleted event
-     * @param {Object} data - Event data
-     * @private
-     */
-    #handleTokenDeleted(data) {
-        if (this.#stats.apiTokens.total > 0) {
-            this.#stats.apiTokens.total--;
         }
     }
 
@@ -272,6 +283,30 @@ class User extends EventEmitter {
     }
 
     /**
+     * Token event handlers
+     */
+
+    /**
+     * Handle token created event
+     * @param {Object} data - Event data
+     * @private
+     */
+    #handleTokenCreated(data) {
+        this.#stats.apiTokens.total++;
+    }
+
+    /**
+     * Handle token deleted event
+     * @param {Object} data - Event data
+     * @private
+     */
+    #handleTokenDeleted(data) {
+        if (this.#stats.apiTokens.total > 0) {
+            this.#stats.apiTokens.total--;
+        }
+    }
+
+    /**
      * Ensure the token manager exists and is initialized
      * @private
      */
@@ -291,46 +326,24 @@ class User extends EventEmitter {
         }
     }
 
-    /**
-     * Convert user to JSON
-     * @returns {Object} User JSON representation
-     */
-    toJSON() {
-        return {
-            id: this.#id,
-            email: this.#email,
-            userType: this.#userType,
-            homePath: this.#homePath,
-            status: this.#status,
-            stats: this.#stats
-        };
-    }
+
 
     /**
-     * Initialize workspace manager for the user
-     * This method is called by middleware when workspace manager access is required
-     * @returns {Promise<void>}
+     * Ensure the user's Config directory exists
+     * @private
      */
-    async initializeWorkspaceManager() {
-        if (this.workspaceManager) {
-            debug(`Workspace manager already initialized for user: ${this.#id}`);
-            return;
+    #ensureConfigDirectorySync() {
+        const configDir = this.configPath;
+        if (!existsSync(configDir)) {
+            // Use sync method since this is called during construction
+            try {
+                fs.mkdirSync(configDir, { recursive: true });
+                debug(`Created config directory for user ${this.#id}: ${configDir}`);
+            } catch (error) {
+                debug(`Failed to create config directory: ${error.message}`);
+                throw error;
+            }
         }
-
-        // Get the workspace manager reference from the user manager
-        const userManager = this.#jim?.parentManager;
-        if (!userManager || !userManager.getWorkspaceManager) {
-            throw new Error('User manager or getWorkspaceManager method not available');
-        }
-
-        const workspaceManager = userManager.getWorkspaceManager();
-        if (!workspaceManager) {
-            throw new Error('Workspace manager not available from user manager');
-        }
-
-        // Set the workspace manager reference
-        this.workspaceManager = workspaceManager;
-        debug(`Workspace manager initialized for user: ${this.#id}`);
     }
 }
 

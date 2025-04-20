@@ -255,13 +255,10 @@ export default function (authService) {
             userType: req.user.userType,
             status: req.user.status,
             tokenType: req.user.type,
-            tokenId: req.user.tokenId // Will be present if authenticated with API token
+            tokenId: req.user.tokenId, // Will be present if authenticated with API token
         };
 
-        const response = new ResponseObject().success(
-            userData,
-            'User information retrieved successfully',
-        );
+        const response = new ResponseObject().success(userData, 'User information retrieved successfully');
 
         res.status(response.statusCode).json(response.getResponse());
     });
@@ -411,7 +408,10 @@ export default function (authService) {
             return res.status(response.statusCode).json(response.getResponse());
         }
 
-        if (name && (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))) {
+        if (
+            name &&
+            (!validator.isLength(name, { min: 1, max: 100 }) || !validator.isAlphanumeric(name, 'en-US', { ignore: ' -_' }))
+        ) {
             debug('Generate token validation failed: Invalid token name');
             const response = new ResponseObject().badRequest(
                 'Token name must be 1-100 alphanumeric characters, spaces, hyphens, or underscores',
@@ -423,7 +423,7 @@ export default function (authService) {
             const tokenOptions = {
                 name,
                 description: description || `API Token for ${req.user.email}`,
-                expiresAt: expiresAt || null
+                expiresAt: expiresAt || null,
             };
 
             const token = await authService.createApiToken(req.user.id, tokenOptions);
@@ -654,7 +654,7 @@ export default function (authService) {
                     token: token.token,
                     session: token.session,
                 },
-                'Token exchanged successfully'
+                'Token exchanged successfully',
             );
             return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {

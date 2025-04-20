@@ -48,10 +48,18 @@ class Manager extends EventEmitter {
     /**
      * Getters
      */
-    get jim() { return this.#jim; }
-    get index() { return this.#index; }
-    get indexName() { return this.#indexName; }
-    get initialized() { return this.#initialized; }
+    get jim() {
+        return this.#jim;
+    }
+    get index() {
+        return this.#index;
+    }
+    get indexName() {
+        return this.#indexName;
+    }
+    get initialized() {
+        return this.#initialized;
+    }
 
     /**
      * Initialize the manager
@@ -131,6 +139,16 @@ class Manager extends EventEmitter {
         if (this.#jim) {
             this.#jim.parentManager = manager;
         }
+    }
+
+    /**
+     * Generate a UUID
+     * @param {string} [prefix] - Prefix for the UUID
+     * @param {number} [length] - Length of the UUID
+     * @returns {string} UUID
+     */
+    generateUUID(prefix = '', length = 8) {
+        return `${prefix}-${uuidv4().replace(/-/g, '').slice(0, length)}`;
     }
 }
 

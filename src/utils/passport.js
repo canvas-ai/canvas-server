@@ -158,7 +158,7 @@ export default function configurePassport(jwtSecret, options = {}) {
                     // Return authenticated user with token info
                     const authenticatedUser = {
                         ...userObj,
-                        ...tokenInfo
+                        ...tokenInfo,
                     };
 
                     debug(`Authentication successful for user: ${user.email}`);
@@ -176,11 +176,14 @@ export default function configurePassport(jwtSecret, options = {}) {
 
     // Also register the jwt strategy that just delegates to the api-token strategy
     // This is for backward compatibility with any routes still using 'jwt'
-    passport.use('jwt', new CustomStrategy(async (req, done) => {
-        debug('JWT strategy called (delegating to api-token)');
-        // Just delegate to the api-token strategy
-        return passport.authenticate('api-token', { session: false })(req, {}, () => {})(req, done);
-    }));
+    passport.use(
+        'jwt',
+        new CustomStrategy(async (req, done) => {
+            debug('JWT strategy called (delegating to api-token)');
+            // Just delegate to the api-token strategy
+            return passport.authenticate('api-token', { session: false })(req, {}, () => {})(req, done);
+        }),
+    );
 
     debug('Passport strategies configured successfully');
     return passport;

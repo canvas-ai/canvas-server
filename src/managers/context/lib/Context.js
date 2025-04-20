@@ -101,9 +101,7 @@ class Context extends EventEmitter {
             const parsedInitial = new Url(initialUrl);
 
             if (this.#baseUrl !== '/' && !parsedInitial.path.startsWith(base.path)) {
-                debug(
-                    `Provided URL "${initialUrl}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`
-                );
+                debug(`Provided URL "${initialUrl}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`);
                 initialUrl = this.#baseUrl; // Force URL to base
             }
 
@@ -153,19 +151,45 @@ class Context extends EventEmitter {
     }
 
     // Getters
-    get id() { return this.#id; }
-    get name() { return this.#name; }
-    get baseUrl() { return this.#baseUrl; }
-    get url() { return this.#url; }
-    get path() { return this.#path; }
-    get pathArray() { return this.#pathArray; }
-    get workspace() { return this.#workspace.id; }
-    get device() { return this.#device.id; }
-    get apps() { return this.#device.apps; }
-    get user() { return this.#user; }
-    get identity() { return this.#user.identity; }
-    get tree() { return this.#tree.toJSON(); } // Legacy
-    get pendingUrl() { return this.#pendingUrl; } // Check if there's a pending URL switch
+    get id() {
+        return this.#id;
+    }
+    get name() {
+        return this.#name;
+    }
+    get baseUrl() {
+        return this.#baseUrl;
+    }
+    get url() {
+        return this.#url;
+    }
+    get path() {
+        return this.#path;
+    }
+    get pathArray() {
+        return this.#pathArray;
+    }
+    get workspace() {
+        return this.#workspace.id;
+    }
+    get device() {
+        return this.#device.id;
+    }
+    get apps() {
+        return this.#device.apps;
+    }
+    get user() {
+        return this.#user;
+    }
+    get identity() {
+        return this.#user.identity;
+    }
+    get tree() {
+        return this.#tree.toJSON();
+    } // Legacy
+    get pendingUrl() {
+        return this.#pendingUrl;
+    } // Check if there's a pending URL switch
     get bitmapArrays() {
         return {
             server: this.#serverContextArray,
@@ -175,12 +199,21 @@ class Context extends EventEmitter {
             filter: this.#filterArray,
         };
     }
-    get serverContextArray() { return this.#serverContextArray; }
-    get clientContextArray() { return this.#clientContextArray; }
-    get contextBitmapArray() { return this.#contextBitmapArray; }
-    get featureBitmapArray() { return this.#featureBitmapArray; }
-    get filterArray() { return this.#filterArray; }
-
+    get serverContextArray() {
+        return this.#serverContextArray;
+    }
+    get clientContextArray() {
+        return this.#clientContextArray;
+    }
+    get contextBitmapArray() {
+        return this.#contextBitmapArray;
+    }
+    get featureBitmapArray() {
+        return this.#featureBitmapArray;
+    }
+    get filterArray() {
+        return this.#filterArray;
+    }
 
     /**
      * Context API
@@ -223,9 +256,7 @@ class Context extends EventEmitter {
             const base = new Url(this.#baseUrl); // Assuming baseUrl is always valid by this point
             // Ensure the target URL path starts with the base URL path
             if (!parsed.path.startsWith(base.path)) {
-                throw new Error(
-                    `Cannot set URL "${url}" outside the context base URL "${this.#baseUrl}"`
-                );
+                throw new Error(`Cannot set URL "${url}" outside the context base URL "${this.#baseUrl}"`);
             }
         }
 
@@ -271,19 +302,18 @@ class Context extends EventEmitter {
             }
             // Ensure the new base URL is within the same workspace
             if (parsedNewBase.workspaceID !== this.#workspace.name) {
-                 throw new Error(`Cannot set base URL to a different workspace: ${newBaseUrl}`);
+                throw new Error(`Cannot set base URL to a different workspace: ${newBaseUrl}`);
             }
 
             // Option C: Check if the *current* URL is compatible with the *new* base URL
             if (this.#url) {
                 const currentParsed = new Url(this.#url);
-                 // Only check path if the current URL is actually in the same workspace
-                 if (currentParsed.workspaceID === this.#workspace.name &&
-                     !currentParsed.path.startsWith(parsedNewBase.path)) {
+                // Only check path if the current URL is actually in the same workspace
+                if (currentParsed.workspaceID === this.#workspace.name && !currentParsed.path.startsWith(parsedNewBase.path)) {
                     throw new Error(
-                        `Current URL "${this.#url}" is outside the proposed new base URL "${newBaseUrl}". Please navigate within the new base URL before setting it.`
+                        `Current URL "${this.#url}" is outside the proposed new base URL "${newBaseUrl}". Please navigate within the new base URL before setting it.`,
                     );
-                 }
+                }
             }
         }
         /*
@@ -304,7 +334,6 @@ class Context extends EventEmitter {
         //     // Handle lock acquisition/release failure - potentially revert?
         //     throw new Error(`Failed to update layer locks for base URL: ${lockError.message}`);
         // }
-
 
         debug(`Setting base URL from "${this.#baseUrl}" to "${newBaseUrl}"`);
         this.#baseUrl = newBaseUrl;

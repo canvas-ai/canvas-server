@@ -9,7 +9,9 @@ const debug = (...args) => console.debug(logPrefix, ...args);
 const info = (...args) => console.info(logPrefix, ...args);
 const warn = (...args) => console.warn(logPrefix, ...args);
 const error = (...args) => console.error(logPrefix, ...args);
-const fatal = (...args) => { console.error(logPrefix, 'FATAL:', ...args); };
+const fatal = (...args) => {
+    console.error(logPrefix, 'FATAL:', ...args);
+};
 
 import Workspace from '../lib/Workspace.js';
 import authenticateToken from './auth.js';
@@ -76,13 +78,13 @@ async function startServer() {
 
         // Add a simple health check endpoint (unauthenticated)
         app.get('/health', (req, res) => {
-             // Check if workspace is still considered open/active
+            // Check if workspace is still considered open/active
             const wsStatus = workspaceInstance.status;
             res.status(200).json({
-                 status: 'ok',
-                 workspaceId: workspaceInstance?.id || 'unknown',
-                 workspaceStatus: wsStatus
-                });
+                status: 'ok',
+                workspaceId: workspaceInstance?.id || 'unknown',
+                workspaceStatus: wsStatus,
+            });
         });
 
         // Apply authentication middleware TO API ROUTES ONLY
@@ -104,7 +106,6 @@ async function startServer() {
             // Attempt graceful shutdown before exiting
             shutdownServer(1); // Pass error code
         });
-
     } catch (error) {
         fatal(`Failed to start workspace server for ${WORKSPACE_PATH}: ${error.message}`, error);
         process.exit(1);
@@ -116,10 +117,10 @@ async function shutdownServer(exitCode = 0) {
 
     // Close the HTTP server first to stop accepting new connections
     if (serverInstance) {
-         serverInstance.close(() => {
-             info('HTTP server closed.');
-         });
-         serverInstance = null; // Prevent multiple closes
+        serverInstance.close(() => {
+            info('HTTP server closed.');
+        });
+        serverInstance = null; // Prevent multiple closes
     }
 
     // Stop the workspace instance
@@ -142,12 +143,15 @@ process.on('SIGTERM', () => shutdownServer(0));
 
 // Handle errors that might slip through
 process.on('uncaughtException', (error, origin) => {
-    fatal(`Uncaught exception in workspace server (${workspaceInstance?.id || WORKSPACE_PATH}): ${error.message}`, { error, origin });
+    fatal(`Uncaught exception in workspace server (${workspaceInstance?.id || WORKSPACE_PATH}): ${error.message}`, {
+        error,
+        origin,
+    });
     shutdownServer(1); // Attempt graceful shutdown on fatal error
 });
 process.on('unhandledRejection', (reason, promise) => {
     fatal(`Unhandled rejection in workspace server (${workspaceInstance?.id || WORKSPACE_PATH}): ${reason}`, { promise });
-     shutdownServer(1); // Attempt graceful shutdown on fatal error
+    shutdownServer(1); // Attempt graceful shutdown on fatal error
 });
 
 startServer();

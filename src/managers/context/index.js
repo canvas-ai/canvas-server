@@ -33,7 +33,7 @@ class ContextManager extends Manager {
         super({
             jim: options.jim,
             indexName: 'contexts',
-            eventEmitterOptions: options.eventEmitterOptions
+            eventEmitterOptions: options.eventEmitterOptions,
         });
 
         if (!options.user) {
@@ -49,6 +49,7 @@ class ContextManager extends Manager {
     /**
      * Getters
      */
+
     get user() { return this.#user; }
     get workspaceManager() { return this.#workspaceManager; }
 
@@ -131,7 +132,7 @@ class ContextManager extends Manager {
             ...options,
             workspace: workspace,
             workspaceManager: this.#workspaceManager,
-            user: this.#user
+            user: this.#user,
         };
 
         const context = new Context(url, contextOptions);
@@ -244,7 +245,6 @@ class ContextManager extends Manager {
 
             // We don't actually load the contexts here, they will be loaded on-demand
             // This is just to initialize any needed structures
-
         } catch (error) {
             debug(`Error loading active contexts: ${error.message}`);
         }
@@ -267,7 +267,7 @@ class ContextManager extends Manager {
             url: context.url,
             workspace: context.workspace,
             created: context.created,
-            updated: context.updated
+            updated: context.updated,
         };
 
         // Update the index

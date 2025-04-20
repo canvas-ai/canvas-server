@@ -131,7 +131,7 @@ export {
     uuid12,
     _ulid,
     pathArrayToTree,
-    pathsToTree,    // To refactor?remove
-    pathsToTree2,   // To remove
-    printTree,      // To refactor
+    pathsToTree, // To refactor?remove
+    pathsToTree2, // To remove
+    printTree, // To refactor
 };

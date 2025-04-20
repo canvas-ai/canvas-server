@@ -16,10 +16,7 @@ const DEFAULT_WORKSPACE_ROOT = path.join(os.homedir(), 'canvas-workspaces');
 const manager = new WorkspaceManager({ rootPath: DEFAULT_WORKSPACE_ROOT });
 
 const program = new Command();
-program
-    .name('ws')
-    .description('Canvas Workspace Manager CLI')
-    .version('0.1.0'); // TODO: Read from package.json?
+program.name('ws').description('Canvas Workspace Manager CLI').version('0.1.0'); // TODO: Read from package.json?
 
 // --- Top-Level Commands ---
 
@@ -39,7 +36,7 @@ program
                 enabled: !!options.port,
                 port: options.port || null,
                 token: options.token || null,
-            }
+            },
         };
         try {
             const meta = await manager.createWorkspace(name, createOptions);
@@ -104,9 +101,9 @@ program
         try {
             const stopped = await manager.stopWorkspace(workspaceId);
             if (stopped) {
-                 console.log(`Workspace "${workspaceId}" stopped successfully.`);
+                console.log(`Workspace "${workspaceId}" stopped successfully.`);
             } else {
-                 console.log(`Workspace "${workspaceId}" was not running or could not be stopped.`);
+                console.log(`Workspace "${workspaceId}" was not running or could not be stopped.`);
             }
         } catch (error) {
             console.error(`Error stopping workspace: ${error.message}`);
@@ -132,7 +129,7 @@ program
             if (workspaces.length === 0) {
                 console.log('No workspaces found.');
             } else {
-                 console.log(JSON.stringify(manager.index, null, 2));
+                console.log(JSON.stringify(manager.index, null, 2));
             }
         }
     });
@@ -146,7 +143,7 @@ program
         if (workspaces.length === 0) {
             console.log('No workspaces found.');
         } else {
-            workspaces.forEach(ws => {
+            workspaces.forEach((ws) => {
                 console.log(`- ID: ${ws.id}, Path: ${ws.path}, Status: ${ws.status}`);
             });
         }
@@ -159,10 +156,10 @@ program
         console.log(`Removing workspace "${workspaceId}" from index...`);
         try {
             const removed = await manager.removeWorkspace(workspaceId);
-             if (removed) {
-                 console.log(`Workspace "${workspaceId}" removed successfully from index.`);
+            if (removed) {
+                console.log(`Workspace "${workspaceId}" removed successfully from index.`);
             } else {
-                 console.log(`Workspace "${workspaceId}" not found in index.`);
+                console.log(`Workspace "${workspaceId}" not found in index.`);
             }
         } catch (error) {
             console.error(`Error removing workspace: ${error.message}`);
@@ -181,9 +178,9 @@ program
         try {
             const destroyed = await manager.destroyWorkspace(workspaceId, options.force);
             if (destroyed) {
-                 console.log(`Workspace "${workspaceId}" destroyed successfully.`);
+                console.log(`Workspace "${workspaceId}" destroyed successfully.`);
             } else {
-                 console.log(`Workspace "${workspaceId}" not found or could not be destroyed.`);
+                console.log(`Workspace "${workspaceId}" not found or could not be destroyed.`);
             }
         } catch (error) {
             console.error(`Error destroying workspace: ${error.message}`);
@@ -191,11 +188,9 @@ program
         }
     });
 
-
 // --- Workspace Specific Commands (ws <id> ...) ---
 
-const wsCommand = program.command('id <workspaceId>')
-    .description('Manage a specific workspace');
+const wsCommand = program.command('id <workspaceId>').description('Manage a specific workspace');
 
 wsCommand
     .command('show')
@@ -267,8 +262,7 @@ wsCommand
 
 // --- REST API Commands ---
 
-const apiCommand = program.command('api <workspaceId>')
-    .description('Manage the REST API for a specific workspace');
+const apiCommand = program.command('api <workspaceId>').description('Manage the REST API for a specific workspace');
 
 apiCommand
     .command('start')

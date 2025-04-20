@@ -105,7 +105,9 @@ class TokenManager extends EventEmitter {
         const tokenHash = this.#hashToken(tokenValue);
 
         const expiresAt = options.expiresAt
-            ? (options.expiresAt instanceof Date ? options.expiresAt.toISOString() : options.expiresAt)
+            ? options.expiresAt instanceof Date
+                ? options.expiresAt.toISOString()
+                : options.expiresAt
             : null;
 
         // Create token object for storage (without raw value)
@@ -120,7 +122,7 @@ class TokenManager extends EventEmitter {
             expiresAt: expiresAt,
             status: 'active',
             scopes: Array.isArray(options.scopes) ? options.scopes : ['api'],
-            usageCount: 0
+            usageCount: 0,
         };
 
         // Get current tokens
@@ -139,7 +141,7 @@ class TokenManager extends EventEmitter {
         return {
             ...token,
             value: tokenValue,
-            tokenHash: undefined // Don't expose the hash
+            tokenHash: undefined, // Don't expose the hash
         };
     }
 
@@ -160,11 +162,12 @@ class TokenManager extends EventEmitter {
         const tokens = this.#getTokens();
 
         // Find token with matching hash or raw value (for backward compatibility)
-        const tokenEntry = Object.entries(tokens).find(([_, token]) =>
-            // Check for hash match (new format)
-            (token.tokenHash && token.tokenHash === tokenHash) ||
-            // Check for direct token match (old format)
-            (token.token && token.token === tokenValue)
+        const tokenEntry = Object.entries(tokens).find(
+            ([_, token]) =>
+                // Check for hash match (new format)
+                (token.tokenHash && token.tokenHash === tokenHash) ||
+                // Check for direct token match (old format)
+                (token.token && token.token === tokenValue),
         );
 
         if (!tokenEntry) {
@@ -202,7 +205,7 @@ class TokenManager extends EventEmitter {
             try {
                 await this.updateToken(tokenId, {
                     tokenHash: this.#hashToken(token.token),
-                    token: undefined  // Remove the plain text token
+                    token: undefined, // Remove the plain text token
                 });
             } catch (error) {
                 debug(`Error upgrading token ${tokenId}: ${error.message}`);
@@ -212,7 +215,7 @@ class TokenManager extends EventEmitter {
 
         return {
             tokenId,
-            userId: this.#userId
+            userId: this.#userId,
         };
     }
 
@@ -262,21 +265,17 @@ class TokenManager extends EventEmitter {
 
         // Apply filters
         if (options.status && API_TOKEN_STATUSES.includes(options.status)) {
-            tokens = tokens.filter(token => token.status === options.status);
+            tokens = tokens.filter((token) => token.status === options.status);
         }
 
         if (Array.isArray(options.scopes) && options.scopes.length > 0) {
-            tokens = tokens.filter(token =>
-                options.scopes.some(scope => token.scopes.includes(scope))
-            );
+            tokens = tokens.filter((token) => options.scopes.some((scope) => token.scopes.includes(scope)));
         }
 
         // Filter out expired tokens unless specifically requested
         if (!options.includeExpired) {
             const now = new Date().toISOString();
-            tokens = tokens.filter(token =>
-                !token.expiresAt || token.expiresAt > now
-            );
+            tokens = tokens.filter((token) => !token.expiresAt || token.expiresAt > now);
         }
 
         return tokens;
@@ -312,16 +311,14 @@ class TokenManager extends EventEmitter {
 
         // Format expiration date if provided
         if (updates.expiresAt) {
-            updates.expiresAt = updates.expiresAt instanceof Date
-                ? updates.expiresAt.toISOString()
-                : updates.expiresAt;
+            updates.expiresAt = updates.expiresAt instanceof Date ? updates.expiresAt.toISOString() : updates.expiresAt;
         }
 
         // Apply updates
         const updatedToken = {
             ...token,
             ...updates,
-            updated: new Date().toISOString()
+            updated: new Date().toISOString(),
         };
 
         // Update token in the tokens object
@@ -399,7 +396,7 @@ class TokenManager extends EventEmitter {
         const updatedToken = {
             ...token,
             lastUsed: new Date().toISOString(),
-            usageCount: (token.usageCount || 0) + 1
+            usageCount: (token.usageCount || 0) + 1,
         };
 
         // Update token in tokens object

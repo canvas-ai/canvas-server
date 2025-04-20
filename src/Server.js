@@ -58,7 +58,6 @@ import ContextManager from './managers/context/index.js';
 
 import UserEventHandler from './services/events/UserEventHandler.js';
 
-
 /**
  * Canvas Server
  *
@@ -69,7 +68,6 @@ import UserEventHandler from './services/events/UserEventHandler.js';
  */
 
 class Server extends EventEmitter {
-
     // Runtime state
     #mode; // user, standalone
     #status = 'stopped'; // initialized, running, stopping, stopped
@@ -105,18 +103,38 @@ class Server extends EventEmitter {
     }
 
     // Getters
-    get mode() { return this.#mode; }
-    get version() { return `${productName} v${version} | ${description}`; }
-    get status() { return this.#status; }
-    get services() { return this.#services; }
-    get transports() { return this.#transports; }
-    get db() { return this.#db; }
+    get mode() {
+        return this.#mode;
+    }
+    get version() {
+        return `${productName} v${version} | ${description}`;
+    }
+    get status() {
+        return this.#status;
+    }
+    get services() {
+        return this.#services;
+    }
+    get transports() {
+        return this.#transports;
+    }
+    get db() {
+        return this.#db;
+    }
 
     // Manager getters
-    get userManager() { return this.#userManager; }
-    get sessionManager() { return this.#sessionManager; }
-    get workspaceManager() { return this.#workspaceManager; }
-    get contextManager() { return this.#contextManager; }
+    get userManager() {
+        return this.#userManager;
+    }
+    get sessionManager() {
+        return this.#sessionManager;
+    }
+    get workspaceManager() {
+        return this.#workspaceManager;
+    }
+    get contextManager() {
+        return this.#contextManager;
+    }
 
     /**
      * Initialize the server
@@ -240,8 +258,8 @@ class Server extends EventEmitter {
             this.#sessionManager = new SessionManager({
                 jim: jim,
                 sessionOptions: {
-                    sessionTimeout: 7 * 24 * 60 * 60 * 1000 // 7 days
-                }
+                    sessionTimeout: 7 * 24 * 60 * 60 * 1000, // 7 days
+                },
             });
             await this.#sessionManager.initialize();
             debug('Session manager initialized');
@@ -249,7 +267,7 @@ class Server extends EventEmitter {
             // Initialize User Manager
             this.#userManager = new UserManager({
                 rootPath: env.CANVAS_SERVER_HOMES,
-                jim: jim
+                jim: jim,
             });
             await this.#userManager.initialize();
             debug('User manager initialized');
@@ -257,7 +275,7 @@ class Server extends EventEmitter {
             // Initialize Workspace Manager
             this.#workspaceManager = new WorkspaceManager({
                 rootPath: env.CANVAS_SERVER_HOMES,
-                jim: jim
+                jim: jim,
             });
             await this.#workspaceManager.initialize();
             debug('Workspace manager initialized');
@@ -550,7 +568,8 @@ class Server extends EventEmitter {
     async #createDefaultAdminUser() {
         debug('Checking for admin user...');
         const adminEmail = env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local';
-        const forceReset = env.CANVAS_ADMIN_RESET == 'true' ||
+        const forceReset =
+            env.CANVAS_ADMIN_RESET == 'true' ||
             env.CANVAS_ADMIN_RESET == '1' ||
             env.CANVAS_ADMIN_RESET == 1 ||
             env.CANVAS_ADMIN_RESET == 'yes';
@@ -560,16 +579,19 @@ class Server extends EventEmitter {
         try {
             // Get auth service
             const authService = this.#services.get('auth');
-            if (!authService) { throw new Error('Auth service not found'); }
+            if (!authService) {
+                throw new Error('Auth service not found');
+            }
 
             // Check if admin user already exists
             const adminExists = await this.#userManager.hasUserByEmail(adminEmail);
             debug(`Admin user exists: ${adminExists}`);
 
             // Generate a password if none is provided
-            const password = (!env.CANVAS_ADMIN_PASSWORD || env.CANVAS_ADMIN_PASSWORD === 'null') ?
-                this.#generateSecurePassword(12) :
-                env.CANVAS_ADMIN_PASSWORD;
+            const password =
+                !env.CANVAS_ADMIN_PASSWORD || env.CANVAS_ADMIN_PASSWORD === 'null'
+                    ? this.#generateSecurePassword(12)
+                    : env.CANVAS_ADMIN_PASSWORD;
 
             if (adminExists) {
                 if (forceReset) {
@@ -581,7 +603,7 @@ class Server extends EventEmitter {
                     // Update user status to ensure it's active
                     await this.#userManager.updateUser(adminUser.id, {
                         status: 'active',
-                        userType: 'admin'
+                        userType: 'admin',
                     });
 
                     // Reset password using the auth service
@@ -609,7 +631,7 @@ class Server extends EventEmitter {
             const userData = {
                 email: adminEmail,
                 userType: 'admin',
-                status: 'active'
+                status: 'active',
             };
 
             const newUser = await this.#userManager.createUser(userData);
@@ -679,7 +701,7 @@ class Server extends EventEmitter {
         const contextManager = new ContextManager({
             jim: jim,
             user: user,
-            workspaceManager: this.#workspaceManager
+            workspaceManager: this.#workspaceManager,
         });
 
         return contextManager;

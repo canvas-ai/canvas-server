@@ -515,7 +515,7 @@ class AuthService extends EventEmitter {
             debug(`Session created for user: ${user.email} (${user.id})`);
             return {
                 session,
-                token
+                token,
             };
         } catch (error) {
             debug(`Error creating session: ${error.message}`);

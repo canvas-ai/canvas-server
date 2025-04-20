@@ -32,16 +32,18 @@ export default function (server) {
 
                 // Add session if available for JWT tokens
                 if (user.type === 'jwt' && user.sessionId && server.sessionManager) {
-                    server.sessionManager.getSession(user.sessionId)
-                        .then(session => {
+                    server.sessionManager
+                        .getSession(user.sessionId)
+                        .then((session) => {
                             if (session) {
                                 req.session = session;
                                 // Touch session to update last active time
-                                server.sessionManager.touchSession(session.id)
-                                    .catch(err => debug(`Error touching session: ${err.message}`));
+                                server.sessionManager
+                                    .touchSession(session.id)
+                                    .catch((err) => debug(`Error touching session: ${err.message}`));
                             }
                         })
-                        .catch(err => debug(`Error getting session: ${err.message}`));
+                        .catch((err) => debug(`Error getting session: ${err.message}`));
                 }
             } else {
                 debug('No authenticated user');

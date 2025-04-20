@@ -23,9 +23,7 @@ import env from '../../env.js';
 import logger from '../log/index.js';
 
 class Config {
-
     constructor(options = {}) {
-
         logger.info('Initializing Global Config module..');
         // Use environment variables with fallbacks
         this.serverConfigDir =

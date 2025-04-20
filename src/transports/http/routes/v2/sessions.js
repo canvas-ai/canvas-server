@@ -1,7 +1,6 @@
 import express from 'express';
 import passport from 'passport';
 
-
 import logger, { createDebug } from '../../../../utils/log/index.js';
 import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:sessions');

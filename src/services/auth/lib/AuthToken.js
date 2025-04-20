@@ -138,13 +138,13 @@ class AuthTokenService {
                         // Token is valid, add to cache
                         this.#tokenCache.set(tokenValue, {
                             userId: result.userId,
-                            tokenId: result.tokenId
+                            tokenId: result.tokenId,
                         });
 
                         debug(`Valid token found for user: ${userId}`);
                         return {
                             userId: result.userId,
-                            tokenId: result.tokenId
+                            tokenId: result.tokenId,
                         };
                     }
                 } catch (error) {
