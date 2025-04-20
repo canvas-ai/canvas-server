@@ -12,7 +12,10 @@ const debug = createDebug('workspace');
 import Db from '../../../services/synapsd/src/index.js';
 
 // Constants
-import { WORKSPACE_STATUS, WORKSPACE_API_STATUS, WORKSPACE_DIRECTORIES } from '../index.old.js';
+import {
+    WORKSPACE_STATUS_CODES,
+    WORKSPACE_DIRECTORIES,
+} from '../index.js';
 
 /**
  * Canvas Workspace
@@ -23,7 +26,7 @@ import { WORKSPACE_STATUS, WORKSPACE_API_STATUS, WORKSPACE_DIRECTORIES } from '.
 
 class Workspace extends EventEmitter {
     // Runtime state
-    #status = WORKSPACE_STATUS.INACTIVE; // Internal runtime status
+    #status = WORKSPACE_STATUS_CODES.INACTIVE; // Internal runtime status
     #db = null;
     #tree = null;
 
@@ -82,14 +85,14 @@ class Workspace extends EventEmitter {
 
     get status() { return this.#status; }
     get isConfigLoaded() { return this.#configStore !== null; }
-    get isActive() { return this.#status === WORKSPACE_STATUS.ACTIVE; }
+    get isActive() { return this.#status === WORKSPACE_STATUS_CODES.ACTIVE; }
 
     /**
      * Setters and configuration methods
      */
 
     setStatus(status) {
-        if (!Object.values(WORKSPACE_STATUS).includes(status)) {
+        if (!Object.values(WORKSPACE_STATUS_CODES).includes(status)) {
             debug(`Invalid status value provided: ${status}`);
             return false;
         }
@@ -158,14 +161,14 @@ class Workspace extends EventEmitter {
         try {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder for future role initialization
-            this.#status = WORKSPACE_STATUS.ACTIVE;
+            this.#status = WORKSPACE_STATUS_CODES.ACTIVE;
             this.emit('workspace:started', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             logger.error(`Failed to start workspace "${this.id}": ${err.message}`);
             await this.#shutdownResources();
-            this.#status = WORKSPACE_STATUS.INACTIVE;
+            this.#status = WORKSPACE_STATUS_CODES.INACTIVE;
             throw err;
         }
     }
@@ -177,7 +180,7 @@ class Workspace extends EventEmitter {
      */
     async stop() {
         // Check internal runtime status
-        if (this.#status === WORKSPACE_STATUS.INACTIVE) {
+        if (this.#status === WORKSPACE_STATUS_CODES.INACTIVE) {
             debug(`Workspace "${this.id}" is already inactive.`);
             return true; // Considered successful if already stopped
         }
@@ -186,14 +189,14 @@ class Workspace extends EventEmitter {
         try {
             await this.#shutdownResources();
             // await this.#shutdownRoles(); // Placeholder
-            this.#status = WORKSPACE_STATUS.INACTIVE;
+            this.#status = WORKSPACE_STATUS_CODES.INACTIVE;
             this.emit('workspace:stopped', { id: this.id });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
             logger.error(`Error stopping workspace "${this.id}": ${err.message}`);
             // Even if shutdown fails, update internal status to INACTIVE
-            this.#status = WORKSPACE_STATUS.INACTIVE;
+            this.#status = WORKSPACE_STATUS_CODES.INACTIVE;
             this.emit('workspace:stopped', { id: this.id, error: err.message }); // Emit with error
             return false; // Indicate stop had issues
         }

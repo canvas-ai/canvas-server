@@ -25,6 +25,17 @@ import Workspace from './lib/Workspace.js';
 // Example: john.doe@example.com/my-project
 
 const WORKSPACE_CONFIG_FILENAME = 'workspace.json'; // Name of the config file within the workspace directory
+const WORKSPACE_DIRECTORIES = {
+    db: 'Db',
+    config: 'Config',
+    data: 'Data',
+    cache: 'Cache',
+    home: 'Home',
+    apps: 'Apps',
+    roles: 'Roles',
+    dotfiles: 'Dotfiles',
+    workspaces: 'Workspaces',
+};
 
 const WORKSPACE_STATUS_CODES = {
     AVAILABLE: 'available', // Workspace dir exists, config readable
@@ -169,6 +180,7 @@ class WorkspaceManager extends Manager {
         try {
             await fsPromises.mkdir(workspaceDir, { recursive: true });
             debug(`Created workspace directory: ${workspaceDir}`);
+            await this.#preCreateSubdirectories(workspaceDir); // Pre-create all subdirectories defined in WORKSPACE_DIRECTORIES
         } catch (err) {
             logger.error(`Failed to create directory ${workspaceDir}: ${err.message}`);
             throw new Error(`Failed to create workspace directory: ${err.message}`);
@@ -921,9 +933,26 @@ class WorkspaceManager extends Manager {
         return true;
     }
 
+    /**
+     * Pre-creates all subdirectories defined in WORKSPACE_DIRECTORIES.
+     * @param {string} workspaceDir - The workspace directory path.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async #preCreateSubdirectories(workspaceDir) {
+        for (const subdir in WORKSPACE_DIRECTORIES) {
+            const subdirPath = path.join(workspaceDir, WORKSPACE_DIRECTORIES[subdir]);
+            await fsPromises.mkdir(subdirPath, { recursive: true });
+            debug(`Created subdirectory: ${subdirPath}`);
+        }
+    }
+
 }
 
 export default WorkspaceManager;
-export { WORKSPACE_STATUS_CODES };
+export {
+    WORKSPACE_STATUS_CODES,
+    WORKSPACE_DIRECTORIES,
+};
 
 

@@ -434,8 +434,53 @@ async function runTests() {
         console.error('Error during setWorkspaceProperty on closed WS: ', err);
     }
 
-    // --- Test exportWorkspace --- Requires workspace to be loaded but inactive (or just not active?)
-    // Let's open ws1 again
+    // --- Testing Workspace Instance Setters ---
+    console.log('\n--- Testing Workspace Instance Setters ---');
+    try {
+        // Reopen workspace (if needed) and apply instance setters
+        let wsInstance = await wm.openWorkspace(testUserID, ws1Meta.id);
+        if (!wsInstance) throw new Error('Failed to reopen workspace for instance setter tests');
+        wsInstance.setLabel('Instance Label Updated');
+        wsInstance.setColor('#ABCDEF');
+        wsInstance.setDescription('Instance Description Updated');
+        console.log('Workspace instance setters applied successfully.');
+
+        // Verify that the workspace.json file has been updated
+        const instanceConfigRaw = await fs.readFile(path.join(ws1Meta.rootPath, 'workspace.json'), 'utf8');
+        const instanceConfig = JSON.parse(instanceConfigRaw);
+        if (instanceConfig.label !== 'Instance Label Updated' || instanceConfig.color !== '#ABCDEF' || instanceConfig.description !== 'Instance Description Updated') {
+            throw new Error('Instance setters did not update workspace.json correctly.');
+        }
+        console.log('Workspace instance config updated correctly in workspace.json.');
+    } catch (err) {
+        console.error('Error during Workspace Instance Setters test:', err);
+    }
+
+    // --- Testing Workspace Tree Methods ---
+    console.log('\n--- Testing Workspace Tree Methods ---');
+    try {
+        // Ensure the workspace is active; if not, start it
+        let treeWorkspace = await wm.startWorkspace(testUserID, ws1Meta.id);
+        if (!treeWorkspace) throw new Error('Failed to start workspace for tree tests');
+        const initialPaths = treeWorkspace.paths;
+        console.log('Initial tree paths:', initialPaths);
+
+        // Test insertPath
+        const insertResult = treeWorkspace.insertPath('/testPath', { testData: 123 });
+        if (!insertResult.layerIds || insertResult.layerIds.length < 1) {
+            throw new Error('insertPath failed to return valid layer IDs');
+        }
+        console.log('insertPath succeeded, new tree:', insertResult.tree);
+
+        // Test removePath
+        const removeResult = treeWorkspace.removePath('/testPath', false);
+        console.log('removePath result:', removeResult);
+        console.log('Workspace tree methods tested successfully.');
+    } catch (err) {
+        console.error('Error during Workspace Tree Methods test:', err);
+    }
+
+    // --- Test exportWorkspace ---
     console.log('\n--- Testing exportWorkspace ---');
     let exportPath;
     try {
