@@ -666,26 +666,234 @@ export default ({ auth, userManager, sessionManager }) => {
         }
     });
 
-    // Placeholder for document routes - To be implemented separately
-    router.get('/:id/documents*', (req, res) => {
+    // === Document Management (Requires Active Workspace) ===
+
+    // Helper to parse comma-separated query params into arrays
+    const parseQueryArray = (queryParam) => {
+        if (!queryParam ||
+            queryParam == '' ||
+            queryParam.trim() == '' ||
+            queryParam == null ||
+            queryParam == undefined
+        ) {
+            debug(`Parsing query param: "${queryParam}" -> []`);
+            return [];
+        }
+        debug(`Parsing query param: "${queryParam}`);
+        return queryParam.split(',').map(s => s.trim()).filter(Boolean);
+    };
+
+    // Apply active middleware to all /documents routes
+    router.use('/:id/documents*', loadWorkspaceMiddleware, ensureActiveMiddleware);
+
+    /**
+     * GET /:id/documents - List documents (query: context, features, filters, limit)
+     */
+    router.get('/:id/documents', async (req, res) => {
         const response = new ResponseObject();
-        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+        const { context = null, features = '', filters = '', limit = null } = req.query;
+        const workspace = req.workspace;
+
+        try {
+            const featureBitmapArray = parseQueryArray(features);
+            const filterArray = parseQueryArray(filters);
+            const options = { limit: limit ? parseInt(limit, 10) : null };
+
+            // Context spec parsing is handled inside listDocuments
+            const documents = await workspace.db.listDocuments(context, featureBitmapArray, filterArray, options);
+
+            response.success(documents, 'Documents retrieved successfully.');
+            res.json(response);
+        } catch (error) {
+            logger.error(`Error listing documents in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error listing documents', [error.message]));
+        }
     });
-    router.post('/:id/documents*', (req, res) => {
+
+    /**
+     * POST /:id/documents - Insert one or more documents (query: context, features)
+     */
+    router.post('/:id/documents', async (req, res) => {
         const response = new ResponseObject();
-        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+        const { context = '/', features = [] } = req.query;
+        const docArray = req.body;
+        const workspace = req.workspace;
+
+        if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
+            return res.status(400).json(response.badRequest('Document data (array or single object) is required in the request body.'));
+        }
+
+        try {
+            const featureBitmapArray = parseQueryArray(features);
+            debug(`Inserting documents with context: ${context} and features: ${featureBitmapArray}`);
+            debug(`Workspace ID: ${workspace.id} (${workspace.name})`);
+            const errors = await workspace.db.insertDocumentArray(docArray, context, featureBitmapArray);
+            debug(`Errors: ${JSON.stringify(errors)}`);
+            if (Object.keys(errors).length > 0) {
+                 // Partial success or total failure
+                 response.error('Some documents failed to insert.', errors, 207); // 207 Multi-Status
+                 res.status(207).json(response);
+            } else {
+                 // Assuming insert returns IDs or confirms success implicitly
+                 response.success({ insertedCount: Array.isArray(docArray) ? docArray.length : 1 }, 'Documents inserted successfully.', 201);
+                 res.status(201).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error inserting documents in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error inserting documents', [error.message]));
+        }
     });
-    router.put('/:id/documents*', (req, res) => {
+
+    /**
+     * PUT /:id/documents - Update one or more documents (query: context, features)
+     * Requires document objects with IDs in the body.
+     */
+    router.put('/:id/documents', async (req, res) => {
         const response = new ResponseObject();
-        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+        const { context = null, features = '' } = req.query;
+        const docArray = req.body;
+        const workspace = req.workspace;
+
+        if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
+            return res.status(400).json(response.badRequest('Document data (array or single object) with IDs is required in the request body.'));
+        }
+
+        // Validate if all documents have an ID
+        const docsToUpdate = Array.isArray(docArray) ? docArray : [docArray];
+        if (docsToUpdate.some(doc => !doc || !doc.id)) {
+             return res.status(400).json(response.badRequest('All documents for update must have an ID.'));
+        }
+
+        try {
+            const featureBitmapArray = parseQueryArray(features);
+            const errors = await workspace.db.updateDocumentArray(docArray, context, featureBitmapArray);
+
+             if (Object.keys(errors).length > 0) {
+                 // Partial success or total failure
+                 response.error('Some documents failed to update.', errors, 207); // 207 Multi-Status
+                 res.status(207).json(response);
+            } else {
+                 response.success({ updatedCount: docsToUpdate.length }, 'Documents updated successfully.');
+                 res.json(response);
+            }
+        } catch (error) {
+            logger.error(`Error updating documents in workspace ${workspace.id}: ${error.message}`);
+             if (error.message.includes('not found')) { // Basic check for not found errors during update
+                res.status(404).json(response.notFound('One or more documents not found for update.', [error.message]));
+            } else {
+                 res.status(500).json(response.error('Internal server error updating documents', [error.message]));
+            }
+        }
     });
-    router.patch('/:id/documents*', (req, res) => {
+
+    /**
+     * PATCH /:id/documents - Remove document IDs from specified bitmaps (query: context, features)
+     * Expects an array of document IDs in the body: { "docIds": [...] }
+     */
+    router.patch('/:id/documents', async (req, res) => {
         const response = new ResponseObject();
-        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+        const { context = null, features = '' } = req.query;
+        const { docIds } = req.body; // Expecting { "docIds": [...] }
+        const workspace = req.workspace;
+
+        if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
+            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
+        }
+
+        try {
+            const featureBitmapArray = parseQueryArray(features);
+            // Use removeDocumentArray which unticks from bitmaps
+            const errors = await workspace.db.removeDocumentArray(docIds, context, featureBitmapArray);
+
+            if (Object.keys(errors).length > 0) {
+                 // Partial success or total failure - unlikely with untick unless DB error
+                 response.error('Some documents failed removal from specified layers/bitmaps.', errors, 207);
+                 res.status(207).json(response);
+            } else {
+                 response.success({ removedCount: docIds.length }, 'Documents removed from specified layers/bitmaps successfully.');
+                 res.json(response);
+            }
+        } catch (error) {
+            logger.error(`Error removing documents from layers/bitmaps in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error removing documents from layers/bitmaps', [error.message]));
+        }
     });
-    router.delete('/:id/documents*', (req, res) => {
+
+    /**
+     * DELETE /:id/documents - Remove document IDs from the database entirely.
+     * Expects an array of document IDs in the body: { "docIds": [...] }
+     */
+    router.delete('/:id/documents', async (req, res) => {
         const response = new ResponseObject();
-        res.status(501).json(response.notImplemented('Document routes not implemented yet.'));
+        const { docIds } = req.body; // Expecting { "docIds": [...] }
+        const workspace = req.workspace;
+
+        if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
+            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
+        }
+
+        try {
+            // Use deleteDocumentArray for complete removal
+            const errors = await workspace.db.deleteDocumentArray(docIds);
+
+            if (Object.keys(errors).length > 0) {
+                 // Partial success or total failure
+                 response.error('Some documents failed to delete completely.', errors, 207);
+                 res.status(207).json(response);
+            } else {
+                 response.success({ deletedCount: docIds.length }, 'Documents deleted successfully from the database.');
+                 res.json(response);
+            }
+        } catch (error) {
+            logger.error(`Error deleting documents from database in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error deleting documents', [error.message]));
+        }
+    });
+
+    /**
+     * GET /:id/documents/by-id/:docId - Get a specific document by ID
+     */
+    router.get('/:id/documents/by-id/:docId', async (req, res) => {
+        const response = new ResponseObject();
+        const { docId } = req.params;
+        const workspace = req.workspace;
+
+        try {
+            const document = await workspace.db.getById(docId);
+            if (document) {
+                response.success(document, `Document ID '${docId}' retrieved successfully.`);
+                res.json(response);
+            } else {
+                response.notFound(`Document ID '${docId}' not found.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error getting document by ID ${docId} in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error getting document by ID', [error.message]));
+        }
+    });
+
+    /**
+     * GET /:id/documents/by-hash/:hashString - Get document by checksum hash
+     */
+    router.get('/:id/documents/by-hash/:hashString', async (req, res) => {
+        const response = new ResponseObject();
+        const { hashString } = req.params;
+        const workspace = req.workspace;
+
+        try {
+            const document = await workspace.db.getByChecksumString(hashString);
+            if (document) {
+                response.success(document, `Document with hash '${hashString}' retrieved successfully.`);
+                res.json(response);
+            } else {
+                response.notFound(`Document with hash '${hashString}' not found.`);
+                res.status(404).json(response);
+            }
+        } catch (error) {
+            logger.error(`Error getting document by hash ${hashString} in workspace ${workspace.id}: ${error.message}`);
+            res.status(500).json(response.error('Internal server error getting document by hash', [error.message]));
+        }
     });
 
     return router;

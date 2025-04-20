@@ -79,9 +79,24 @@ class Workspace extends EventEmitter {
      * Internal Resource Getters
      */
 
-    get db() { return this.#db; }
-    get tree() { return this.#db?.tree; }
-    get jsonTree() { return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}'; }
+    get db() {
+        if (!this.#db) {
+            throw new Error('Database not initialized');
+        }
+        return this.#db;
+    }
+    get tree() {
+        if (!this.#db) {
+            throw new Error('Database not initialized');
+        }
+        return this.#db?.tree;
+    }
+    get jsonTree() {
+        if (!this.#db) {
+            throw new Error('Database not initialized');
+        }
+        return this.#db?.tree?.jsonTree ? this.#db.tree.jsonTree : '{}';
+    }
 
     /**
      * Status/State Getters
