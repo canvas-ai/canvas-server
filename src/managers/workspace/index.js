@@ -264,6 +264,7 @@ class WorkspaceManager extends Manager {
         }
 
         this.emit('workspace:created', { ...indexEntry }); // Emit event
+        this.openWorkspace(userId, workspaceId); // Open the workspace immediately after creation (this is a temporary convenience)
         return { ...indexEntry }; // Return a copy
     }
 

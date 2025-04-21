@@ -33,7 +33,11 @@ const ensureAuthenticated = (authService) => {
  */
 const loadWorkspace = (userManager) => async (req, res, next) => {
     const workspaceId = req.params.id;
-    const userId = req.user?.id;
+    // const workspaceName = req.params.name; // Remove: :name is not a parameter in the route
+    debug(`Loading workspace ${workspaceId})`);
+    // debug(`User: ${req.user}`); // Sensitive - avoid logging full user object
+    // debug(`WS id: ${req.workspace}`); // req.workspace not set yet
+    const userId = req.user?.id; // Keep if needed for other logic, but email is used for lookup
     const userEmail = req.user?.email;
     const response = new ResponseObject();
 
@@ -50,9 +54,11 @@ const loadWorkspace = (userManager) => async (req, res, next) => {
             return res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or access denied.`));
         }
         req.workspace = workspace; // Attach workspace instance to request
+        debug(`Successfully loaded workspace: ${workspace.id} (${workspace.name})`);
         next();
     } catch (error) {
-        logger.error(`Error loading workspace ${userEmail}/${workspaceName}: ${error.message}`);
+        // Correctly log using workspaceId from the URL parameter
+        logger.error(`Error loading workspace ${userEmail}/${workspaceId}: ${error.message}`);
         return res.status(500).json(response.error('Internal server error loading workspace', [error.message]));
     }
 };
@@ -133,7 +139,7 @@ export default ({ auth, userManager, sessionManager }) => {
         const response = new ResponseObject();
         if (!userEmail) return res.status(401).json(response.unauthorized());
 
-        debug(`Listing workspaces for user ${userEmail}`);
+        debug(`ROUTE: GET / - List workspaces for user ${userEmail}`);
 
         try {
             // Assuming workspaceManager.index gives the list filtered implicitly or explicitly
@@ -154,6 +160,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const userEmail = req.user?.email;
         const { name, label, color, description, type } = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST / - Create workspace "${name}" for user ${userEmail}`);
 
         if (!userEmail) return res.status(401).json(response.unauthorized());
         if (!name) return res.status(400).json(response.badRequest('Workspace name is required.'));
@@ -178,6 +186,7 @@ export default ({ auth, userManager, sessionManager }) => {
      */
     router.get('/:id', loadWorkspaceMiddleware, async (req, res) => {
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id - Get workspace details for ${req.params.id}`);
         // req.workspace is attached by middleware
         response.success(req.workspace.toJSON(), 'Workspace details retrieved successfully.');
         res.json(response);
@@ -192,6 +201,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const workspace = req.workspace;
         const updates = req.body;
         const allowedUpdates = ['label', 'description', 'color', 'locked', 'acl', 'metadata'];
+
+        debug(`ROUTE: PATCH /:id - Update workspace ${req.params.id} with data:`, updates);
 
         const filteredUpdates = Object.keys(updates)
             .filter(key => allowedUpdates.includes(key))
@@ -235,6 +246,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const destroyData = req.query.destroyData === 'true'; // Check query param
         const response = new ResponseObject();
 
+        debug(`ROUTE: DELETE /:id - Destroy workspace ${workspaceId} (Destroy data: ${destroyData}) for user ${userEmail}`);
+
         if (!userEmail) return res.status(401).json(response.unauthorized());
 
         try {
@@ -260,6 +273,7 @@ export default ({ auth, userManager, sessionManager }) => {
      */
     router.get('/:id/status', loadWorkspaceMiddleware, async (req, res) => {
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id/status - Get status for workspace ${req.params.id}`);
         response.success({ id: req.workspace.id, status: req.workspace.status }, 'Workspace status retrieved successfully.');
         res.json(response);
     });
@@ -270,6 +284,7 @@ export default ({ auth, userManager, sessionManager }) => {
      */
     router.post('/:id/open', loadWorkspaceMiddleware, async (req, res) => {
         const response = new ResponseObject();
+        debug(`ROUTE: POST /:id/open - Open workspace ${req.params.id}`);
         // loadWorkspaceMiddleware already loaded it. Return the state.
         response.success(req.workspace.toJSON(), `Workspace '${req.workspace.id}' is open (loaded).`);
         res.json(response);
@@ -282,6 +297,9 @@ export default ({ auth, userManager, sessionManager }) => {
         const userEmail = req.user?.email;
         const workspaceId = req.params.id;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/close - Close workspace ${workspaceId} for user ${userEmail}`);
+
         if (!userEmail) return res.status(401).json(response.unauthorized());
 
         try {
@@ -306,6 +324,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const userEmail = req.user?.email;
         const workspaceId = req.params.id; // Use original ID from params for logging/response
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/start - Start workspace ${workspaceId} for user ${userEmail}`);
 
         if (req.workspace.isActive) {
             return res.json(response.success(req.workspace.toJSON(), `Workspace '${workspaceId}' is already active.`));
@@ -334,6 +354,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const userEmail = req.user?.email;
         const workspaceId = req.params.id;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/stop - Stop workspace ${workspaceId} for user ${userEmail}`);
 
         if (!req.workspace.isActive) {
             return res.json(response.success({ id: req.workspace.id, status: req.workspace.status }, `Workspace '${workspaceId}' is already inactive.`));
@@ -368,6 +390,7 @@ export default ({ auth, userManager, sessionManager }) => {
      */
     router.get('/:id/tree', (req, res) => {
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id/tree - Get tree for workspace ${req.params.id}`);
         try {
             // Access tree via the active workspace instance
             const treeJson = req.workspace.jsonTree;
@@ -385,6 +408,8 @@ export default ({ auth, userManager, sessionManager }) => {
     router.post('/:id/tree/paths', (req, res) => {
         const { path: targetPath, data = null, autoCreateLayers = true } = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/tree/paths - Insert path '${targetPath}' into workspace ${req.params.id}`);
 
         if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
 
@@ -404,6 +429,8 @@ export default ({ auth, userManager, sessionManager }) => {
     router.delete('/:id/tree/paths', (req, res) => {
         const { path: targetPath, recursive = false } = req.query; // Get path/recursive from query parameters
         const response = new ResponseObject();
+
+        debug(`ROUTE: DELETE /:id/tree/paths - Remove path '${targetPath}' (recursive: ${recursive}) from workspace ${req.params.id}`);
 
         if (!targetPath) return res.status(400).json(response.badRequest('Path query parameter is required.'));
 
@@ -429,6 +456,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { from, to, recursive = false } = req.body;
         const response = new ResponseObject();
 
+        debug(`ROUTE: POST /:id/tree/paths/move - Move path from '${from}' to '${to}' (recursive: ${recursive}) in workspace ${req.params.id}`);
+
         if (!from || !to) return res.status(400).json(response.badRequest('Both "from" and "to" paths are required.'));
 
         try {
@@ -452,6 +481,8 @@ export default ({ auth, userManager, sessionManager }) => {
     router.post('/:id/tree/paths/copy', (req, res) => {
         const { from, to, recursive = false } = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/tree/paths/copy - Copy path from '${from}' to '${to}' (recursive: ${recursive}) in workspace ${req.params.id}`);
 
         if (!from || !to) return res.status(400).json(response.badRequest('Both "from" and "to" paths are required.'));
 
@@ -477,6 +508,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { path: targetPath } = req.body;
         const response = new ResponseObject();
 
+        debug(`ROUTE: POST /:id/tree/paths/merge-up - Merge up path '${targetPath}' in workspace ${req.params.id}`);
+
         if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
 
         try {
@@ -500,6 +533,8 @@ export default ({ auth, userManager, sessionManager }) => {
     router.post('/:id/tree/paths/merge-down', (req, res) => {
         const { path: targetPath } = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/tree/paths/merge-down - Merge down path '${targetPath}' in workspace ${req.params.id}`);
 
         if (!targetPath) return res.status(400).json(response.badRequest('Path is required.'));
 
@@ -529,6 +564,7 @@ export default ({ auth, userManager, sessionManager }) => {
      */
     router.get('/:id/layers', (req, res) => {
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id/layers - List layers for workspace ${req.params.id}`);
         try {
             // Assuming tree object has a method to list layers
             const layers = req.workspace.tree?.layers; // Or db.tree.getLayers()
@@ -549,6 +585,8 @@ export default ({ auth, userManager, sessionManager }) => {
     router.post('/:id/layers', (req, res) => {
         const { name, type, ...options } = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: POST /:id/layers - Create layer '${name}' (type: ${type}) in workspace ${req.params.id}`);
 
         if (!name || !type) {
             return res.status(400).json(response.badRequest('Layer name and type are required.'));
@@ -574,6 +612,7 @@ export default ({ auth, userManager, sessionManager }) => {
     router.get('/:id/layers/:layerName', (req, res) => {
         const layerName = req.params.layerName;
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id/layers/:layerName - Get layer '${layerName}' from workspace ${req.params.id}`);
         try {
             const layer = req.workspace.getLayer(layerName);
             if (layer) {
@@ -596,6 +635,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const layerName = req.params.layerName;
         const options = req.body;
         const response = new ResponseObject();
+
+        debug(`ROUTE: PATCH /:id/layers/:layerName - Update layer '${layerName}' in workspace ${req.params.id} with data:`, options);
 
         // Basic validation: Disallow changing name via PATCH, use renameLayer method
         if (options.name && options.name !== layerName) {
@@ -630,6 +671,7 @@ export default ({ auth, userManager, sessionManager }) => {
     router.delete('/:id/layers/:layerName', (req, res) => {
         const layerName = req.params.layerName;
         const response = new ResponseObject();
+        debug(`ROUTE: DELETE /:id/layers/:layerName - Delete layer '${layerName}' from workspace ${req.params.id}`);
         try {
             const result = req.workspace.deleteLayer(layerName);
             if (result.success) {
@@ -651,6 +693,7 @@ export default ({ auth, userManager, sessionManager }) => {
     router.get('/:id/layers/by-id/:layerId', (req, res) => {
         const layerId = req.params.layerId;
         const response = new ResponseObject();
+        debug(`ROUTE: GET /:id/layers/by-id/:layerId - Get layer ID '${layerId}' from workspace ${req.params.id}`);
         try {
             const layer = req.workspace.getLayerById(layerId);
             if (layer) {
@@ -694,6 +737,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { context = null, features = '', filters = '', limit = null } = req.query;
         const workspace = req.workspace;
 
+        debug(`ROUTE: GET /:id/documents - List documents for workspace ${workspace.id} (context: ${context}, features: ${features}, filters: ${filters}, limit: ${limit})`);
+
         try {
             const featureBitmapArray = parseQueryArray(features);
             const filterArray = parseQueryArray(filters);
@@ -718,6 +763,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { context = '/', features = [] } = req.query;
         const docArray = req.body;
         const workspace = req.workspace;
+
+        debug(`ROUTE: POST /:id/documents - Insert documents into workspace ${workspace.id} (context: ${context}, features: ${features})`);
 
         if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
             return res.status(400).json(response.badRequest('Document data (array or single object) is required in the request body.'));
@@ -753,6 +800,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { context = null, features = '' } = req.query;
         const docArray = req.body;
         const workspace = req.workspace;
+
+        debug(`ROUTE: PUT /:id/documents - Update documents in workspace ${workspace.id} (context: ${context}, features: ${features})`);
 
         if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
             return res.status(400).json(response.badRequest('Document data (array or single object) with IDs is required in the request body.'));
@@ -796,6 +845,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { docIds } = req.body; // Expecting { "docIds": [...] }
         const workspace = req.workspace;
 
+        debug(`ROUTE: PATCH /:id/documents - Remove doc IDs from bitmaps in workspace ${workspace.id} (context: ${context}, features: ${features})`);
+
         if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
             return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
         }
@@ -828,6 +879,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { docIds } = req.body; // Expecting { "docIds": [...] }
         const workspace = req.workspace;
 
+        debug(`ROUTE: DELETE /:id/documents - Delete doc IDs from DB in workspace ${workspace.id}`);
+
         if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
             return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
         }
@@ -858,6 +911,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const { docId } = req.params;
         const workspace = req.workspace;
 
+        debug(`ROUTE: GET /:id/documents/by-id/:docId - Get doc ID ${docId} from workspace ${workspace.id}`);
+
         try {
             const document = await workspace.db.getById(docId);
             if (document) {
@@ -880,6 +935,8 @@ export default ({ auth, userManager, sessionManager }) => {
         const response = new ResponseObject();
         const { hashString } = req.params;
         const workspace = req.workspace;
+
+        debug(`ROUTE: GET /:id/documents/by-hash/:hashString - Get doc hash ${hashString} from workspace ${workspace.id}`);
 
         try {
             const document = await workspace.db.getByChecksumString(hashString);
