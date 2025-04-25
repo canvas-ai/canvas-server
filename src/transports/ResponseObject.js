@@ -4,49 +4,55 @@ export default class ResponseObject {
         this.statusCode = 500; // Default to 500 Internal Server Error
         this.message = null;
         this.payload = null;
+        this.count = null; // Initialize count property
     }
 
     // Success: Generic success
-    success(payload, message = 'Request successful', statusCode = 200) {
+    success(payload, message = 'Request successful', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
+        this.count = count;
         return this;
     }
 
     // Create: Successful creation of a resource
-    created(payload, message = 'Resource created successfully', statusCode = 201) {
+    created(payload, message = 'Resource created successfully', statusCode = 201, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
+        this.count = count;
         return this;
     }
 
     // Read: Successful retrieval of a resource
-    found(payload, message = 'Resource found', statusCode = 200) {
+    found(payload, message = 'Resource found', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
+        this.count = count;
         return this;
     }
 
     // Update: Successful update of a resource
-    updated(payload, message = 'Resource updated successfully', statusCode = 200) {
+    updated(payload, message = 'Resource updated successfully', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
+        this.count = count;
         return this;
     }
 
     // Delete: Successful deletion of a resource
-    deleted(message = 'Resource deleted successfully', statusCode = 200) {
+    deleted(message = 'Resource deleted successfully', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
+        this.count = count;
         return this;
     }
 
@@ -120,6 +126,7 @@ export default class ResponseObject {
             statusCode: this.statusCode,
             message: this.message,
             payload: this.payload,
+            count: this.count,
         };
     }
 }

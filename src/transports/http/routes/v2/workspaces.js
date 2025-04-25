@@ -146,10 +146,10 @@ export default ({ auth, userManager, sessionManager }) => {
             const userWorkspaces = workspaceManager.listWorkspaces(userEmail);
             debug(`Found ${userWorkspaces.length} workspaces for user ${userEmail}`);
             response.success(userWorkspaces, 'User workspaces retrieved successfully.');
-            res.json(response);
+            res.json(response.getResponse());
         } catch (error) {
             logger.error(`Error listing workspaces for user ${userEmail}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error listing workspaces', [error.message]));
+            res.status(500).json(response.error('Internal server error listing workspaces', [error.message]).getResponse());
         }
     });
 
@@ -169,13 +169,13 @@ export default ({ auth, userManager, sessionManager }) => {
         try {
             const newWorkspaceEntry = await workspaceManager.createWorkspace(userEmail, name, { label, color, description, type });
             response.success(newWorkspaceEntry, 'Workspace created successfully.', 201);
-            res.status(201).json(response);
+            res.status(201).json(response.getResponse());
         } catch (error) {
             logger.error(`Error creating workspace "${name}" for user ${userEmail}: ${error.message}`);
             if (error.message.includes('already exists')) {
-                res.status(409).json(response.conflict('Workspace already exists', [error.message]));
+                res.status(409).json(response.conflict('Workspace already exists', [error.message]).getResponse());
             } else {
-                res.status(500).json(response.error('Internal server error creating workspace', [error.message]));
+                res.status(500).json(response.error('Internal server error creating workspace', [error.message]).getResponse());
             }
         }
     });
@@ -189,7 +189,7 @@ export default ({ auth, userManager, sessionManager }) => {
         debug(`ROUTE: GET /:id - Get workspace details for ${req.params.id}`);
         // req.workspace is attached by middleware
         response.success(req.workspace.toJSON(), 'Workspace details retrieved successfully.');
-        res.json(response);
+        res.json(response.getResponse());
     });
 
     /**
@@ -222,7 +222,7 @@ export default ({ auth, userManager, sessionManager }) => {
             if (!workspace.setConfigKey(key, filteredUpdates[key])) {
                 success = false;
                  // setConfigKey logs errors, return a general failure message
-                return res.status(400).json(response.badRequest(`Failed to update field '${key}'. Check server logs for details.`, [`Invalid value for ${key}`]));
+                return res.status(400).json(response.badRequest(`Failed to update field '${key}'. Check server logs for details.`, [`Invalid value for ${key}`]).getResponse());
             }
         }
 
@@ -230,7 +230,7 @@ export default ({ auth, userManager, sessionManager }) => {
              // Refresh workspace data after updates
              const updatedWorkspace = await workspaceManager.openWorkspace(req.user.email, req.params.id);
              response.success(updatedWorkspace.toJSON(), 'Workspace configuration updated successfully.');
-             res.json(response);
+             res.json(response.getResponse());
         } else {
              // Should have returned earlier on failure
              res.status(500).json(response.error('An unexpected error occurred during update.'));
@@ -254,14 +254,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const removed = await workspaceManager.removeWorkspace(userEmail, workspaceId, destroyData);
             if (removed) {
                 response.success({ id: workspaceId, destroyed: destroyData }, `Workspace '${workspaceId}' removed successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 // removeWorkspace logs warnings for not found/access denied
                 res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or removal failed.`));
             }
         } catch (error) {
             logger.error(`Error removing workspace ${userEmail}/${workspaceId}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error removing workspace', [error.message]));
+            res.status(500).json(response.error('Internal server error removing workspace', [error.message]).getResponse());
         }
     });
 
@@ -275,7 +275,7 @@ export default ({ auth, userManager, sessionManager }) => {
         const response = new ResponseObject();
         debug(`ROUTE: GET /:id/status - Get status for workspace ${req.params.id}`);
         response.success({ id: req.workspace.id, status: req.workspace.status }, 'Workspace status retrieved successfully.');
-        res.json(response);
+        res.json(response.getResponse());
     });
 
     /**
@@ -287,7 +287,7 @@ export default ({ auth, userManager, sessionManager }) => {
         debug(`ROUTE: POST /:id/open - Open workspace ${req.params.id}`);
         // loadWorkspaceMiddleware already loaded it. Return the state.
         response.success(req.workspace.toJSON(), `Workspace '${req.workspace.id}' is open (loaded).`);
-        res.json(response);
+        res.json(response.getResponse());
     });
 
     /**
@@ -306,14 +306,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const closed = await workspaceManager.closeWorkspace(userEmail, workspaceId);
             if (closed) {
                 response.success({ id: workspaceManager.resolveWorkspaceId(userEmail, workspaceId) }, `Workspace '${workspaceId}' closed successfully.`); // Use manager method to resolve ID for response
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 // closeWorkspace logs reasons for failure (e.g., failed to stop)
                 res.status(400).json(response.badRequest(`Failed to close workspace '${workspaceId}'. It might be active or encountered an error.`));
             }
         } catch (error) {
             logger.error(`Error closing workspace ${userEmail}/${workspaceId}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error closing workspace', [error.message]));
+            res.status(500).json(response.error('Internal server error closing workspace', [error.message]).getResponse());
         }
     });
 
@@ -328,7 +328,7 @@ export default ({ auth, userManager, sessionManager }) => {
         debug(`ROUTE: POST /:id/start - Start workspace ${workspaceId} for user ${userEmail}`);
 
         if (req.workspace.isActive) {
-            return res.json(response.success(req.workspace.toJSON(), `Workspace '${workspaceId}' is already active.`));
+            return res.json(response.success(req.workspace.toJSON(), `Workspace '${workspaceId}' is already active.`).getResponse());
         }
 
         try {
@@ -336,14 +336,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const startedWorkspace = await workspaceManager.startWorkspace(userEmail, workspaceId);
             if (startedWorkspace) {
                 response.success(startedWorkspace.toJSON(), `Workspace '${workspaceId}' started successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 // startWorkspace logs errors
                 res.status(500).json(response.error(`Failed to start workspace '${workspaceId}'.`));
             }
         } catch (error) {
             logger.error(`Error starting workspace ${userEmail}/${workspaceId}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error starting workspace', [error.message]));
+            res.status(500).json(response.error('Internal server error starting workspace', [error.message]).getResponse());
         }
     });
 
@@ -358,7 +358,7 @@ export default ({ auth, userManager, sessionManager }) => {
         debug(`ROUTE: POST /:id/stop - Stop workspace ${workspaceId} for user ${userEmail}`);
 
         if (!req.workspace.isActive) {
-            return res.json(response.success({ id: req.workspace.id, status: req.workspace.status }, `Workspace '${workspaceId}' is already inactive.`));
+            return res.json(response.success({ id: req.workspace.id, status: req.workspace.status }, `Workspace '${workspaceId}' is already inactive.`).getResponse());
         }
 
         try {
@@ -368,14 +368,14 @@ export default ({ auth, userManager, sessionManager }) => {
                  // Fetch the workspace again to get the updated status (INACTIVE)
                 const stoppedWorkspace = await workspaceManager.openWorkspace(userEmail, workspaceId);
                 response.success(stoppedWorkspace.toJSON(), `Workspace '${workspaceId}' stopped successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                  // stopWorkspace logs errors
                 res.status(500).json(response.error(`Failed to stop workspace '${workspaceId}'.`));
             }
         } catch (error) {
             logger.error(`Error stopping workspace ${userEmail}/${workspaceId}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error stopping workspace', [error.message]));
+            res.status(500).json(response.error('Internal server error stopping workspace', [error.message]).getResponse());
         }
     });
 
@@ -395,10 +395,10 @@ export default ({ auth, userManager, sessionManager }) => {
             // Access tree via the active workspace instance
             const treeJson = req.workspace.jsonTree;
             response.success(JSON.parse(treeJson), 'Workspace tree retrieved successfully.');
-            res.json(response);
+            res.json(response.getResponse());
         } catch (error) {
             logger.error(`Error getting tree for workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error getting tree', [error.message]));
+            res.status(500).json(response.error('Internal server error getting tree', [error.message]).getResponse());
         }
     });
 
@@ -416,10 +416,10 @@ export default ({ auth, userManager, sessionManager }) => {
         try {
             const result = req.workspace.insertPath(targetPath, data, autoCreateLayers);
             response.success(result, `Path '${targetPath}' inserted successfully.`);
-            res.status(201).json(response); // 201 Created
+            res.status(201).json(response.getResponse());
         } catch (error) {
             logger.error(`Error inserting path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error inserting path', [error.message]));
+            res.status(500).json(response.error('Internal server error inserting path', [error.message]).getResponse());
         }
     });
 
@@ -438,14 +438,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.removePath(targetPath, recursive === 'true' || recursive === true);
             if (result.success) {
                 response.success(result, `Path '${targetPath}' removed successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                  response.notFound(`Path '${targetPath}' not found or could not be removed.`);
-                 res.status(404).json(response);
+                 res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error removing path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error removing path', [error.message]));
+            res.status(500).json(response.error('Internal server error removing path', [error.message]).getResponse());
         }
     });
 
@@ -464,14 +464,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.movePath(from, to, recursive);
             if (result.success) {
                 response.success(result, `Path moved successfully from '${from}' to '${to}'.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Failed to move path from '${from}' to '${to}'. Source path might not exist or target path invalid.`);
-                res.status(404).json(response); // Or 400 Bad Request?
+                res.status(404).json(response.getResponse()); // Or 400 Bad Request?
             }
         } catch (error) {
             logger.error(`Error moving path from '${from}' to '${to}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error moving path', [error.message]));
+            res.status(500).json(response.error('Internal server error moving path', [error.message]).getResponse());
         }
     });
 
@@ -490,14 +490,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.copyPath(from, to, recursive);
              if (result.success) {
                 response.success(result, `Path copied successfully from '${from}' to '${to}'.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Failed to copy path from '${from}' to '${to}'. Source path might not exist or target path invalid.`);
-                res.status(404).json(response); // Or 400 Bad Request?
+                res.status(404).json(response.getResponse()); // Or 400 Bad Request?
             }
         } catch (error) {
             logger.error(`Error copying path from '${from}' to '${to}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error copying path', [error.message]));
+            res.status(500).json(response.error('Internal server error copying path', [error.message]).getResponse());
         }
     });
 
@@ -516,14 +516,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.mergeUp(targetPath);
             if (result.success) {
                 response.success(result, `Successfully merged up from path '${targetPath}'.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Failed to merge up from path '${targetPath}'. Path might not exist or has no parent.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error merging up path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error merging path up', [error.message]));
+            res.status(500).json(response.error('Internal server error merging path up', [error.message]).getResponse());
         }
     });
 
@@ -542,14 +542,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.mergeDown(targetPath);
             if (result.success) {
                 response.success(result, `Successfully merged down from path '${targetPath}'.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Failed to merge down from path '${targetPath}'. Path might not exist or has no children.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error merging down path '${targetPath}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error merging path down', [error.message]));
+            res.status(500).json(response.error('Internal server error merging path down', [error.message]).getResponse());
         }
     });
 
@@ -572,10 +572,10 @@ export default ({ auth, userManager, sessionManager }) => {
                 return res.status(500).json(response.error('Cannot access layers, tree not available.'));
             }
             response.success(layers, 'Workspace layers retrieved successfully.');
-            res.json(response);
+            res.json(response.getResponse());
         } catch (error) {
             logger.error(`Error listing layers for workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error listing layers', [error.message]));
+            res.status(500).json(response.error('Internal server error listing layers', [error.message]).getResponse());
         }
     });
 
@@ -595,13 +595,13 @@ export default ({ auth, userManager, sessionManager }) => {
         try {
             const newLayer = req.workspace.createLayer({ name, type, ...options });
             response.success(newLayer, `Layer '${name}' created successfully.`, 201);
-            res.status(201).json(response);
+            res.status(201).json(response.getResponse());
         } catch (error) {
             logger.error(`Error creating layer '${name}' in workspace ${req.workspace.id}: ${error.message}`);
             if (error.message.includes('already exists')) { // Check for specific error if Tree throws it
                  res.status(409).json(response.conflict(`Layer with name '${name}' already exists.`));
             } else {
-                 res.status(500).json(response.error('Internal server error creating layer', [error.message]));
+                 res.status(500).json(response.error('Internal server error creating layer', [error.message]).getResponse());
             }
         }
     });
@@ -617,14 +617,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const layer = req.workspace.getLayer(layerName);
             if (layer) {
                 response.success(layer, `Layer '${layerName}' retrieved successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Layer '${layerName}' not found.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error getting layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error getting layer', [error.message]));
+            res.status(500).json(response.error('Internal server error getting layer', [error.message]).getResponse());
         }
     });
 
@@ -654,14 +654,14 @@ export default ({ auth, userManager, sessionManager }) => {
                 // Fetch updated layer data
                  const updatedLayer = req.workspace.getLayer(layerName);
                  response.success(updatedLayer, `Layer '${layerName}' updated successfully.`);
-                 res.json(response);
+                 res.json(response.getResponse());
             } else {
                 response.notFound(`Layer '${layerName}' not found or update failed.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error updating layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error updating layer', [error.message]));
+            res.status(500).json(response.error('Internal server error updating layer', [error.message]).getResponse());
         }
     });
 
@@ -676,14 +676,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const result = req.workspace.deleteLayer(layerName);
             if (result.success) {
                 response.success({ name: layerName }, `Layer '${layerName}' deleted successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Layer '${layerName}' not found or delete failed.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error deleting layer '${layerName}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error deleting layer', [error.message]));
+            res.status(500).json(response.error('Internal server error deleting layer', [error.message]).getResponse());
         }
     });
 
@@ -698,14 +698,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const layer = req.workspace.getLayerById(layerId);
             if (layer) {
                 response.success(layer, `Layer with ID '${layerId}' retrieved successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Layer with ID '${layerId}' not found.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error getting layer by ID '${layerId}' in workspace ${req.workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error getting layer by ID', [error.message]));
+            res.status(500).json(response.error('Internal server error getting layer by ID', [error.message]).getResponse());
         }
     });
 
@@ -747,11 +747,22 @@ export default ({ auth, userManager, sessionManager }) => {
             // Context spec parsing is handled inside listDocuments
             const documents = await workspace.db.listDocuments(context, featureBitmapArray, filterArray, options);
 
-            response.success(documents, 'Documents retrieved successfully.');
-            res.json(response);
+            // Convert document objects to plain JSON objects
+            const jsonDocuments = documents.map(doc =>
+                typeof doc.toJSON === 'function' ? doc.toJSON() : doc
+            );
+
+            console.log(jsonDocuments);
+            const count = jsonDocuments.length;
+
+            response.success(jsonDocuments, 'Documents retrieved successfully.', 200, count);
+
+            // Use getResponse() to get a plain object instead of the ResponseObject instance
+            // res.send and res.json both work here, but res.json is more explicit
+            res.json(response.getResponse());
         } catch (error) {
             logger.error(`Error listing documents in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error listing documents', [error.message]));
+            res.status(500).json(response.error('Internal server error listing documents', [error.message]).getResponse());
         }
     });
 
@@ -774,20 +785,29 @@ export default ({ auth, userManager, sessionManager }) => {
             const featureBitmapArray = parseQueryArray(features);
             debug(`Inserting documents with context: ${context} and features: ${featureBitmapArray}`);
             debug(`Workspace ID: ${workspace.id} (${workspace.name})`);
+
             const errors = await workspace.db.insertDocumentArray(docArray, context, featureBitmapArray);
+            const docsToInsert = Array.isArray(docArray) ? docArray : [docArray];
+            const insertedCount = docsToInsert.length - Object.keys(errors).length;
+
             debug(`Errors: ${JSON.stringify(errors)}`);
             if (Object.keys(errors).length > 0) {
                  // Partial success or total failure
                  response.error('Some documents failed to insert.', errors, 207); // 207 Multi-Status
-                 res.status(207).json(response);
+                 res.status(207).json(response.getResponse());
             } else {
-                 // Assuming insert returns IDs or confirms success implicitly
-                 response.success({ insertedCount: Array.isArray(docArray) ? docArray.length : 1 }, 'Documents inserted successfully.', 201);
-                 res.status(201).json(response);
+                 // Calculate count from the document array length
+                 response.success(
+                    { insertedCount },
+                    'Documents inserted successfully.',
+                    201,
+                    insertedCount
+                 );
+                 res.status(201).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error inserting documents in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error inserting documents', [error.message]));
+            res.status(500).json(response.error('Internal server error inserting documents', [error.message]).getResponse());
         }
     });
 
@@ -816,21 +836,27 @@ export default ({ auth, userManager, sessionManager }) => {
         try {
             const featureBitmapArray = parseQueryArray(features);
             const errors = await workspace.db.updateDocumentArray(docArray, context, featureBitmapArray);
+            const updatedCount = docsToUpdate.length - Object.keys(errors).length;
 
-             if (Object.keys(errors).length > 0) {
+            if (Object.keys(errors).length > 0) {
                  // Partial success or total failure
                  response.error('Some documents failed to update.', errors, 207); // 207 Multi-Status
-                 res.status(207).json(response);
+                 res.status(207).json(response.getResponse());
             } else {
-                 response.success({ updatedCount: docsToUpdate.length }, 'Documents updated successfully.');
-                 res.json(response);
+                 response.success(
+                    { updatedCount },
+                    'Documents updated successfully.',
+                    200,
+                    updatedCount
+                 );
+                 res.json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error updating documents in workspace ${workspace.id}: ${error.message}`);
              if (error.message.includes('not found')) { // Basic check for not found errors during update
-                res.status(404).json(response.notFound('One or more documents not found for update.', [error.message]));
+                res.status(404).json(response.notFound('One or more documents not found for update.', [error.message]).getResponse());
             } else {
-                 res.status(500).json(response.error('Internal server error updating documents', [error.message]));
+                 res.status(500).json(response.error('Internal server error updating documents', [error.message]).getResponse());
             }
         }
     });
@@ -855,18 +881,24 @@ export default ({ auth, userManager, sessionManager }) => {
             const featureBitmapArray = parseQueryArray(features);
             // Use removeDocumentArray which unticks from bitmaps
             const errors = await workspace.db.removeDocumentArray(docIds, context, featureBitmapArray);
+            const removedCount = docIds.length - Object.keys(errors).length;
 
             if (Object.keys(errors).length > 0) {
                  // Partial success or total failure - unlikely with untick unless DB error
                  response.error('Some documents failed removal from specified layers/bitmaps.', errors, 207);
-                 res.status(207).json(response);
+                 res.status(207).json(response.getResponse());
             } else {
-                 response.success({ removedCount: docIds.length }, 'Documents removed from specified layers/bitmaps successfully.');
-                 res.json(response);
+                 response.success(
+                    { removedCount },
+                    'Documents removed from specified layers/bitmaps successfully.',
+                    200,
+                    removedCount
+                 );
+                 res.json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error removing documents from layers/bitmaps in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error removing documents from layers/bitmaps', [error.message]));
+            res.status(500).json(response.error('Internal server error removing documents from layers/bitmaps', [error.message]).getResponse());
         }
     });
 
@@ -888,18 +920,24 @@ export default ({ auth, userManager, sessionManager }) => {
         try {
             // Use deleteDocumentArray for complete removal
             const errors = await workspace.db.deleteDocumentArray(docIds);
+            const deletedCount = docIds.length - Object.keys(errors).length;
 
             if (Object.keys(errors).length > 0) {
                  // Partial success or total failure
                  response.error('Some documents failed to delete completely.', errors, 207);
-                 res.status(207).json(response);
+                 res.status(207).json(response.getResponse());
             } else {
-                 response.success({ deletedCount: docIds.length }, 'Documents deleted successfully from the database.');
-                 res.json(response);
+                 response.success(
+                    { deletedCount },
+                    'Documents deleted successfully from the database.',
+                    200,
+                    deletedCount
+                 );
+                 res.json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error deleting documents from database in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error deleting documents', [error.message]));
+            res.status(500).json(response.error('Internal server error deleting documents', [error.message]).getResponse());
         }
     });
 
@@ -917,14 +955,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const document = await workspace.db.getById(docId);
             if (document) {
                 response.success(document, `Document ID '${docId}' retrieved successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Document ID '${docId}' not found.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error getting document by ID ${docId} in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error getting document by ID', [error.message]));
+            res.status(500).json(response.error('Internal server error getting document by ID', [error.message]).getResponse());
         }
     });
 
@@ -942,14 +980,14 @@ export default ({ auth, userManager, sessionManager }) => {
             const document = await workspace.db.getByChecksumString(hashString);
             if (document) {
                 response.success(document, `Document with hash '${hashString}' retrieved successfully.`);
-                res.json(response);
+                res.json(response.getResponse());
             } else {
                 response.notFound(`Document with hash '${hashString}' not found.`);
-                res.status(404).json(response);
+                res.status(404).json(response.getResponse());
             }
         } catch (error) {
             logger.error(`Error getting document by hash ${hashString} in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error getting document by hash', [error.message]));
+            res.status(500).json(response.error('Internal server error getting document by hash', [error.message]).getResponse());
         }
     });
 
