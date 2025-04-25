@@ -733,7 +733,6 @@ export default ({ auth, userManager, sessionManager }) => {
      * GET /:id/documents - List documents (query: context, features, filters, limit)
      */
     router.get('/:id/documents', async (req, res) => {
-        const response = new ResponseObject();
         const { context = null, features = '', filters = '', limit = null } = req.query;
         const workspace = req.workspace;
 
@@ -747,22 +746,14 @@ export default ({ auth, userManager, sessionManager }) => {
             // Context spec parsing is handled inside listDocuments
             const documents = await workspace.db.listDocuments(context, featureBitmapArray, filterArray, options);
 
-            // Convert document objects to plain JSON objects
-            const jsonDocuments = documents.map(doc =>
-                typeof doc.toJSON === 'function' ? doc.toJSON() : doc
-            );
-
-            console.log(jsonDocuments);
-            const count = jsonDocuments.length;
-
-            response.success(jsonDocuments, 'Documents retrieved successfully.', 200, count);
-
-            // Use getResponse() to get a plain object instead of the ResponseObject instance
-            // res.send and res.json both work here, but res.json is more explicit
+            const response = new ResponseObject();
+            response.success(documents, 'Documents retrieved successfully.', 200, documents.length);
             res.json(response.getResponse());
         } catch (error) {
             logger.error(`Error listing documents in workspace ${workspace.id}: ${error.message}`);
-            res.status(500).json(response.error('Internal server error listing documents', [error.message]).getResponse());
+            const errorResponse = new ResponseObject()
+                .error('Internal server error listing documents', [error.message]);
+            res.status(500).json(errorResponse.getResponse());
         }
     });
 
@@ -770,7 +761,6 @@ export default ({ auth, userManager, sessionManager }) => {
      * POST /:id/documents - Insert one or more documents (query: context, features)
      */
     router.post('/:id/documents', async (req, res) => {
-        const response = new ResponseObject();
         const { context = '/', features = [] } = req.query;
         const docArray = req.body;
         const workspace = req.workspace;
@@ -778,7 +768,8 @@ export default ({ auth, userManager, sessionManager }) => {
         debug(`ROUTE: POST /:id/documents - Insert documents into workspace ${workspace.id} (context: ${context}, features: ${features})`);
 
         if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
-            return res.status(400).json(response.badRequest('Document data (array or single object) is required in the request body.'));
+            const response = new ResponseObject();
+            return res.status(400).json(response.badRequest('Document data (array or single object) is required in the request body.').getResponse());
         }
 
         try {
@@ -790,13 +781,12 @@ export default ({ auth, userManager, sessionManager }) => {
             const docsToInsert = Array.isArray(docArray) ? docArray : [docArray];
             const insertedCount = docsToInsert.length - Object.keys(errors).length;
 
-            debug(`Errors: ${JSON.stringify(errors)}`);
+            const response = new ResponseObject();
             if (Object.keys(errors).length > 0) {
                  // Partial success or total failure
                  response.error('Some documents failed to insert.', errors, 207); // 207 Multi-Status
                  res.status(207).json(response.getResponse());
             } else {
-                 // Calculate count from the document array length
                  response.success(
                     { insertedCount },
                     'Documents inserted successfully.',
@@ -807,6 +797,7 @@ export default ({ auth, userManager, sessionManager }) => {
             }
         } catch (error) {
             logger.error(`Error inserting documents in workspace ${workspace.id}: ${error.message}`);
+            const response = new ResponseObject();
             res.status(500).json(response.error('Internal server error inserting documents', [error.message]).getResponse());
         }
     });
@@ -816,21 +807,21 @@ export default ({ auth, userManager, sessionManager }) => {
      * Requires document objects with IDs in the body.
      */
     router.put('/:id/documents', async (req, res) => {
-        const response = new ResponseObject();
         const { context = null, features = '' } = req.query;
         const docArray = req.body;
         const workspace = req.workspace;
+        const response = new ResponseObject();
 
         debug(`ROUTE: PUT /:id/documents - Update documents in workspace ${workspace.id} (context: ${context}, features: ${features})`);
 
         if (!docArray || (Array.isArray(docArray) && docArray.length === 0)) {
-            return res.status(400).json(response.badRequest('Document data (array or single object) with IDs is required in the request body.'));
+            return res.status(400).json(response.badRequest('Document data (array or single object) with IDs is required in the request body.').getResponse());
         }
 
         // Validate if all documents have an ID
         const docsToUpdate = Array.isArray(docArray) ? docArray : [docArray];
         if (docsToUpdate.some(doc => !doc || !doc.id)) {
-             return res.status(400).json(response.badRequest('All documents for update must have an ID.'));
+             return res.status(400).json(response.badRequest('All documents for update must have an ID.').getResponse());
         }
 
         try {
@@ -839,7 +830,6 @@ export default ({ auth, userManager, sessionManager }) => {
             const updatedCount = docsToUpdate.length - Object.keys(errors).length;
 
             if (Object.keys(errors).length > 0) {
-                 // Partial success or total failure
                  response.error('Some documents failed to update.', errors, 207); // 207 Multi-Status
                  res.status(207).json(response.getResponse());
             } else {
@@ -866,15 +856,15 @@ export default ({ auth, userManager, sessionManager }) => {
      * Expects an array of document IDs in the body: { "docIds": [...] }
      */
     router.patch('/:id/documents', async (req, res) => {
-        const response = new ResponseObject();
         const { context = null, features = '' } = req.query;
         const { docIds } = req.body; // Expecting { "docIds": [...] }
         const workspace = req.workspace;
+        const response = new ResponseObject();
 
         debug(`ROUTE: PATCH /:id/documents - Remove doc IDs from bitmaps in workspace ${workspace.id} (context: ${context}, features: ${features})`);
 
         if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
-            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
+            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.').getResponse());
         }
 
         try {
@@ -884,7 +874,6 @@ export default ({ auth, userManager, sessionManager }) => {
             const removedCount = docIds.length - Object.keys(errors).length;
 
             if (Object.keys(errors).length > 0) {
-                 // Partial success or total failure - unlikely with untick unless DB error
                  response.error('Some documents failed removal from specified layers/bitmaps.', errors, 207);
                  res.status(207).json(response.getResponse());
             } else {
@@ -907,14 +896,14 @@ export default ({ auth, userManager, sessionManager }) => {
      * Expects an array of document IDs in the body: { "docIds": [...] }
      */
     router.delete('/:id/documents', async (req, res) => {
-        const response = new ResponseObject();
         const { docIds } = req.body; // Expecting { "docIds": [...] }
         const workspace = req.workspace;
+        const response = new ResponseObject();
 
         debug(`ROUTE: DELETE /:id/documents - Delete doc IDs from DB in workspace ${workspace.id}`);
 
         if (!docIds || !Array.isArray(docIds) || docIds.length === 0) {
-            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.'));
+            return res.status(400).json(response.badRequest('An array of document IDs (`docIds`) is required in the request body.').getResponse());
         }
 
         try {
@@ -923,7 +912,6 @@ export default ({ auth, userManager, sessionManager }) => {
             const deletedCount = docIds.length - Object.keys(errors).length;
 
             if (Object.keys(errors).length > 0) {
-                 // Partial success or total failure
                  response.error('Some documents failed to delete completely.', errors, 207);
                  res.status(207).json(response.getResponse());
             } else {
@@ -945,9 +933,9 @@ export default ({ auth, userManager, sessionManager }) => {
      * GET /:id/documents/by-id/:docId - Get a specific document by ID
      */
     router.get('/:id/documents/by-id/:docId', async (req, res) => {
-        const response = new ResponseObject();
         const { docId } = req.params;
         const workspace = req.workspace;
+        const response = new ResponseObject();
 
         debug(`ROUTE: GET /:id/documents/by-id/:docId - Get doc ID ${docId} from workspace ${workspace.id}`);
 
@@ -970,9 +958,9 @@ export default ({ auth, userManager, sessionManager }) => {
      * GET /:id/documents/by-hash/:hashString - Get document by checksum hash
      */
     router.get('/:id/documents/by-hash/:hashString', async (req, res) => {
-        const response = new ResponseObject();
         const { hashString } = req.params;
         const workspace = req.workspace;
+        const response = new ResponseObject();
 
         debug(`ROUTE: GET /:id/documents/by-hash/:hashString - Get doc hash ${hashString} from workspace ${workspace.id}`);
 
