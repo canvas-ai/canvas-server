@@ -11,7 +11,6 @@ import Url from './Url.js';
 
 /**
  * Context
- * Represents a view on top of data, holding references to workspace, session, device, etc.
  */
 
 class Context extends EventEmitter {
@@ -65,6 +64,10 @@ class Context extends EventEmitter {
         this.#device = options.device;
         this.#user = options.user;
         this.#workspace = options.workspace;
+
+        if (!options.workspaceManager) {
+            throw new Error('Workspace manager is required');
+        }
         this.#workspaceManager = options.workspaceManager;
 
         // Workspace references

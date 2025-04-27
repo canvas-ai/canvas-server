@@ -216,12 +216,15 @@ export default function (authService) {
         debug('List tokens endpoint called');
 
         try {
-            const tokens = await authService.listApiTokens(req.user.id);
+            const tokens = await authService.listTokens(req.user.id);
+
+            // Remove tokenHash from response
+            const sanitizedTokens = tokens.map(({ tokenHash, ...rest }) => rest);
 
             debug(`Retrieved ${tokens.length} tokens for user: ${req.user.email}`);
             const response = new ResponseObject().success(
                 {
-                    tokens,
+                    tokens: sanitizedTokens,
                     total: tokens.length,
                 },
                 'API tokens retrieved successfully',
@@ -264,7 +267,7 @@ export default function (authService) {
                 expiresAt: expiresAt || null,
             };
 
-            const token = await authService.createApiToken(req.user.id, tokenOptions);
+            const token = await authService.createToken(req.user.id, tokenOptions);
 
             debug(`Generated new API token for user: ${req.user.email}, name: ${token.name}`);
             const response = new ResponseObject().created(token, 'API token generated successfully');
@@ -281,7 +284,15 @@ export default function (authService) {
         debug(`Revoke token endpoint called for token ID: ${tokenId}`);
 
         try {
-            const result = await authService.deleteApiToken(req.user.id, tokenId);
+            // First verify the token belongs to this user
+            const token = await authService.getToken(tokenId);
+
+            if (!token || token.userId !== req.user.id) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const result = await authService.deleteToken(tokenId);
 
             if (!result) {
                 const response = new ResponseObject().notFound('API token not found');
@@ -293,6 +304,12 @@ export default function (authService) {
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Revoke token error: ${error.message}`);
+
+            if (error.message.includes('not found')) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
             const response = new ResponseObject().error(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
@@ -316,9 +333,8 @@ export default function (authService) {
 
                 try {
                     // Get user and token details
-                    const userManager = req.app.get('userManager');
-                    const user = await userManager.getUserById(userId);
-                    const tokenDetails = await userManager.getApiToken(userId, tokenId);
+                    const user = await authService.getUserManager().getUserById(userId);
+                    const tokenDetails = await authService.getToken(tokenId);
 
                     if (user && tokenDetails) {
                         debug('API token verified successfully');
@@ -388,9 +404,9 @@ export default function (authService) {
             const { userId, tokenId } = apiTokenResult;
             debug(`API token validated for user: ${userId}`);
 
-            // Get user directly from auth service's user manager instead of req.app
-            // This ensures we're using the same userManager instance that's already configured
-            const user = await authService.getUserManager().getUserById(userId);
+            // Get user from UserManager
+            const userManager = authService.getUserManager();
+            const user = await userManager.getUserById(userId);
             if (!user) {
                 debug(`User not found for API token: ${userId}`);
                 const response = new ResponseObject().notFound('User not found');

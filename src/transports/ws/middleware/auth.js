@@ -90,20 +90,17 @@ export default function (server) {
                 if (!socket.isAuthenticated && token) {
                     debug(`Standard auth failed, trying direct API token validation`);
 
-                    // Use UserManager to find user by token value
+                    // Use AuthService to validate the token directly
                     try {
-                        const userManager = server.userManager; // Assume userManager is available on server
-                        if (!userManager) {
-                            throw new Error('UserManager not available on server instance');
-                        }
-
-                        const tokenInfo = await userManager.findUserByApiTokenValue(token);
+                        const tokenInfo = await authService.validateApiToken(token);
 
                         if (tokenInfo && tokenInfo.userId) {
-                            debug(`API token validated via UserManager for user ${tokenInfo.userId}`);
+                            debug(`API token validated via AuthService for user ${tokenInfo.userId}`);
 
                             // Get the user and attach to socket
+                            const userManager = server.userManager;
                             const user = await userManager.getUser(tokenInfo.userId);
+
                             if (user) {
                                 const userObj = user.toJSON ? user.toJSON() : user;
                                 // Attach user and token info
@@ -121,11 +118,11 @@ export default function (server) {
                                 return next(new Error('User not found')); // User associated with token doesn't exist
                             }
                         } else {
-                            debug(`API token validation failed via UserManager`);
+                            debug(`API token validation failed via AuthService`);
                             return next(new Error('Invalid token')); // Token not found or invalid
                         }
                     } catch (error) {
-                        debug(`Error during direct API token validation via UserManager: ${error.message}`);
+                        debug(`Error during direct API token validation: ${error.message}`);
                         return next(error); // Pass internal errors
                     }
                 }

@@ -33,15 +33,11 @@ const ensureAuthenticated = (authService) => {
  */
 const loadWorkspace = (userManager) => async (req, res, next) => {
     const workspaceId = req.params.id;
-    // const workspaceName = req.params.name; // Remove: :name is not a parameter in the route
     debug(`Loading workspace ${workspaceId})`);
-    // debug(`User: ${req.user}`); // Sensitive - avoid logging full user object
-    // debug(`WS id: ${req.workspace}`); // req.workspace not set yet
-    const userId = req.user?.id; // Keep if needed for other logic, but email is used for lookup
-    const userEmail = req.user?.email;
+    const userId = req.user?.id; // Use the user ID instead of email
     const response = new ResponseObject();
 
-    if (!userEmail) {
+    if (!userId) {
         return res.status(401).json(response.unauthorized('User not authenticated'));
     }
     if (!workspaceId) {
@@ -49,7 +45,7 @@ const loadWorkspace = (userManager) => async (req, res, next) => {
     }
 
     try {
-        const workspace = await userManager.workspaceManager.openWorkspace(userEmail, workspaceId);
+        const workspace = await userManager.workspaceManager.openWorkspace(userId, workspaceId);
         if (!workspace) {
             return res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or access denied.`));
         }
@@ -57,8 +53,7 @@ const loadWorkspace = (userManager) => async (req, res, next) => {
         debug(`Successfully loaded workspace: ${workspace.id} (${workspace.name})`);
         next();
     } catch (error) {
-        // Correctly log using workspaceId from the URL parameter
-        logger.error(`Error loading workspace ${userEmail}/${workspaceId}: ${error.message}`);
+        logger.error(`Error loading workspace ${userId}/${workspaceId}: ${error.message}`);
         return res.status(500).json(response.error('Internal server error loading workspace', [error.message]));
     }
 };
@@ -71,12 +66,12 @@ const loadWorkspace = (userManager) => async (req, res, next) => {
  */
 const ensureWorkspaceActive = (userManager) => async (req, res, next) => {
     const workspaceId = req.params.id;
-    const userEmail = req.user?.email;
+    const userId = req.user?.id; // Use the user ID instead of email
     const response = new ResponseObject();
 
     if (!req.workspace) {
         // This should ideally be caught by loadWorkspace middleware first
-        logger.error(`ensureWorkspaceActive called without req.workspace for ${userEmail}/${workspaceId}`);
+        logger.error(`ensureWorkspaceActive called without req.workspace for ${userId}/${workspaceId}`);
         return res.status(500).json(response.error('Internal server error: Workspace not loaded'));
     }
 
@@ -87,7 +82,7 @@ const ensureWorkspaceActive = (userManager) => async (req, res, next) => {
     // Attempt to start the workspace
     debug(`Workspace ${workspaceId} not active, attempting to start...`);
     try {
-        const startedWorkspace = await userManager.workspaceManager.startWorkspace(userEmail, workspaceId);
+        const startedWorkspace = await userManager.workspaceManager.startWorkspace(userId, workspaceId);
         if (!startedWorkspace || !startedWorkspace.isActive) {
              // startWorkspace should throw on failure, but double-check
              return res.status(409).json(response.conflict(`Workspace '${workspaceId}' could not be started.`));
@@ -96,7 +91,7 @@ const ensureWorkspaceActive = (userManager) => async (req, res, next) => {
         debug(`Workspace ${workspaceId} started successfully.`);
         next();
     } catch (error) {
-        logger.error(`Error starting workspace ${userEmail}/${workspaceId} for active check: ${error.message}`);
+        logger.error(`Error starting workspace ${userId}/${workspaceId} for active check: ${error.message}`);
         return res.status(500).json(response.error('Internal server error starting workspace', [error.message]));
     }
 };
@@ -135,20 +130,20 @@ export default ({ auth, userManager, sessionManager }) => {
      * GET / - List all workspaces (metadata) for the authenticated user
      */
     router.get('/', async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const response = new ResponseObject();
-        if (!userEmail) return res.status(401).json(response.unauthorized());
+        if (!userId) return res.status(401).json(response.unauthorized());
 
-        debug(`ROUTE: GET / - List workspaces for user ${userEmail}`);
+        debug(`ROUTE: GET / - List workspaces for user ${userId}`);
 
         try {
-            // Assuming workspaceManager.index gives the list filtered implicitly or explicitly
-            const userWorkspaces = workspaceManager.listWorkspaces(userEmail);
-            debug(`Found ${userWorkspaces.length} workspaces for user ${userEmail}`);
+            // Get workspaces for this user using the new schema
+            const userWorkspaces = workspaceManager.listWorkspaces(userId);
+            debug(`Found ${userWorkspaces.length} workspaces for user ${userId}`);
             response.success(userWorkspaces, 'User workspaces retrieved successfully.');
             res.json(response.getResponse());
         } catch (error) {
-            logger.error(`Error listing workspaces for user ${userEmail}: ${error.message}`);
+            logger.error(`Error listing workspaces for user ${userId}: ${error.message}`);
             res.status(500).json(response.error('Internal server error listing workspaces', [error.message]).getResponse());
         }
     });
@@ -157,21 +152,21 @@ export default ({ auth, userManager, sessionManager }) => {
      * POST / - Create a new workspace definition
      */
     router.post('/', async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const { name, label, color, description, type } = req.body;
         const response = new ResponseObject();
 
-        debug(`ROUTE: POST / - Create workspace "${name}" for user ${userEmail}`);
+        debug(`ROUTE: POST / - Create workspace "${name}" for user ${userId}`);
 
-        if (!userEmail) return res.status(401).json(response.unauthorized());
+        if (!userId) return res.status(401).json(response.unauthorized());
         if (!name) return res.status(400).json(response.badRequest('Workspace name is required.'));
 
         try {
-            const newWorkspaceEntry = await workspaceManager.createWorkspace(userEmail, name, { label, color, description, type });
+            const newWorkspaceEntry = await workspaceManager.createWorkspace(userId, name, { label, color, description, type });
             response.success(newWorkspaceEntry, 'Workspace created successfully.', 201);
             res.status(201).json(response.getResponse());
         } catch (error) {
-            logger.error(`Error creating workspace "${name}" for user ${userEmail}: ${error.message}`);
+            logger.error(`Error creating workspace "${name}" for user ${userId}: ${error.message}`);
             if (error.message.includes('already exists')) {
                 res.status(409).json(response.conflict('Workspace already exists', [error.message]).getResponse());
             } else {
@@ -228,7 +223,7 @@ export default ({ auth, userManager, sessionManager }) => {
 
         if (success) {
              // Refresh workspace data after updates
-             const updatedWorkspace = await workspaceManager.openWorkspace(req.user.email, req.params.id);
+             const updatedWorkspace = await workspaceManager.openWorkspace(req.user.id, req.params.id);
              response.success(updatedWorkspace.toJSON(), 'Workspace configuration updated successfully.');
              res.json(response.getResponse());
         } else {
@@ -241,17 +236,17 @@ export default ({ auth, userManager, sessionManager }) => {
      * DELETE /:id - Destroy workspace (stops, removes index entry, deletes files)
      */
     router.delete('/:id', async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const workspaceId = req.params.id;
         const destroyData = req.query.destroyData === 'true'; // Check query param
         const response = new ResponseObject();
 
-        debug(`ROUTE: DELETE /:id - Destroy workspace ${workspaceId} (Destroy data: ${destroyData}) for user ${userEmail}`);
+        debug(`ROUTE: DELETE /:id - Destroy workspace ${workspaceId} (Destroy data: ${destroyData}) for user ${userId}`);
 
-        if (!userEmail) return res.status(401).json(response.unauthorized());
+        if (!userId) return res.status(401).json(response.unauthorized());
 
         try {
-            const removed = await workspaceManager.removeWorkspace(userEmail, workspaceId, destroyData);
+            const removed = await workspaceManager.removeWorkspace(userId, workspaceId, destroyData);
             if (removed) {
                 response.success({ id: workspaceId, destroyed: destroyData }, `Workspace '${workspaceId}' removed successfully.`);
                 res.json(response.getResponse());
@@ -260,7 +255,7 @@ export default ({ auth, userManager, sessionManager }) => {
                 res.status(404).json(response.notFound(`Workspace '${workspaceId}' not found or removal failed.`));
             }
         } catch (error) {
-            logger.error(`Error removing workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            logger.error(`Error removing workspace ${userId}/${workspaceId}: ${error.message}`);
             res.status(500).json(response.error('Internal server error removing workspace', [error.message]).getResponse());
         }
     });
@@ -294,25 +289,25 @@ export default ({ auth, userManager, sessionManager }) => {
      * POST /:id/close - Unload workspace from memory (if inactive)
      */
     router.post('/:id/close', async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const workspaceId = req.params.id;
         const response = new ResponseObject();
 
-        debug(`ROUTE: POST /:id/close - Close workspace ${workspaceId} for user ${userEmail}`);
+        debug(`ROUTE: POST /:id/close - Close workspace ${workspaceId} for user ${userId}`);
 
-        if (!userEmail) return res.status(401).json(response.unauthorized());
+        if (!userId) return res.status(401).json(response.unauthorized());
 
         try {
-            const closed = await workspaceManager.closeWorkspace(userEmail, workspaceId);
+            const closed = await workspaceManager.closeWorkspace(userId, workspaceId);
             if (closed) {
-                response.success({ id: workspaceManager.resolveWorkspaceId(userEmail, workspaceId) }, `Workspace '${workspaceId}' closed successfully.`); // Use manager method to resolve ID for response
+                response.success({ id: workspaceId }, `Workspace '${workspaceId}' closed successfully.`);
                 res.json(response.getResponse());
             } else {
                 // closeWorkspace logs reasons for failure (e.g., failed to stop)
                 res.status(400).json(response.badRequest(`Failed to close workspace '${workspaceId}'. It might be active or encountered an error.`));
             }
         } catch (error) {
-            logger.error(`Error closing workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            logger.error(`Error closing workspace ${userId}/${workspaceId}: ${error.message}`);
             res.status(500).json(response.error('Internal server error closing workspace', [error.message]).getResponse());
         }
     });
@@ -321,11 +316,11 @@ export default ({ auth, userManager, sessionManager }) => {
      * POST /:id/start - Start an inactive workspace (loads DB, status=ACTIVE)
      */
     router.post('/:id/start', loadWorkspaceMiddleware, async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const workspaceId = req.params.id; // Use original ID from params for logging/response
         const response = new ResponseObject();
 
-        debug(`ROUTE: POST /:id/start - Start workspace ${workspaceId} for user ${userEmail}`);
+        debug(`ROUTE: POST /:id/start - Start workspace ${workspaceId} for user ${userId}`);
 
         if (req.workspace.isActive) {
             return res.json(response.success(req.workspace.toJSON(), `Workspace '${workspaceId}' is already active.`).getResponse());
@@ -333,7 +328,7 @@ export default ({ auth, userManager, sessionManager }) => {
 
         try {
             // Use startWorkspace from the manager, which also handles loading if needed
-            const startedWorkspace = await workspaceManager.startWorkspace(userEmail, workspaceId);
+            const startedWorkspace = await workspaceManager.startWorkspace(userId, workspaceId);
             if (startedWorkspace) {
                 response.success(startedWorkspace.toJSON(), `Workspace '${workspaceId}' started successfully.`);
                 res.json(response.getResponse());
@@ -342,7 +337,7 @@ export default ({ auth, userManager, sessionManager }) => {
                 res.status(500).json(response.error(`Failed to start workspace '${workspaceId}'.`));
             }
         } catch (error) {
-            logger.error(`Error starting workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            logger.error(`Error starting workspace ${userId}/${workspaceId}: ${error.message}`);
             res.status(500).json(response.error('Internal server error starting workspace', [error.message]).getResponse());
         }
     });
@@ -351,11 +346,11 @@ export default ({ auth, userManager, sessionManager }) => {
      * POST /:id/stop - Stop an active workspace (shuts down DB, status=INACTIVE)
      */
     router.post('/:id/stop', loadWorkspaceMiddleware, async (req, res) => {
-        const userEmail = req.user?.email;
+        const userId = req.user?.id; // Use the user ID instead of email
         const workspaceId = req.params.id;
         const response = new ResponseObject();
 
-        debug(`ROUTE: POST /:id/stop - Stop workspace ${workspaceId} for user ${userEmail}`);
+        debug(`ROUTE: POST /:id/stop - Stop workspace ${workspaceId} for user ${userId}`);
 
         if (!req.workspace.isActive) {
             return res.json(response.success({ id: req.workspace.id, status: req.workspace.status }, `Workspace '${workspaceId}' is already inactive.`).getResponse());
@@ -363,10 +358,10 @@ export default ({ auth, userManager, sessionManager }) => {
 
         try {
             // Use stopWorkspace from the manager
-            const stopped = await workspaceManager.stopWorkspace(userEmail, workspaceId);
+            const stopped = await workspaceManager.stopWorkspace(userId, workspaceId);
             if (stopped) {
                  // Fetch the workspace again to get the updated status (INACTIVE)
-                const stoppedWorkspace = await workspaceManager.openWorkspace(userEmail, workspaceId);
+                const stoppedWorkspace = await workspaceManager.openWorkspace(userId, workspaceId);
                 response.success(stoppedWorkspace.toJSON(), `Workspace '${workspaceId}' stopped successfully.`);
                 res.json(response.getResponse());
             } else {
@@ -374,7 +369,7 @@ export default ({ auth, userManager, sessionManager }) => {
                 res.status(500).json(response.error(`Failed to stop workspace '${workspaceId}'.`));
             }
         } catch (error) {
-            logger.error(`Error stopping workspace ${userEmail}/${workspaceId}: ${error.message}`);
+            logger.error(`Error stopping workspace ${userId}/${workspaceId}: ${error.message}`);
             res.status(500).json(response.error('Internal server error stopping workspace', [error.message]).getResponse());
         }
     });

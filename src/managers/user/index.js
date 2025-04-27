@@ -33,7 +33,7 @@ class UserManager extends Manager {
     #rootPath;
     #users = new Map(); // Initialized User Instances, keeps this implementation as slim as possible
 
-    #workspaceManager; // Reference to workspace manager (injected)
+    #workspaceManager;
 
     /**
      * Create a new UserManager
@@ -41,6 +41,7 @@ class UserManager extends Manager {
      * @param {string} options.rootPath - Root path for user homes
      * @param {Object} options.jim - JSON Index Manager
      * @param {Object} [options.workspaceManager] - Workspace manager (can be set later)
+     * @param {Object} [options.authManager] - Auth manager (can be set later)
      */
     constructor(options = {}) {
         super({
@@ -74,12 +75,15 @@ class UserManager extends Manager {
     get rootPath() {
         return this.#rootPath;
     }
+
     get users() {
         return Array.from(this.#users.values());
     }
+
     get usersList() {
         return this.getConfig('users', []);
     }
+
     get workspaceManager() {
         return this.#workspaceManager;
     }
@@ -107,7 +111,8 @@ class UserManager extends Manager {
      * @param {string} userData.email - User email (required)
      * @param {string} [userData.userType='user'] - User type: 'user' or 'admin'
      * @param {string} [userData.status='active'] - User status
-     * @returns {Promise<User>} Newly created user
+     * @param {boolean} [userData.createToken=true] - Whether to create a default API token
+     * @returns {Promise<Object>} Created user with optional token
      */
     async createUser(userData = {}) {
         try {
@@ -141,28 +146,40 @@ class UserManager extends Manager {
             userList.push(user.toJSON());
             this.setConfig('users', userList);
 
-            // Create a generic API token for the user
-            const tokenName = 'default-token';
-            const tokenOptions = {
-                name: tokenName,
-                description: `Default API token for ${email}`,
-                expiresAt: null, // No expiration
+            // Create a result object to return
+            const result = {
+                user: user,
             };
 
-            const apiToken = await user.createToken(tokenOptions);
-            debug(`Created default API token for user ${email}`);
+            // Create a generic API token for the user if requested (default true)
+            if (userData.createToken !== false) {
+                // Get auth service if available
+                const authService = this.server?.services?.get('auth');
+                if (authService) {
+                    try {
+                        const tokenName = 'default-token';
+                        const tokenOptions = {
+                            name: tokenName,
+                            description: `Default API token for ${email}`,
+                            expiresAt: null, // No expiration
+                        };
 
-            // For admin users, log the token to console
-            if (userData.userType === 'admin') {
-                console.log('\n' + '='.repeat(80));
-                console.log('Canvas Admin User API Token');
-                console.log('='.repeat(80));
-                console.log(`Token: ${apiToken.value}`);
-                console.log('='.repeat(80) + '\n');
+                        const apiToken = await authService.createToken(userID, tokenOptions);
+                        debug(`Created default API token for user ${email}`);
+
+                        // Add token to result
+                        result.token = apiToken;
+                    } catch (error) {
+                        debug(`Error creating default token: ${error.message}`);
+                        // Continue without token if there's an error
+                    }
+                } else {
+                    debug('Auth service not available, skipping token creation');
+                }
             }
 
             this.emit('user:created', { id: userID, email });
-            return user;
+            return result;
         } catch (error) {
             debug(`Error creating user: ${error}`);
             throw error;
@@ -483,31 +500,54 @@ class UserManager extends Manager {
     }
 
     /**
-     * Token management - delegated to User instance
+     * Token management - delegated to AuthService
+     * These methods are kept for backward compatibility
      */
 
     async createApiToken(userId, options = {}) {
         if (!userId) throw new Error('User ID is required');
         if (!options.name) throw new Error('Token name is required');
 
-        // Get User instance
-        const user = await this.getUser(userId);
-        const token = await user.createToken(options);
-        this.emit('user:token:created', { userId, tokenId: token.id });
-        return token;
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            return authService.createToken(userId, options);
+        } else {
+            throw new Error('Auth service is not available for token management');
+        }
     }
 
     async getApiToken(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-        const user = await this.getUser(userId);
-        return user.getToken(tokenId);
+
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            const token = await authService.getToken(tokenId);
+            // Verify token belongs to user
+            if (token.userId !== userId) {
+                throw new Error(`Token ${tokenId} does not belong to user ${userId}`);
+            }
+            return token;
+        } else {
+            throw new Error('Auth service is not available for token management');
+        }
     }
 
     async listApiTokens(userId, options = {}) {
         if (!userId) throw new Error('User ID is required');
-        const user = await this.getUser(userId);
-        return user.listTokens(options);
+
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            return authService.listTokens(userId, options);
+        } else {
+            throw new Error('Auth service is not available for token management');
+        }
     }
 
     async updateApiToken(userId, tokenId, updates = {}) {
@@ -517,33 +557,71 @@ class UserManager extends Manager {
             throw new Error('No updates provided');
         }
 
-        const user = await this.getUser(userId);
-        const updatedToken = await user.updateToken(tokenId, updates);
-        this.emit('user:token:updated', { userId, tokenId, updates: Object.keys(updates) });
-        return updatedToken;
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            // Verify token belongs to user
+            const token = await authService.getToken(tokenId);
+            if (token.userId !== userId) {
+                throw new Error(`Token ${tokenId} does not belong to user ${userId}`);
+            }
+
+            return authService.updateToken(tokenId, updates);
+        } else {
+            throw new Error('Auth service is not available for token management');
+        }
     }
 
     async deleteApiToken(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-        const user = await this.getUser(userId);
-        const result = await user.deleteToken(tokenId);
-        if (result) {
-            this.emit('user:token:deleted', { userId, tokenId });
+
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            // Verify token belongs to user
+            try {
+                const token = await authService.getToken(tokenId);
+                if (token.userId !== userId) {
+                    throw new Error(`Token ${tokenId} does not belong to user ${userId}`);
+                }
+            } catch (error) {
+                if (error.message.includes('not found')) {
+                    return false; // Token doesn't exist
+                }
+                throw error;
+            }
+
+            return authService.deleteToken(tokenId);
+        } else {
+            throw new Error('Auth service is not available for token management');
         }
-        return result;
     }
 
     async updateApiTokenUsage(userId, tokenId) {
         if (!userId) throw new Error('User ID is required');
         if (!tokenId) throw new Error('Token ID is required');
-        const user = await this.getUser(userId);
-        return user.updateTokenUsage(tokenId);
+
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
+
+        if (authService) {
+            // Verify token belongs to user
+            const token = await authService.getToken(tokenId);
+            if (token.userId !== userId) {
+                throw new Error(`Token ${tokenId} does not belong to user ${userId}`);
+            }
+
+            return authService.updateTokenUsage(tokenId);
+        } else {
+            throw new Error('Auth service is not available for token management');
+        }
     }
 
     /**
-     * Finds a user and their specific token ID based on the raw API token value.
-     * This searches across all users.
+     * Finds a user by the raw API token value
      * @param {string} tokenValue - The raw API token value provided by the client.
      * @returns {Promise<{userId: string, tokenId: string}|null>} Object with userId and tokenId if found and valid, otherwise null.
      */
@@ -553,42 +631,55 @@ class UserManager extends Manager {
             return null;
         }
 
-        debug(`Searching for user by API token value: ${tokenValue.substring(0, 8)}...`);
+        // Get auth service from the server (if available)
+        const authService = this.server?.services?.get('auth');
 
-        const users = this.usersList; // Get all users from the index
-
-        for (const userData of users) {
-            // Skip inactive or problematic users if necessary (optional)
-            if (userData.status !== 'active') {
-                continue;
-            }
-
-            try {
-                // We need the User instance to access its TokenManager
-                // Avoid loading *all* users into memory if possible, but for validation, we might need to.
-                // This assumes getUser handles caching or efficient loading.
-                const user = await this.getUser(userData.id);
-
-                // Delegate the check (including hashing) to the user's TokenManager
-                // findTokenByValue should return { tokenId, userId } or null
-                const tokenInfo = await user.findTokenByValue(tokenValue);
-
-                if (tokenInfo) {
-                    debug(`Valid token found for user ${tokenInfo.userId} (Token ID: ${tokenInfo.tokenId})`);
-                    // IMPORTANT: Ensure the token is still valid (not revoked/expired) - findTokenByValue should handle this.
-                    // We found the user and token
-                    return tokenInfo; // { userId, tokenId }
-                }
-                // If tokenInfo is null, continue to the next user
-            } catch (error) {
-                // Log error fetching/checking user, but continue searching
-                logger.error(`Error checking tokens for user ${userData.id} (${userData.email}): ${error.message}`);
-            }
+        if (authService) {
+            return authService.validateApiToken(tokenValue);
+        } else {
+            debug('Auth service not available for token validation.');
+            return null;
         }
+    }
 
-        // If the loop completes without finding a match
-        debug('No user found for the provided API token value after checking all users.');
-        return null;
+    /**
+     * Set server reference
+     * @param {Object} server - Server instance
+     */
+    setServer(server) {
+        this.server = server;
+
+        // If the context manager is available from the server, set it on all users
+        if (server && server.contextManager) {
+            this.#setupDependencies();
+        }
+    }
+
+    /**
+     * Setup dependencies for all users
+     * This is called when the server is set or when the context manager becomes available
+     * @private
+     */
+    #setupDependencies() {
+        if (!this.server) return;
+
+        const contextManager = this.server.contextManager;
+        const sessionManager = this.server.sessionManager;
+
+        if (contextManager || sessionManager) {
+            debug('Setting up dependencies for all users');
+
+            // Update all user instances with the context manager
+            this.#users.forEach(user => {
+                if (contextManager) {
+                    user.setContextManager(contextManager);
+                }
+
+                if (sessionManager) {
+                    user.setSessionManager(sessionManager);
+                }
+            });
+        }
     }
 
     /**
@@ -602,11 +693,8 @@ class UserManager extends Manager {
             homePath: userData.homePath,
             userType: userData.userType,
             status: userData.status,
-            jim: this.jim, // Pass JIM to User instance for token management
+            workspaceManager: this.#workspaceManager
         });
-
-        // Set reference to this user manager in the JIM instance
-        this.setJimParentManager(this);
 
         this.#users.set(user.id, user);
         return user;
