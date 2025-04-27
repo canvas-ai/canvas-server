@@ -597,12 +597,18 @@ class Server extends EventEmitter {
                     // Reset password using the auth service
                     await authService.setPassword(adminUser.id, password);
 
+                    // Generate a new API Token
+                    const apiToken = await this.#userManager.createApiToken(adminUser.id, {
+                        name: 'Admin API Token',
+                    });
+
                     // Log the updated admin info
                     console.log('\n' + '='.repeat(80));
                     console.log('Canvas Admin User RESET');
                     console.log('='.repeat(80));
                     console.log(`Email(login ID): ${adminEmail}`);
                     console.log(`Password: ${password}`);
+                    console.log(`API Token: ${apiToken.value}`);
                     console.log('='.repeat(80) + '\n');
 
                     logger.info(`Admin user ${adminEmail} reset successfully`);
