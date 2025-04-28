@@ -73,7 +73,7 @@ export default function (server) {
             const mockRes = {};
 
             // Run the common auth middleware
-            await commonAuthMiddleware(mockReq, mockRes, (err) => {
+            await commonAuthMiddleware(mockReq, mockRes, async (err) => {
                 if (err) {
                     debug(`Authentication middleware error: ${err.message}`);
                     return next(err);
@@ -90,39 +90,41 @@ export default function (server) {
                 if (!socket.isAuthenticated && token) {
                     debug(`Standard auth failed, trying direct API token validation`);
 
-                    // Try validating the token directly
-                    authService
-                        .validateApiToken(token)
-                        .then((result) => {
-                            if (result && result.userId) {
-                                debug(`API token validated for user ${result.userId}`);
+                    // Use AuthService to validate the token directly
+                    try {
+                        const tokenInfo = await authService.validateApiToken(token);
 
-                                // Get the user and attach to socket
-                                return server.userManager.getUser(result.userId).then((user) => {
-                                    if (user) {
-                                        socket.user = user.toJSON ? user.toJSON() : user;
-                                        socket.user.tokenId = result.tokenId;
-                                        socket.user.type = 'api';
-                                        socket.isAuthenticated = true;
+                        if (tokenInfo && tokenInfo.userId) {
+                            debug(`API token validated via AuthService for user ${tokenInfo.userId}`);
 
-                                        debug(`User attached to socket: ${socket.user.email || socket.user.id}`);
-                                        next();
-                                    } else {
-                                        debug(`User ${result.userId} not found after token validation`);
-                                        next(new Error('User not found'));
-                                    }
-                                });
+                            // Get the user and attach to socket
+                            const userManager = server.userManager;
+                            const user = await userManager.getUser(tokenInfo.userId);
+
+                            if (user) {
+                                const userObj = user.toJSON ? user.toJSON() : user;
+                                // Attach user and token info
+                                socket.user = {
+                                    ...userObj,
+                                    tokenId: tokenInfo.tokenId,
+                                    type: 'api' // Indicate API token auth
+                                };
+                                socket.isAuthenticated = true;
+
+                                debug(`User attached to socket: ${socket.user.email || socket.user.id}`);
+                                return next(); // Authentication successful
                             } else {
-                                debug(`API token validation failed`);
-                                next(new Error('Invalid token'));
+                                debug(`User ${tokenInfo.userId} not found after token validation`);
+                                return next(new Error('User not found')); // User associated with token doesn't exist
                             }
-                        })
-                        .catch((error) => {
-                            debug(`Error in direct token validation: ${error.message}`);
-                            next(error);
-                        });
-
-                    return; // Stop here since we're handling auth asynchronously
+                        } else {
+                            debug(`API token validation failed via AuthService`);
+                            return next(new Error('Invalid token')); // Token not found or invalid
+                        }
+                    } catch (error) {
+                        debug(`Error during direct API token validation: ${error.message}`);
+                        return next(error); // Pass internal errors
+                    }
                 }
 
                 // If we're already authenticated, proceed with attached user

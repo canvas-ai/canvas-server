@@ -42,36 +42,6 @@ export default function (authService) {
 
     // ===== User Authentication Routes =====
 
-    /**
-     * @swagger
-     * /auth/register:
-     *   post:
-     *     summary: Register a new user
-     *     tags: [Authentication]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - email
-     *               - password
-     *             properties:
-     *               email:
-     *                 type: string
-     *                 format: email
-     *               password:
-     *                 type: string
-     *                 minLength: 8
-     *     responses:
-     *       201:
-     *         description: User registered successfully
-     *       400:
-     *         description: Invalid input
-     *       409:
-     *         description: User already exists
-     */
     router.post('/register', async (req, res) => {
         const { email, password } = req.body;
         debug(`Registration attempt for email: ${email}`);
@@ -125,35 +95,6 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/login:
-     *   post:
-     *     summary: Login a user
-     *     tags: [Authentication]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - email
-     *               - password
-     *             properties:
-     *               email:
-     *                 type: string
-     *                 format: email
-     *               password:
-     *                 type: string
-     *     responses:
-     *       200:
-     *         description: Login successful
-     *       400:
-     *         description: Invalid input
-     *       401:
-     *         description: Invalid credentials
-     */
     router.post('/login', async (req, res) => {
         const { email, password } = req.body;
         debug(`Login attempt for email: ${email}`);
@@ -200,16 +141,6 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/logout:
-     *   post:
-     *     summary: Logout a user
-     *     tags: [Authentication]
-     *     responses:
-     *       200:
-     *         description: Logged out successfully
-     */
     router.post('/logout', async (req, res) => {
         debug('Logout endpoint called');
 
@@ -232,20 +163,6 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/me:
-     *   get:
-     *     summary: Get current user information
-     *     tags: [Authentication]
-     *     security:
-     *       - bearerAuth: []
-     *     responses:
-     *       200:
-     *         description: User information retrieved successfully
-     *       401:
-     *         description: Not authenticated
-     */
     router.get('/me', passport.authenticate('api-token', { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
@@ -263,37 +180,6 @@ export default function (authService) {
         res.status(response.statusCode).json(response.getResponse());
     });
 
-    /**
-     * @swagger
-     * /auth/password:
-     *   put:
-     *     summary: Update user password
-     *     tags: [Authentication]
-     *     security:
-     *       - bearerAuth: []
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - currentPassword
-     *               - newPassword
-     *             properties:
-     *               currentPassword:
-     *                 type: string
-     *               newPassword:
-     *                 type: string
-     *                 minLength: 8
-     *     responses:
-     *       200:
-     *         description: Password updated successfully
-     *       400:
-     *         description: Invalid input
-     *       401:
-     *         description: Not authenticated
-     */
     router.put('/password', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Update password endpoint called');
         const { currentPassword, newPassword } = req.body;
@@ -326,30 +212,19 @@ export default function (authService) {
 
     // ===== API Token Management Routes =====
 
-    /**
-     * @swagger
-     * /auth/tokens:
-     *   get:
-     *     summary: List all API tokens for the current user
-     *     tags: [API Tokens]
-     *     security:
-     *       - bearerAuth: []
-     *     responses:
-     *       200:
-     *         description: API tokens retrieved successfully
-     *       401:
-     *         description: Not authenticated
-     */
     router.get('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('List tokens endpoint called');
 
         try {
-            const tokens = await authService.listApiTokens(req.user.id);
+            const tokens = await authService.listTokens(req.user.id);
+
+            // Remove tokenHash from response
+            const sanitizedTokens = tokens.map(({ tokenHash, ...rest }) => rest);
 
             debug(`Retrieved ${tokens.length} tokens for user: ${req.user.email}`);
             const response = new ResponseObject().success(
                 {
-                    tokens,
+                    tokens: sanitizedTokens,
                     total: tokens.length,
                 },
                 'API tokens retrieved successfully',
@@ -363,40 +238,6 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/tokens:
-     *   post:
-     *     summary: Generate a new API token
-     *     tags: [API Tokens]
-     *     security:
-     *       - bearerAuth: []
-     *     requestBody:
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - name
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: Name for the token
-     *               description:
-     *                 type: string
-     *                 description: Description for the token
-     *               expiresAt:
-     *                 type: string
-     *                 format: date-time
-     *                 description: Date when token expires (null for no expiration)
-     *     responses:
-     *       201:
-     *         description: API token generated successfully
-     *       400:
-     *         description: Invalid input
-     *       401:
-     *         description: Not authenticated
-     */
     router.post('/tokens', passport.authenticate('api-token', { session: false }), async (req, res) => {
         debug('Generate token endpoint called');
         const { name, description, expiresAt } = req.body;
@@ -426,7 +267,7 @@ export default function (authService) {
                 expiresAt: expiresAt || null,
             };
 
-            const token = await authService.createApiToken(req.user.id, tokenOptions);
+            const token = await authService.createToken(req.user.id, tokenOptions);
 
             debug(`Generated new API token for user: ${req.user.email}, name: ${token.name}`);
             const response = new ResponseObject().created(token, 'API token generated successfully');
@@ -438,35 +279,20 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/tokens/{tokenId}:
-     *   delete:
-     *     summary: Revoke an API token
-     *     tags: [API Tokens]
-     *     security:
-     *       - bearerAuth: []
-     *     parameters:
-     *       - in: path
-     *         name: tokenId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: ID of the token to revoke
-     *     responses:
-     *       200:
-     *         description: API token revoked successfully
-     *       401:
-     *         description: Not authenticated
-     *       404:
-     *         description: Token not found
-     */
     router.delete('/tokens/:tokenId', passport.authenticate('api-token', { session: false }), async (req, res) => {
         const { tokenId } = req.params;
         debug(`Revoke token endpoint called for token ID: ${tokenId}`);
 
         try {
-            const result = await authService.deleteApiToken(req.user.id, tokenId);
+            // First verify the token belongs to this user
+            const token = await authService.getToken(tokenId);
+
+            if (!token || token.userId !== req.user.id) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
+            const result = await authService.deleteToken(tokenId);
 
             if (!result) {
                 const response = new ResponseObject().notFound('API token not found');
@@ -478,34 +304,17 @@ export default function (authService) {
             res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Revoke token error: ${error.message}`);
+
+            if (error.message.includes('not found')) {
+                const response = new ResponseObject().notFound('API token not found');
+                return res.status(response.statusCode).json(response.getResponse());
+            }
+
             const response = new ResponseObject().error(error.message);
             res.status(response.statusCode).json(response.getResponse());
         }
     });
 
-    /**
-     * @swagger
-     * /auth/token/verify:
-     *   post:
-     *     summary: Verify a token without requiring authentication
-     *     tags: [API Tokens]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - token
-     *             properties:
-     *               token:
-     *                 type: string
-     *     responses:
-     *       200:
-     *         description: Token is valid
-     *       401:
-     *         description: Invalid token
-     */
     router.post('/token/verify', async (req, res) => {
         const { token } = req.body;
         debug('Token verify endpoint called');
@@ -524,9 +333,8 @@ export default function (authService) {
 
                 try {
                     // Get user and token details
-                    const userManager = req.app.get('userManager');
-                    const user = await userManager.getUserById(userId);
-                    const tokenDetails = await userManager.getApiToken(userId, tokenId);
+                    const user = await authService.getUserManager().getUserById(userId);
+                    const tokenDetails = await authService.getToken(tokenId);
 
                     if (user && tokenDetails) {
                         debug('API token verified successfully');
@@ -574,29 +382,6 @@ export default function (authService) {
         }
     });
 
-    /**
-     * @swagger
-     * /auth/token/exchange:
-     *   post:
-     *     summary: Exchange an API token for a JWT token
-     *     tags: [Authentication]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - apiToken
-     *             properties:
-     *               apiToken:
-     *                 type: string
-     *     responses:
-     *       200:
-     *         description: Token exchanged successfully
-     *       401:
-     *         description: Invalid API token
-     */
     router.post('/token/exchange', async (req, res) => {
         const { apiToken } = req.body;
         debug('Token exchange endpoint called');
@@ -619,9 +404,9 @@ export default function (authService) {
             const { userId, tokenId } = apiTokenResult;
             debug(`API token validated for user: ${userId}`);
 
-            // Get user directly from auth service's user manager instead of req.app
-            // This ensures we're using the same userManager instance that's already configured
-            const user = await authService.getUserManager().getUserById(userId);
+            // Get user from UserManager
+            const userManager = authService.getUserManager();
+            const user = await userManager.getUserById(userId);
             if (!user) {
                 debug(`User not found for API token: ${userId}`);
                 const response = new ResponseObject().notFound('User not found');

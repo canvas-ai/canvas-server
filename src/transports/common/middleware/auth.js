@@ -16,7 +16,6 @@ const debug = createDebug('transport:auth');
 export default function createAuthMiddleware(server) {
     const authService = server.services.get('auth');
     const userManager = server.userManager;
-    const sessionManager = server.sessionManager;
 
     if (!authService) {
         throw new Error('Auth service is required for authentication middleware');
@@ -73,7 +72,7 @@ export default function createAuthMiddleware(server) {
                 }
 
                 // Get token details
-                const tokenDetails = await userManager.getApiToken(userId, tokenId);
+                const tokenDetails = await authService.getToken(tokenId);
                 if (!tokenDetails) {
                     debug(`Token not found: ${tokenId}`);
                     req.isAuthenticated = false;
@@ -81,19 +80,13 @@ export default function createAuthMiddleware(server) {
                 }
 
                 // Attach user and token info to request
-                req.user = user.toJSON();
+                req.user = user.toJSON ? user.toJSON() : user;
                 req.user.tokenId = tokenId;
                 req.user.tokenName = tokenDetails.name;
                 req.user.type = 'api';
                 req.isAuthenticated = true;
 
-                // Update token usage
-                try {
-                    await userManager.updateApiTokenUsage(userId, tokenId);
-                } catch (error) {
-                    debug(`Failed to update token usage: ${error.message}`);
-                    // Continue even if token usage update fails
-                }
+                // No need to update token usage as validateApiToken already did this
 
                 debug('API token authentication successful');
                 return next();
@@ -113,20 +106,20 @@ export default function createAuthMiddleware(server) {
                 }
 
                 // Attach user to request
-                req.user = user.toJSON();
+                req.user = user.toJSON ? user.toJSON() : user;
                 req.user.tokenPayload = jwtPayload;
                 req.user.type = 'jwt';
                 req.isAuthenticated = true;
 
                 // Get session if available
-                if (sessionManager && jwtPayload.sessionId) {
-                    const session = await sessionManager.getSession(jwtPayload.sessionId);
+                if (authService.sessionManager && jwtPayload.sessionId) {
+                    const session = await authService.sessionManager.getSession(jwtPayload.sessionId);
                     if (session) {
                         debug(`Session found: ${session.id}`);
                         req.session = session;
 
                         // Update last active time
-                        await sessionManager.touchSession(session.id);
+                        await authService.sessionManager.touchSession(session.id);
                     }
                 }
 

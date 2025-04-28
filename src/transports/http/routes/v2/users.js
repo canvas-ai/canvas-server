@@ -9,73 +9,6 @@ const debug = createDebug('http:routes:users');
 import { createUserManagersMiddleware } from '../../middleware/userManagers.js';
 
 /**
- * @swagger
- * components:
- *   schemas:
- *     User:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The user ID
- *         email:
- *           type: string
- *           description: The user's email
- *         userType:
- *           type: string
- *           enum: [user, admin]
- *           description: The user type
- *         status:
- *           type: string
- *           enum: [active, inactive, deleted, error]
- *           description: User status
- *         stats:
- *           type: object
- *           description: User statistics
- *     UserWorkspace:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The workspace ID
- *         name:
- *           type: string
- *           description: The workspace name
- *         role:
- *           type: string
- *           description: User's role in the workspace
- *     UserContext:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The context ID
- *         name:
- *           type: string
- *           description: The context name
- *         url:
- *           type: string
- *           description: The context URL
- *     UserSession:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The session ID
- *         device:
- *           type: string
- *           description: The device ID
- *         created:
- *           type: string
- *           format: date-time
- *           description: Creation timestamp
- *         lastActive:
- *           type: string
- *           format: date-time
- *           description: Last activity timestamp
- */
-
-/**
  * Users routes
  * @param {Object} options - Route options
  * @param {Object} options.auth - Auth service
@@ -126,24 +59,6 @@ export default function usersRoutes(options) {
     // Apply user middleware to all routes
     userRouter.use(getUserMiddleware);
 
-    /**
-     * @swagger
-     * /current:
-     *   get:
-     *     summary: Get the current authenticated user
-     *     tags: [Users]
-     *     responses:
-     *       200:
-     *         description: Current user retrieved successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/User'
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/current', async (req, res) => {
         try {
             if (!req.user || !req.user.id) {
@@ -166,39 +81,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:
-     *   get:
-     *     summary: List all users
-     *     tags: [Users]
-     *     parameters:
-     *       - in: query
-     *         name: status
-     *         schema:
-     *           type: string
-     *           enum: [active, inactive, deleted, error]
-     *         description: Filter by user status
-     *       - in: query
-     *         name: userType
-     *         schema:
-     *           type: string
-     *           enum: [user, admin]
-     *         description: Filter by user type
-     *     responses:
-     *       200:
-     *         description: List of users
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: array
-     *               items:
-     *                 $ref: '#/components/schemas/User'
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/', async (req, res) => {
         try {
             const { status, userType } = req.query;
@@ -215,43 +97,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:
-     *   post:
-     *     summary: Create a new user
-     *     tags: [Users]
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - email
-     *             properties:
-     *               email:
-     *                 type: string
-     *                 format: email
-     *                 description: The user's email
-     *               userType:
-     *                 type: string
-     *                 enum: [user, admin]
-     *                 description: The user type
-     *     responses:
-     *       201:
-     *         description: User created successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/User'
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     userRouter.post('/', async (req, res) => {
         try {
             const { email, userType } = req.body;
@@ -273,33 +118,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}:
-     *   get:
-     *     summary: Get a user by ID
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     responses:
-     *       200:
-     *         description: User retrieved successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/User'
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -316,54 +134,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}:
-     *   put:
-     *     summary: Update a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               email:
-     *                 type: string
-     *                 format: email
-     *                 description: The user's email
-     *               userType:
-     *                 type: string
-     *                 enum: [user, admin]
-     *                 description: The user type
-     *               status:
-     *                 type: string
-     *                 enum: [active, inactive, deleted]
-     *                 description: User status
-     *     responses:
-     *       200:
-     *         description: User updated successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/User'
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -388,54 +158,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}:
-     *   patch:
-     *     summary: Partially update a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               email:
-     *                 type: string
-     *                 format: email
-     *                 description: The user's email
-     *               userType:
-     *                 type: string
-     *                 enum: [user, admin]
-     *                 description: The user type
-     *               status:
-     *                 type: string
-     *                 enum: [active, inactive, deleted]
-     *                 description: User status
-     *     responses:
-     *       200:
-     *         description: User updated successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               $ref: '#/components/schemas/User'
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.patch('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -454,36 +176,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}:
-     *   delete:
-     *     summary: Delete a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     responses:
-     *       200:
-     *         description: User deleted successfully
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: object
-     *               properties:
-     *                 success:
-     *                   type: boolean
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.delete('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -500,29 +192,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/tokens:
-     *   get:
-     *     summary: List API tokens for a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     responses:
-     *       200:
-     *         description: List of API tokens for the user
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/:id/tokens', async (req, res) => {
         try {
             const { id } = req.params;
@@ -540,48 +209,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/tokens:
-     *   post:
-     *     summary: Create a new API token for a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             required:
-     *               - name
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: Token name
-     *               description:
-     *                 type: string
-     *                 description: Token description
-     *               expiresAt:
-     *                 type: string
-     *                 format: date-time
-     *                 description: Token expiration date (null for no expiration)
-     *     responses:
-     *       201:
-     *         description: API token created successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.post('/:id/tokens', async (req, res) => {
         try {
             const { id } = req.params;
@@ -604,35 +231,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/tokens/{tokenId}:
-     *   get:
-     *     summary: Get an API token by ID
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *       - in: path
-     *         name: tokenId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Token ID
-     *     responses:
-     *       200:
-     *         description: API token retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User or token not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/:id/tokens/:tokenId', async (req, res) => {
         try {
             const { id, tokenId } = req.params;
@@ -654,52 +252,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/tokens/{tokenId}:
-     *   put:
-     *     summary: Update an API token
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *       - in: path
-     *         name: tokenId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Token ID
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: Token name
-     *               description:
-     *                 type: string
-     *                 description: Token description
-     *               expiresAt:
-     *                 type: string
-     *                 format: date-time
-     *                 description: Token expiration date (null for no expiration)
-     *     responses:
-     *       200:
-     *         description: API token updated successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User or token not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.put('/:id/tokens/:tokenId', async (req, res) => {
         try {
             const { id, tokenId } = req.params;
@@ -718,35 +270,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/tokens/{tokenId}:
-     *   delete:
-     *     summary: Delete an API token
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *       - in: path
-     *         name: tokenId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: Token ID
-     *     responses:
-     *       200:
-     *         description: API token deleted successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User or token not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.delete('/:id/tokens/:tokenId', async (req, res) => {
         try {
             const { id, tokenId } = req.params;
@@ -768,35 +291,6 @@ export default function usersRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /{id}/sessions:
-     *   get:
-     *     summary: List sessions for a user
-     *     tags: [Users]
-     *     parameters:
-     *       - in: path
-     *         name: id
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: User ID
-     *     responses:
-     *       200:
-     *         description: List of sessions for the user
-     *         content:
-     *           application/json:
-     *             schema:
-     *               type: array
-     *               items:
-     *                 $ref: '#/components/schemas/UserSession'
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: User not found
-     *       500:
-     *         description: Server error
-     */
     userRouter.get('/:id/sessions', async (req, res) => {
         try {
             const { id } = req.params;

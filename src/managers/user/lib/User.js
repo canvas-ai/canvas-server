@@ -2,18 +2,18 @@
 
 // Utils
 import path from 'path';
-import fs from 'fs/promises';
 import logger, { createDebug } from '../../../utils/log/index.js';
 const debug = createDebug('manager:user');
 import EventEmitter from 'eventemitter2';
-import { existsSync } from 'fs';
 
-// Local imports
-import TokenManager from './TokenManager.js';
+// Managers
+import {
+    getSessionManager,
+    getContextManager,
+} from '../../../Server.js';
 
 /**
  * User Class
- * Represents a user in the system and provides access to user-specific resources
  */
 
 class User extends EventEmitter {
@@ -22,17 +22,22 @@ class User extends EventEmitter {
     #email;
     #userType;
     #homePath;
-    #jim; // JIM instance for token management
 
     // Manager instances
-    #tokenManager;
+    #workspaceManager;
+    #contextManager;
+    #sessionManager;
 
     // Runtime state
     #status = 'inactive'; // inactive, active, disabled, deleted
-    #startTime;
+    #startTime = Date.now();
 
     // User stats
     #stats = {
+        sessions: {
+            total: 0,
+            active: 0,
+        },
         workspaces: {
             total: 0,
             open: 0,
@@ -41,15 +46,8 @@ class User extends EventEmitter {
             total: 0,
             active: 0,
         },
-        apiTokens: {
-            total: 0,
-        },
     };
 
-    // Managers
-    #workspaceManager;
-    #contextManager;
-    #sessionManager;
 
     /**
      * Create a new User instance
@@ -60,6 +58,9 @@ class User extends EventEmitter {
      * @param {string} [options.userType='user'] - User type ('user' or 'admin')
      * @param {string} [options.status='inactive'] - User status
      * @param {Object} options.jim - JSON Index Manager instance
+     * @param {Object} [options.workspaceManager] - Workspace manager instance
+     * @param {Object} [options.contextManager] - Context manager instance
+     * @param {Object} [options.sessionManager] - Session manager instance
      */
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
@@ -67,12 +68,6 @@ class User extends EventEmitter {
         if (!options.id) { throw new Error('User ID is required'); }
         if (!options.email) { throw new Error('Email is required'); }
         if (!options.homePath) { throw new Error('Home path is required'); }
-        if (!options.jim) { throw new Error('JIM instance is required'); }
-
-        // Check for required managers
-        if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
-        if (!options.contextManager) { throw new Error('Context manager instance is required'); }
-        if (!options.sessionManager) { throw new Error('Session manager instance is required'); }
 
         /**
          * User properties
@@ -83,15 +78,25 @@ class User extends EventEmitter {
         this.#homePath = options.homePath;
         this.#userType = options.userType || 'user';
         this.#status = options.status || 'inactive';
-        this.#jim = options.jim;
 
         // Bind manager instances
         this.#workspaceManager = options.workspaceManager;
-        this.#contextManager = options.contextManager;
-        this.#sessionManager = options.sessionManager;
 
-        // Initialize token manager (to be moved out of User class)
-        this.#initializeTokenManager();
+        // Try to get context manager, but don't throw if not available yet
+        try {
+            this.#contextManager = options.contextManager || getContextManager();
+        } catch (error) {
+            debug(`Context manager not available during user creation: ${error.message}`);
+            this.#contextManager = null;
+        }
+
+        // Try to get session manager, but don't throw if not available yet
+        try {
+            this.#sessionManager = options.sessionManager || getSessionManager();
+        } catch (error) {
+            debug(`Session manager not available during user creation: ${error.message}`);
+            this.#sessionManager = null;
+        }
 
         debug(`User instance created: ${this.#id} (${this.#email})`);
     }
@@ -106,9 +111,13 @@ class User extends EventEmitter {
     get homePath() { return this.#homePath; }
     get status() { return this.#status; }
     get stats() { return this.#stats; }
-    get tokenManager() { return this.#tokenManager; }
-    get jim() { return this.#jim; }
+    get uptime() { return Date.now() - this.#startTime; }
     get configPath() { return path.join(this.#homePath, 'Config'); }
+
+    // Managers
+    get workspaceManager() { return this.#workspaceManager; }
+    get contextManager() { return this.#contextManager; }
+    get sessionManager() { return this.#sessionManager; }
 
     /**
      * Main User module (abstraction as of now) API
@@ -116,14 +125,23 @@ class User extends EventEmitter {
      */
 
     listWorkspaces() {
+        if (!this.#workspaceManager) {
+            throw new Error('Workspace manager is not set');
+        }
         return this.#workspaceManager.listWorkspaces(this.#id);
     }
 
     listContexts() {
+        if (!this.#contextManager) {
+            throw new Error('Context manager is not set');
+        }
         return this.#contextManager.listContexts(this.#id);
     }
 
     listSessions() {
+        if (!this.#sessionManager) {
+            throw new Error('Session manager is not set');
+        }
         return this.#sessionManager.listSessions(this.#id);
     }
 
@@ -151,200 +169,31 @@ class User extends EventEmitter {
             homePath: this.#homePath,
             status: this.#status,
             stats: this.#stats,
-            // workspaces: this.#workspaceManager.listWorkspaces(this.#id),
-            // contexts: this.#contextManager.listContexts(this.#id),
-            // sessions: this.#sessionManager.listSessions(this.#id),
         };
     }
 
     /**
-     * Token Management (to be moved out of User class)
+     * Sets the context manager instance for this user
+     * @param {Object} contextManager - Context manager instance
      */
-
-    /**
-     * Initialize the token manager for this user
-     * @private
-     */
-    #initializeTokenManager() {
-        try {
-            // Ensure Config directory exists
-            this.#ensureConfigDirectorySync();
-
-            // Create token manager with user-specific token store
-            this.#tokenManager = new TokenManager({
-                userId: this.#id,
-                userHomePath: this.#homePath,
-                jim: this.#jim, // Pass JIM to TokenManager
-            });
-
-            // Listen to token manager events to update stats
-            this.#tokenManager.on('token:created', this.#handleTokenCreated.bind(this));
-            this.#tokenManager.on('token:deleted', this.#handleTokenDeleted.bind(this));
-
-            // Forward token events from token manager to user's event emitter
-            this.#tokenManager.onAny((event, data) => {
-                this.emit(event, data);
-            });
-
-            debug(`Token manager initialized for user ${this.#id}`);
-        } catch (error) {
-            debug(`Failed to initialize token manager: ${error.message}`);
-            // Don't throw here - allow User to be created even if token manager fails
+    setContextManager(contextManager) {
+        if (!this.#contextManager && contextManager) {
+            this.#contextManager = contextManager;
+            debug(`Context manager set for user: ${this.#id}`);
         }
     }
 
     /**
-     * Token Management (Delegated to TokenManager)
+     * Sets the session manager instance for this user
+     * @param {Object} sessionManager - Session manager instance
      */
-
-    /**
-     * Create a new API token
-     * @param {Object} options - Token options
-     * @returns {Promise<Object>} Created token
-     */
-    async createToken(options = {}) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.createToken(options);
-    }
-
-    /**
-     * Get a token by ID
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object>} Token object
-     */
-    async getToken(tokenId) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.getToken(tokenId);
-    }
-
-    /**
-     * List all tokens or filter by criteria
-     * @param {Object} options - Filter options
-     * @returns {Promise<Array<Object>>} Array of tokens
-     */
-    async listTokens(options = {}) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.listTokens(options);
-    }
-
-    /**
-     * Update a token's properties
-     * @param {string} tokenId - Token ID
-     * @param {Object} updates - Updates to apply
-     * @returns {Promise<Object>} Updated token
-     */
-    async updateToken(tokenId, updates = {}) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.updateToken(tokenId, updates);
-    }
-
-    /**
-     * Delete a token
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<boolean>} True if deleted
-     */
-    async deleteToken(tokenId) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.deleteToken(tokenId);
-    }
-
-    /**
-     * Update token usage information
-     * @param {string} tokenId - Token ID
-     * @returns {Promise<Object>} Updated token
-     */
-    async updateTokenUsage(tokenId) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.updateTokenUsage(tokenId);
-    }
-
-    /**
-     * Find a token by its raw value
-     * @param {string} tokenValue - Token value to find
-     * @returns {Promise<Object|null>} Token with ID information or null if not found
-     */
-    async findTokenByValue(tokenValue) {
-        if (!this.#tokenManager) {
-            await this.#ensureTokenManager();
-        }
-        return this.#tokenManager.findTokenByValue(tokenValue);
-    }
-
-    /**
-     * Token event handlers
-     */
-
-    /**
-     * Handle token created event
-     * @param {Object} data - Event data
-     * @private
-     */
-    #handleTokenCreated(data) {
-        this.#stats.apiTokens.total++;
-    }
-
-    /**
-     * Handle token deleted event
-     * @param {Object} data - Event data
-     * @private
-     */
-    #handleTokenDeleted(data) {
-        if (this.#stats.apiTokens.total > 0) {
-            this.#stats.apiTokens.total--;
+    setSessionManager(sessionManager) {
+        if (!this.#sessionManager && sessionManager) {
+            this.#sessionManager = sessionManager;
+            debug(`Session manager set for user: ${this.#id}`);
         }
     }
 
-    /**
-     * Ensure the token manager exists and is initialized
-     * @private
-     */
-    async #ensureTokenManager() {
-        if (this.#tokenManager) return;
-
-        // Create Config directory if it doesn't exist
-        const configDir = this.configPath;
-        if (!existsSync(configDir)) {
-            await fs.mkdir(configDir, { recursive: true });
-        }
-
-        this.#initializeTokenManager();
-
-        if (!this.#tokenManager) {
-            throw new Error(`Failed to initialize token manager for user ${this.#id}`);
-        }
-    }
-
-
-
-    /**
-     * Ensure the user's Config directory exists
-     * @private
-     */
-    #ensureConfigDirectorySync() {
-        const configDir = this.configPath;
-        if (!existsSync(configDir)) {
-            // Use sync method since this is called during construction
-            try {
-                fs.mkdirSync(configDir, { recursive: true });
-                debug(`Created config directory for user ${this.#id}: ${configDir}`);
-            } catch (error) {
-                debug(`Failed to create config directory: ${error.message}`);
-                throw error;
-            }
-        }
-    }
 }
 
 export default User;

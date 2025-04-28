@@ -12,7 +12,7 @@ async function main() {
         setupServerEventHandlers();
 
         // Initialize and start the server
-        await server.init();
+        await server.initialize();
         await server.start();
 
         console.log('Canvas server started successfully.');

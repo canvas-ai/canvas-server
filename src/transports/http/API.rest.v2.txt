@@ -56,32 +56,31 @@ baseUrl: /rest/v2
 │   ├── /:id [PATCH] - Update workspace configuration (label, color, locked, acl, metadata, restApi)
 │   ├── /:id [DELETE] - Destroy workspace (stops, removes index entry, deletes files)
 │   ├── /:id/status [GET] - Get current workspace status (runtime or persisted)
-│   ├── /:id/actions/open [POST] - Load workspace into memory (status=INACTIVE)
-│   ├── /:id/actions/close [POST] - Unload workspace from memory (if inactive)
-│   ├── /:id/actions/start [POST] - Start an inactive workspace (loads DB, status=ACTIVE)
-│   ├── /:id/actions/stop [POST] - Stop an active workspace (shuts down DB, status=INACTIVE)
+│   ├── /:id/open [POST] - Load workspace into memory (status=INACTIVE)
+│   ├── /:id/close [POST] - Unload workspace from memory (if inactive)
+│   ├── /:id/start [POST] - Start an inactive workspace (loads DB, status=ACTIVE)
+│   ├── /:id/stop [POST] - Stop an active workspace (shuts down DB, status=INACTIVE)
 │   │
 │   ├── /:id/documents [GET] - List documents (query: context, features, filters, limit) [ACTIVE]
 │   ├── /:id/documents [POST] - Insert one or more documents (query: context, features) [ACTIVE]
 │   ├── /:id/documents [PUT] - Update one or more documents (query: context, features) [ACTIVE]
-│   ├── /:id/documents/actions/remove [POST] - Remove document IDs from specified bitmaps (query: context, features) [ACTIVE]
-│   ├── /:id/documents/actions/delete [POST] - Permanently delete document data and all references [ACTIVE]
-│   ├── /:id/documents/:docId [GET] - Get a specific document by ID [ACTIVE]
+│   ├── /:id/documents [PATCH] - Remove document IDs from specified bitmaps (query: context, features) [ACTIVE]
+│   ├── /:id/documents [DELETE] - Remove document IDs from database
+│   ├── /:id/documents/by-id/:docId [GET] - Get a specific document by ID [ACTIVE]
 │   ├── /:id/documents/by-hash/:hashString [GET] - Get document by checksum hash [ACTIVE]
 │   │
 │   ├── /:id/tree [GET] - Get the workspace's hierarchical tree structure [ACTIVE]
 │   ├── /:id/tree/paths [POST] - Insert a path (body: { path, autoCreateLayers }) [ACTIVE]
 │   ├── /:id/tree/paths [DELETE] - Remove a path (query: path, recursive) [ACTIVE]
-│   ├── /:id/tree/paths/actions/move [POST] - Move a path (body: { from, to, recursive }) [ACTIVE]
-│   ├── /:id/tree/paths/actions/copy [POST] - Copy a path (body: { from, to, recursive }) [ACTIVE]
-│   ├── /:id/tree/paths/actions/merge-up [POST] - Merge layer bitmaps upwards (body: { path }) [ACTIVE]
-│   ├── /:id/tree/paths/actions/merge-down [POST] - Merge layer bitmaps downwards (body: { path }) [ACTIVE]
+│   ├── /:id/tree/paths/move [POST] - Move a path (body: { from, to, recursive }) [ACTIVE]
+│   ├── /:id/tree/paths/copy [POST] - Copy a path (body: { from, to, recursive }) [ACTIVE]
+│   ├── /:id/tree/paths/merge-up [POST] - Merge layer bitmaps upwards (body: { path }) [ACTIVE]
+│   ├── /:id/tree/paths/merge-down [POST] - Merge layer bitmaps downwards (body: { path }) [ACTIVE]
 │   │
 │   ├── /:id/layers [GET] - List all layer definitions [ACTIVE]
 │   ├── /:id/layers [POST] - Create a new layer definition (body: { name, type, ...options }) [ACTIVE]
 │   ├── /:id/layers/:layerName [GET] - Get layer definition by name [ACTIVE]
 │   ├── /:id/layers/:layerName [PATCH] - Update layer properties (body: { description, color, ... }) [ACTIVE]
-│   ├── /:id/layers/:layerName/actions/rename [POST] - Rename a layer (body: { newName }) [ACTIVE]
 │   ├── /:id/layers/:layerName [DELETE] - Delete layer definition (removes from tree) [ACTIVE]
 │   └── /:id/layers/by-id/:layerId [GET] - Get layer definition by ID [ACTIVE]
 │

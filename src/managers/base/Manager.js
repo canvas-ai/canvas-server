@@ -2,6 +2,10 @@
 
 // Utils
 import EventEmitter from 'eventemitter2';
+import fs from 'fs/promises';
+import { existsSync, mkdirSync } from 'fs';
+import { v4 as uuidv4 } from 'uuid';
+import { ulid } from 'ulid';
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('manager:base');
 
@@ -142,13 +146,61 @@ class Manager extends EventEmitter {
     }
 
     /**
+     * Common Utilities
+     */
+
+    /**
      * Generate a UUID
      * @param {string} [prefix] - Prefix for the UUID
      * @param {number} [length] - Length of the UUID
      * @returns {string} UUID
      */
     generateUUID(prefix = '', length = 8) {
-        return `${prefix}-${uuidv4().replace(/-/g, '').slice(0, length)}`;
+        const id = uuidv4().replace(/-/g, '').slice(0, length);
+        return (prefix ? `${prefix}-${id}` : id);
+    }
+
+    /**
+     * Generate a ULID
+     * @param {string} [prefix] - Prefix for the ULID
+     * @param {number} [length] - Length of the ULID
+     * @returns {string} ULID
+     */
+    generateId(prefix = '', length = 8) {
+        const id = ulid().replace(/-/g, '').slice(0, length).toLowerCase();
+        return (prefix ? `${prefix}-${id}` : id);
+    }
+
+    /**
+     * Generate an index key
+     * @param {string} module - Module name
+     * @param {string} key - Key name
+     * @param {string} [delimiter] - Delimiter for the index key
+     * @returns {string} Index key
+     */
+    generateIndexKey(module, key, delimiter = '/') {
+        return `${module}${delimiter}${key}`;
+    }
+
+
+    /**
+     * Ensure a directory exists
+     * @param {string} path - Path to ensure exists
+     */
+    async ensureDirectoryExists(path) {
+        if (!existsSync(path)) {
+            await fs.mkdir(path, { recursive: true });
+        }
+    }
+
+    /**
+     * Ensure a directory exists (sync)
+     * @param {string} path - Path to ensure exists
+     */
+    ensureDirectoryExistsSync(path) {
+        if (!existsSync(path)) {
+            fs.mkdirSync(path, { recursive: true });
+        }
     }
 }
 

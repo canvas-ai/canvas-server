@@ -12,7 +12,7 @@ We already had tab management implemented(great showcase for the bitmap-based co
 
 Sooo
 
-New approach: "**Do The Simplest Thing That Could Possibly Work(tm)"**  
+New approach: **"Do The Simplest Thing That Could Possibly Work(tm)"**  
 Sorry Universe for the delay..
 
 ## Installation

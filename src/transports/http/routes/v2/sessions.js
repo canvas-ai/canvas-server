@@ -5,41 +5,6 @@ import logger, { createDebug } from '../../../../utils/log/index.js';
 import ResponseObject from '../../../ResponseObject.js';
 const debug = createDebug('http:routes:sessions');
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     Session:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           description: The session ID
- *         userId:
- *           type: string
- *           description: The user ID
- *         contextId:
- *           type: string
- *           description: The context ID
- *         name:
- *           type: string
- *           description: The session name
- *         description:
- *           type: string
- *           description: The session description
- *         createdAt:
- *           type: string
- *           format: date-time
- *           description: The creation timestamp
- *         lastActiveAt:
- *           type: string
- *           format: date-time
- *           description: The last activity timestamp
- *         isActive:
- *           type: boolean
- *           description: Whether the session is active
- */
-
 export default function sessionsRoutes(options) {
     const router = express.Router();
     const { auth, sessionManager } = options;
@@ -82,22 +47,6 @@ export default function sessionsRoutes(options) {
         }
     };
 
-    /**
-     * @swagger
-     * /:
-     *   get:
-     *     summary: List all sessions for the current user
-     *     tags: [Sessions]
-     *     security:
-     *       - bearerAuth: []
-     *     responses:
-     *       200:
-     *         description: Sessions retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     router.get('/', passport.authenticate('api-token', { session: false }), async (req, res) => {
         try {
             const userId = req.query.userId || req.user.id;
@@ -128,37 +77,6 @@ export default function sessionsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:
-     *   post:
-     *     summary: Create a new session
-     *     tags: [Sessions]
-     *     security:
-     *       - bearerAuth: []
-     *     requestBody:
-     *       required: true
-     *       content:
-     *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               name:
-     *                 type: string
-     *                 description: The session name
-     *               description:
-     *                 type: string
-     *                 description: The session description
-     *     responses:
-     *       201:
-     *         description: Session created successfully
-     *       400:
-     *         description: Invalid request
-     *       401:
-     *         description: Unauthorized
-     *       500:
-     *         description: Server error
-     */
     router.post('/', passport.authenticate('api-token', { session: false }), async (req, res) => {
         try {
             const { name, description } = req.body;
@@ -178,31 +96,6 @@ export default function sessionsRoutes(options) {
         }
     });
 
-    /**
-     * @swagger
-     * /:sessionId:
-     *   get:
-     *     summary: Get a specific session by ID
-     *     tags: [Sessions]
-     *     security:
-     *       - bearerAuth: []
-     *     parameters:
-     *       - in: path
-     *         name: sessionId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The session ID
-     *     responses:
-     *       200:
-     *         description: Session retrieved successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Session not found
-     *       500:
-     *         description: Server error
-     */
     router.get(
         '/:sessionId',
         passport.authenticate('api-token', { session: false }),
@@ -219,31 +112,6 @@ export default function sessionsRoutes(options) {
         },
     );
 
-    /**
-     * @swagger
-     * /:sessionId:
-     *   delete:
-     *     summary: End a session
-     *     tags: [Sessions]
-     *     security:
-     *       - bearerAuth: []
-     *     parameters:
-     *       - in: path
-     *         name: sessionId
-     *         required: true
-     *         schema:
-     *           type: string
-     *         description: The session ID
-     *     responses:
-     *       200:
-     *         description: Session ended successfully
-     *       401:
-     *         description: Unauthorized
-     *       404:
-     *         description: Session not found
-     *       500:
-     *         description: Server error
-     */
     router.delete(
         '/:sessionId',
         passport.authenticate('api-token', { session: false }),
