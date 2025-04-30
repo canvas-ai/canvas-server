@@ -95,6 +95,17 @@ $ npm install
 $ npm start # or npm run pm2:start
 ```
 
+## Make Canavas Server WebUI available remotely
+
+```bash
+# Copy the .env.example file
+$ cp /path/to/canvas-server/src/ui/.env.example /path/to/canvas-server/src/ui/.env
+# Edit as needed, for a local setup you'd want to use your machines hostname or FQDN(if resolvable) or its local IP
+# Rebuild the web ui
+$ npm run build
+# Restart the server
+```
+
 ## Scripts
 
 ### build-portable-image.sh

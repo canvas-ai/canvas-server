@@ -56,7 +56,6 @@ class SessionManager extends Manager {
 
         // Load active sessions from database
         await this.#loadSessionsFromStore();
-
         return super.initialize();
     }
 

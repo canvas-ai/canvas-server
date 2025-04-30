@@ -112,7 +112,7 @@ class UserManager extends Manager {
      * @param {string} [userData.userType='user'] - User type: 'user' or 'admin'
      * @param {string} [userData.status='active'] - User status
      * @param {boolean} [userData.createToken=true] - Whether to create a default API token
-     * @returns {Promise<Object>} Created user with optional token
+     * @returns {Promise<User>} Created user
      */
     async createUser(userData = {}) {
         try {
@@ -127,7 +127,7 @@ class UserManager extends Manager {
                 throw new Error(`User already exists with email: ${email}`);
             }
 
-            const userID = uuidv4();
+            const userID = super.generateId('u', 8, '');
             const userHomePath = userData.homePath ||
                 path.join(this.#rootPath, email);
 
@@ -145,41 +145,8 @@ class UserManager extends Manager {
             const userList = [...this.usersList];
             userList.push(user.toJSON());
             this.setConfig('users', userList);
-
-            // Create a result object to return
-            const result = {
-                user: user,
-            };
-
-            // Create a generic API token for the user if requested (default true)
-            if (userData.createToken !== false) {
-                // Get auth service if available
-                const authService = this.server?.services?.get('auth');
-                if (authService) {
-                    try {
-                        const tokenName = 'default-token';
-                        const tokenOptions = {
-                            name: tokenName,
-                            description: `Default API token for ${email}`,
-                            expiresAt: null, // No expiration
-                        };
-
-                        const apiToken = await authService.createToken(userID, tokenOptions);
-                        debug(`Created default API token for user ${email}`);
-
-                        // Add token to result
-                        result.token = apiToken;
-                    } catch (error) {
-                        debug(`Error creating default token: ${error.message}`);
-                        // Continue without token if there's an error
-                    }
-                } else {
-                    debug('Auth service not available, skipping token creation');
-                }
-            }
-
             this.emit('user:created', { id: userID, email });
-            return result;
+            return user;
         } catch (error) {
             debug(`Error creating user: ${error}`);
             throw error;
@@ -202,9 +169,10 @@ class UserManager extends Manager {
 
         try {
             await this.#workspaceManager.createWorkspace(userEmail, 'universe', {
-                id: '10000001-1001',
                 workspacePath: userHomePath,
                 type: 'universe',
+                color: '#fff',
+                description: 'And then there was geometry...',
                 owner: userEmail,
             });
 
@@ -484,17 +452,7 @@ class UserManager extends Manager {
             this.#users.delete(id);
         }
 
-        // Try to clean up user home directory
-        try {
-            if (existsSync(userHomePath)) {
-                await fs.rm(userHomePath, { recursive: true, force: true });
-                debug(`Deleted user home directory: ${userHomePath}`);
-            }
-        } catch (error) {
-            logger.error(`Failed to delete user home directory for ${id}: ${error.message}`);
-            // Continue with deletion even if directory cleanup fails
-        }
-
+        console.log(`User home directory left in place: ${userHomePath}`);
         this.emit('user:deleted', { id });
         return true;
     }

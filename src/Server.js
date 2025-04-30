@@ -10,13 +10,13 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import EventEmitter from 'eventemitter2';
+import Config from './utils/config/index.js';
 
 // Package info
 import pkg from '../package.json' with { type: 'json' };
 const { productName, version, description, license } = pkg;
 
 // Logging
-import { defaultConfig as config } from './utils/config/index.js';
 import logger, { createDebug } from './utils/log/index.js';
 const debug = createDebug('server');
 
@@ -25,9 +25,12 @@ import AuthService from './services/auth/index.js';
 import Db from './services/synapsd/src/backends/lmdb/index.js';
 import Jim from './utils/jim/index.js';
 
-// Transports
-import HttpTransport from './transports/http/index.js';
-import WsTransport from './transports/ws/index.js';
+/**
+ * Global Config
+ */
+
+// TODO: Make this a proper singleton, refactor the new ai-generated code of config!
+import { defaultConfig as config } from './utils/config/index.js';
 
 /**
  * Server Database
@@ -42,13 +45,31 @@ const jim = new Jim({
 });
 
 /**
- * Global Managers
+ * Global Managers "Singleton" (not really, but close enough)
  */
 
 import SessionManager from './managers/session/index.js';
-import UserManager from './managers/user/index.js';
+const sessionManager = new SessionManager({
+    jim: jim, // JIM instance to create a JSON based index for sessions
+});
+
 import WorkspaceManager from './managers/workspace/index.js';
-import ContextManager from './managers/context/index.js';
+const workspaceManager = new WorkspaceManager({
+    jim: jim,
+    rootPath: (env.CANVAS_SERVER_MODE === 'user') ? env.CANVAS_USER_HOME : env.CANVAS_SERVER_HOMES,
+
+});
+
+import UserManager from './managers/user/index.js';
+const userManager = new UserManager({
+    jim: jim, // JIM instance to create a JSON based index for users
+    rootPath: (env.CANVAS_SERVER_MODE === 'user') ? env.CANVAS_USER_HOME : env.CANVAS_SERVER_HOMES,
+});
+
+
+
+
+
 
 /**
  * Event Handlers
@@ -78,10 +99,10 @@ class Server extends EventEmitter {
     #db;
 
     // Managers
-    #userManager;
-    #sessionManager;
-    #workspaceManager;
-    #contextManager;
+    #userManager = null;
+    #sessionManager = null;
+    #workspaceManager = null;
+    #contextManager = null;
 
     // Event Handlers
     #userEventHandler;
@@ -103,9 +124,7 @@ class Server extends EventEmitter {
     // Getters
     get mode() { return this.#mode; }
     get version() { return `${productName} v${version} | ${description}`; }
-    get status() {
-        return this.#status;
-    }
+    get status() { return this.#status; }
     get services() {
         return this.#services;
     }
@@ -137,17 +156,18 @@ class Server extends EventEmitter {
         logger.info('Initializing Canvas Server..');
         this.emit('before-init');
 
-        try {
-            // Initialize managers
-            await this.#initializeManagers();
-
+        try
+        {
             // Initialize services
             await this.#initializeServices();
+
+            // Initialize managers
+            await this.#initializeManagers();
 
             // Initialize transports
             await this.#initializeTransports();
 
-            // Create initial admin user if needed
+1            // Create default admin user
             await this.#createDefaultAdminUser();
 
             this.#status = 'initialized';
@@ -240,6 +260,35 @@ class Server extends EventEmitter {
      */
 
     /**
+     * Initialize services
+     * @private
+     */
+    async #initializeServices() {
+        debug('Initializing services');
+        logger.info('Initializing services');
+
+        try {
+            // Initialize auth service
+            const authConfig = config.open('auth');
+            const authService = new AuthService(authConfig, {
+                sessionManager: this.#sessionManager,
+                userManager: this.#userManager,
+            });
+
+            await authService.initialize();
+            this.#services.set('auth', authService);
+            debug('Auth service initialized and registered');
+
+            // Additional services can be added here in the future
+
+            logger.info('Services initialized');
+        } catch (error) {
+            logger.error(`Service initialization failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
      * Initialize managers
      * @private
      */
@@ -278,14 +327,6 @@ class Server extends EventEmitter {
         });
         debug('User event handler initialized');
 
-        // Initialize Context Manager as a global manager (no longer per-user)
-        this.#contextManager = new ContextManager({
-            jim: jim,
-            workspaceManager: this.#workspaceManager,
-            userManager: this.#userManager,
-        });
-        await this.#contextManager.initialize();
-
         // Now that all managers are initialized, set server reference on UserManager
         // This will provide access to all other initialized managers
         if (typeof this.#userManager.setServer === 'function') {
@@ -294,40 +335,6 @@ class Server extends EventEmitter {
         }
 
         logger.info('Managers initialized successfully');
-    }
-
-    /**
-     * Initialize services
-     * @private
-     */
-    async #initializeServices() {
-        debug('Initializing services');
-        logger.info('Initializing services');
-
-        try {
-            // Initialize auth service
-            const authConfig = {
-                ...config,
-                jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret',
-                jwtLifetime: process.env.CANVAS_JWT_LIFETIME || '7d',
-            };
-
-            const authService = new AuthService(authConfig, {
-                sessionManager: this.#sessionManager,
-                userManager: this.#userManager,
-            });
-
-            await authService.initialize();
-            this.#services.set('auth', authService);
-            debug('Auth service initialized and registered');
-
-            // Additional services can be added here in the future
-
-            logger.info('Services initialized');
-        } catch (error) {
-            logger.error(`Service initialization failed: ${error.message}`);
-            throw error;
-        }
     }
 
     /**
@@ -655,14 +662,17 @@ class Server extends EventEmitter {
             createToken: true, // Explicitly request token creation
         };
 
-        const result = await this.#userManager.createUser(userData);
-        const newUser = result.user;
-        const apiToken = result.token;
-
+        const newUser = await this.#userManager.createUser(userData);
         debug(`Admin user created with ID: ${newUser?.id}`);
 
         // Set password for the new admin user
         await authService.setPassword(newUser.id, password);
+
+        // Create a new API token for the user
+        const apiToken = await authService.createToken(newUser.id, {
+            name: 'Admin API Token',
+            description: 'Default admin token',
+        });
 
         // Log the admin user details
         this.#displayAdminCredentials(adminEmail, password, apiToken?.value);

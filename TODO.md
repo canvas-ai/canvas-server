@@ -26,3 +26,9 @@ Workspace config paths
 - !!! SIMPLIFY
 - !!! SIMPLIFY
 - !!! SIMPLIFY
+- Remove persistence for sessions, we already persist contexts
+
+
+## Workspace Manager
+
+- Prevent changing main properties of a Universe workspace

@@ -1,3 +1,4 @@
+// Utils
 import validator from 'validator';
 import EventEmitter from 'eventemitter2';
 import configurePassport from '../../utils/passport.js';
@@ -8,11 +9,13 @@ import { v4 as uuidv4 } from 'uuid';
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('service:auth');
 
+// Services
 import SessionService from './lib/SessionService.js';
 
 /**
  * Constants for token management
  */
+
 const API_TOKEN_STATUSES = ['active', 'revoked', 'expired'];
 const TOKEN_PREFIX = 'canvas-';
 
@@ -22,6 +25,7 @@ const TOKEN_PREFIX = 'canvas-';
  * Handles user authentication, registration, session management, and token management
  */
 class AuthService extends EventEmitter {
+
     #userManager;
     #sessionManager;
     #sessionService;
@@ -33,17 +37,8 @@ class AuthService extends EventEmitter {
     constructor(config, options = {}) {
         super();
         this.#config = config;
-        this.#userManager = options.userManager;
-        this.#sessionManager = options.sessionManager;
-
-        if (!this.#userManager) {
-            throw new Error('UserManager is required');
-        }
-
-        if (!this.#sessionManager) {
-            throw new Error('SessionManager is required');
-        }
-
+        this.#userManager = options.userManager || null;
+        this.#sessionManager = options.sessionManager || null;
         debug('Auth service created');
     }
 

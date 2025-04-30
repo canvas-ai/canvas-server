@@ -109,7 +109,7 @@ class Manager extends EventEmitter {
     }
 
     /**
-     * Helper method to safely access a configuration value
+     * Helper method to safely access a configuration value, supports dot notation
      * @param {string} key - Configuration key
      * @param {*} defaultValue - Default value if key is not found
      * @returns {*} Configuration value or default
@@ -119,7 +119,7 @@ class Manager extends EventEmitter {
     }
 
     /**
-     * Helper method to safely set a configuration value
+     * Helper method to safely set a configuration value, supports dot notation
      * @param {string} key - Configuration key
      * @param {*} value - Value to set
      * @returns {boolean} Success status
@@ -135,17 +135,6 @@ class Manager extends EventEmitter {
     }
 
     /**
-     * Set a parent manager reference on the JIM instance
-     * This allows for accessing the parent manager from child instances
-     * @param {Object} manager - The parent manager instance
-     */
-    setJimParentManager(manager) {
-        if (this.#jim) {
-            this.#jim.parentManager = manager;
-        }
-    }
-
-    /**
      * Common Utilities
      */
 
@@ -155,9 +144,9 @@ class Manager extends EventEmitter {
      * @param {number} [length] - Length of the UUID
      * @returns {string} UUID
      */
-    generateUUID(prefix = '', length = 8) {
+    generateUUID(prefix = '', length = 12, delimiter = '-') {
         const id = uuidv4().replace(/-/g, '').slice(0, length);
-        return (prefix ? `${prefix}-${id}` : id);
+        return (prefix ? `${prefix}${delimiter}${id}` : id);
     }
 
     /**
@@ -166,9 +155,9 @@ class Manager extends EventEmitter {
      * @param {number} [length] - Length of the ULID
      * @returns {string} ULID
      */
-    generateId(prefix = '', length = 8) {
+    generateId(prefix = '', length = 12, delimiter = '-') {
         const id = ulid().replace(/-/g, '').slice(0, length).toLowerCase();
-        return (prefix ? `${prefix}-${id}` : id);
+        return (prefix ? `${prefix}${delimiter}${id}` : id);
     }
 
     /**

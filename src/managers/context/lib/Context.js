@@ -692,7 +692,7 @@ class Context extends EventEmitter {
      */
 
     toJSON() {
-        const json = {
+        return {
             id: this.#id,
             name: this.#name,
             url: this.#url,
@@ -705,14 +705,8 @@ class Context extends EventEmitter {
             contextBitmapArray: this.#contextBitmapArray,
             featureBitmapArray: this.#featureBitmapArray,
             filterArray: this.#filterArray,
+            pendingUrl: this.#pendingUrl || null,
         };
-
-        // Include pendingUrl if it exists
-        if (this.#pendingUrl) {
-            json.pendingUrl = this.#pendingUrl;
-        }
-
-        return json;
     }
 }
 

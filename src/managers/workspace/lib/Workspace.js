@@ -19,9 +19,6 @@ import {
 
 /**
  * Canvas Workspace
- *
- * Represents an active, loaded workspace instance with its resources (DB, tree).
- * Configuration is managed via the injected configStore (Conf instance).
  */
 
 class Workspace extends EventEmitter {

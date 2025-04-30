@@ -120,8 +120,7 @@ class User extends EventEmitter {
     get sessionManager() { return this.#sessionManager; }
 
     /**
-     * Main User module (abstraction as of now) API
-     * "You ain't gonna need it!" so list methods only
+     * Main User module API
      */
 
     listWorkspaces() {

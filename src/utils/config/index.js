@@ -100,9 +100,10 @@ class Config {
         const configPath =
             configType === 'server' ? path.join(this.serverConfigDir, configName) : path.join(this.userConfigDir, configName);
         if (!fs.existsSync(`${configPath}.json`)) {
-            const errorMsg = `Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`;
-            logger.error(errorMsg);
-            throw new Error(errorMsg);
+            //const errorMsg = `Config file ${configPath}.json not found in ${configType}/config directory. Please create one based on example-${configName}.json`;
+            //logger.error(errorMsg);
+            //throw new Error(errorMsg);
+            return this.open(configPath);
         }
         logger.debug(`Required config loaded: ${configPath}`);
         return this.open(configPath);

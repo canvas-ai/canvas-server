@@ -17,12 +17,7 @@ import Url from './lib/Url.js';
 import Context from './lib/Context.js';
 
 /**
- * ===========================
  * Context Manager
- * ===========================
- *
- * Global manager for managing user contexts across the system.
- * Stores contexts prefixed by user ID.
  */
 class ContextManager extends Manager {
 
@@ -228,16 +223,6 @@ class ContextManager extends Manager {
     }
 
     /**
-     * Get or create the default context for a user
-     * @param {string} userId - User ID
-     * @param {string} [url='/'] - URL for the context (if created)
-     * @returns {Promise<Context>} Default context
-     */
-    async getDefaultContext(userId, url = '/') {
-        return this.getContext(userId, 'default', { autoCreate: true, url, default: true });
-    }
-
-    /**
      * List all contexts for a user
      * @param {string} userId - User ID
      * @returns {Array<Object>} Array of context metadata
@@ -251,13 +236,7 @@ class ContextManager extends Manager {
         const contexts = [];
 
         userContexts.forEach((context, id) => {
-            contexts.push({
-                id: context.id,
-                url: context.url,
-                workspace: context.workspace ? context.workspace.id : null,
-                created: context.created,
-                updated: context.updated,
-            });
+            contexts.push(context.toJSON());
         });
 
         debug(`Listed ${contexts.length} contexts for user ${userId}`);
@@ -291,6 +270,10 @@ class ContextManager extends Manager {
 
         if (contextId === undefined || contextId === null) {
             throw new Error('Context ID is required');
+        }
+
+        if (contextId === 'default') {
+            throw new Error('Cannot remove default context');
         }
 
         const userContexts = this.#getUserContexts(userId);
@@ -328,6 +311,10 @@ class ContextManager extends Manager {
         let removedCount = 0;
 
         for (const contextId of contextIds) {
+            if (contextId === 'default') {
+                continue;
+            }
+
             if (await this.removeContext(userId, contextId)) {
                 removedCount++;
             }
