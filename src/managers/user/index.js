@@ -98,7 +98,16 @@ class UserManager extends Manager {
         }
 
         debug('Initializing UserManager');
-        return super.initialize();
+
+        // Initialize base manager
+        await super.initialize();
+
+        // Initialize token storage if it doesn't exist
+        if (!this.getConfig('auth:tokens')) {
+            this.setConfig('auth:tokens', {});
+        }
+
+        return true;
     }
 
     /**
@@ -128,17 +137,20 @@ class UserManager extends Manager {
             }
 
             const userID = super.generateId('u', 8, '');
-            const userHomePath = userData.homePath ||
-                path.join(this.#rootPath, email);
+            const userHomePath = userData.homePath || path.join(this.#rootPath, email);
 
-            await this.createUserHome(userHomePath, email);
+            // Create user home directory with the correct user ID
+            await this.createUserHome(userHomePath, userID, email);
 
+            // Initialize user with all required options
             const user = this.#initializeUser({
                 id: userID,
                 email: email,
                 homePath: userHomePath,
                 userType: userData.userType || 'user',
-                status: 'active',
+                status: userData.status || 'active',
+                workspaceManager: this.#workspaceManager,
+                eventEmitterOptions: this.eventEmitterOptions
             });
 
             // Update the global index
@@ -156,10 +168,11 @@ class UserManager extends Manager {
     /**
      * Create a user's home structure as a Universe workspace
      * @param {string} homePath - Path to the user's home
+     * @param {string} userId - User ID
      * @param {string} userEmail - User email
      * @returns {Promise<string>} Path to the user's home
      */
-    async createUserHome(homePath, userEmail) {
+    async createUserHome(homePath, userId, userEmail) {
         if (!this.#workspaceManager) {
             throw new Error('WorkspaceManager is required to create a user home');
         }
@@ -176,7 +189,7 @@ class UserManager extends Manager {
                 owner: userEmail,
             });
 
-            debug(`Universe workspace created for user: ${userEmail}`);
+            debug(`Universe workspace created for user: ${userEmail} (${userId})`);
             return userHomePath;
         } catch (error) {
             debug(`Error creating user home: ${error}`);
@@ -645,16 +658,28 @@ class UserManager extends Manager {
      */
 
     #initializeUser(userData) {
+        debug(`Initializing user: ${userData.email}`);
+
+        if (!userData.id) { throw new Error('User ID is required'); }
+        if (!userData.email) { throw new Error('Email is required'); }
+        if (!userData.homePath) { throw new Error('Home path is required'); }
+        if (!this.#workspaceManager) { throw new Error('WorkspaceManager is required'); }
+
+        // Create user instance with all required options
         const user = new User({
             id: userData.id,
             email: userData.email,
             homePath: userData.homePath,
-            userType: userData.userType,
-            status: userData.status,
-            workspaceManager: this.#workspaceManager
+            userType: userData.userType || 'user',
+            status: userData.status || 'active',
+            workspaceManager: this.#workspaceManager,
+            eventEmitterOptions: this.eventEmitterOptions
         });
 
+        // Store user instance in memory
         this.#users.set(user.id, user);
+
+        debug(`User initialized: ${userData.email} (${userData.id})`);
         return user;
     }
 

@@ -113,6 +113,24 @@ async function testNestedWorkspaces() {
         { description: 'Parent workspace' }
     );
 
+    await workspaceManager.createWorkspace(
+        testUser.email,
+        'foo',
+        { description: 'Foo workspace' }
+    );
+
+    await workspaceManager.createWorkspace(
+        testUser.email,
+        'bar-ws',
+        { description: 'Bar workspace' }
+    );
+
+    await workspaceManager.createWorkspace(
+        testUser.email,
+        'baz-ws',
+        { description: 'Baz workspace' }
+    );
+
     // Verify parent workspace
     if (!existsSync(parentWsMeta.rootPath)) {
         throw new Error(`Parent workspace directory not created at ${parentWsMeta.rootPath}`);
@@ -178,8 +196,8 @@ async function testWorkspaceOperations(universeWsMeta, parentWsMeta, childWsMeta
 
     // Test listWorkspaces
     const userWorkspaces = workspaceManager.listWorkspaces(testUser.email);
-    if (userWorkspaces.length !== 3) {
-        throw new Error(`Expected 3 workspaces, found ${userWorkspaces.length}`);
+    if (userWorkspaces.length !== 6) {
+        throw new Error(`Expected 6 workspaces, found ${userWorkspaces.length}`);
     }
     console.log('✓ listWorkspaces returned correct number of workspaces');
 }
@@ -235,7 +253,7 @@ async function testWorkspaceCleanup(universeWsMeta, parentWsMeta, childWsMeta) {
 
     // Verify index state
     const workspaces = workspaceManager.index;
-    if (workspaces[testUser.email].length !== 1) {
+    if (workspaces[testUser.email].length !== 4) {
         throw new Error('Incorrect number of workspaces in index after cleanup');
     }
     console.log('✓ Index state verified after cleanup');

@@ -22,8 +22,8 @@ const ensureAuthenticated = (authService) => {
             next();
         };
     }
-    // Assuming 'jwt' strategy is configured in authService
-    return authService.passport.authenticate('jwt', { session: false });
+    // Use both api-token and jwt strategies
+    return authService.passport.authenticate(['api-token', 'jwt'], { session: false });
 };
 
 /**
@@ -130,20 +130,21 @@ export default ({ auth, userManager, sessionManager }) => {
      * GET / - List all workspaces (metadata) for the authenticated user
      */
     router.get('/', async (req, res) => {
-        const userId = req.user?.id; // Use the user ID instead of email
+        const userId = req.user?.id;
+        const userEmail = req.user?.email;
         const response = new ResponseObject();
-        if (!userId) return res.status(401).json(response.unauthorized());
+        if (!userId || !userEmail) return res.status(401).json(response.unauthorized());
 
-        debug(`ROUTE: GET / - List workspaces for user ${userId}`);
+        debug(`ROUTE: GET / - List workspaces for user ${userEmail}`);
 
         try {
             // Get workspaces for this user using the new schema
-            const userWorkspaces = workspaceManager.listWorkspaces(userId);
-            debug(`Found ${userWorkspaces.length} workspaces for user ${userId}`);
+            const userWorkspaces = workspaceManager.listWorkspaces(userEmail);
+            debug(`Found ${userWorkspaces.length} workspaces for user ${userEmail}`);
             response.success(userWorkspaces, 'User workspaces retrieved successfully.');
             res.json(response.getResponse());
         } catch (error) {
-            logger.error(`Error listing workspaces for user ${userId}: ${error.message}`);
+            logger.error(`Error listing workspaces for user ${userEmail}: ${error.message}`);
             res.status(500).json(response.error('Internal server error listing workspaces', [error.message]).getResponse());
         }
     });

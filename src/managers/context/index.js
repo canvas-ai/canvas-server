@@ -2,6 +2,8 @@
 
 // Utils
 import { v4 as uuidv4 } from 'uuid';
+import Jim from '../../utils/jim/index.js';
+import path from 'path';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
@@ -13,8 +15,9 @@ import Manager from '../base/Manager.js';
 // URL parser
 import Url from './lib/Url.js';
 
-// Context
+// Includes
 import Context from './lib/Context.js';
+import WORKSPACE_DIRECTORIES from '../workspace/index.js';
 
 /**
  * Context Manager
@@ -22,35 +25,45 @@ import Context from './lib/Context.js';
 class ContextManager extends Manager {
 
     #workspaceManager;
-    #userManager;
+    #user;
     #contextsByUser = new Map(); // Map<userId, Map<contextId, Context>>
     #nextContextIdByUser = new Map(); // Map<userId, number> - tracks next numeric context ID per user
 
     /**
      * Create a new ContextManager
      * @param {Object} options - Manager options
-     * @param {Object} options.jim - JSON Index Manager instance
-     * @param {Object} [options.workspaceManager] - Workspace manager reference
-     * @param {Object} [options.userManager] - User manager reference
+     * @param {Object} options.user - User instance
+     * @param {Object} options.workspaceManager - Workspace manager reference
+     * @param {Object} options.homePath - Home path for the manager
+     * @param {Object} [options.eventEmitterOptions] - Event emitter options
      */
     constructor(options = {}) {
-        super({
-            jim: options.jim,
-            indexName: 'contexts',
-            eventEmitterOptions: options.eventEmitterOptions,
-        });
+        if (!options.user) {
+            throw new Error('User instance is required to create a ContextManager');
+        }
 
         if (!options.workspaceManager) {
             throw new Error('WorkspaceManager is required to create a ContextManager');
         }
 
-        if (!options.userManager) {
-            throw new Error('UserManager is required to create a ContextManager');
+        if (!options.homePath) {
+            throw new Error('Home path is required to create a ContextManager');
         }
 
-        this.#workspaceManager = options.workspaceManager;
-        this.#userManager = options.userManager;
+        // Ensure homePath is absolute
+        const homePath = path.resolve(options.homePath);
+        debug(`Initializing ContextManager with home path: ${homePath}`);
 
+        super({
+            jim: options.jim || new Jim({
+                rootPath: path.join(homePath, WORKSPACE_DIRECTORIES.db),
+            }),
+            indexName: 'contexts',
+            eventEmitterOptions: options.eventEmitterOptions,
+        });
+
+        this.#user = options.user;
+        this.#workspaceManager = options.workspaceManager;
         debug('Context manager initialized');
     }
 
@@ -59,7 +72,7 @@ class ContextManager extends Manager {
      */
 
     get workspaceManager() { return this.#workspaceManager; }
-    get userManager() { return this.#userManager; }
+    get user() { return this.#user; }
 
     /**
      * Manager Lifecycle
@@ -98,26 +111,10 @@ class ContextManager extends Manager {
      * @param {string|number} [options.id] - Custom context ID (if not provided, an auto-incrementing numeric ID will be used)
      * @returns {Promise<Context>} Created context
      */
-    async createContext(userId, url = '/', options = {}) {
-        if (!userId) {
-            throw new Error('User ID is required');
-        }
-
+    async createContext(url = '/', options = {}) {
         // Ensure we have a workspace manager
         if (!this.#workspaceManager) {
             throw new Error('WorkspaceManager is required to create a context');
-        }
-
-        let user;
-        try {
-            // Get user from user manager
-            if (this.#userManager) {
-                user = await this.#userManager.getUser(userId);
-            } else {
-                throw new Error('UserManager is required but not set');
-            }
-        } catch (error) {
-            throw new Error(`Failed to get user ${userId}: ${error.message}`);
         }
 
         // Determine the context ID

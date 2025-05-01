@@ -135,6 +135,14 @@ class Manager extends EventEmitter {
     }
 
     /**
+     * Get all configuration values
+     * @returns {Object} All configuration values
+     */
+    getAllConfig() {
+        return this.#index.store || {};
+    }
+
+    /**
      * Common Utilities
      */
 

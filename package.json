@@ -74,6 +74,7 @@
     "node-machine-id": "^1.1.12",
     "passport": "^0.7.0",
     "passport-custom": "^1.1.1",
+    "passport-http-bearer": "^1.0.1",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pm2": "^5.3.1",

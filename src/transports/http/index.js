@@ -211,44 +211,52 @@ class HttpRestTransport {
             res.status(200).json(response);
         });
 
+        // Get services from canvas server
+        const authService = this.#canvasServer.services.get('auth');
+        const sessionManager = this.#canvasServer.sessionManager;
+        const userManager = this.#canvasServer.userManager;
+
+        if (!authService) {
+            throw new Error('Auth service is required for HTTP transport');
+        }
+
+        if (!sessionManager) {
+            throw new Error('Session manager is required for HTTP transport');
+        }
+
+        if (!userManager) {
+            throw new Error('User manager is required for HTTP transport');
+        }
+
+        // Initialize auth service if not already initialized
+        if (!authService.initialized) {
+            await authService.initialize();
+        }
+
+        // Add important global objects to app context
+        app.set('authService', authService);
+        app.set('sessionManager', sessionManager);
+        app.set('userManager', userManager);
+
+        // Initialize passport
+        app.use(authService.passport.initialize());
+
         // Register API routes
         try {
             debug('Registering API routes');
 
-            // Get services from canvas server
-            const authService = this.#canvasServer.services.get('auth');
-            const sessionManager = this.#canvasServer.sessionManager;
-            const userManager = this.#canvasServer.userManager;
-
-            // Add important global objects to app context
-            app.set('authService', authService);
-            app.set('sessionManager', sessionManager);
-            app.set('userManager', userManager);
-
-            // Make sure passport is using the correct strategy
-            if (authService && authService.passport) {
-                debug('Attaching configured passport to app');
-                app.use(authService.passport.initialize());
-            }
-
             // Dynamically import and register routes
-            if (authService) {
-                debug('Registering auth routes');
-                const authRoutesModule = await import('./routes/v2/auth.js');
-                app.use(`${this.#config.basePath}/v2/auth`, authRoutesModule.default(authService));
-            }
+            const authRoutesModule = await import('./routes/v2/auth.js');
+            app.use(`${this.#config.basePath}/v2/auth`, authRoutesModule.default(authService));
 
-            if (sessionManager) {
-                debug('Registering sessions routes');
-                const sessionsRoutesModule = await import('./routes/v2/sessions.js');
-                app.use(
-                    `${this.#config.basePath}/v2/sessions`,
-                    sessionsRoutesModule.default({
-                        auth: authService,
-                        sessionManager,
-                    }),
-                );
-            }
+            const sessionsRoutesModule = await import('./routes/v2/sessions.js');
+            app.use(
+                `${this.#config.basePath}/v2/sessions`,
+                sessionsRoutesModule.default({
+                    auth: authService,
+                    sessionManager,
+                }),
+            );
 
             if (userManager) {
                 debug('Registering contexts routes');
@@ -285,8 +293,8 @@ class HttpRestTransport {
 
             debug('API routes registered successfully');
         } catch (error) {
-            debug(`Error registering API routes: ${error.message}`);
-            console.error('Failed to register API routes:', error);
+            debug(`Error registering routes: ${error.message}`);
+            throw error;
         }
 
         // Configure static file serving AFTER API routes

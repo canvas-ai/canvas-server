@@ -5,6 +5,7 @@ import configurePassport from '../../utils/passport.js';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
 
 import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('service:auth');
@@ -49,11 +50,19 @@ class AuthService extends EventEmitter {
 
         debug('Initializing auth service');
 
+        if (!this.#userManager) {
+            throw new Error('User manager is required for auth service');
+        }
+
+        // Ensure we have a JWT secret
+        if (!this.#config || !this.#config.jwtSecret) {
+            throw new Error('JWT secret is required in auth config');
+        }
+
         // Configure passport with JWT secret
-        const jwtSecret = this.#config.jwtSecret || 'canvas-jwt-secret-dev-only';
+        const jwtSecret = this.#config.jwtSecret;
         this.#passport = configurePassport(jwtSecret, {
             userManager: this.#userManager,
-            authService: this,
         });
         debug('Passport configured with JWT secret');
 
@@ -64,13 +73,29 @@ class AuthService extends EventEmitter {
             sessionManager: this.#sessionManager,
         });
 
-        // Initialize token storage in user manager's config if it doesn't exist
-        if (!this.#userManager.getConfig('auth:tokens')) {
-            this.#userManager.setConfig('auth:tokens', {});
-        }
+        // Initialize token and password storage
+        await this.#initializeStorage();
 
         this.#initialized = true;
         debug('Auth service initialized');
+    }
+
+    /**
+     * Initialize token and password storage
+     * @private
+     */
+    async #initializeStorage() {
+        // Initialize token storage if it doesn't exist
+        if (!this.#userManager.getConfig('auth:tokens')) {
+            this.#userManager.setConfig('auth:tokens', []);
+            debug('Initialized empty tokens array');
+        }
+
+        // Initialize password storage if it doesn't exist
+        if (!this.#userManager.getConfig('auth:passwords')) {
+            this.#userManager.setConfig('auth:passwords', []);
+            debug('Initialized empty passwords array');
+        }
     }
 
     /**
@@ -84,6 +109,14 @@ class AuthService extends EventEmitter {
 
         if (!this.#initialized) {
             await this.initialize();
+        }
+
+        if (!this.#userManager.initialized) {
+            await this.#userManager.initialize();
+        }
+
+        if (!this.#sessionManager.initialized) {
+            await this.#sessionManager.initialize();
         }
 
         debug('Starting auth service');
@@ -133,7 +166,7 @@ class AuthService extends EventEmitter {
             throw new Error('Password must be at least 8 characters long');
         }
 
-        // Check if user already exists - use hasUserByEmail instead of getUserByEmail
+        // Check if user already exists
         const userExists = await this.#userManager.hasUserByEmail(email);
         if (userExists) {
             throw new Error('User with this email already exists');
@@ -158,7 +191,7 @@ class AuthService extends EventEmitter {
         });
 
         // Generate JWT token
-        const token = this.#sessionService.generateToken(user, session);
+        const token = this.#generateJwtToken(user, session);
 
         // Create a default API token
         const apiToken = await this.createToken(user.id, {
@@ -213,7 +246,7 @@ class AuthService extends EventEmitter {
         });
 
         // Generate JWT token
-        const token = this.#sessionService.generateToken(user, session);
+        const token = this.#generateJwtToken(user, session);
 
         this.emit('user:login', { user, session });
         debug(`User logged in: ${email} (${user.id})`);
@@ -290,7 +323,7 @@ class AuthService extends EventEmitter {
                 : options.expiresAt
             : null;
 
-        // Create token object for storage (without raw value)
+        // Create token object for storage
         const token = {
             id: tokenId,
             userId: userId,
@@ -305,19 +338,22 @@ class AuthService extends EventEmitter {
             usageCount: 0,
         };
 
-        // Get current tokens
-        const tokens = this.#getTokens();
+        // Get current tokens and ensure it's an array
+        let tokens = this.#getTokens();
+        if (!Array.isArray(tokens)) {
+            debug('Tokens was not an array, converting to array');
+            tokens = [];
+        }
 
         // Add new token
-        tokens[tokenId] = token;
+        tokens.push(token);
 
         // Store updated tokens
         this.#saveTokens(tokens);
 
         this.emit('token:created', { userId, tokenId });
 
-        // Return a copy of the token with the value to show to the user
-        // This is the only time the raw token value is returned
+        // Return a copy of the token with the value (only time it's exposed)
         return {
             ...token,
             value: tokenValue,
@@ -337,7 +373,7 @@ class AuthService extends EventEmitter {
 
         debug(`Getting token: ${tokenId}`);
         const tokens = this.#getTokens();
-        const token = tokens[tokenId];
+        const token = tokens.find(t => t.id === tokenId);
 
         if (!token) {
             debug(`Token not found: ${tokenId}`);
@@ -362,7 +398,7 @@ class AuthService extends EventEmitter {
             throw new Error('User ID is required');
         }
 
-        let tokens = Object.values(this.#getTokens());
+        let tokens = this.#getTokens();
 
         // Filter by user ID
         tokens = tokens.filter((token) => token.userId === userId);
@@ -402,11 +438,13 @@ class AuthService extends EventEmitter {
 
         // Get all tokens
         const tokens = this.#getTokens();
-        const token = tokens[tokenId];
+        const tokenIndex = tokens.findIndex(t => t.id === tokenId);
 
-        if (!token) {
+        if (tokenIndex === -1) {
             throw new Error(`Token not found: ${tokenId}`);
         }
+
+        const token = tokens[tokenIndex];
 
         // Validate status if updating
         if (updates.status && !API_TOKEN_STATUSES.includes(updates.status)) {
@@ -425,8 +463,8 @@ class AuthService extends EventEmitter {
             updated: new Date().toISOString(),
         };
 
-        // Update token in the tokens object
-        tokens[tokenId] = updatedToken;
+        // Update token in array
+        tokens[tokenIndex] = updatedToken;
 
         // Save updated tokens
         this.#saveTokens(tokens);
@@ -448,15 +486,16 @@ class AuthService extends EventEmitter {
 
         // Get all tokens
         const tokens = this.#getTokens();
+        const tokenIndex = tokens.findIndex(t => t.id === tokenId);
 
-        if (!tokens[tokenId]) {
+        if (tokenIndex === -1) {
             return false; // Token doesn't exist
         }
 
-        const userId = tokens[tokenId].userId;
+        const userId = tokens[tokenIndex].userId;
 
-        // Delete token
-        delete tokens[tokenId];
+        // Remove token
+        tokens.splice(tokenIndex, 1);
 
         // Save updated tokens
         this.#saveTokens(tokens);
@@ -478,11 +517,13 @@ class AuthService extends EventEmitter {
 
         // Get all tokens
         const tokens = this.#getTokens();
-        const token = tokens[tokenId];
+        const tokenIndex = tokens.findIndex(t => t.id === tokenId);
 
-        if (!token) {
+        if (tokenIndex === -1) {
             throw new Error(`Token not found: ${tokenId}`);
         }
+
+        const token = tokens[tokenIndex];
 
         // Check if token is active
         if (token.status !== 'active') {
@@ -493,7 +534,7 @@ class AuthService extends EventEmitter {
         if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
             // Update status to expired
             token.status = 'expired';
-            tokens[tokenId] = token;
+            tokens[tokenIndex] = token;
             this.#saveTokens(tokens);
             throw new Error(`Token has expired: ${tokenId}`);
         }
@@ -505,8 +546,8 @@ class AuthService extends EventEmitter {
             usageCount: (token.usageCount || 0) + 1,
         };
 
-        // Update token in tokens object
-        tokens[tokenId] = updatedToken;
+        // Update token in array
+        tokens[tokenIndex] = updatedToken;
 
         // Save updated tokens
         this.#saveTokens(tokens);
@@ -527,54 +568,55 @@ class AuthService extends EventEmitter {
         // Hash the provided token value
         const tokenHash = this.#hashToken(tokenValue);
 
-        // Get all tokens
-        const tokens = this.#getTokens();
+        // Get all tokens and ensure it's an array
+        let tokens = this.#getTokens();
+        if (!Array.isArray(tokens)) {
+            debug('Tokens was not an array, converting to array');
+            tokens = [];
+        }
 
         // Find token with matching hash
-        const tokenEntry = Object.entries(tokens).find(
-            ([_, token]) =>
-                (token.tokenHash === tokenHash) ||
-                // For backward compatibility
-                (token.token === tokenValue)
+        const token = tokens.find(t =>
+            (t.tokenHash === tokenHash) ||
+            // For backward compatibility
+            (t.token === tokenValue)
         );
 
-        if (!tokenEntry) {
+        if (!token) {
             debug(`No token found for provided value`);
             return null;
         }
 
-        const [tokenId, token] = tokenEntry;
-
         // Check if token is active and not expired
         if (token.status !== 'active') {
-            debug(`Token ${tokenId} found but status is ${token.status}, not active`);
+            debug(`Token ${token.id} found but status is ${token.status}, not active`);
             return null;
         }
 
         if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
             // Update status to expired
-            debug(`Token ${tokenId} found but has expired`);
-            await this.updateToken(tokenId, { status: 'expired' });
+            debug(`Token ${token.id} found but has expired`);
+            await this.updateToken(token.id, { status: 'expired' });
             return null;
         }
 
         // Update usage
         try {
-            await this.updateTokenUsage(tokenId);
-            debug(`Token ${tokenId} found and usage updated`);
+            await this.updateTokenUsage(token.id);
+            debug(`Token ${token.id} found and usage updated`);
         } catch (error) {
-            debug(`Error updating token usage for ${tokenId}: ${error.message}`);
+            debug(`Error updating token usage for ${token.id}: ${error.message}`);
             // Continue even if updating usage fails
         }
 
         // Migrate from old format to hash if needed
         if (token.token && !token.tokenHash) {
             try {
-                await this.updateToken(tokenId, {
+                await this.updateToken(token.id, {
                     tokenHash: this.#hashToken(token.token),
                     token: undefined // Remove plain text token
                 });
-                debug(`Migrated token ${tokenId} to hash format`);
+                debug(`Migrated token ${token.id} to hash format`);
             } catch (error) {
                 debug(`Error migrating token to hash format: ${error.message}`);
             }
@@ -582,7 +624,7 @@ class AuthService extends EventEmitter {
 
         return {
             userId: token.userId,
-            tokenId,
+            tokenId: token.id,
         };
     }
 
@@ -713,7 +755,7 @@ class AuthService extends EventEmitter {
             });
 
             // Generate JWT token
-            const token = this.#sessionService.generateToken(user, session);
+            const token = this.#generateJwtToken(user, session);
 
             debug(`Session created for user: ${user.email} (${user.id})`);
             return {
@@ -830,15 +872,24 @@ class AuthService extends EventEmitter {
      * @private
      */
     async #storePassword(userId, passwordHash) {
-        // Create a config key for the password hash
-        const key = `auth:password:${userId}`;
-        const data = {
+        const passwords = this.#getStoredPasswords();
+        const existingIndex = passwords.findIndex(p => p.userId === userId);
+
+        const passwordData = {
+            userId,
             hash: passwordHash,
             updatedAt: new Date().toISOString(),
         };
 
-        // Use JIM to store the password hash (via userManager's index)
-        this.#userManager.setConfig(key, data);
+        if (existingIndex !== -1) {
+            // Update existing password
+            passwords[existingIndex] = passwordData;
+        } else {
+            // Add new password
+            passwords.push(passwordData);
+        }
+
+        this.#saveStoredPasswords(passwords);
     }
 
     /**
@@ -849,10 +900,9 @@ class AuthService extends EventEmitter {
      */
     async #getStoredPassword(userId) {
         try {
-            // Get the password hash data from JIM
-            const key = `auth:password:${userId}`;
-            const data = this.#userManager.getConfig(key, null);
-            return data ? data.hash : null;
+            const passwords = this.#getStoredPasswords();
+            const passwordData = passwords.find(p => p.userId === userId);
+            return passwordData ? passwordData.hash : null;
         } catch (error) {
             debug(`Error getting stored password: ${error.message}`);
             return null;
@@ -889,20 +939,44 @@ class AuthService extends EventEmitter {
 
     /**
      * Get all tokens
-     * @returns {Object} Map of token ID to token object
+     * @returns {Array} Array of token objects
      * @private
      */
     #getTokens() {
-        return this.#userManager.getConfig('auth:tokens', {});
+        const tokens = this.#userManager.getConfig('auth:tokens', []);
+        // Ensure we always return an array
+        return Array.isArray(tokens) ? tokens : [];
     }
 
     /**
      * Save all tokens
-     * @param {Object} tokens - Map of token ID to token object
+     * @param {Array} tokens - Array of token objects
      * @private
      */
     #saveTokens(tokens) {
-        this.#userManager.setConfig('auth:tokens', tokens);
+        // Ensure we always save an array
+        return this.#userManager.setConfig('auth:tokens', Array.isArray(tokens) ? tokens : []);
+    }
+
+    /**
+     * Get stored passwords
+     * @returns {Array} Array of password objects
+     * @private
+     */
+    #getStoredPasswords() {
+        const passwords = this.#userManager.getConfig('auth:passwords', []);
+        // Ensure we always return an array
+        return Array.isArray(passwords) ? passwords : [];
+    }
+
+    /**
+     * Save stored passwords
+     * @param {Array} passwords - Array of password objects
+     * @private
+     */
+    #saveStoredPasswords(passwords) {
+        // Ensure we always save an array
+        return this.#userManager.setConfig('auth:passwords', Array.isArray(passwords) ? passwords : []);
     }
 
     /**
@@ -935,6 +1009,18 @@ class AuthService extends EventEmitter {
             .split('')
             .sort(() => 0.5 - Math.random())
             .join('');
+    }
+
+    #generateJwtToken(user, session) {
+        const payload = {
+            id: user.id,
+            email: user.email,
+            sessionId: session.id,
+        };
+
+        return jwt.sign(payload, this.#config.jwtSecret, {
+            expiresIn: this.#config.jwtLifetime || '7d',
+        });
     }
 }
 
