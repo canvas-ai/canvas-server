@@ -18,8 +18,8 @@ export default function (server) {
     return (req, res, next) => {
         debug('HTTP auth middleware called');
 
-        // Use the unified api-token strategy that handles both JWT and API tokens
-        passport.authenticate('api-token', { session: false }, (err, user, info) => {
+        // Use both JWT and API token strategies
+        passport.authenticate(['jwt', 'api-token'], { session: false }, (err, user, info) => {
             if (err) {
                 debug(`Authentication error: ${err.message}`);
                 return next(err);

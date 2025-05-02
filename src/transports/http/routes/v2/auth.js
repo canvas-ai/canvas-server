@@ -163,7 +163,7 @@ export default function (authService) {
         }
     });
 
-    router.get('/me', passport.authenticate('api-token', { session: false }), (req, res) => {
+    router.get('/me', passport.authenticate(['jwt', 'api-token'], { session: false }), (req, res) => {
         debug('Get current user endpoint called');
 
         const userData = {
@@ -180,7 +180,7 @@ export default function (authService) {
         res.status(response.statusCode).json(response.getResponse());
     });
 
-    router.put('/password', passport.authenticate('api-token', { session: false }), async (req, res) => {
+    router.put('/password', passport.authenticate(['jwt', 'api-token'], { session: false }), async (req, res) => {
         debug('Update password endpoint called');
         const { currentPassword, newPassword } = req.body;
 
