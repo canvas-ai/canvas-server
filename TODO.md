@@ -1,5 +1,10 @@
 # TODO
 
+## Architectural changes
+
+- Integrate stored to synapsd
+- Use https://unstorage.unjs.io/ instead of the custom lmdb wrapper, in worst cases we can write a small lmdb driver for unstorage if we'll feel its justified
+
 ## Utils/config
 
 - fix the config class to properly normalize paths(windoze + *nix)

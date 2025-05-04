@@ -4,7 +4,7 @@ import validator from 'validator';
 
 import logger, { createDebug } from '../../../../utils/log/index.js';
 import ResponseObject from '../../../ResponseObject.js';
-const debug = createDebug('http:routes:auth');
+const debug = createDebug('canvas:auth:routes');
 
 const router = express.Router();
 
@@ -98,6 +98,7 @@ export default function (authService) {
     router.post('/login', async (req, res) => {
         const { email, password } = req.body;
         debug(`Login attempt for email: ${email}`);
+        debug('Login request headers:', req.headers);
 
         // Validate credentials
         const validation = validateCredentials(email, password);
@@ -109,14 +110,18 @@ export default function (authService) {
 
         try {
             // Attempt login
+            debug('Attempting login with auth service');
             const result = await authService.login(email, password);
             debug(`Login successful for user: ${email}`);
+            debug('Login result:', { userId: result.user.id, sessionId: result.session.id });
 
             // Set JWT token as cookie
+            debug('Setting JWT token cookie');
             authService.sessionService.setCookie(res, result.token, {
                 secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
                 sameSite: 'lax',
             });
+            debug('Cookie set successfully');
 
             // Return success response with user data
             const response = new ResponseObject().success(
@@ -133,9 +138,11 @@ export default function (authService) {
                 'Login successful',
             );
 
+            debug('Sending login response');
             return res.status(response.statusCode).json(response.getResponse());
         } catch (error) {
             debug(`Login failed: ${error.message}`);
+            debug('Login error details:', error);
             const response = new ResponseObject().unauthorized(error.message);
             return res.status(response.statusCode).json(response.getResponse());
         }

@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('service:auth:session');
+const debug = createDebug('canvas:auth:session');
 
 /**
  * Session Service
@@ -92,18 +92,22 @@ class SessionService {
      * @returns {Object|null} - Decoded token or null
      */
     verifyToken(token) {
+        debug('Verifying JWT token');
         try {
             const decoded = jwt.verify(token, this.#config.jwtSecret);
             debug(`Token verified for user ID: ${decoded.id}`);
+            debug('Token payload:', decoded);
 
             // If token has a session ID, verify the session is still valid
             if (decoded.sessionId) {
+                debug(`Verifying session: ${decoded.sessionId}`);
                 this.#verifySession(decoded.sessionId);
             }
 
             return decoded;
         } catch (error) {
             debug(`Token verification failed: ${error.message}`);
+            debug('Token verification error:', error);
             return null;
         }
     }
@@ -137,16 +141,20 @@ class SessionService {
      */
     setCookie(res, token, options = {}) {
         debug('Setting token cookie');
+        debug('Cookie options:', options);
 
         const cookieOptions = {
             httpOnly: true,
             secure: this.#config.secureCookies || process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'lax',
+            path: '/',
             maxAge: this.#getMaxAge(),
             ...options,
         };
 
+        debug('Final cookie options:', cookieOptions);
         res.cookie('token', token, cookieOptions);
+        debug('Cookie set successfully');
     }
 
     /**
@@ -155,7 +163,13 @@ class SessionService {
      */
     clearCookie(res) {
         debug('Clearing token cookie');
-        res.clearCookie('token');
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: this.#config.secureCookies || process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/'
+        });
+        debug('Cookie cleared successfully');
     }
 
     /**

@@ -106,36 +106,6 @@ class HttpRestTransport {
     }
 
     /**
-     * Set security headers for all responses
-     * @private
-     */
-    #setSecurityHeaders(req, res, next) {
-        // Set security headers
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader('X-XSS-Protection', '1; mode=block');
-        res.setHeader('X-Frame-Options', 'DENY');
-        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-
-        // For API endpoints and API docs, use a more permissive CSP
-        if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
-            res.setHeader(
-                'Content-Security-Policy',
-                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
-            );
-            next();
-            return;
-        }
-
-        // Content Security Policy for other routes
-        res.setHeader(
-            'Content-Security-Policy',
-            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
-        );
-
-        next();
-    }
-
-    /**
      * Set the Canvas server instance
      * @param {Object} server - Canvas server instance
      */
@@ -335,6 +305,7 @@ class HttpRestTransport {
         await new Promise((resolve, reject) => {
             this.#server.listen(this.#config.port, this.#config.host, () => {
                 debug(`HTTP server listening on ${this.#config.host}:${this.#config.port}`);
+                this.#displayConnectionInfo();
                 resolve();
             });
 
@@ -417,6 +388,63 @@ class HttpRestTransport {
             port: this.#config.port,
             host: this.#config.host,
         };
+    }
+
+    #displayConnectionInfo() {
+        console.log('\n' + '='.repeat(80));
+        console.log(`Canvas WebUI Connection Info`);
+        console.log('='.repeat(80));
+
+        // If host is 0.0.0.0, display all available network interfaces
+        if (this.#config.host === '0.0.0.0') {
+            const networkInterfaces = os.networkInterfaces();
+            console.log('Available network interfaces:');
+            Object.entries(networkInterfaces).forEach(([name, interfaces]) => {
+                interfaces.forEach(iface => {
+                    // Skip internal and IPv6 addresses
+                    if (!iface.internal && iface.family === 'IPv4') {
+                        console.log(`${name}: ${this.#config.protocol}://${iface.address}:${this.#config.port}`);
+                    }
+                });
+            });
+        } else {
+            console.log(`Host: ${this.#config.host}`);
+            console.log(`Port: ${this.#config.port}`);
+            console.log(`Protocol: ${this.#config.protocol}`);
+        }
+
+        console.log(`Base Path: ${this.#config.basePath}/v2`);
+        console.log('='.repeat(80) + '\n');
+    }
+
+    /**
+     * Set security headers for all responses
+     * @private
+     */
+    #setSecurityHeaders(req, res, next) {
+        // Set security headers
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-XSS-Protection', '1; mode=block');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+
+        // For API endpoints and API docs, use a more permissive CSP
+        if (req.path.startsWith(this.#config.basePath) || req.path.startsWith('/api-docs')) {
+            res.setHeader(
+                'Content-Security-Policy',
+                `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
+            );
+            next();
+            return;
+        }
+
+        // Content Security Policy for other routes
+        res.setHeader(
+            'Content-Security-Policy',
+            `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost http://localhost:* https://localhost https://localhost:* http://127.0.0.1 http://127.0.0.1:* https://127.0.0.1 https://127.0.0.1:* ws://localhost ws://localhost:* wss://localhost wss://localhost:* ws://127.0.0.1 ws://127.0.0.1:* wss://127.0.0.1 wss://127.0.0.1:*`,
+        );
+
+        next();
     }
 }
 
