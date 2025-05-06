@@ -47,11 +47,6 @@ const jim = new Jim({
  * Global Manager "Singletons" (not really, but close enough)
  */
 
-import SessionManager from './managers/session/index.js';
-const sessionManager = new SessionManager({
-    jim: jim, // JIM instance to create a JSON based index for sessions
-});
-
 import WorkspaceManager from './managers/workspace/index.js';
 const workspaceManager = new WorkspaceManager({
     jim: jim,
@@ -664,5 +659,4 @@ export {
     jim,
     workspaceManager,
     userManager,
-    sessionManager,
 };

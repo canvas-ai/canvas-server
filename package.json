@@ -10,6 +10,12 @@
     "ws": "./bin/ws",
     "context": "./bin/context"
   },
+  "imports": {
+    "@utils/*": "./src/utils/*",
+    "@services/*": "./src/services/*",
+    "@managers/*": "./src/managers/*",
+    "@transports/*": "./src/transports/*"
+  },
   "scripts": {
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
     "start:dev": "cross-env DEBUG=* node ./src/init.js",
@@ -38,6 +44,9 @@
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
+    "@auth/core": "^0.39.0",
+    "@auth/express": "^0.10.0",
+    "@auth/unstorage-adapter": "^2.9.0",
     "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "@inquirer/confirm": "^3.1.4",
@@ -48,7 +57,7 @@
     "body-parser": "^1.20.2",
     "commander": "^12.1.0",
     "conf": "^13.0.1",
-    "cookie-parser": "^1.4.6",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "cross-env": "^7.0.3",
     "cross-spawn": "^7.0.3",
@@ -66,11 +75,13 @@
     "fs-extra": "^11.1.1",
     "ip": "^2.0.0",
     "jsonwebtoken": "^9.0.2",
+    "lmdb": "^3.2.6",
     "lokijs": "^1.5.12",
     "lru-ttl-cache": "^2.4.8",
     "mime-types": "^2.1.35",
     "minimist": "^1.2.8",
     "mkdirp": "^3.0.1",
+    "node-fetch": "^3.3.2",
     "node-machine-id": "^1.1.12",
     "passport": "^0.7.0",
     "passport-custom": "^1.1.1",
@@ -81,7 +92,9 @@
     "randomcolor": "^0.6.2",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.8.1",
+    "supertest": "^7.1.0",
     "ulid": "^2.4.0",
+    "unstorage": "^1.16.0",
     "uuid": "^11.1.0",
     "validator": "^13.12.0",
     "winston": "^3.10.0"

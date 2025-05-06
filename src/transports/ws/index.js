@@ -2,6 +2,8 @@ import debugInstance from 'debug';
 import { Server } from 'socket.io';
 import http from 'http';
 import ResponseObject from '../ResponseObject.js';
+import jwt from 'jsonwebtoken';
+import { socketAuthMiddleware } from './middleware/auth.js';
 
 const debug = debugInstance('transport:ws');
 
@@ -311,8 +313,21 @@ class WebSocketTransport {
         const { default: contextRoutes } = await import('./routes/v2/context.js');
         const { default: workspaceRoutes } = await import('./routes/v2/workspace.js');
 
+        // Apply authentication middleware first
+        this.#io.use(socketAuthMiddleware);
+
+        // Single connection handler
         this.#io.on('connection', async (socket) => {
             debug(`Client connected: ${socket.id}`);
+
+            // Ensure socket.user is set by auth middleware
+            if (!socket.user || !socket.user.email) {
+                debug(`Unauthorized socket connection attempt: ${socket.id}`);
+                socket.disconnect(true);
+                return;
+            }
+
+            debug(`Authenticated user connected: ${socket.user.email}`);
 
             // Initialize socket state
             socket.sessionManager = this.#canvasServer.sessionManager;
@@ -334,9 +349,11 @@ class WebSocketTransport {
                 wsTransport: this, // Pass this transport instance to the routes
             });
 
+            // Subscribe user to workspace/context updates
+            socket.join(`user:${socket.user.email}`);
+
             socket.on('disconnect', () => {
                 debug(`Client disconnected: ${socket.id}`);
-                // Clean up any workspace subscriptions for this socket
                 this.removeSocketSubscriptions(socket.id);
             });
         });
@@ -399,6 +416,15 @@ class WebSocketTransport {
         // Mark workspace as having listeners set up
         workspace._wsListenersSetup = true;
         return true;
+    }
+
+    // Inside WebSocketTransport class
+    broadcastUpdate(email, event, data) {
+        if (!this.#io) {
+            debug('Socket.IO instance not initialized');
+            return;
+        }
+        this.#io.to(`user:${email}`).emit(event, data);
     }
 }
 

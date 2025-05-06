@@ -209,7 +209,8 @@ class HttpRestTransport {
         app.set('userManager', userManager);
 
         // Initialize passport
-        app.use(authService.passport.initialize());
+        app.set('trust proxy', true);
+        app.use(`${this.#config.basePath}/v2/auth/*`, authService.passport.authenticate('jwt', { session: false }));
 
         // Register API routes
         try {
