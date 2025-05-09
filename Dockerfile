@@ -26,7 +26,7 @@ RUN mkdir -p \
     server/var \
     server/roles \
     server/data \
-    server/multiverse
+    server/users
 
 # Update submodules
 RUN npm run update-submodules
@@ -34,14 +34,11 @@ RUN npm run update-submodules
 # Install application dependencies
 RUN npm install
 
-# Run database migrations
-RUN npm run db:setup
-
 # Expose canvas-server ports
-EXPOSE 8001 8002 8003 8004
+EXPOSE 8001 8002
 
 # Start the server
-ENTRYPOINT ["/opt/canvas-server/bin/start-server.sh"]
+ENTRYPOINT ["bin/start-server.sh"]
 
 # Default command (can be overridden)
 CMD ["npm", "run", "start"]

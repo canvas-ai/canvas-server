@@ -13,10 +13,18 @@ services:
       - "8004:8004"
     environment:
       NODE_ENV: ${NODE_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-standalone}
       CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
       CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/users}
       CANVAS_ADMIN_EMAIL: ${CANVAS_ADMIN_EMAIL:-admin@canvas.local}
       CANVAS_ADMIN_PASSWORD: ${CANVAS_ADMIN_PASSWORD:-$(openssl rand -base64 16)}
+      CANVAS_ADMIN_RESET: ${CANVAS_ADMIN_RESET:-false}
+      CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
+      CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
+      CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
+      JWT_SECRET: ${JWT_SECRET:-$(openssl rand -base64 16)}
+      TOKEN_EXPIRY: ${TOKEN_EXPIRY:-7d}
     volumes:
       - ${CANVAS_SERVER_HOME:-./server}:/opt/canvas-server/server
       - ${CANVAS_USER_HOME:-./users}:/opt/canvas-server/users

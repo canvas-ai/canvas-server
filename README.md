@@ -46,14 +46,17 @@ Supported ENV vars with their defaults:
 CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-"standalone"} 
 
 # Canvas server dirs
+NODE_ENV: ${NODE_ENV:-development}
 CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
-CANVAS_SERVER_CONFIG: ${CANVAS_SERVER_CONFIG:-/opt/canvas-server/server/config}
-CANVAS_SERVER_DATA: ${CANVAS_SERVER_DATA:-/opt/canvas-server/data}
-CANVAS_SERVER_CACHE: ${CANVAS_SERVER_CACHE:-/opt/canvas-server/server/cache}
-CANVAS_SERVER_DB: ${CANVAS_SERVER_DB:-/opt/canvas-server/server/db}
-CANVAS_SERVER_VAR: ${CANVAS_SERVER_VAR:-/opt/canvas-server/server/var}
-CANVAS_SERVER_ROLES: ${CANVAS_SERVER_ROLES:-/opt/canvas-server/server/roles}
-CANVAS_SERVER_HOMES: ${CANVAS_SERVER_HOMES:-/opt/canvas-server/users}
+CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/users}
+CANVAS_ADMIN_EMAIL: ${CANVAS_ADMIN_EMAIL:-admin@canvas.local}
+CANVAS_ADMIN_PASSWORD: ${CANVAS_ADMIN_PASSWORD:-$(openssl rand -base64 16)}
+CANVAS_ADMIN_RESET: ${CANVAS_ADMIN_RESET:-false}
+CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
+CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
+CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
+JWT_SECRET: ${JWT_SECRET:-$(openssl rand -base64 16)}
+TOKEN_EXPIRY: ${TOKEN_EXPIRY:-7d}
 
 # Canvas USER dirs for single-user mode
 # See env.js for more info
@@ -93,6 +96,17 @@ $ rm -rf ./node_modules # Ensure we have a clean slate
 $ git pull origin main # or dev if you are feeling adventurous
 $ npm install
 $ npm start # or npm run pm2:start
+```
+
+## Make Canavas Server WebUI available remotely
+
+```bash
+# Copy the .env.example file
+$ cp /path/to/canvas-server/src/ui/.env.example /path/to/canvas-server/src/ui/.env
+# Edit as needed, for a local setup you'd want to use your machines hostname or FQDN(if resolvable) or its local IP
+# Rebuild the web ui
+$ npm run build
+# Restart the server
 ```
 
 ## Scripts

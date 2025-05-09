@@ -2,6 +2,15 @@
 	path = src/ui/web
 	url = https://github.com/canvas-ai/canvas-web.git
 	branch = main
+[submodule "src/ui/cli"]
+	path = src/ui/cli
+	url = https://github.com/canvas-ai/canvas-cli.git
+[submodule "src/ui/shell"]
+	path = src/ui/shell
+	url = https://github.com/canvas-ai/canvas-shell.git
+[submodule "src/ui/browser"]
+	path = src/ui/browser
+	url = https://github.com/canvas-ai/canvas-browser-extensions.git
 [submodule "src/services/synapsd"]
 	path = src/services/synapsd
 	url = https://github.com/canvas-ai/canvas-synapsd.git
@@ -12,6 +21,3 @@
 [submodule "src/services/stored"]
 	path = src/services/stored
 	url = https://github.com/canvas-ai/canvas-stored.git
-[submodule "src/ui/cli"]
-	path = src/ui/cli
-	url = https://github.com/canvas-ai/canvas-cli.git

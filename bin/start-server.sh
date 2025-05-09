@@ -4,7 +4,7 @@
 
 # Set admin user creation environment variables
 export CANVAS_CREATE_ADMIN_USER=true
-export CANVAS_ADMIN_EMAIL=${CANVAS_ADMIN_EMAIL:-admin@canvas.local}
+export CANVAS_ADMIN_EMAIL=${CANVAS_ADMIN_EMAIL:-my@canvas.local}
 export CANVAS_ADMIN_PASSWORD=${CANVAS_ADMIN_PASSWORD:-$(openssl rand -base64 16)}
 
 # Print configuration

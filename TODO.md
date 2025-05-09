@@ -1,5 +1,10 @@
 # TODO
 
+## Architectural changes
+
+- Integrate stored into synapsd
+- Use https://unstorage.unjs.io/ instead of a custom lmdb wrapper, in worst cases we can write a small lmdb driver for unstorage if we'll feel its justified
+
 ## Utils/config
 
 - fix the config class to properly normalize paths(windoze + *nix)
@@ -19,10 +24,11 @@ Workspace config paths
 
 ## Global
 
-- create a genId and genIndexId methods on all managers with a internal index
-- Make sure all IDs except for sessions are at most 8 character long
-- Use Ulid in lowercase(looks nicer)?
 - streamline the IDs used across managers (user-prefix is currently a mix of user.email and user.id)
 - !!! SIMPLIFY
 - !!! SIMPLIFY
 - !!! SIMPLIFY
+
+## Workspace Manager
+
+- Prevent changing main properties of a Universe workspace

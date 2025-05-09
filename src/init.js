@@ -3,13 +3,12 @@
  */
 
 import server from './Server.js';
-import logger from './utils/log/index.js';
+//port logger from './utils/log/index.js';
 
 async function main() {
     try {
         // Register event handlers before starting
         setupProcessEventListeners();
-        setupServerEventHandlers();
 
         // Initialize and start the server
         await server.initialize();
@@ -35,13 +34,13 @@ function setupProcessEventListeners() {
     // Handle process signals
     const shutdown = async (signal) => {
         console.log(`Received ${signal}. Shutting down gracefully...`);
-        logger.info(`Received ${signal}, gracefully shutting down`);
+        //logger.info(`Received ${signal}, gracefully shutting down`);
         try {
             await server.stop();
             process.exit(0);
         } catch (err) {
             console.error('Error during shutdown:', err);
-            logger.error('Error during shutdown:', err);
+            //logger.error('Error during shutdown:', err);
             process.exit(1);
         }
     };
@@ -51,32 +50,33 @@ function setupProcessEventListeners() {
 
     process.on('uncaughtException', (error) => {
         console.error('Uncaught Exception:', error);
-        logger.error('Uncaught Exception:', error);
+        //logger.error('Uncaught Exception:', error);
         server.stop().then(() => process.exit(1));
     });
 
     process.on('unhandledRejection', (reason, promise) => {
         console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-        logger.error('Unhandled Rejection:', reason);
+        //logger.error('Unhandled Rejection:', reason);
     });
 
     process.on('warning', (warning) => {
         console.warn(warning.name);
         console.warn(warning.message);
         console.warn(warning.stack);
-        logger.warn('Warning:', warning);
+        //logger.warn('Warning:', warning);
     });
 
     process.on('beforeExit', async (code) => {
         if (code !== 0) {
             return;
         }
-        logger.info('Process beforeExit:', code);
+        //logger.info('Process beforeExit:', code);
         await server.stop();
     });
 
     process.on('exit', (code) => {
         console.log(`Bye: ${code}`);
+        //logger.info(`Bye: ${code}`);
     });
 
     // Handle Windows specific signals

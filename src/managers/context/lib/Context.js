@@ -3,8 +3,11 @@
 // Utils
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
-import logger, { createDebug } from '../../../utils/log/index.js';
+
+// Logging
+import createDebug from 'debug';
 const debug = createDebug('context');
+
 
 // Includes
 import Url from './Url.js';
@@ -400,10 +403,20 @@ class Context extends EventEmitter {
         }
 
         if (!workspace) {
-            throw new Error('Workspace is required');
+            throw new Error('Workspace ID/name is required for switching');
         }
 
-        if (this.#workspaceManager.hasWorkspace(workspace)) {
+        if (!this.#user || !this.#user.id) {
+            throw new Error('User information is missing in context, cannot switch workspace.');
+        }
+
+        // workspaceManager.hasWorkspace expects ownerKeyId, workspaceId, requestingUserId
+        // For openWorkspace, we also need these three.
+        // Let's assume 'workspace' parameter is the workspaceId (short name)
+        // hasWorkspace(ownerKeyId, workspaceId, requestingUserId)
+        const hasWs = await this.#workspaceManager.hasWorkspace(this.#user.email, workspace, this.#user.id);
+
+        if (hasWs) { // Corrected check based on updated hasWorkspace signature
             try {
                 /*
                  * TODO: Release base URL lock in the *old* workspace if held before switching.
@@ -415,13 +428,16 @@ class Context extends EventEmitter {
                 //     try {
                 //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
                 //     } catch (unlockError) {
-                //          logger.warn(`Failed to release lock for context ${this.#id} before switching workspace: ${unlockError.message}`);
-                //          // Should we prevent the switch? Or just log?
+                //          console.warn(`Failed to release lock for context ${this.#id} before switching workspace: ${unlockError.message}`);
                 //     }
                 // }
 
-                // Open the workspace asynchronously
-                this.#workspace = await this.#workspaceManager.openWorkspace(workspace);
+                // openWorkspace(ownerKeyId, workspaceId, requestingUserId)
+                const newWorkspaceInstance = await this.#workspaceManager.openWorkspace(this.#user.email, workspace, this.#user.id);
+                if (!newWorkspaceInstance) {
+                    throw new Error(`Failed to open workspace "${workspace}" for user ${this.#user.id}. It might not exist or user may not have access.`);
+                }
+                this.#workspace = newWorkspaceInstance;
                 this.#db = this.#workspace.db;
                 this.#tree = this.#workspace.tree;
 
@@ -438,7 +454,19 @@ class Context extends EventEmitter {
 
                 // Update the context bitmap array with prefixed layers
                 // Prefix workaround till we implement propper collections in the DB
-                this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
+                // Ensure contextLayers is treated as an array
+                if (contextLayers && contextLayers.layerIds) {
+                    // If we get an object with a layerIds property, use that
+                    const layerIds = Object.values(contextLayers.layerIds || {});
+                    this.#contextBitmapArray = layerIds.map((layer) => `context/${layer}`);
+                } else if (Array.isArray(contextLayers)) {
+                    // If we directly get an array
+                    this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
+                } else {
+                    // Fallback to empty array if neither case applies
+                    debug(`Warning: Expected array or object with layerIds, got: ${typeof contextLayers}`);
+                    this.#contextBitmapArray = [];
+                }
 
                 // Update the URL
                 this.#url = parsed.url;
@@ -692,12 +720,13 @@ class Context extends EventEmitter {
      */
 
     toJSON() {
-        const json = {
+        return {
             id: this.#id,
             name: this.#name,
             url: this.#url,
             baseUrl: this.#baseUrl,
-            created: this.#created,
+            workspace: this.#workspace?.id,
+            createdAt: this.#created,
             updated: this.#updated,
             locked: this.#isLocked,
             serverContextArray: this.#serverContextArray,
@@ -705,14 +734,8 @@ class Context extends EventEmitter {
             contextBitmapArray: this.#contextBitmapArray,
             featureBitmapArray: this.#featureBitmapArray,
             filterArray: this.#filterArray,
+            pendingUrl: this.#pendingUrl || null,
         };
-
-        // Include pendingUrl if it exists
-        if (this.#pendingUrl) {
-            json.pendingUrl = this.#pendingUrl;
-        }
-
-        return json;
     }
 }
 
