@@ -3,7 +3,7 @@
  */
 
 import server from './Server.js';
-import logger from './utils/log/logger.js';
+import logger from './utils/log.js';
 
 // Constants
 const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'];
