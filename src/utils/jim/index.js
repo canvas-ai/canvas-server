@@ -1,7 +1,9 @@
+
 import Conf from 'conf';
-import lokiDriver from './driver/lokijs/index.js';
-import debugInstance from 'debug';
-const debug = debugInstance('canvas:utils:jim');
+
+// Logging
+import createDebug from 'debug';
+const debug = createDebug('canvas:utils:jim');
 
 /**
  * For now, the only supported driver is Conf
@@ -12,7 +14,7 @@ class JsonIndexManager {
         options = {
             rootPath: null,
             driver: 'conf',
-        },
+        }
     ) {
         if (!options.rootPath) {
             throw new Error('rootPath is required');
@@ -20,8 +22,10 @@ class JsonIndexManager {
 
         this.rootPath = options.rootPath;
         this.driver = options.driver || 'conf';
+        this.driverOptions = options.driverOptions || {};
         debug('Initializing JsonIndexManager service with rootPath: ', this.rootPath);
         debug('Default driver: ', this.driver);
+        debug('Driver options: ', this.driverOptions);
         this.indices = new Map();
     }
 
@@ -39,6 +43,7 @@ class JsonIndexManager {
         const index = new Conf({
             configName: name,
             cwd: this.rootPath,
+            ...this.driverOptions,
         });
 
         this.indices.set(id, index);

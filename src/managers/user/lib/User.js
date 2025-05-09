@@ -2,48 +2,30 @@
 
 // Utils
 import path from 'path';
-import logger, { createDebug } from '../../../utils/log/index.js';
-const debug = createDebug('manager:user');
 import EventEmitter from 'eventemitter2';
+import { generateULID } from '../../../utils/id.js';
 
-// User-instantiated managers
-import ContextManager from '../../../managers/context/index.js';
+// Logging
+import createDebug from 'debug';
+const debug = createDebug('user-manager');
+
+// Constants
+import { USER_STATUS_CODES } from '../index.js';
 
 /**
  * User Class
  */
 
 class User extends EventEmitter {
-    // Immutable properties set at construction
+
     #id;
     #email;
     #userType;
     #homePath;
 
-    // Manager instances
-    #workspaceManager;
-    #contextManager;
-
     // Runtime state
     #status = 'inactive'; // inactive, active, disabled, deleted
-    #startTime = Date.now();
-
-    // User stats
-    #stats = {
-        sessions: {
-            total: 0,
-            active: 0,
-        },
-        workspaces: {
-            total: 0,
-            open: 0,
-        },
-        contexts: {
-            total: 0,
-            active: 0,
-        },
-    };
-
+    #startTime = Date.now(); // User container start time
 
     /**
      * Create a new User instance
@@ -57,31 +39,20 @@ class User extends EventEmitter {
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
 
-        if (!options.id) { throw new Error('User ID is required'); }
+        // Validate required options
+        if (!options.id) { throw new Error('ID is required'); }
         if (!options.email) { throw new Error('Email is required'); }
         if (!options.homePath) { throw new Error('Home path is required'); }
-        if (!options.workspaceManager) { throw new Error('WorkspaceManager is required'); }
 
         /**
          * User properties
          */
 
-        this.#id = options.id;
+        this.#id = options.id || generateULID(12, 'lower');
         this.#email = options.email;
         this.#homePath = path.resolve(options.homePath); // Ensure absolute path
         this.#userType = options.userType || 'user';
         this.#status = options.status || 'inactive';
-
-        // Bind manager instances
-        this.#workspaceManager = options.workspaceManager;
-        this.#contextManager = options.contextManager || new ContextManager({
-            user: this,
-            workspaceManager: this.#workspaceManager,
-            eventEmitterOptions: options.eventEmitterOptions,
-            homePath: this.#homePath,
-            jim: this.#workspaceManager.jim // Pass the JIM instance from workspace manager
-        });
-
         debug(`User instance created: ${this.#id} (${this.#email}) with home path: ${this.#homePath}`);
     }
 
@@ -94,13 +65,23 @@ class User extends EventEmitter {
     get userType() { return this.#userType; }
     get homePath() { return this.#homePath; }
     get status() { return this.#status; }
-    get stats() { return this.#stats; }
     get uptime() { return Date.now() - this.#startTime; }
-    get configPath() { return path.join(this.#homePath, 'Config'); }
 
-    // Managers
-    get workspaceManager() { return this.#workspaceManager; }
-    get contextManager() { return this.#contextManager; }
+    /**
+     * Setters
+     */
+
+    set status(status) {
+        if (!USER_STATUS_CODES.includes(status)) {
+            throw new Error(`Invalid status: ${status}`);
+        }
+        this.#status = status;
+        this.emit('update', {
+            id: this.#id,
+            email: this.#email,
+            status: this.#status
+        });
+    }
 
     /**
      * Utility methods
@@ -124,8 +105,7 @@ class User extends EventEmitter {
             email: this.#email,
             userType: this.#userType,
             homePath: this.#homePath,
-            status: this.#status,
-            stats: this.#stats,
+            status: this.#status
         };
     }
 

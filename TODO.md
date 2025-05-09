@@ -24,15 +24,10 @@ Workspace config paths
 
 ## Global
 
-- create a genId and genIndexId methods on all managers with a internal index
-- Make sure all IDs except for sessions are at most 8 character long
-- Use Ulid in lowercase(looks nicer)?
 - streamline the IDs used across managers (user-prefix is currently a mix of user.email and user.id)
 - !!! SIMPLIFY
 - !!! SIMPLIFY
 - !!! SIMPLIFY
-- Remove persistence for sessions, we already persist contexts
-
 
 ## Workspace Manager
 

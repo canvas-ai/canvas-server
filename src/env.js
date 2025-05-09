@@ -1,9 +1,6 @@
 // Imports
-import { writeFileSync } from 'fs';
-import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
 import argv from 'node:process';
 import os from 'os';
 
@@ -16,88 +13,37 @@ const SERVER_HOME = process.env.CANVAS_SERVER_HOME || getServerHome();
 const USER_HOME = process.env.CANVAS_USER_HOME || getUserHome();
 
 /**
- * Default environment configuration
+ * Environment variables
  */
 
-const serverEnv = {
-    // Runtime
-    NODE_ENV: process.env.NODE_ENV || 'development',
-    LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
-    CANVAS_SERVER_MODE: SERVER_MODE,
-
-    // Server paths (global server data)
-    CANVAS_SERVER_HOME: SERVER_HOME,
-    CANVAS_SERVER_CONFIG: process.env.CANVAS_SERVER_CONFIG || path.join(SERVER_HOME, 'config'),
-    CANVAS_SERVER_DATA: process.env.CANVAS_SERVER_DATA || path.join(SERVER_HOME, 'data'),
-    CANVAS_SERVER_CACHE: process.env.CANVAS_SERVER_CACHE || path.join(SERVER_HOME, 'cache'),
-    CANVAS_SERVER_DB: process.env.CANVAS_SERVER_DB || path.join(SERVER_HOME, 'db'),
-    CANVAS_SERVER_VAR: process.env.CANVAS_SERVER_VAR || path.join(SERVER_HOME, 'var'),
-    CANVAS_SERVER_ROLES: process.env.CANVAS_SERVER_ROLES || path.join(SERVER_HOME, 'roles'),
-    CANVAS_SERVER_HOMES: process.env.CANVAS_SERVER_HOMES || path.join(SERVER_ROOT, 'users'),
-
-    // Admin user creation
-    CANVAS_ADMIN_EMAIL: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
-    CANVAS_ADMIN_PASSWORD: process.env.CANVAS_ADMIN_PASSWORD || null,
-    CANVAS_ADMIN_RESET: process.env.CANVAS_ADMIN_RESET || false,
-};
-
-// User paths (user data), meant for SERVER_MODE === 'user'
-const userEnv =
-    SERVER_MODE === 'user'
-        ? {
-            CANVAS_USER_HOME: USER_HOME,
-            // TODO: Remove or refactor
-            CANVAS_USER_CONFIG: process.env.CANVAS_USER_CONFIG || path.join(USER_HOME, 'Config'),
-            CANVAS_USER_CACHE: process.env.CANVAS_USER_CACHE || path.join(USER_HOME, 'Cache'),
-            CANVAS_USER_DB: process.env.CANVAS_USER_DB || path.join(USER_HOME, 'Db'),
-            CANVAS_USER_APPS: process.env.CANVAS_USER_APPS || path.join(USER_HOME, 'Apps'),
-            CANVAS_USER_ROLES: process.env.CANVAS_USER_ROLES || path.join(USER_HOME, 'Roles'),
-            CANVAS_USER_DATA: process.env.CANVAS_USER_DATA || path.join(USER_HOME, 'Data'),
-            CANVAS_USER_WORKSPACES: process.env.CANVAS_USER_WORKSPACES || path.join(USER_HOME, 'Workspaces'),
-          }
-        : null;
-
-const envConfig = { ...serverEnv, ...userEnv };
-
-/**
- * Initialize environment
- */
-
-function env() {
-    const envPath = path.join(SERVER_ROOT, '.env');
-    let envResult = dotenv.config({ path: envPath });
-
-    // Only create .env if it doesn't exist
-    if (envResult.error && !existsSync(envPath)) {
-        const envContent = Object.entries(envConfig)
-            .filter(([key]) => key !== 'CANVAS_ADMIN_RESET') // Filter out CANVAS_ADMIN_RESET
-            .map(([key, value]) => `${key}="${value}"`)
-            .join('\n');
-
-        try {
-            writeFileSync(envPath, envContent);
-            envResult = dotenv.config({ path: envPath });
-        } catch (err) {
-            throw new Error(`Failed to create .env file: ${err.message}`);
+export const env = {
+    server: {
+        mode: SERVER_MODE,
+        root: SERVER_ROOT,
+        home: SERVER_HOME,
+        logLevel: process.env.LOG_LEVEL || 'info',
+        api: {
+            enabled: process.env.CANVAS_DISABLE_API || true,
+            port: process.env.CANVAS_API_PORT || 8001, // Needs to be changed in ./src/ui/web/.env ..for now
+            host: process.env.CANVAS_API_HOST || '0.0.0.0'
         }
+    },
+    user: {
+        home: USER_HOME
+    },
+    auth: {
+        jwtSecret: process.env.JWT_SECRET || 'canvas-jwt-secret-change-in-production',
+        tokenExpiry: process.env.TOKEN_EXPIRY || '7d'
+    },
+    admin: {
+        email: process.env.CANVAS_ADMIN_EMAIL || 'my@canvas.local',
+        password: process.env.CANVAS_ADMIN_PASSWORD || null, // null will trigger auto-generation
+        forceReset: process.env.CANVAS_ADMIN_RESET === 'true' || false
     }
-
-    // Merge .env values with defaults
-    const finalConfig = { ...(envResult.parsed || {}), ...envConfig };
-
-    // Update process.env with final values
-    Object.entries(finalConfig).forEach(([key, value]) => {
-        process.env[key] = value;
-    });
-
-    return finalConfig;
 }
 
-// Return the current env configuration
-export default env();
-
 /**
- * Utils
+ * Private Utils
  */
 
 function getServerHome() {
@@ -123,5 +69,5 @@ function getUserHome() {
         }
     }
 
-    return path.join(SERVER_ROOT, 'users');
+    return path.join(SERVER_HOME, 'users');
 }
