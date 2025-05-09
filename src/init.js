@@ -3,29 +3,30 @@
  */
 
 import server from './Server.js';
-//port logger from './utils/log/index.js';
+import logger from './utils/log/logger.js';
 
+// Constants
+const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'];
+
+/**
+ * Main server initialization function
+ */
 async function main() {
     try {
         // Register event handlers before starting
         setupProcessEventListeners();
+        setupServerEventHandlers();
 
         // Initialize and start the server
         await server.initialize();
         await server.start();
 
-        console.log('Canvas server started successfully.');
+        logger.info('Canvas server started successfully');
     } catch (err) {
-        console.error('Failed to initialize Canvas server:', err);
+        logger.error('Failed to initialize Canvas server:', err);
         process.exit(1);
     }
 }
-
-// Run the main function
-main().catch((err) => {
-    console.error('Fatal error:', err);
-    process.exit(1);
-});
 
 /**
  * Set up process event listeners for graceful shutdown
@@ -33,74 +34,73 @@ main().catch((err) => {
 function setupProcessEventListeners() {
     // Handle process signals
     const shutdown = async (signal) => {
-        console.log(`Received ${signal}. Shutting down gracefully...`);
-        //logger.info(`Received ${signal}, gracefully shutting down`);
+        logger.info(`Received ${signal}, gracefully shutting down`);
         try {
             await server.stop();
             process.exit(0);
         } catch (err) {
-            console.error('Error during shutdown:', err);
-            //logger.error('Error during shutdown:', err);
+            logger.error('Error during shutdown:', err);
             process.exit(1);
         }
     };
 
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    // Register shutdown handlers for signals
+    SHUTDOWN_SIGNALS.forEach(signal => {
+        process.on(signal, () => shutdown(signal));
+    });
 
+    // Handle uncaught exceptions
     process.on('uncaughtException', (error) => {
-        console.error('Uncaught Exception:', error);
-        //logger.error('Uncaught Exception:', error);
+        logger.error('Uncaught Exception:', error);
         server.stop().then(() => process.exit(1));
     });
 
+    // Handle unhandled rejections
     process.on('unhandledRejection', (reason, promise) => {
-        console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-        //logger.error('Unhandled Rejection:', reason);
+        logger.error('Unhandled Rejection:', { reason, promise });
     });
 
+    // Handle warnings
     process.on('warning', (warning) => {
-        console.warn(warning.name);
-        console.warn(warning.message);
-        console.warn(warning.stack);
-        //logger.warn('Warning:', warning);
+        logger.warn('Warning:', { name: warning.name, message: warning.message, stack: warning.stack });
     });
 
+    // Handle process exit
     process.on('beforeExit', async (code) => {
-        if (code !== 0) {
-            return;
-        }
-        //logger.info('Process beforeExit:', code);
+        if (code !== 0) return;
+        logger.info('Process beforeExit:', code);
         await server.stop();
     });
 
     process.on('exit', (code) => {
-        console.log(`Bye: ${code}`);
-        //logger.info(`Bye: ${code}`);
+        logger.info(`Process exiting with code: ${code}`);
     });
 
     // Handle Windows specific signals
     if (process.platform === 'win32') {
-        (async () => {
-            const { createInterface } = await import('readline');
-            const readline = createInterface({
-                input: process.stdin,
-                output: process.stdout,
-            });
-
-            readline.on('SIGINT', () => {
-                process.emit('SIGINT');
-            });
-        })();
+        setupWindowsSignalHandlers();
     }
+}
+
+/**
+ * Set up Windows-specific signal handlers
+ */
+async function setupWindowsSignalHandlers() {
+    const { createInterface } = await import('readline');
+    const readline = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+    });
+
+    readline.on('SIGINT', () => {
+        process.emit('SIGINT');
+    });
 }
 
 /**
  * Set up server event handlers
  */
 function setupServerEventHandlers() {
-    // TODO: Streamline where to log what
-    /*
     server.on('initialized', () => {
         logger.info('Canvas server initialized successfully');
     });
@@ -116,5 +116,10 @@ function setupServerEventHandlers() {
     server.on('shutdown', () => {
         logger.info('Canvas server has shut down');
     });
-    */
 }
+
+// Run the main function
+main().catch((err) => {
+    logger.error('Fatal error:', err);
+    process.exit(1);
+});
