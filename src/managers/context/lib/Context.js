@@ -156,46 +156,21 @@ class Context extends EventEmitter {
         return Promise.resolve(this);
     }
 
-    // Getters
-    get id() {
-        return this.#id;
-    }
-    get name() {
-        return this.#name;
-    }
-    get baseUrl() {
-        return this.#baseUrl;
-    }
-    get url() {
-        return this.#url;
-    }
-    get path() {
-        return this.#path;
-    }
-    get pathArray() {
-        return this.#pathArray;
-    }
-    get workspace() {
-        return this.#workspace.id;
-    }
-    get device() {
-        return this.#device.id;
-    }
-    get apps() {
-        return this.#device.apps;
-    }
-    get user() {
-        return this.#user;
-    }
-    get identity() {
-        return this.#user.identity;
-    }
-    get tree() {
-        return this.#tree.toJSON();
-    } // Legacy
-    get pendingUrl() {
-        return this.#pendingUrl;
-    } // Check if there's a pending URL switch
+    // Getters / Setters
+    get id() { return this.#id; }
+    get name() { return this.#name; }
+    get baseUrl() { return this.#baseUrl; }
+    get url() { return this.#url; }
+    set url(url) { return this.setUrl(url); }
+    get path() { return this.#path; }
+    get pathArray() { return this.#pathArray; }
+    get workspace() { return this.#workspace.id; }
+    get device() { return this.#device.id; }
+    get apps() { return this.#device.apps; }
+    get user() { return this.#user; }
+    get identity() { return this.#user.identity; }
+    get tree() { return this.#tree.toJSON(); }
+    get pendingUrl() { return this.#pendingUrl; }
     get bitmapArrays() {
         return {
             server: this.#serverContextArray,
@@ -205,21 +180,11 @@ class Context extends EventEmitter {
             filter: this.#filterArray,
         };
     }
-    get serverContextArray() {
-        return this.#serverContextArray;
-    }
-    get clientContextArray() {
-        return this.#clientContextArray;
-    }
-    get contextBitmapArray() {
-        return this.#contextBitmapArray;
-    }
-    get featureBitmapArray() {
-        return this.#featureBitmapArray;
-    }
-    get filterArray() {
-        return this.#filterArray;
-    }
+    get serverContextArray() { return this.#serverContextArray; }
+    get clientContextArray() { return this.#clientContextArray; }
+    get contextBitmapArray() { return this.#contextBitmapArray; }
+    get featureBitmapArray() { return this.#featureBitmapArray; }
+    get filterArray() { return this.#filterArray; }
 
     /**
      * Context API
@@ -256,6 +221,7 @@ class Context extends EventEmitter {
 
         const parsed = new Url(url);
         debug(`Attempting to set URL to ${parsed.url}`);
+        debug(`Parsed URL: ${JSON.stringify(parsed)}`);
 
         // Validate against base URL if it's set and not root
         if (this.#baseUrl && this.#baseUrl !== '/') {
@@ -725,6 +691,8 @@ class Context extends EventEmitter {
             name: this.#name,
             url: this.#url,
             baseUrl: this.#baseUrl,
+            path: this.#path,
+            pathArray: this.#pathArray,
             workspace: this.#workspace?.id,
             createdAt: this.#created,
             updated: this.#updated,

@@ -92,7 +92,7 @@ export default async function contextRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['url', 'name'],
+        required: ['name'],
         properties: {
           url: { type: 'string' },
           name: { type: 'string' },
@@ -101,7 +101,6 @@ export default async function contextRoutes(fastify, options) {
           type: { type: 'string', enum: ['context', 'universe'] },
           metadata: { type: 'object' },
           acl: { type: 'object' },
-          restApi: { type: 'object' },
           baseUrl: { type: 'string' }
         }
       },
@@ -138,16 +137,6 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      // Check if trying to create a default context when one already exists
-      if (request.body.name === 'default') {
-        const existingContexts = await fastify.contextManager.listUserContexts(request.user.id);
-        const defaultContextExists = existingContexts.some(ctx => ctx.name === 'default');
-        if (defaultContextExists) {
-          const response = new ResponseObject().conflict('A default context already exists');
-          return reply.code(response.statusCode).send(response.getResponse());
-        }
-      }
-
       const context = await fastify.contextManager.createContext(
         request.user.id,
         request.body.url,
@@ -157,8 +146,6 @@ export default async function contextRoutes(fastify, options) {
           name: request.body.name,
           description: request.body.description || '',
           metadata: request.body.metadata,
-          acl: request.body.acl,
-          restApi: request.body.restApi,
           baseUrl: request.body.baseUrl
         }
       );
@@ -199,6 +186,9 @@ export default async function contextRoutes(fastify, options) {
                     id: { type: 'string' },
                     name: { type: 'string' },
                     url: { type: 'string' },
+                    path: { type: 'string' },
+                    pathArray: { type: 'array', items: { type: 'string' } },
+                    workspace: { type: 'string' },
                     description: { type: 'string' },
                     created: { type: 'string', format: 'date-time' },
                     updated: { type: 'string', format: 'date-time' }
@@ -222,11 +212,220 @@ export default async function contextRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found({ context }, 'Context retrieved successfully');
+      const contextJSON = context.toJSON();
+      fastify.log.info(contextJSON);
+      const response = new ResponseObject().found(contextJSON, 'Context retrieved successfully');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       const response = new ResponseObject().serverError('Failed to get context');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context URL
+  fastify.get('/:id/url', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'object',
+              properties: {
+                url: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context URL');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Set context URL
+  fastify.post('/:id/url', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'object',
+              properties: {
+                url: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      await context.setUrl(request.body.url);
+      const response = new ResponseObject().success({ url: context.url }, 'Context URL updated successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError(`Failed to set context URL: ${error.message}`);
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context path
+  fastify.get('/:id/path', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'object',
+              properties: {
+                path: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found({ path: context.path }, 'Context path retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context path');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context path array
+  fastify.get('/:id/path-array', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'object',
+              properties: {
+                pathArray: {
+                  type: 'array',
+                  items: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found({ pathArray: context.pathArray }, 'Context path array retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context path array');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
