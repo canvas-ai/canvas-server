@@ -50,29 +50,6 @@ export default async function pingRoute(fastify, options) {
   });
 
   fastify.get('/rest/v2/ping', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                version: { type: 'string' },
-                uptime: { type: 'number' },
-                timestamp: { type: 'string', format: 'date-time' },
-                hostname: { type: 'string' },
-                serverMode: { type: 'string' },
-                environment: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
   }, async (request, reply) => {
     // Basic system info
     const response = new ResponseObject().success({

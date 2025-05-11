@@ -39,43 +39,6 @@ export default async function contextRoutes(fastify, options) {
   // List all contexts
   fastify.get('/', {
     onRequest: [fastify.authenticate],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  userId: { type: 'string' },
-                  createdAt: { type: 'string', format: 'date-time' },
-                  updatedAt: { type: 'string', format: 'date-time' },
-                  url: { type: 'string' },
-                  baseUrl: { type: 'string' },
-                  path: { type: 'string' },
-                  pathArray: { type: 'array', items: { type: 'string' } },
-                  workspace: { type: 'string' },
-                  locked: { type: 'boolean' },
-                  serverContextArray: { type: 'array', items: { type: 'string' } },
-                  clientContextArray: { type: 'array', items: { type: 'string' } },
-                  contextBitmapArray: { type: 'array', items: { type: 'string' } },
-                  featureBitmapArray: { type: 'array', items: { type: 'string' } },
-                  filterArray: { type: 'array', items: { type: 'string' } },
-                  pendingUrl: { type: ['string', 'null'] }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
-        }
-      }
-    }
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
@@ -107,42 +70,6 @@ export default async function contextRoutes(fastify, options) {
           workspaceId: { type: 'string' },
           type: { type: 'string', enum: ['context', 'universe'] },
           metadata: { type: 'object' }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    userId: { type: 'string' },
-                    createdAt: { type: 'string', format: 'date-time' },
-                    updatedAt: { type: 'string', format: 'date-time' },
-                    url: { type: 'string' },
-                    baseUrl: { type: 'string' },
-                    path: { type: 'string' },
-                    pathArray: { type: 'array', items: { type: 'string' } },
-                    workspace: { type: 'string' },
-                    locked: { type: 'boolean' },
-                    serverContextArray: { type: 'array', items: { type: 'string' } },
-                    clientContextArray: { type: 'array', items: { type: 'string' } },
-                    contextBitmapArray: { type: 'array', items: { type: 'string' } },
-                    featureBitmapArray: { type: 'array', items: { type: 'string' } },
-                    filterArray: { type: 'array', items: { type: 'string' } },
-                    pendingUrl: { type: ['string', 'null'] }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -185,42 +112,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    userId: { type: 'string' },
-                    url: { type: 'string' },
-                    baseUrl: { type: 'string' },
-                    path: { type: 'string' },
-                    pathArray: { type: 'array', items: { type: 'string' } },
-                    workspaceId: { type: 'string' },
-                    createdAt: { type: 'string', format: 'date-time' },
-                    updatedAt: { type: 'string', format: 'date-time' },
-                    locked: { type: 'boolean' },
-                    serverContextArray: { type: 'array', items: { type: 'string' } },
-                    clientContextArray: { type: 'array', items: { type: 'string' } },
-                    contextBitmapArray: { type: 'array', items: { type: 'string' } },
-                    featureBitmapArray: { type: 'array', items: { type: 'string' } },
-                    filterArray: { type: 'array', items: { type: 'string' } },
-                    pendingUrl: { type: ['string', 'null'] }
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -260,22 +151,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                url: { type: 'string' }
-              }
-            }
-          }
         }
       }
     }
@@ -317,22 +192,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           url: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                url: { type: 'string' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -367,22 +226,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                path: { type: 'string' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -415,25 +258,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                pathArray: {
-                  type: 'array',
-                  items: { type: 'string' }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -477,29 +301,6 @@ export default async function contextRoutes(fastify, options) {
           acl: { type: 'object' },
           restApi: { type: 'object' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    description: { type: 'string' },
-                    updatedAt: { type: 'string', format: 'date-time' }
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -537,16 +338,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' }
-          }
         }
       }
     }
@@ -595,28 +386,6 @@ export default async function contextRoutes(fastify, options) {
           },
           includeServerContext: { type: 'boolean' },
           includeClientContext: { type: 'boolean' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
         }
       }
     }
@@ -691,28 +460,6 @@ export default async function contextRoutes(fastify, options) {
             }
           }
         }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -763,27 +510,6 @@ export default async function contextRoutes(fastify, options) {
             data: { type: 'object' }
           }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -828,22 +554,6 @@ export default async function contextRoutes(fastify, options) {
         type: 'array',
         items: {
           type: 'string'
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -890,22 +600,6 @@ export default async function contextRoutes(fastify, options) {
         items: {
           type: 'string'
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -945,16 +639,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' },
           docId: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            type: { type: 'string' },
-            data: { type: 'object' }
-          }
         }
       }
     }
@@ -996,19 +680,6 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' },
           abstraction: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1049,19 +720,6 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' },
           hashString: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1100,36 +758,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            nodes: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  path: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            },
-            edges: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  source: { type: 'string' },
-                  target: { type: 'string' },
-                  type: { type: 'string' }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -1176,14 +804,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           path: { type: 'string' },
           autoCreateLayers: { type: 'boolean' }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' }
-          }
         }
       }
     }
@@ -1233,22 +853,6 @@ export default async function contextRoutes(fastify, options) {
           path: { type: 'string' },
           recursive: { type: 'boolean' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1297,22 +901,6 @@ export default async function contextRoutes(fastify, options) {
           from: { type: 'string' },
           to: { type: 'string' },
           recursive: { type: 'boolean' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -1364,22 +952,6 @@ export default async function contextRoutes(fastify, options) {
           to: { type: 'string' },
           recursive: { type: 'boolean' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1428,22 +1000,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           path: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1489,22 +1045,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['path'],
         properties: {
           path: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
