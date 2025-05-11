@@ -258,7 +258,9 @@ class Context extends EventEmitter {
         }
 
         // Create the URL path in the current workspace
-        const contextLayers = this.#workspace.insertPath(parsed.path);
+        const contextLayers = this.#workspace.insertPath(parsed.path); // This will return a list of layer IDs
+        // Since we move the Layer to Path logic to SynapsD we can keep using paths in the context
+        this.#contextBitmapArray = parsed.pathArray;
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the internal URL state

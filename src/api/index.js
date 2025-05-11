@@ -21,7 +21,7 @@ import {
 
 // Routes
 import authRoutes from './routes/auth.js';
-import workspaceRoutes from './routes/workspaces.js';
+import workspaceRoutes from './routes/workspaces/index.js';
 import contextRoutes from './routes/contexts.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
