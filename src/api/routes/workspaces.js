@@ -31,42 +31,8 @@ export default async function workspaceRoutes(fastify, options) {
   };
 
   // List all workspaces
-  fastify.get('/', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  label: { type: 'string' },
-                  description: { type: 'string' },
-                  color: { type: 'string' },
-                  type: { type: 'string' },
-                  owner: { type: 'string' },
-                  status: { type: 'string' },
-                  createdAt: { type: 'string', format: 'date-time' },
-                  updatedAt: { type: 'string', format: 'date-time' },
-                  metadata: { type: 'object' },
-                  acl: { type: 'object' },
-                  isActive: { type: 'boolean' }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
-        }
-      }
-    }
+    fastify.get('/', {
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       // Validate user is authenticated properly
@@ -102,17 +68,6 @@ export default async function workspaceRoutes(fastify, options) {
           metadata: { type: 'object' },
           acl: { type: 'object' },
           restApi: { type: 'object' }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
         }
       }
     }
@@ -152,40 +107,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                workspace: {
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    label: { type: 'string' },
-                    description: { type: 'string' },
-                    color: { type: 'string' },
-                    type: { type: 'string' },
-                    owner: { type: 'string' },
-                    status: { type: 'string' },
-                    createdAt: { type: 'string', format: 'date-time' },
-                    updatedAt: { type: 'string', format: 'date-time' },
-                    metadata: { type: 'object' },
-                    rootPath: { type: 'string' },
-                    configPath: { type: 'string' },
-                    acl: { type: 'object' },
-                    isActive: { type: 'boolean' }
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -204,7 +125,7 @@ export default async function workspaceRoutes(fastify, options) {
       // Revert test code and apply the correct structure according to the schema
       const responseObject = new ResponseObject().found(
         { workspace: workspace.toJSON() },
-        'Workspacee retrieved successfully'
+        'Workspace retrieved successfully'
       );
       const finalResponse = responseObject.getResponse();
 
@@ -240,17 +161,6 @@ export default async function workspaceRoutes(fastify, options) {
           acl: { type: 'object' },
           restApi: { type: 'object' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -285,17 +195,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
         }
       }
     }
@@ -338,14 +237,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -379,17 +270,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
         }
       }
     }
@@ -452,17 +332,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -503,17 +372,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
         }
       }
     }
@@ -556,17 +414,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: { type: 'object' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -607,27 +454,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -672,19 +498,6 @@ export default async function workspaceRoutes(fastify, options) {
           properties: {
             type: { type: 'string' },
             data: { type: 'object' }
-          }
-        }
-      },
-      response: {
-        201: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
           }
         }
       }
@@ -734,19 +547,6 @@ export default async function workspaceRoutes(fastify, options) {
             data: { type: 'object' }
           }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -787,14 +587,6 @@ export default async function workspaceRoutes(fastify, options) {
         type: 'array',
         items: {
           type: 'string'
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' }
-          }
         }
       }
     }
@@ -837,14 +629,6 @@ export default async function workspaceRoutes(fastify, options) {
         items: {
           type: 'string'
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -880,16 +664,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           id: { type: 'string' },
           docId: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            type: { type: 'string' },
-            data: { type: 'object' }
-          }
         }
       }
     }
@@ -927,19 +701,6 @@ export default async function workspaceRoutes(fastify, options) {
           id: { type: 'string' },
           abstraction: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -976,19 +737,6 @@ export default async function workspaceRoutes(fastify, options) {
           id: { type: 'string' },
           hashString: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1023,36 +771,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            nodes: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  path: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            },
-            edges: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  source: { type: 'string' },
-                  target: { type: 'string' },
-                  type: { type: 'string' }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -1096,22 +814,6 @@ export default async function workspaceRoutes(fastify, options) {
           from: { type: 'string' },
           to: { type: 'string' },
           recursive: { type: 'boolean' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -1159,22 +861,6 @@ export default async function workspaceRoutes(fastify, options) {
           path: { type: 'string' },
           autoCreateLayers: { type: 'boolean' }
         }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1218,22 +904,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           path: { type: 'string' },
           recursive: { type: 'boolean' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -1280,22 +950,6 @@ export default async function workspaceRoutes(fastify, options) {
           to: { type: 'string' },
           recursive: { type: 'boolean' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1341,22 +995,6 @@ export default async function workspaceRoutes(fastify, options) {
         properties: {
           path: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1399,22 +1037,6 @@ export default async function workspaceRoutes(fastify, options) {
         required: ['path'],
         properties: {
           path: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
