@@ -440,7 +440,7 @@ class Context extends EventEmitter {
         featureArray = [...this.#featureBitmapArray, ...featureArray];
 
         // Insert the document
-        const result = this.#db.insertDocument(document, contextArray, featureArray);
+        const result = this.#db.insertDocument(document, contextArray, featureArray, options);
         this.emit('document:insert', document.id || result.id);
         this.emit('context:updated', {
             operation: 'document:inserted',
@@ -482,6 +482,24 @@ class Context extends EventEmitter {
         return result;
     }
 
+    async hasDocument(id, featureBitmapArray = []) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        const result = await this.#workspace.db.hasDocument(id, this.#contextBitmapArray, featureBitmapArray);
+        return result;
+    }
+
+    async hasDocumentByChecksum(checksum, featureBitmapArray) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        const result = await this.#workspace.db.hasDocumentByChecksum(checksum, this.#contextBitmapArray, featureBitmapArray);
+        return result;
+    }
+
     async getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
@@ -505,6 +523,24 @@ class Context extends EventEmitter {
         // Then use this flat contextArray for DB operations.
         const document = this.#db.findDocuments(documentId, contextArray, featureArray, filterArray);
         return document;
+    }
+
+    async getDocumentById(id, options = { parse: true }) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        const result = await this.#workspace.db.getDocumentById(id, options);
+        return result;
+    }
+
+    async getDocumentsByIdArray(idArray, options = { parse: true, limit: null }) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        const result = await this.#workspace.db.getDocumentsByIdArray(idArray, options);
+        return result;
     }
 
     async getDocumentArray(documentIdArray, featureArray = [], filterArray = [], options = {}) {
@@ -663,7 +699,12 @@ class Context extends EventEmitter {
         return result;
     }
 
-    deleteDocument(documentId) {
+    /**
+     * Core DB methods (not contextualized)
+     * TODO: Maybe we should remove them from context entirely?
+     */
+
+    deleteDocumentFromDb(documentId) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -679,7 +720,7 @@ class Context extends EventEmitter {
         return result;
     }
 
-    deleteDocuments(documentIdArray, featureArray = [], options = {}) {
+    deleteDocumentArrayFromDb(documentIdArray, options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -689,7 +730,7 @@ class Context extends EventEmitter {
         }
 
         // Completely delete the documents from the database
-        const result = this.#db.deleteDocumentArray(documentIdArray, featureArray, options);
+        const result = this.#db.deleteDocumentArray(documentIdArray, options);
         this.emit('documents:delete', documentIdArray.length);
         this.emit('context:updated', {
             operation: 'document:delete',
