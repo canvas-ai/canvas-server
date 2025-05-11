@@ -66,13 +66,13 @@ class Workspace extends EventEmitter {
      * Getters & Setters
      */
 
-    // --- Core Configuration & Path Getters ---
+    // Core Configuration & Path Getters
     get config() { return this.#configStore?.store || {}; }
     get path() { return this.#rootPath; }
     get rootPath() { return this.#rootPath; }
     get configPath() { return this.#configStore?.path; }
 
-    // --- Persisted Configuration Getters (from configStore) ---
+    // Persisted Configuration Getters (from configStore)
     get id() { return this.#configStore?.get('id'); }
     get name() { return this.#configStore?.get('name'); }
     get label() { return this.#configStore?.get('label', this.name); } // Fallback to name if label not set
@@ -85,7 +85,7 @@ class Workspace extends EventEmitter {
     get updatedAt() { return this.#configStore?.get('updatedAt'); }
     get metadata() { return this.#configStore?.get('metadata', {}); } // Generic metadata object
 
-    // --- Runtime Status Getters & Setters ---
+    // Runtime Status Getters & Setters
     get status() { return this.#status; }
     get isConfigLoaded() { return !!this.#configStore; } // More explicit check
     get isActive() { return this.#status === WORKSPACE_STATUS_CODES.ACTIVE; }
@@ -105,7 +105,7 @@ class Workspace extends EventEmitter {
         return true;
     }
 
-    // --- Internal Resource Getters (DB, Tree) ---
+    // Internal Resource Getters (DB, Tree)
     get db() {
         if (!this.#db) {
             // console.warn(`Database not initialized for workspace ${this.id}. Attempting to access db.`);
@@ -132,7 +132,7 @@ class Workspace extends EventEmitter {
         }
     }
 
-    // --- Configuration Setters (persisted to workspace.json) ---
+    // Configuration Setters (persisted to workspace.json)
     async setColor(color) {
         if (!this.#validateColor(color)) {
             console.warn(`Invalid color format: "${color}" for workspace ${this.id}.`);
@@ -265,9 +265,218 @@ class Workspace extends EventEmitter {
     }
 
     /**
+     * DB CRUD Methods
+     */
+
+    async insertDocument(document, contextSpec = '/', featureBitmapArray = [], emitEvent = true) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.insertDocument(document, contextSpec, featureBitmapArray, emitEvent);
+        return result;
+    }
+
+    async insertDocumentArray(docArray, contextSpec = '/', featureBitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.insertDocumentArray(docArray, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async hasDocument(id, contextSpec, featureBitmapArrayInput) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.hasDocument(id, contextSpec, featureBitmapArrayInput);
+        return result;
+    }
+
+    async hasDocumentByChecksum(checksum, contextSpec, featureBitmapArray) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.hasDocumentByChecksum(checksum, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async listDocuments(contextSpec = '/', featureBitmapArray = [], filterArray = [], options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.findDocuments(contextSpec, featureBitmapArray, filterArray, options);
+        return result;
+    }
+
+    async findDocuments(contextSpec = '/', featureBitmapArray = [], filterArray = [], options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.findDocuments(contextSpec, featureBitmapArray, filterArray, options);
+        return result;
+    }
+
+    async updateDocument(docIdentifier, updateData = null, contextSpec = null, featureBitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.updateDocument(docIdentifier, updateData, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async updateDocumentArray(docArray, contextSpec = null, featureBitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.updateDocumentArray(docArray, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async removeDocument(docId, contextSpec = '/', featureBitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.removeDocument(docId, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async removeDocumentArray(docIdArray, contextSpec = '/', featureBitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.removeDocumentArray(docIdArray, contextSpec, featureBitmapArray);
+        return result;
+    }
+
+    async deleteDocument(docId) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.deleteDocument(docId);
+        return result;
+    }
+
+    async deleteDocumentArray(docIdArray) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.deleteDocumentArray(docIdArray);
+        return result;
+    }
+
+    async getDocument(docId, options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.getDocument(docId, options);
+        return result;
+    }
+
+    async getDocumentById(id, options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.getDocumentById(id, options);
+        return result;
+    }
+
+    async getDocumentsByIdArray(idArray, options = { parse: true, limit: null }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.getDocumentsByIdArray(idArray, options);
+        return result;
+    }
+
+    async getDocumentByChecksumString(checksumString, options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.getDocumentByChecksumString(checksumString, options);
+        return result;
+    }
+
+    async getDocumentsByChecksumStringArray(checksumStringArray, options = { parse: true }) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.getDocumentsByChecksumStringArray(checksumStringArray, options);
+        return result;
+    }
+
+    async setDocumentArrayFeatures(docIdArray, featureBitmapArray) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.setDocumentArrayFeatures(docIdArray, featureBitmapArray);
+        return result;
+    }
+
+    async unsetDocumentArrayFeatures(docIdArray, featureBitmapArray) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.unsetDocumentArrayFeatures(docIdArray, featureBitmapArray);
+        return result;
+    }
+
+    async query(query, contextBitmapArray = [], featureBitmapArray = [], filterArray = [], metadataOnly = false) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.query(query, contextBitmapArray, featureBitmapArray, filterArray, metadataOnly);
+        return result;
+    }
+
+    async ftsQuery(query, contextBitmapArray = [], featureBitmapArray = [], filterArray = [], metadataOnly = false) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.ftsQuery(query, contextBitmapArray, featureBitmapArray, filterArray, metadataOnly);
+        return result;
+    }
+
+    async dumpDocuments(dstDir, contextSpec = null, featureBitmapArray = [], filterArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.dumpDocuments(dstDir, contextSpec, featureBitmapArray, filterArray);
+        return result;
+    }
+
+    async dumpBitmaps(dstDir, bitmapArray = []) {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+
+        const result = await this.db.dumpBitmaps(dstDir, bitmapArray);
+        return result;
+    }
+
+    /**
      * Tree Manipulation Methods
-     * These methods interact with the SynapsD tree.
-     * They ensure the workspace is active before performing operations.
      */
 
     #ensureActiveForTreeOp(operationName) {
@@ -418,7 +627,7 @@ class Workspace extends EventEmitter {
         return responsePayload;
     }
 
-    // --- Tree Layer Methods (direct pass-through with active check and eventing) ---
+    // Tree Layer Methods (direct pass-through with active check and eventing)
     createLayer(options) {
         this.#ensureActiveForTreeOp('createLayer');
         const layer = this.tree.createLayer(options);

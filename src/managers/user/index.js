@@ -311,6 +311,56 @@ class UserManager extends EventEmitter {
     }
 
     /**
+     * Utils
+     */
+
+    async ensureUserUniverseWorkspaceIsRunning(userId) {
+        if (!this.#initialized) {
+            throw new Error('UserManager not initialized');
+        }
+
+        const user = await this.getUser(userId);
+        if (!user) {
+            throw new Error(`User not found: ${userId}`);
+        }
+
+        const universeWorkspace = await this.#workspaceManager.getWorkspace(user.email, 'universe');
+        if (!universeWorkspace) {
+            throw new Error(`Universe workspace not found for user: ${user.email}`);
+        }
+
+        // This is handled by our stupid to-be-refactored/renamed getWorkspace method
+        if (universeWorkspace.status !== 'running') {
+            await this.#workspaceManager.startWorkspace(user.email, 'universe');
+        }
+
+        return true;
+    }
+
+    async ensureDefaultUserContextExists(userId) {
+        if (!this.#initialized) {
+            throw new Error('UserManager not initialized');
+        }
+
+        const user = await this.getUser(userId);
+        if (!user) {
+            throw new Error(`User not found: ${userId}`);
+        }
+
+        if (this.#contextManager.hasContext(userId, 'default')) {
+            return true;
+        }
+
+        // Create a default context for the user if it doesn't exist
+        await this.#contextManager.createContext(userId, '/', {
+            id: 'default',
+            autoCreate: true,
+        });
+
+        return true;
+    }
+
+    /**
      * Private methods
      */
 

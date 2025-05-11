@@ -383,26 +383,6 @@ class Context extends EventEmitter {
     }
 
     /**
-     * Query
-     */
-
-    query(query, featureArray = [], filterArray = [], options = {}) {
-        if (!this.#workspace || !this.#workspace.db) {
-            throw new Error('Workspace or database not available');
-        }
-
-        // NLP query
-    }
-
-    ftsQuery(query, featureArray = [], filterArray = [], options = {}) {
-        if (!this.#workspace || !this.#workspace.db) {
-            throw new Error('Workspace or database not available');
-        }
-
-        // FTS query
-    }
-
-    /**
      * Bitmaps
      */
 
@@ -438,6 +418,69 @@ class Context extends EventEmitter {
     /**
      * Document API
      */
+
+    async insertDocument(document, featureArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        if (!document) {
+            throw new Error('Document is required');
+        }
+
+        // We always update context bitmaps
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
+
+        // We always index with all features
+        featureArray = [...this.#featureBitmapArray, ...featureArray];
+
+        // Insert the document
+        const result = this.#db.insertDocument(document, contextArray, featureArray);
+        this.emit('document:insert', document.id || result.id);
+        this.emit('context:updated', {
+            operation: 'document:inserted',
+            document: document.id || result.id,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
+        return result;
+    }
+
+    insertDocumentArray(documentArray, featureArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        // We always update context bitmaps
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
+
+
+        debug('#insertDocumentArray: contextArray:', this.#contextBitmapArray);
+        debug('#insertDocumentArray: Received featureArray:', featureArray);
+        debug('#insertDocumentArray: Received options:', options);
+
+        // Insert the documents
+        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
+        this.emit('context:updated', {
+            operation: 'documentArray:inserted',
+            documentArray: documentArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
+        return result;
+    }
 
     async getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
@@ -518,68 +561,7 @@ class Context extends EventEmitter {
         return documents;
     }
 
-    async insertDocument(document, featureArray = [], options = {}) {
-        if (!this.#workspace || !this.#workspace.db) {
-            throw new Error('Workspace or database not available');
-        }
 
-        if (!document) {
-            throw new Error('Document is required');
-        }
-
-        // We always update context bitmaps
-        const contextArray = [
-            //...this.#contextBitmapArray,
-            ...this.#pathArray,
-            ...this.#serverContextArray,
-            ...this.#clientContextArray,
-        ];
-
-        // We always index with all features
-        featureArray = [...this.#featureBitmapArray, ...featureArray];
-
-        // Insert the document
-        const result = this.#db.insertDocument(document, contextArray, featureArray);
-        this.emit('document:insert', document.id || result.id);
-        this.emit('context:updated', {
-            operation: 'document:inserted',
-            document: document.id || result.id,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
-
-        return result;
-    }
-
-    insertDocumentArray(documentArray, featureArray = [], options = {}) {
-        if (!this.#workspace || !this.#workspace.db) {
-            throw new Error('Workspace or database not available');
-        }
-
-        // We always update context bitmaps
-        const contextArray = [
-            //...this.#contextBitmapArray,
-            ...this.#pathArray,
-            ...this.#serverContextArray,
-            ...this.#clientContextArray,
-        ];
-
-
-        debug('#insertDocumentArray: contextArray:', this.#contextBitmapArray);
-        debug('#insertDocumentArray: Received featureArray:', featureArray);
-        debug('#insertDocumentArray: Received options:', options);
-
-        // Insert the documents
-        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
-        this.emit('context:updated', {
-            operation: 'documentArray:inserted',
-            documentArray: documentArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
-
-        return result;
-    }
 
     updateDocument(document, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {

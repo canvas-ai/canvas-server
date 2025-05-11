@@ -203,6 +203,15 @@ class ContextManager extends EventEmitter {
         }
     }
 
+    hasContext(userId, contextId) {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+
+        const contextKey = `${userId}/${contextId}`;
+        return this.#contexts.has(contextKey) || this.#indexStore.has(contextKey); 
+    }
+
     /**
      * List all contexts for a user
      * @param {string} userId - User ID

@@ -324,6 +324,12 @@ export async function login(email, password, userManager) {
     throw new InvalidCredentialsError('Account is not active');
   }
 
+  // Ensure users "Universe" workspace is running
+  await userManager.ensureUserUniverseWorkspaceIsRunning(user.id);
+
+  // Ensure users default context exists
+  await userManager.ensureDefaultUserContextExists(user.id);
+
   console.log(`[Auth/Login] Login successful for user: ${user.id}`);
   return { user };
 }
