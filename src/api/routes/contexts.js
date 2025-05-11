@@ -582,16 +582,40 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' }
         }
       },
+      querystring: {
+        type: 'object',
+        properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          includeServerContext: { type: 'boolean' },
+          includeClientContext: { type: 'boolean' }
+        }
+      },
       response: {
         200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  type: { type: 'string' },
+                  data: { type: 'object' }
+                }
+              }
+            },
+            count: { type: 'number' }
           }
         }
       }
@@ -602,18 +626,20 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      const documents = await fastify.contextManager.listDocuments(
-        request.params.featureArray,
-        request.params.filterArray,
-        request.params.options
-      );
-
-      if (!documents) {
-        const response = new ResponseObject().notFound(`Context with ID ${request.params.id} not found`);
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found(documents, 'Documents retrieved successfully');
+      const { featureArray = [], filterArray = [] } = request.query;
+      const options = {
+        includeServerContext: request.query.includeServerContext,
+        includeClientContext: request.query.includeClientContext
+      };
+
+      const documents = await context.listDocuments(featureArray, filterArray, options);
+      const response = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.length);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -634,13 +660,35 @@ export default async function contextRoutes(fastify, options) {
         }
       },
       body: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['type', 'data'],
-          properties: {
-            type: { type: 'string' },
-            data: { type: 'object' }
+        type: 'object',
+        required: ['contextSpec', 'documents'],
+        properties: {
+          contextSpec: { type: 'string' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          documents: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['type', 'data'],
+              properties: {
+                type: { type: 'string' },
+                data: {
+                  type: 'object',
+                  required: ['schema', 'data'],
+                  properties: {
+                    schema: { type: 'string' },
+                    data: { type: 'object' }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -661,7 +709,8 @@ export default async function contextRoutes(fastify, options) {
                   data: { type: 'object' }
                 }
               }
-            }
+            },
+            count: { type: 'number' }
           }
         }
       }
@@ -672,19 +721,18 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      const documents = await fastify.contextManager.insertDocuments(
-        request.user.email,
-        request.params.id,
-        request.user.id,
-        request.body
-      );
-
-      if (!documents) {
-        const response = new ResponseObject().notFound(`Context with ID ${request.params.id} not found`);
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().created(documents, 'Documents inserted successfully');
+      const { featureArray = [], documents } = request.body;
+
+      // Insert the documents
+      const result = await context.insertDocumentArray(documents, featureArray);
+
+      const response = new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -1487,3 +1535,4 @@ export default async function contextRoutes(fastify, options) {
     }
   });
 }
+

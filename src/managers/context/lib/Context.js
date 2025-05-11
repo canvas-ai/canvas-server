@@ -489,6 +489,11 @@ class Context extends EventEmitter {
     }
 
     async listDocuments(featureArray = [], filterArray = [], options = {}) {
+        debug('#listDocuments: contextArray:', this.#contextBitmapArray);
+        debug('#listDocuments: Received featureArray:', featureArray);
+        debug('#listDocuments: Received filterArray:', filterArray);
+        debug('#listDocuments: Received options:', options);
+
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -523,9 +528,12 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        let contextArray = this.#contextBitmapArray;
-        contextArray.push(this.#serverContextArray);
-        contextArray.push(this.#clientContextArray);
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
 
         // We always index with all features
         featureArray = [...this.#featureBitmapArray, ...featureArray];
@@ -547,10 +555,19 @@ class Context extends EventEmitter {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
+
         // We always update context bitmaps
-        const contextArray = this.#contextBitmapArray;
-        contextArray.push(this.#serverContextArray);
-        contextArray.push(this.#clientContextArray);
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
+
+
+        debug('#insertDocumentArray: contextArray:', this.#contextBitmapArray);
+        debug('#insertDocumentArray: Received featureArray:', featureArray);
+        debug('#insertDocumentArray: Received options:', options);
 
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
@@ -574,9 +591,12 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        const contextArray = this.#contextBitmapArray;
-        contextArray.push(this.#serverContextArray);
-        contextArray.push(this.#clientContextArray);
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
 
         // Update the document
         const result = this.#db.updateDocument(document, contextArray, featureArray);
@@ -602,9 +622,12 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        const contextArray = this.#contextBitmapArray;
-        contextArray.push(this.#serverContextArray);
-        contextArray.push(this.#clientContextArray);
+        const contextArray = [
+            //...this.#contextBitmapArray,
+            ...this.#pathArray,
+            ...this.#serverContextArray,
+            ...this.#clientContextArray,
+        ];
 
         // Update the documents
         const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
