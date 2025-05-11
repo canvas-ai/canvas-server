@@ -158,8 +158,8 @@ export async function verifyJWT(request, reply, done) {
     }
 
     // Only check version if both token and user have versions
-    if (decoded.ver && (user.updated || user.created)) {
-      const userVersion = user.updated || user.created;
+    if (decoded.ver && (user.updatedAt || user.createdAt)) {
+      const userVersion = user.updatedAt || user.createdAt;
       if (decoded.ver !== userVersion) {
         console.log(`[Auth/JWT] Token version mismatch: ${decoded.ver} vs ${userVersion}`);
         return done(new InvalidTokenError('Token is invalid - user data has changed'));

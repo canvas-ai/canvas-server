@@ -3,7 +3,6 @@ const debug = createDebug('device-manager');
 import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
-import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 

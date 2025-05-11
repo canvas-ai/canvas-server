@@ -77,7 +77,7 @@ export default async function authRoutes(fastify, options) {
       }
 
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('An unexpected error occurred during login');
+      const response = new ResponseObject().notFound(error.message || 'An unexpected error occurred during login');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
@@ -407,7 +407,7 @@ export default async function authRoutes(fastify, options) {
                   id: { type: 'string' },
                   name: { type: 'string' },
                   description: { type: 'string' },
-                  created: { type: 'string', format: 'date-time' },
+                  createdAt: { type: 'string', format: 'date-time' },
                   lastUsed: { type: 'string', format: 'date-time' }
                 }
               }
@@ -455,7 +455,7 @@ export default async function authRoutes(fastify, options) {
                 token: { type: 'string' },
                 name: { type: 'string' },
                 description: { type: 'string' },
-                created: { type: 'string', format: 'date-time' }
+                createdAt: { type: 'string', format: 'date-time' }
               }
             }
           }
@@ -470,7 +470,7 @@ export default async function authRoutes(fastify, options) {
         token: token.value,
         name: token.name,
         description: token.description,
-        created: token.createdAt
+        createdAt: token.createdAt
       }, 'API token created successfully');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {

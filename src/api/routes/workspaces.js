@@ -54,8 +54,11 @@ export default async function workspaceRoutes(fastify, options) {
                   type: { type: 'string' },
                   owner: { type: 'string' },
                   status: { type: 'string' },
-                  created: { type: 'string', format: 'date-time' },
-                  updated: { type: 'string', format: 'date-time' }
+                  createdAt: { type: 'string', format: 'date-time' },
+                  updatedAt: { type: 'string', format: 'date-time' },
+                  metadata: { type: 'object' },
+                  acl: { type: 'object' },
+                  isActive: { type: 'boolean' }
                 }
               }
             },
@@ -154,27 +157,41 @@ export default async function workspaceRoutes(fastify, options) {
         200: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            label: { type: 'string' },
-            description: { type: 'string' },
-            color: { type: 'string' },
-            type: { type: 'string' },
-            owner: { type: 'string' },
             status: { type: 'string' },
-            created: { type: 'string', format: 'date-time' },
-            updated: { type: 'string', format: 'date-time' },
-            metadata: { type: 'object' },
-            acl: { type: 'object' },
-            restApi: { type: 'object' }
+            statusCode: { type: 'number' },
+            message: { type: 'string' },
+            payload: {
+              type: 'object',
+              properties: {
+                workspace: {
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    label: { type: 'string' },
+                    description: { type: 'string' },
+                    color: { type: 'string' },
+                    type: { type: 'string' },
+                    owner: { type: 'string' },
+                    status: { type: 'string' },
+                    createdAt: { type: 'string', format: 'date-time' },
+                    updatedAt: { type: 'string', format: 'date-time' },
+                    metadata: { type: 'object' },
+                    rootPath: { type: 'string' },
+                    configPath: { type: 'string' },
+                    acl: { type: 'object' },
+                    isActive: { type: 'boolean' }
+                  }
+                }
+              }
+            }
           }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspaceConfig(
-        request.user.email,
+      const workspace = await fastify.workspaceManager.getWorkspace(
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -184,8 +201,16 @@ export default async function workspaceRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().found(workspace, 'Workspace retrieved successfully');
-      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      // Revert test code and apply the correct structure according to the schema
+      const responseObject = new ResponseObject().found(
+        { workspace: workspace.toJSON() },
+        'Workspacee retrieved successfully'
+      );
+      const finalResponse = responseObject.getResponse();
+
+      fastify.log.info(finalResponse); // Log the stored response
+      return reply.code(responseObject.statusCode).send(finalResponse); // Send the stored response
+
     } catch (error) {
       fastify.log.error(error);
       const responseObject = new ResponseObject().serverError('Failed to get workspace');

@@ -53,15 +53,21 @@ export default async function contextRoutes(fastify, options) {
                 type: 'object',
                 properties: {
                   id: { type: 'string' },
-                  name: { type: 'string' },
-                  label: { type: 'string' },
-                  description: { type: 'string' },
-                  color: { type: 'string' },
-                  type: { type: 'string' },
-                  owner: { type: 'string' },
-                  status: { type: 'string' },
-                  created: { type: 'string', format: 'date-time' },
-                  updated: { type: 'string', format: 'date-time' }
+                  userId: { type: 'string' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  updatedAt: { type: 'string', format: 'date-time' },
+                  url: { type: 'string' },
+                  baseUrl: { type: 'string' },
+                  path: { type: 'string' },
+                  pathArray: { type: 'array', items: { type: 'string' } },
+                  workspace: { type: 'string' },
+                  locked: { type: 'boolean' },
+                  serverContextArray: { type: 'array', items: { type: 'string' } },
+                  clientContextArray: { type: 'array', items: { type: 'string' } },
+                  contextBitmapArray: { type: 'array', items: { type: 'string' } },
+                  featureBitmapArray: { type: 'array', items: { type: 'string' } },
+                  filterArray: { type: 'array', items: { type: 'string' } },
+                  pendingUrl: { type: ['string', 'null'] }
                 }
               }
             },
@@ -92,16 +98,15 @@ export default async function contextRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['name'],
+        required: ['id'],
         properties: {
+          id: { type: 'string' },
           url: { type: 'string' },
-          name: { type: 'string' },
+          baseUrl: { type: 'string' },
           description: { type: 'string' },
           workspaceId: { type: 'string' },
           type: { type: 'string', enum: ['context', 'universe'] },
-          metadata: { type: 'object' },
-          acl: { type: 'object' },
-          baseUrl: { type: 'string' }
+          metadata: { type: 'object' }
         }
       },
       response: {
@@ -118,11 +123,21 @@ export default async function contextRoutes(fastify, options) {
                   type: 'object',
                   properties: {
                     id: { type: 'string' },
-                    name: { type: 'string' },
+                    userId: { type: 'string' },
+                    createdAt: { type: 'string', format: 'date-time' },
+                    updatedAt: { type: 'string', format: 'date-time' },
                     url: { type: 'string' },
-                    description: { type: 'string' },
-                    created: { type: 'string', format: 'date-time' },
-                    updated: { type: 'string', format: 'date-time' }
+                    baseUrl: { type: 'string' },
+                    path: { type: 'string' },
+                    pathArray: { type: 'array', items: { type: 'string' } },
+                    workspace: { type: 'string' },
+                    locked: { type: 'boolean' },
+                    serverContextArray: { type: 'array', items: { type: 'string' } },
+                    clientContextArray: { type: 'array', items: { type: 'string' } },
+                    contextBitmapArray: { type: 'array', items: { type: 'string' } },
+                    featureBitmapArray: { type: 'array', items: { type: 'string' } },
+                    filterArray: { type: 'array', items: { type: 'string' } },
+                    pendingUrl: { type: ['string', 'null'] }
                   }
                 }
               }
@@ -141,9 +156,10 @@ export default async function contextRoutes(fastify, options) {
         request.user.id,
         request.body.url,
         {
-          owner: request.user.id,
+          id: request.body.id,
+          userId: request.user.id,
           type: request.body.type || 'context',
-          name: request.body.name,
+          workspaceId: request.body.workspaceId,
           description: request.body.description || '',
           metadata: request.body.metadata,
           baseUrl: request.body.baseUrl
@@ -154,7 +170,7 @@ export default async function contextRoutes(fastify, options) {
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to create context');
+      const response = new ResponseObject().serverError('Failed to create context', error.message);
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
@@ -184,14 +200,21 @@ export default async function contextRoutes(fastify, options) {
                   type: 'object',
                   properties: {
                     id: { type: 'string' },
-                    name: { type: 'string' },
+                    userId: { type: 'string' },
                     url: { type: 'string' },
+                    baseUrl: { type: 'string' },
                     path: { type: 'string' },
                     pathArray: { type: 'array', items: { type: 'string' } },
-                    workspace: { type: 'string' },
-                    description: { type: 'string' },
-                    created: { type: 'string', format: 'date-time' },
-                    updated: { type: 'string', format: 'date-time' }
+                    workspaceId: { type: 'string' },
+                    createdAt: { type: 'string', format: 'date-time' },
+                    updatedAt: { type: 'string', format: 'date-time' },
+                    locked: { type: 'boolean' },
+                    serverContextArray: { type: 'array', items: { type: 'string' } },
+                    clientContextArray: { type: 'array', items: { type: 'string' } },
+                    contextBitmapArray: { type: 'array', items: { type: 'string' } },
+                    featureBitmapArray: { type: 'array', items: { type: 'string' } },
+                    filterArray: { type: 'array', items: { type: 'string' } },
+                    pendingUrl: { type: ['string', 'null'] }
                   }
                 }
               }
@@ -202,7 +225,7 @@ export default async function contextRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
-      return reply;
+      return;
     }
 
     try {
@@ -212,10 +235,15 @@ export default async function contextRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const contextJSON = context.toJSON();
-      fastify.log.info(contextJSON);
-      const response = new ResponseObject().found(contextJSON, 'Context retrieved successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      // Revert test code and apply the correct structure according to the schema
+      const responseObject = new ResponseObject().found(
+        { context: context.toJSON() }, // Wrap context.toJSON() in a 'context' object
+        'Context retrieved successfully'
+      );
+      const finalResponse = responseObject.getResponse();
+
+      fastify.log.info(finalResponse); // Log the stored response
+      return reply.code(responseObject.statusCode).send(finalResponse); // Send the stored response
     } catch (error) {
       fastify.log.error(error);
       const response = new ResponseObject().serverError('Failed to get context');
@@ -444,7 +472,6 @@ export default async function contextRoutes(fastify, options) {
       body: {
         type: 'object',
         properties: {
-          name: { type: 'string' },
           description: { type: 'string' },
           metadata: { type: 'object' },
           acl: { type: 'object' },
@@ -465,9 +492,8 @@ export default async function contextRoutes(fastify, options) {
                   type: 'object',
                   properties: {
                     id: { type: 'string' },
-                    name: { type: 'string' },
                     description: { type: 'string' },
-                    updated: { type: 'string', format: 'date-time' }
+                    updatedAt: { type: 'string', format: 'date-time' }
                   }
                 }
               }
@@ -577,9 +603,9 @@ export default async function contextRoutes(fastify, options) {
 
     try {
       const documents = await fastify.contextManager.listDocuments(
-        request.user.email,
-        request.params.id,
-        request.user.id
+        request.params.featureArray,
+        request.params.filterArray,
+        request.params.options
       );
 
       if (!documents) {

@@ -6,8 +6,8 @@ import EventEmitter from 'eventemitter2';
 import { generateULID } from '../../../utils/id.js';
 
 // Logging
-import createDebug from 'debug';
-const debug = createDebug('workspace');
+import logger, { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('workspace-manager:workspace');
 
 // Includes
 import Db from '../../../services/synapsd/src/index.js';
@@ -80,10 +80,9 @@ class Workspace extends EventEmitter {
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); } // User ULID
-    get ownerKeyId() { return this.#configStore?.get('ownerKeyId'); } // e.g., userEmail
     get acl() { return this.#configStore?.get('acl', {}); }
-    get created() { return this.#configStore?.get('created'); }
-    get updated() { return this.#configStore?.get('updated'); }
+    get createdAt() { return this.#configStore?.get('createdAt'); }
+    get updatedAt() { return this.#configStore?.get('updatedAt'); }
     get metadata() { return this.#configStore?.get('metadata', {}); } // Generic metadata object
 
     // --- Runtime Status Getters & Setters ---
@@ -169,10 +168,9 @@ class Workspace extends EventEmitter {
             'label',
             'description',
             'color',
-            // 'locked', // Example: if you add a 'locked' status
+            'locked',
             'acl',       // ACLs are complex; ensure `value` is a valid ACL object.
             'metadata',  // For generic metadata object
-            // Add other specific, mutable properties here
         ];
 
         if (!allowedKeys.includes(key)) {
@@ -300,25 +298,29 @@ class Workspace extends EventEmitter {
     insertPath(path, data = null, autoCreateLayers = true) {
         this.#ensureActiveForTreeOp('insertPath');
         const result = this.tree.insertPath(path, data, autoCreateLayers);
-        return this.#emitTreeUpdateAndRespond('insertPath', { path, data, autoCreateLayers }, !!result, result ? { layerIds: result } : null);
+        return result;
+        // return this.#emitTreeUpdateAndRespond('insertPath', { path, data, autoCreateLayers }, !!result, result ? { layerIds: result } : null);
     }
 
     removePath(path, recursive = false) {
         this.#ensureActiveForTreeOp('removePath');
         const success = this.tree.removePath(path, recursive);
-        return this.#emitTreeUpdateAndRespond('removePath', { path, recursive }, success);
+        return success;
+        // return this.#emitTreeUpdateAndRespond('removePath', { path, recursive }, success);
     }
 
     movePath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('movePath');
         const success = this.tree.movePath(pathFrom, pathTo, recursive);
-        return this.#emitTreeUpdateAndRespond('movePath', { pathFrom, pathTo, recursive }, success);
+        return success;
+        // return this.#emitTreeUpdateAndRespond('movePath', { pathFrom, pathTo, recursive }, success);
     }
 
     copyPath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('copyPath');
         const success = this.tree.copyPath(pathFrom, pathTo, recursive);
-        return this.#emitTreeUpdateAndRespond('copyPath', { pathFrom, pathTo, recursive }, success);
+        return success;
+        // return this.#emitTreeUpdateAndRespond('copyPath', { pathFrom, pathTo, recursive }, success);
     }
 
     pathToIdArray(path) {
@@ -329,13 +331,15 @@ class Workspace extends EventEmitter {
     mergeUp(path) {
         this.#ensureActiveForTreeOp('mergeUp');
         const success = this.tree.mergeUp(path);
-        return this.#emitTreeUpdateAndRespond('mergeUp', { path }, success);
+        return success;
+        // return this.#emitTreeUpdateAndRespond('mergeUp', { path }, success);
     }
 
     mergeDown(path) {
         this.#ensureActiveForTreeOp('mergeDown');
         const success = this.tree.mergeDown(path);
-        return this.#emitTreeUpdateAndRespond('mergeDown', { path }, success);
+        return success;
+        // return this.#emitTreeUpdateAndRespond('mergeDown', { path }, success);
     }
 
     get paths() {
@@ -480,17 +484,14 @@ class Workspace extends EventEmitter {
             color: this.color,
             type: this.type,
             owner: this.owner,
-            ownerKeyId: this.ownerKeyId,
             acl: this.acl,
-            created: this.created,
-            updated: this.updated,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt,
             metadata: this.metadata,
             rootPath: this.rootPath,
             configPath: this.configPath,
             status: this.status,
             isActive: this.isActive,
-            // Potentially add a summary of db/tree state if needed, but keep it light.
-            // jsonTree: this.jsonTree, // Avoid including full tree in general toJSON unless specified
         };
     }
 

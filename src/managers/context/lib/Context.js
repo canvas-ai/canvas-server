@@ -5,9 +5,8 @@ import EventEmitter from 'eventemitter2';
 import { v4 as uuidv4 } from 'uuid';
 
 // Logging
-import createDebug from 'debug';
-const debug = createDebug('context');
-
+import logger, { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('context-manager:context');
 
 // Includes
 import Url from './Url.js';
@@ -17,17 +16,14 @@ import Url from './Url.js';
  */
 
 class Context extends EventEmitter {
+
     // Context properties
     #id;
-    #name;
     #baseUrl; // With workspace support we need to change the format to workspace://baseUrl/path
     #url;
     #path;
     #pathArray;
-
-    // Workspace references
-    #db; // workspace.db
-    #tree; // workspace.tree
+    #userId;
 
     // Runtime Context arrays
     #serverContextArray; // server/os/linux, server/version/1.0.0, server/datetime/, server/ip/192.168.1.1
@@ -39,15 +35,16 @@ class Context extends EventEmitter {
 
     #filterArray = [];
 
-    // Manager module references
-    #device;
-    #user;
-    #workspace;
-    #workspaceManager;
+    // Workspace references
+    #workspace; // Current workspace instance
+    #db; // workspace.db
+    #tree; // workspace.tree
+    #workspaceManager; // Workspace manager instance
+    #contextManager; // Context manager instance
 
     // Context metadata
-    #created;
-    #updated;
+    #createdAt;
+    #updatedAt;
     #isLocked;
 
     // Additional properties
@@ -58,28 +55,39 @@ class Context extends EventEmitter {
 
         // Context properties
         this.#id = options.id || uuidv4();
-        this.#name = options.name ?? this.#id;
+
+        // User ID
+        if (!options.userId) {
+            throw new Error('User ID is required');
+        }
+        this.#userId = options.userId;
+
         // Store the provided baseUrl, default to '/'
         const providedBaseUrl = options.baseUrl || '/';
         this.#isLocked = options.locked || false;
 
-        // Manager module references
-        this.#device = options.device;
-        this.#user = options.user;
-        this.#workspace = options.workspace;
+        // Workspace references
+        if (!options.workspace) {
+            throw new Error('Workspace instance is required');
+        }
 
         if (!options.workspaceManager) {
-            throw new Error('Workspace manager is required');
+            throw new Error('Workspace manager instance is required');
         }
-        this.#workspaceManager = options.workspaceManager;
 
-        // Workspace references
+        if (!options.contextManager) {
+            throw new Error('Context manager instance is required');
+        }
+
+        this.#workspace = options.workspace;
+        this.#workspaceManager = options.workspaceManager;
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
+        this.#contextManager = options.contextManager;
 
         // Context metadata
-        this.#created = options.created || new Date().toISOString();
-        this.#updated = options.updated || new Date().toISOString();
+        this.#createdAt = options.createdAt || new Date().toISOString();
+        this.#updatedAt = options.updatedAt || new Date().toISOString();
 
         // Server Context
         this.#serverContextArray = options.serverContextArray || [];
@@ -153,22 +161,20 @@ class Context extends EventEmitter {
             this.#pendingUrl = null;
             return this.setUrl(pendingUrl);
         }
+
         return Promise.resolve(this);
     }
 
     // Getters / Setters
     get id() { return this.#id; }
-    get name() { return this.#name; }
+    get userId() { return this.#userId; }
     get baseUrl() { return this.#baseUrl; }
     get url() { return this.#url; }
     set url(url) { return this.setUrl(url); }
     get path() { return this.#path; }
     get pathArray() { return this.#pathArray; }
-    get workspace() { return this.#workspace.id; }
-    get device() { return this.#device.id; }
-    get apps() { return this.#device.apps; }
-    get user() { return this.#user; }
-    get identity() { return this.#user.identity; }
+    get workspace() { return this.#workspace; }
+    get workspaceId() { return this.#workspace.id; }
     get tree() { return this.#tree.toJSON(); }
     get pendingUrl() { return this.#pendingUrl; }
     get bitmapArrays() {
@@ -190,16 +196,24 @@ class Context extends EventEmitter {
      * Context API
      */
 
-    setClientContextArray(clientContextArray) {
+    async setClientContextArray(clientContextArray) {
         if (!Array.isArray(clientContextArray)) {
             clientContextArray = [clientContextArray];
         }
 
         this.#clientContextArray = clientContextArray;
+        this.emit('context:updated', { clientContextArray: this.#clientContextArray });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
     }
 
-    clearClientContextArray() {
+    async clearClientContextArray() {
         this.#clientContextArray = [];
+        this.emit('context:updated', { clientContextArray: this.#clientContextArray });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
     }
 
     setServerContextArray(serverContextArray) {
@@ -208,13 +222,18 @@ class Context extends EventEmitter {
         }
 
         this.#serverContextArray = serverContextArray;
+        this.emit('context:updated', { serverContextArray: this.#serverContextArray });
     }
 
-    clearServerContextArray() {
+    async clearServerContextArray() {
         this.#serverContextArray = [];
+        this.emit('context:updated', { serverContextArray: this.#serverContextArray });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
     }
 
-    setUrl(url) {
+    async setUrl(url) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
@@ -234,16 +253,13 @@ class Context extends EventEmitter {
 
         // If the workspace ID is different, switch to the new workspace
         if (parsed.workspaceID !== this.#workspace.name) {
-            // switchWorkspace will handle setting the final URL path after switching
-            return this.switchWorkspace(parsed.workspaceID, parsed.path);
+            // #switchWorkspace will handle setting the final URL path after switching
+            await this.#switchWorkspace(parsed.workspaceID, parsed.path);
         }
 
         // Create the URL path in the current workspace
         const contextLayers = this.#workspace.insertPath(parsed.path);
-        debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
-
-        // Update the context bitmap array
-        this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
+        debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the internal URL state
         this.#url = parsed.url;
@@ -251,16 +267,19 @@ class Context extends EventEmitter {
         this.#pathArray = parsed.pathArray;
 
         // Update the updated timestamp
-        this.#updated = new Date().toISOString();
+        this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
-        this.emit('change:url', this.#url); // Emit the actual set URL
+        this.emit('context:url:changed', { url: this.#url });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
 
         // Return this for method chaining and to maintain consistency with async version
         return Promise.resolve(this);
     }
 
-    setBaseUrl(newBaseUrl) {
+    async setBaseUrl(newBaseUrl) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
@@ -288,164 +307,78 @@ class Context extends EventEmitter {
                 }
             }
         }
-        /*
-         * TODO: Implement Workspace Layer Locking logic here before committing the change
-         * This needs careful thought about atomicity and error handling.
-         * The identifier should uniquely identify this context and user.
-         */
-        const lockIdentifier = `${this.#user.email}/${this.#id}`;
-        // Placeholder logic:
-        // try {
-        //     if (this.#baseUrl !== '/') {
-        //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
-        //     }
-        //     if (newBaseUrl !== '/') {
-        //         await this.#workspace.acquireLock(newBaseUrl, lockIdentifier);
-        //     }
-        // } catch (lockError) {
-        //     // Handle lock acquisition/release failure - potentially revert?
-        //     throw new Error(`Failed to update layer locks for base URL: ${lockError.message}`);
-        // }
 
         debug(`Setting base URL from "${this.#baseUrl}" to "${newBaseUrl}"`);
         this.#baseUrl = newBaseUrl;
-        this.#updated = new Date().toISOString();
-        this.emit('change:baseUrl', this.#baseUrl);
+        this.#updatedAt = new Date().toISOString();
+        this.emit('context:updated', { baseUrl: this.#baseUrl });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
 
         // No automatic setUrl according to Option C
         return Promise.resolve(this);
     }
 
-    lock() {
+    async lock() {
         this.#isLocked = true;
-        this.#updated = new Date().toISOString();
-        this.emit('locked', this.#id);
+        this.#updatedAt = new Date().toISOString();
+        this.emit('context:locked', { locked: this.#isLocked });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
+
+        return Promise.resolve(this);
     }
 
-    unlock() {
+    async unlock() {
         this.#isLocked = false;
-        this.#updated = new Date().toISOString();
-        this.emit('unlocked', this.#id);
+        this.#updatedAt = new Date().toISOString();
+        this.emit('context:unlocked', { locked: this.#isLocked });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
     }
 
     destroy() {
         // Perform any cleanup needed
         this.#isLocked = true;
 
-        /*
-         * TODO: Release base URL lock if held
-         * The identifier should uniquely identify this context and user.
-         */
-        // Placeholder logic:
-        // if (this.#baseUrl && this.#baseUrl !== '/') {
-        //     const lockIdentifier = `${this.#user.email}/${this.#id}`;
-        //     try {
-        //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
-        //     } catch (unlockError) {
-        //          logger.error(`Failed to release lock for context ${this.#id} on destroy: ${unlockError.message}`);
-        //          // Continue cleanup even if unlock fails?
-        //     }
-        // }
-
         // Clear references
         this.#db = null;
         this.#tree = null;
+        this.#workspace = null;
+        this.#workspaceManager = null;
 
         // Update the updated timestamp
-        this.#updated = new Date().toISOString();
+        this.#updatedAt = new Date().toISOString();
 
         // Emit destroy event
-        this.emit('destroyed', this.#id);
+        this.emit('context:deleted', { id: this.#id });
 
         // Remove all listeners
         this.removeAllListeners();
 
-        return Promise.resolve();
+        return Promise.resolve(this);
     }
 
-    async switchWorkspace(workspace, url = '/') {
+    async #switchWorkspace(workspaceId, url = '/') {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
 
-        if (!workspace) {
-            throw new Error('Workspace ID/name is required for switching');
-        }
-
-        if (!this.#user || !this.#user.id) {
-            throw new Error('User information is missing in context, cannot switch workspace.');
-        }
-
-        // workspaceManager.hasWorkspace expects ownerKeyId, workspaceId, requestingUserId
-        // For openWorkspace, we also need these three.
-        // Let's assume 'workspace' parameter is the workspaceId (short name)
-        // hasWorkspace(ownerKeyId, workspaceId, requestingUserId)
-        const hasWs = await this.#workspaceManager.hasWorkspace(this.#user.email, workspace, this.#user.id);
-
-        if (hasWs) { // Corrected check based on updated hasWorkspace signature
+        const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceId, this.#userId);
+        if (hasWs) {
             try {
-                /*
-                 * TODO: Release base URL lock in the *old* workspace if held before switching.
-                 * The identifier should uniquely identify this context and user.
-                 */
-                // Placeholder logic:
-                // if (this.#baseUrl && this.#baseUrl !== '/') {
-                //     const lockIdentifier = `${this.#user.email}/${this.#id}`;
-                //     try {
-                //         await this.#workspace.releaseLock(this.#baseUrl, lockIdentifier);
-                //     } catch (unlockError) {
-                //          console.warn(`Failed to release lock for context ${this.#id} before switching workspace: ${unlockError.message}`);
-                //     }
-                // }
-
-                // openWorkspace(ownerKeyId, workspaceId, requestingUserId)
-                const newWorkspaceInstance = await this.#workspaceManager.openWorkspace(this.#user.email, workspace, this.#user.id);
-                if (!newWorkspaceInstance) {
-                    throw new Error(`Failed to open workspace "${workspace}" for user ${this.#user.id}. It might not exist or user may not have access.`);
-                }
+                const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
                 this.#workspace = newWorkspaceInstance;
                 this.#db = this.#workspace.db;
                 this.#tree = this.#workspace.tree;
-
-                // Here we should retrieve the last context URL opened for this context
-                // in this workspace and set it
-                // We need a proper context log for LLM integration so TODO: implement this
-
-                // Set the URL without triggering another workspace switch
-                const parsed = new Url(url);
-
-                // Create the URL path in the workspace
-                const contextLayers = this.#workspace.insertPath(parsed.path);
-                debug(`Created workspace path with contextLayer IDs: ${JSON.stringify(contextLayers)}`);
-
-                // Update the context bitmap array with prefixed layers
-                // Prefix workaround till we implement propper collections in the DB
-                // Ensure contextLayers is treated as an array
-                if (contextLayers && contextLayers.layerIds) {
-                    // If we get an object with a layerIds property, use that
-                    const layerIds = Object.values(contextLayers.layerIds || {});
-                    this.#contextBitmapArray = layerIds.map((layer) => `context/${layer}`);
-                } else if (Array.isArray(contextLayers)) {
-                    // If we directly get an array
-                    this.#contextBitmapArray = contextLayers.map((layer) => `context/${layer}`);
-                } else {
-                    // Fallback to empty array if neither case applies
-                    debug(`Warning: Expected array or object with layerIds, got: ${typeof contextLayers}`);
-                    this.#contextBitmapArray = [];
-                }
-
-                // Update the URL
-                this.#url = parsed.url;
-
-                // Update the updated timestamp
-                this.#updated = new Date().toISOString();
-
-                return this;
             } catch (error) {
                 throw new Error(`Failed to switch workspace: ${error.message}`);
             }
         } else {
-            throw new Error(`Workspace "${workspace}" not found`);
+            throw new Error(`Workspace "${workspaceId}" not found`);
         }
     }
 
@@ -478,6 +411,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = featureArray;
+        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
     }
 
     appendFeatureBitmaps(featureArray) {
@@ -485,6 +419,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray.push(...featureArray);
+        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
     }
 
     removeFeatureBitmaps(featureArray) {
@@ -492,59 +427,93 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = this.#featureBitmapArray.filter((feature) => !featureArray.includes(feature));
+        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
     }
 
     clearFeatureBitmaps() {
         this.#featureBitmapArray = [];
+        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
     }
 
     /**
      * Document API
      */
 
-    getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
+    async getDocument(documentId, featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
 
-        const contextArray = this.#contextBitmapArray;
+        let baseContexts = [...this.#contextBitmapArray]; // Start with a copy
 
-        if (options.includeServerContext) {
-            contextArray.push(this.#serverContextArray);
+        let serverContexts = [];
+        if (options.includeServerContext && this.#serverContextArray && this.#serverContextArray.length > 0) {
+            serverContexts = this.#serverContextArray;
         }
 
-        if (options.includeClientContext) {
-            contextArray.push(this.#clientContextArray);
+        let clientContexts = [];
+        if (options.includeClientContext && this.#clientContextArray && this.#clientContextArray.length > 0) {
+            clientContexts = this.#clientContextArray;
         }
 
-        // Filters are out of scope for now
-        const document = this.#db.getDocument(documentId, contextArray, featureArray, filterArray);
-        this.emit('document:get', document.id);
+        // Combine them into a flat array
+        const contextArray = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
+
+        // Then use this flat contextArray for DB operations.
+        const document = this.#db.findDocuments(documentId, contextArray, featureArray, filterArray);
         return document;
     }
 
-    listDocuments(featureArray = [], filterArray = [], options = {}) {
+    async getDocumentArray(documentIdArray, featureArray = [], filterArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
 
-        const contextArray = this.#contextBitmapArray;
+        let baseContexts = [...this.#contextBitmapArray]; // Start with a copy
 
-        if (options.includeServerContext) {
-            contextArray.push(this.#serverContextArray);
+        let serverContexts = [];
+        if (options.includeServerContext && this.#serverContextArray && this.#serverContextArray.length > 0) {
+            serverContexts = this.#serverContextArray;
         }
 
-        if (options.includeClientContext) {
-            contextArray.push(this.#clientContextArray);
+        let clientContexts = [];
+        if (options.includeClientContext && this.#clientContextArray && this.#clientContextArray.length > 0) {
+            clientContexts = this.#clientContextArray;
         }
 
-        // Filters are out of scope for now
-        const documents = this.#db.listDocuments(contextArray, featureArray, filterArray);
-        this.emit('documents:list', documents.length);
+        // Combine them into a flat array
+        const contextArray = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
+
+        const documents = this.#db.findDocuments(documentIdArray, contextArray, featureArray, filterArray, options);
         return documents;
     }
 
-    insertDocument(document, featureArray = [], options = {}) {
+    async listDocuments(featureArray = [], filterArray = [], options = {}) {
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        let baseContexts = [...this.#contextBitmapArray]; // Start with a copy
+
+        let serverContexts = [];
+        if (options.includeServerContext && this.#serverContextArray && this.#serverContextArray.length > 0) {
+            serverContexts = this.#serverContextArray;
+        }
+
+        let clientContexts = [];
+        if (options.includeClientContext && this.#clientContextArray && this.#clientContextArray.length > 0) {
+            clientContexts = this.#clientContextArray;
+        }
+
+        // Combine them into a flat array
+        const contextArray = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
+
+        // Filters are out of scope for now
+        const documents = this.#db.findDocuments(contextArray, featureArray, filterArray, options);
+        return documents;
+    }
+
+    async insertDocument(document, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -554,7 +523,7 @@ class Context extends EventEmitter {
         }
 
         // We always update context bitmaps
-        const contextArray = this.#contextBitmapArray;
+        let contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
         contextArray.push(this.#clientContextArray);
 
@@ -564,18 +533,20 @@ class Context extends EventEmitter {
         // Insert the document
         const result = this.#db.insertDocument(document, contextArray, featureArray);
         this.emit('document:insert', document.id || result.id);
+        this.emit('context:updated', {
+            operation: 'document:inserted',
+            document: document.id || result.id,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
-    insertDocuments(documentArray, featureArray = [], options = {}) {
+    insertDocumentArray(documentArray, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
-
-        if (!Array.isArray(documentArray)) {
-            throw new Error('Document array must be an array');
-        }
-
         // We always update context bitmaps
         const contextArray = this.#contextBitmapArray;
         contextArray.push(this.#serverContextArray);
@@ -583,7 +554,13 @@ class Context extends EventEmitter {
 
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
-        this.emit('documents:insert', documentArray.length);
+        this.emit('context:updated', {
+            operation: 'documentArray:inserted',
+            documentArray: documentArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
@@ -605,10 +582,17 @@ class Context extends EventEmitter {
         const result = this.#db.updateDocument(document, contextArray, featureArray);
 
         this.emit('document:update', document.id);
+        this.emit('context:updated', {
+            operation: 'document:update',
+            document: document.id,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
-    updateDocuments(documentArray, featureArray = [], options = {}) {
+    updateDocumentArray(documentArray, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -625,7 +609,13 @@ class Context extends EventEmitter {
         // Update the documents
         const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
 
-        this.emit('documents:update', documentArray.length);
+        this.emit('context:updated', {
+            operation: 'document:update',
+            documentArray: documentArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
@@ -637,10 +627,17 @@ class Context extends EventEmitter {
         // We remove document from the current context not from the database
         const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
         this.emit('document:remove', documentId);
+        this.emit('context:updated', {
+            operation: 'document:remove',
+            document: documentId,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
-    removeDocuments(documentIdArray, featureArray = [], options = {}) {
+    removeDocumentArray(documentIdArray, featureArray = [], options = {}) {
         if (!this.#workspace || !this.#workspace.db) {
             throw new Error('Workspace or database not available');
         }
@@ -651,7 +648,13 @@ class Context extends EventEmitter {
 
         // We remove documents from the current context not from the database
         const result = this.#db.removeDocumentArray(documentIdArray, this.#contextBitmapArray, featureArray, options);
-        this.emit('documents:remove', documentIdArray.length);
+        this.emit('context:updated', {
+            operation: 'document:remove',
+            documentArray: documentIdArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+        });
+
         return result;
     }
 
@@ -663,6 +666,11 @@ class Context extends EventEmitter {
         // Completely delete the document from the database
         const result = this.#db.deleteDocument(documentId);
         this.emit('document:delete', documentId);
+        this.emit('context:updated', {
+            operation: 'document:delete',
+            document: documentId,
+        });
+
         return result;
     }
 
@@ -678,6 +686,11 @@ class Context extends EventEmitter {
         // Completely delete the documents from the database
         const result = this.#db.deleteDocumentArray(documentIdArray, featureArray, options);
         this.emit('documents:delete', documentIdArray.length);
+        this.emit('context:updated', {
+            operation: 'document:delete',
+            documentArray: documentIdArray,
+        });
+
         return result;
     }
 
@@ -688,14 +701,14 @@ class Context extends EventEmitter {
     toJSON() {
         return {
             id: this.#id,
-            name: this.#name,
+            userId: this.#userId,
             url: this.#url,
             baseUrl: this.#baseUrl,
             path: this.#path,
             pathArray: this.#pathArray,
-            workspace: this.#workspace?.id,
-            createdAt: this.#created,
-            updated: this.#updated,
+            workspaceId: this.#workspace?.id,
+            createdAt: this.#createdAt,
+            updatedAt: this.#updatedAt,
             locked: this.#isLocked,
             serverContextArray: this.#serverContextArray,
             clientContextArray: this.#clientContextArray,
