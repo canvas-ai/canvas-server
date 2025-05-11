@@ -6,8 +6,8 @@ import EventEmitter from 'eventemitter2';
 import { generateULID } from '../../../utils/id.js';
 
 // Logging
-import createDebug from 'debug';
-const debug = createDebug('user-manager');
+import logger, { createDebug } from '../../../utils/log/index.js';
+const debug = createDebug('user-manager:user');
 
 // Constants
 import { USER_STATUS_CODES } from '../index.js';

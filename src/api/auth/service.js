@@ -427,8 +427,8 @@ class AuthService {
     };
 
     // Only add version if user has an updated or created timestamp
-    if (user.updated || user.created) {
-      payload.ver = user.updated || user.created;
+    if (user.updatedAt || user.createdAt) {
+      payload.ver = user.updatedAt || user.createdAt;
     }
 
     return jwt.sign(
@@ -502,8 +502,8 @@ class AuthService {
         }
 
         // Check token version if available
-        if (decoded.ver && (user.updated || user.created)) {
-          const userVersion = user.updated || user.created;
+        if (decoded.ver && (user.updatedAt || user.createdAt)) {
+          const userVersion = user.updatedAt || user.createdAt;
           if (decoded.ver !== userVersion) {
             return { valid: false, message: 'Token version mismatch' };
           }

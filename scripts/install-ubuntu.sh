@@ -140,12 +140,19 @@ update_canvas() {
         handle_error "$?" "Failed to pull latest changes from git"
     fi
 
-    if ! npm install; then
-        handle_error "$?" "Failed to install dependencies"
+    # Ensure correct ownership before running npm commands as CANVAS_USER
+    if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
+        handle_error "$?" "Failed to set permissions before npm operations"
     fi
 
-    if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
-        handle_error "$?" "Failed to set permissions"
+    echo "Updating git submodules as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm run update-submodules"; then
+        handle_error "$?" "Failed to update git submodules via npm"
+    fi
+
+    echo "Installing dependencies as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm install"; then
+        handle_error "$?" "Failed to install dependencies via npm as $CANVAS_USER"
     fi
 
     if ! systemctl start canvas-server; then
@@ -159,19 +166,25 @@ install_canvas() {
         handle_error "$?" "Failed to clone Canvas Server repository"
     fi
 
-
     cd $CANVAS_ROOT || handle_error "$?" "Failed to change directory to $CANVAS_ROOT"
 
     if ! git checkout $CANVAS_REPO_TARGET_BRANCH; then
         handle_error "$?" "Failed to checkout branch $CANVAS_REPO_TARGET_BRANCH"
     fi
 
-    if ! npm install; then
-        handle_error "$?" "Failed to install dependencies"
+    # Ensure correct ownership before running npm commands as CANVAS_USER
+    if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
+        handle_error "$?" "Failed to set permissions before npm operations"
     fi
 
-    if ! chown -R $CANVAS_USER:$CANVAS_GROUP $CANVAS_ROOT; then
-        handle_error "$?" "Failed to set permissions"
+    echo "Updating git submodules as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm run update-submodules"; then
+        handle_error "$?" "Failed to update git submodules via npm"
+    fi
+
+    echo "Installing dependencies as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm install"; then
+        handle_error "$?" "Failed to install dependencies via npm as $CANVAS_USER"
     fi
 
     install_canvas_service

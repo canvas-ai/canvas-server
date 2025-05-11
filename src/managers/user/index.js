@@ -8,7 +8,7 @@ import validator from 'validator';
 import { generateULID } from '../../utils/id.js';
 
 // Logging
-import createDebug from 'debug';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('user-manager');
 
 // Includes
@@ -33,6 +33,7 @@ class UserManager extends EventEmitter {
     // Runtime
     #users = new Map();     // Initialized User Instances, keeps this implementation as slim as possible
     #workspaceManager;      // Workspace manager
+    #contextManager;        // Context manager
     #initialized = false;   // Manager initialized flag
 
     /**
@@ -59,6 +60,7 @@ class UserManager extends EventEmitter {
         this.#rootPath = options.rootPath;
         this.#indexStore = options.indexStore;
         this.#workspaceManager = options.workspaceManager;
+        this.#contextManager = options.contextManager;
 
         debug(`Initializing UserManager with user home directory rootPath: ${this.#rootPath}`);
     }
@@ -104,7 +106,7 @@ class UserManager extends EventEmitter {
 
             const email = userData.email.toLowerCase();
             const id = userData.id || email;
-            const userHomePath = userData.homePath || path.join(this.#rootPath, id);
+            const userHomePath = userData.homePath || path.join(this.#rootPath, email);
 
             if (await this.hasUser(id)) throw new Error(`User already exists with ID: ${id}`);
             if (await this.hasUserByEmail(email)) throw new Error(`User already exists with email: ${email} (ID: ${id})`);
@@ -119,8 +121,14 @@ class UserManager extends EventEmitter {
                 status: userData.status || 'active',
             });
 
+            // Create a default context for the user
+            await this.#contextManager.createContext(user.id, '/', {
+                id: 'default',
+            });
+
             this.#setupUserEventListeners(user);
             this.emit('user:created', { id, email });
+            debug(`User created: ${user.email} (ID: ${user.id})`);
             return user;
         } catch (error) {
             debug(`Error creating user: ${error.message}`);
@@ -299,6 +307,56 @@ class UserManager extends EventEmitter {
         }
         console.log(`User ${id} deleted. Home directory left in place: ${userHomePath}`);
         this.emit('user:deleted', { id });
+        return true;
+    }
+
+    /**
+     * Utils
+     */
+
+    async ensureUserUniverseWorkspaceIsRunning(userId) {
+        if (!this.#initialized) {
+            throw new Error('UserManager not initialized');
+        }
+
+        const user = await this.getUser(userId);
+        if (!user) {
+            throw new Error(`User not found: ${userId}`);
+        }
+
+        const universeWorkspace = await this.#workspaceManager.getWorkspace(user.email, 'universe');
+        if (!universeWorkspace) {
+            throw new Error(`Universe workspace not found for user: ${user.email}`);
+        }
+
+        // This is handled by our stupid to-be-refactored/renamed getWorkspace method
+        if (universeWorkspace.status !== 'running') {
+            await this.#workspaceManager.startWorkspace(user.email, 'universe');
+        }
+
+        return true;
+    }
+
+    async ensureDefaultUserContextExists(userId) {
+        if (!this.#initialized) {
+            throw new Error('UserManager not initialized');
+        }
+
+        const user = await this.getUser(userId);
+        if (!user) {
+            throw new Error(`User not found: ${userId}`);
+        }
+
+        if (this.#contextManager.hasContext(userId, 'default')) {
+            return true;
+        }
+
+        // Create a default context for the user if it doesn't exist
+        await this.#contextManager.createContext(userId, '/', {
+            id: 'default',
+            autoCreate: true,
+        });
+
         return true;
     }
 

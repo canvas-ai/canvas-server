@@ -5,7 +5,7 @@ import Url from './lib/Url.js';
 import EventEmitter from 'eventemitter2';
 
 // Logging
-import createDebug from 'debug';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('context-manager');
 
 // Includes
@@ -18,10 +18,10 @@ import Context from './lib/Context.js';
 class ContextManager extends EventEmitter {
 
     #indexStore;             // Persistent index of all contexts
-    #contexts = new Map();   // In-memory cache of loaded contexts
     #workspaceManager;       // Reference to workspace manager
-    #userManager;            // Reference to user manager
-    #nextContextIdByUser = new Map(); // User ID to next context ID mapping
+
+    // Runtime
+    #contexts = new Map();   // In-memory cache of loaded contexts
     #initialized = false;    // Manager initialized flag
 
     /**
@@ -29,7 +29,6 @@ class ContextManager extends EventEmitter {
      * @param {Object} options - Manager options
      * @param {Object} options.indexStore - Index store for context data
      * @param {Object} options.workspaceManager - Workspace manager instance
-     * @param {Object} options.userManager - User manager instance
      */
     constructor(options = {}) {
         super(options.eventEmitterOptions || {});
@@ -40,13 +39,9 @@ class ContextManager extends EventEmitter {
         if (!options.workspaceManager) {
             throw new Error('WorkspaceManager is required for ContextManager');
         }
-        if (!options.userManager) {
-            throw new Error('UserManager is required for ContextManager');
-        }
 
         this.#indexStore = options.indexStore;
         this.#workspaceManager = options.workspaceManager;
-        this.#userManager = options.userManager;
 
         debug('Context manager created');
     }
@@ -56,9 +51,8 @@ class ContextManager extends EventEmitter {
      */
     async initialize() {
         if (this.#initialized) { return this; }
-
         debug('Initializing context manager: loading stored context IDs...');
-        await this.#loadStoredContexts();
+
         debug(`ContextManager initialized with ${this.#indexStore.size} context(s) in index`);
         this.#initialized = true;
         return this;
@@ -91,30 +85,25 @@ class ContextManager extends EventEmitter {
         }
 
         try {
-            const user = await this.#userManager.getUser(userId);
-            const userEmail = user.email;
-
-            let contextId = options.id || options?.name;
+            // We need to streamline this part, its context ID whatever the user provides
+            let contextId = options?.id || options?.name;
             if (contextId === undefined || contextId === null || contextId === '') {
-                contextId = 'default'; // this.#getNextContextId(userId);
+                contextId = 'default';
             }
-            const contextKey = `${userEmail}/${contextId}`;
+            const contextKey = `${userId}/${contextId}`;
 
             if (this.#contexts.has(contextKey) || this.#indexStore.has(contextKey)) {
-                debug(`Context with key ${contextKey} already exists, returning existing or loading from store.`);
-                if (this.#contexts.has(contextKey)) return this.#contexts.get(contextKey);
-                return this.getContext(userId, contextId.toString());
+                throw new Error(`Context with key ${contextKey} already exists`);
             }
 
             debug(`Creating context with key ${contextKey} and URL: ${url} for user: ${userId}`);
-
             const parsed = new Url(url);
             if (!parsed.workspaceID) {
                 parsed.workspaceID = 'universe';
                 debug(`Relative URL provided, defaulting to universe workspace: ${parsed.workspaceID} for user ${userId}`);
             }
 
-            const workspace = await this.#workspaceManager.getWorkspace(userEmail, parsed.workspaceID, userId);
+            const workspace = await this.#workspaceManager.getWorkspace(userId, parsed.workspaceID, userId);
             if (!workspace) {
                 throw new Error(`Workspace not found or not accessible: ${parsed.workspaceID} for user ${userId}`);
             }
@@ -122,15 +111,17 @@ class ContextManager extends EventEmitter {
             const contextOptions = {
                 ...options,
                 id: contextId.toString(),
-                user: user,
+                userId: userId,
                 workspace: workspace,
+                workspaceId: workspace.id,
                 workspaceManager: this.#workspaceManager,
+                contextManager: this,
             };
 
             const context = new Context(parsed.url, contextOptions);
             await context.initialize();
 
-            this.#saveContext(userEmail, context);
+            this.saveContext(userId, context);
             this.emit('context:created', { userId, contextId: context.id, contextKey });
 
             return context;
@@ -153,15 +144,16 @@ class ContextManager extends EventEmitter {
         if (!this.#initialized) {
             throw new Error('ContextManager not initialized');
         }
-        if (!userId) throw new Error('User ID is required');
+        if (!userId) {
+            throw new Error('User ID is required');
+        }
 
+        if (contextId === undefined || contextId === null) {
+            contextId = 'default';
+        }
+
+        const contextKey = `${userId}/${contextId}`;
         try {
-            const user = await this.#userManager.getUser(userId);
-            const userEmail = user.email;
-
-            if (contextId === undefined || contextId === null) contextId = 'default';
-            const contextKey = `${userEmail}/${contextId}`;
-
             // Check in-memory cache first
             if (this.#contexts.has(contextKey)) {
                 debug(`Returning cached Context instance for ${contextKey}`);
@@ -173,8 +165,9 @@ class ContextManager extends EventEmitter {
             if (storedContextData) {
                 debug(`Context with key "${contextKey}" found in store, loading into memory.`);
 
+                // Load workspace
                 const workspace = await this.#workspaceManager.getWorkspace(
-                    userEmail, storedContextData.workspaceId, userId
+                    userId, storedContextData.workspaceId, userId
                 );
 
                 if (!workspace) {
@@ -182,14 +175,11 @@ class ContextManager extends EventEmitter {
                 }
 
                 const contextOptions = {
-                    id: storedContextData.id,
-                    name: storedContextData.name,
-                    user: user,
+                    ...storedContextData,
+                    userId: userId,
                     workspace: workspace,
                     workspaceManager: this.#workspaceManager,
-                    created: storedContextData.created,
-                    updated: storedContextData.updated,
-                    baseUrl: storedContextData.baseUrl,
+                    contextManager: this,
                 };
 
                 const loadedContext = new Context(storedContextData.url, contextOptions);
@@ -213,6 +203,15 @@ class ContextManager extends EventEmitter {
         }
     }
 
+    hasContext(userId, contextId) {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+
+        const contextKey = `${userId}/${contextId}`;
+        return this.#contexts.has(contextKey) || this.#indexStore.has(contextKey); 
+    }
+
     /**
      * List all contexts for a user
      * @param {string} userId - User ID
@@ -225,9 +224,7 @@ class ContextManager extends EventEmitter {
         if (!userId) throw new Error('User ID is required');
 
         try {
-            const user = await this.#userManager.getUser(userId);
-            const userEmail = user.email;
-            const prefix = `${userEmail}/`;
+            const prefix = `${userId}/`;
             const userContextsArray = [];
             const processedKeys = new Set();
 
@@ -247,7 +244,7 @@ class ContextManager extends EventEmitter {
                 }
             }
 
-            debug(`Listed ${userContextsArray.length} contexts for user ${userId} (email: ${userEmail})`);
+            debug(`Listed ${userContextsArray.length} contexts for user ${userId}`);
             return userContextsArray;
         } catch (error) {
             debug(`Error listing contexts for user ${userId}: ${error.message}`);
@@ -265,35 +262,35 @@ class ContextManager extends EventEmitter {
         if (!this.#initialized) {
             throw new Error('ContextManager not initialized');
         }
+
         if (!userId) throw new Error('User ID is required');
-        if (contextId === undefined || contextId === null) throw new Error('Context ID is required');
+        if (!contextId || contextId === undefined || contextId === null) {
+            throw new Error('Context ID is required');
+        }
+
+        if (contextId === 'default') {
+            throw new Error('Default context cannot be removed');
+        }
 
         try {
-            const user = await this.#userManager.getUser(userId);
-            const userEmail = user.email;
-            const contextKey = `${userEmail}/${contextId}`;
+            const contextKey = `${userId}/${contextId}`;
 
-            const context = this.#contexts.get(contextKey);
-            let removedFromStore = false;
-
-            // Remove from index store if exists
-            if (this.#indexStore.has(contextKey)) {
-                this.#indexStore.delete(contextKey);
-                removedFromStore = true;
-            }
-
-            // If not found anywhere, return false
-            if (!context && !removedFromStore) {
-                return false;
-            }
-
-            // Cleanup context instance if it exists
-            if (context) {
+            if (this.#contexts.has(contextKey)) {
+                const context = this.#contexts.get(contextKey);
                 await context.destroy();
                 this.#contexts.delete(contextKey);
             }
 
-            this.emit('context:removed', { userId, contextId: contextId.toString(), contextKey });
+            // Remove from index store if exists (which should be the case)
+            if (this.#indexStore.has(contextKey)) {
+                this.#indexStore.delete(contextKey);
+            }
+
+            this.emit('context:deleted', {
+                contextKey: contextKey,
+                userId: userId,
+                contextId: contextId.toString()
+            });
             debug(`Context ${contextKey} removed.`);
             return true;
         } catch (error) {
@@ -303,150 +300,25 @@ class ContextManager extends EventEmitter {
     }
 
     /**
-     * Remove all contexts for a user
-     * @param {string} userId - User ID
-     * @returns {Promise<number>} Number of contexts removed
-     */
-    async removeAllUserContexts(userId) {
-        if (!this.#initialized) {
-            throw new Error('ContextManager not initialized');
-        }
-        if (!userId) throw new Error('User ID is required');
-
-        try {
-            const user = await this.#userManager.getUser(userId);
-            const userEmail = user.email;
-            const prefix = `${userEmail}/`;
-            let removedCount = 0;
-
-            // Collect all context keys to remove
-            const contextKeysToRemove = new Set();
-
-            // From in-memory cache
-            for (const key of this.#contexts.keys()) {
-                if (key.startsWith(prefix)) {
-                    contextKeysToRemove.add(key);
-                }
-            }
-
-            // From store
-            const allContextsFromStore = this.#indexStore.store;
-            for (const keyInStore in allContextsFromStore) {
-                if (keyInStore.startsWith(prefix)) {
-                    contextKeysToRemove.add(keyInStore);
-                }
-            }
-
-            // Remove each context
-            for (const contextKey of contextKeysToRemove) {
-                const parts = contextKey.split('/');
-                const cId = parts.slice(1).join('/');
-                if (await this.removeContext(userId, cId)) {
-                    removedCount++;
-                }
-            }
-
-            // Reset next context ID counter for user
-            this.#nextContextIdByUser.delete(userId);
-
-            debug(`Removed ${removedCount} contexts for user ${userId}`);
-            return removedCount;
-        } catch (error) {
-            debug(`Error removing all contexts for user ${userId}: ${error.message}`);
-            return 0;
-        }
-    }
-
-    /**
-     * Private methods
-     */
-
-    /**
-     * Get the next numeric context ID for a user
-     * @param {string} userId - User ID
-     * @returns {number} Next context ID
-     * @private
-     */
-    #getNextContextId(userId) {
-        if (!this.#nextContextIdByUser.has(userId)) {
-            this.#nextContextIdByUser.set(userId, 0);
-        }
-
-        const nextId = this.#nextContextIdByUser.get(userId);
-        this.#nextContextIdByUser.set(userId, nextId + 1);
-
-        return nextId;
-    }
-
-    /**
-     * Load previously stored contexts from the index
-     * @private
-     */
-    async #loadStoredContexts() {
-        try {
-            const allContextsFromStore = this.#indexStore.store;
-            let usersProcessedForNextId = new Set();
-
-            for (const contextKey in allContextsFromStore) {
-                const metadata = allContextsFromStore[contextKey];
-                const storedUserId = metadata.userId;
-
-                if (storedUserId && !usersProcessedForNextId.has(storedUserId)) {
-                    let highestNumericId = -1;
-
-                    for (const [key, meta] of Object.entries(allContextsFromStore)) {
-                        if (meta.userId === storedUserId) {
-                            const parts = key.substring(key.indexOf('/') + 1);
-                            const numericId = parseInt(parts, 10);
-                            if (!isNaN(numericId) && numericId > highestNumericId) {
-                                highestNumericId = numericId;
-                            }
-                        }
-                    }
-
-                    if (highestNumericId >= 0) {
-                        this.#nextContextIdByUser.set(storedUserId, highestNumericId + 1);
-                    }
-
-                    usersProcessedForNextId.add(storedUserId);
-                }
-            }
-
-            debug(`Processed stored context metadata for ${Object.keys(allContextsFromStore).length} entries, primed nextId counters.`);
-        } catch (error) {
-            debug(`Error loading stored contexts: ${error.message}`);
-        }
-    }
-
-    /**
      * Save a context to memory and persistent store
-     * @param {string} userEmail - User email
+     * @param {string} userId
      * @param {Context} context - Context instance
      * @private
      */
-    #saveContext(userEmail, context) {
-        if (!userEmail || !context || !context.id) return;
+    saveContext(userId, context) {
+        if (!userId || !context || !context.id) {
+            throw new Error(`Invalid context data: ${JSON.stringify(context)}`);
+        };
 
-        const contextKey = `${userEmail}/${context.id}`;
+        const contextKey = `${userId}/${context.id}`;
+        const contextData = context.toJSON();
 
         // Save to in-memory cache
         this.#contexts.set(contextKey, context);
-
-        // Save to persistent store
-        const contextData = {
-            id: context.id,
-            url: context.url,
-            baseUrl: context.baseUrl,
-            workspaceId: context.workspace,
-            userId: context.user.id,
-            created: context.created,
-            updated: new Date().toISOString(),
-            name: context.name
-        };
-
         this.#indexStore.set(contextKey, contextData);
         debug(`Saved context with key ${contextKey}`);
     }
+
 }
 
 export default ContextManager;

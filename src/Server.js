@@ -16,7 +16,7 @@ const jim = new Jim({
 
 // Logging
 import createDebug from 'debug';
-const debug = createDebug('canvas-server');
+const debug = createDebug('canvas:server');
 
 // Managers
 import WorkspaceManager from './managers/workspace/index.js';
@@ -134,25 +134,24 @@ class Server extends EventEmitter {
         this.#workspaceManager = new WorkspaceManager({
             defaultRootPath: env.user.home,
             indexStore: jim.createIndex('workspaces'),
-            userManager: this.#userManager
+        });
+
+        this.#contextManager = new ContextManager({
+            indexStore: jim.createIndex('contexts'),
+            workspaceManager: this.#workspaceManager
         });
 
         this.#userManager = new UserManager({
             rootPath: env.user.home,
             indexStore: jim.createIndex('users'),
-            workspaceManager: this.#workspaceManager
-        });
-
-        this.#contextManager = new ContextManager({
-            indexStore: jim.createIndex('contexts'),
             workspaceManager: this.#workspaceManager,
-            userManager: this.#userManager
+            contextManager: this.#contextManager
         });
 
         // Initialize managers
         this.#workspaceManager = await this.#workspaceManager.initialize();
-        this.#userManager = await this.#userManager.initialize();
         this.#contextManager = await this.#contextManager.initialize();
+        this.#userManager = await this.#userManager.initialize();
     }
 
     async #createAdminUser() {
@@ -160,7 +159,7 @@ class Server extends EventEmitter {
             const adminEmail = env.admin.email;
             const forceReset = env.admin.forceReset;
 
-            debug(`Attempting to create/check admin user with email: ${adminEmail}, forceReset: ${forceReset}`);
+            debug(`Attempting to create admin user with email: ${adminEmail}, forceReset: ${forceReset}`);
 
             const adminExists = await this.#userManager.hasUserByEmail(adminEmail);
             debug(`Admin user exists: ${adminExists}`);
@@ -184,6 +183,7 @@ class Server extends EventEmitter {
                 // Create new admin user
                 debug(`Creating new admin user ${adminEmail}`);
                 user = await this.#userManager.createUser({
+                    id: adminEmail,
                     email: adminEmail,
                     userType: 'admin',
                     status: 'active'

@@ -10,7 +10,7 @@ import Conf from 'conf';
 // import AdmZip from 'adm-zip';
 
 // Logging
-import createDebug from 'debug';
+import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('workspace-manager');
 
 // Includes
@@ -73,7 +73,7 @@ class WorkspaceManager extends EventEmitter {
     #indexStore;        // Persistent index of all workspaces
 
     // Runtime
-    #workspaces = new Map(); // Cache for loaded Workspace instances (key: userEmail/workspaceId -> Workspace)
+    #workspaces = new Map(); // Cache for loaded Workspace instances (key: userId/workspaceId -> Workspace)
     #initialized = false; // Add initialized flag
 
     /**
@@ -97,7 +97,6 @@ class WorkspaceManager extends EventEmitter {
         this.#defaultRootPath = path.resolve(options.defaultRootPath); // Ensure absolute path
         this.#indexStore = options.indexStore;
 
-        this.#workspaces = new Map();
         debug(`Initializing WorkspaceManager with default rootPath: ${this.#defaultRootPath}`);
     }
 
@@ -124,7 +123,7 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Creates a new workspace directory, config file, and adds it to the index.
-     * @param {string} userId - The identifier used for key prefix (e.g., userEmail).
+     * @param {string} userId - The identifier used for key prefix
      * @param {string} name - The desired name for the workspace.
      * @param {Object} options - Additional options for workspace config.
      * @param {string} options.owner - The ULID of the user who owns this workspace.
@@ -135,7 +134,7 @@ class WorkspaceManager extends EventEmitter {
      */
     async createWorkspace(userId, name, options = {}) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
-        if (!userId) throw new Error('userId (e.g. userEmail) required to create a workspace.');
+        if (!userId) throw new Error('userId required to create a workspace.');
         if (!name) throw new Error('Workspace name required to create a workspace.');
 
         // Check if the user already has a universe workspace
@@ -202,7 +201,7 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Opens a workspace, loading it into memory if not already loaded.
-     * @param {string} userId - The owner identifier (e.g., userEmail).
+     * @param {string} userId - The owner identifier
      * @param {string} workspaceId - The short ID/name of the workspace.
      * @param {string} requestingUserId - The ULID of the user making the request (for ownership check).
      * @returns {Promise<Workspace|null>} The loaded Workspace instance.
@@ -212,8 +211,9 @@ class WorkspaceManager extends EventEmitter {
             throw new Error('WorkspaceManager not initialized. Cannot open workspace.');
         }
         if (!userId || !workspaceId) {
-            throw new Error('userId, workspaceId, and requestingUserId are required to open a workspace.');
+            throw new Error(`userId and workspaceId are required to open a workspace, got userId: ${userId}, workspaceId: ${workspaceId}`);
         }
+
         // This is not the brightest idea but convenient for now
         if (!requestingUserId) {
             requestingUserId = userId;
@@ -306,13 +306,16 @@ class WorkspaceManager extends EventEmitter {
         if (!requestingUserId) {
             requestingUserId = userId;
         }
+
+
         this.#ensureRequiredParams({ userId, workspaceId, requestingUserId }, 'startWorkspace');
 
         const workspaceKey = `${userId}/${workspaceId}`;
+        debug(`Starting workspace ${workspaceKey} for requestingUserId: ${requestingUserId}`);
         let workspace = this.#workspaces.get(workspaceKey);
 
-        // If workspace is not in memory, try to load it
         if (!workspace) {
+            debug(`startWorkspace: Workspace ${workspaceKey} not found in memory, attempting to open...`);
             workspace = await this.openWorkspace(userId, workspaceId, requestingUserId);
             if (!workspace) {
                 debug(`startWorkspace: Could not open workspace ${userId}/${workspaceId}.`);
@@ -474,7 +477,7 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Checks if a workspace instance is currently loaded in memory.
-     * @param {string} ownerId - The owner identifier (e.g., userEmail) used for key construction.
+     * @param {string} ownerId - The owner identifier (e.g., userId) used for key construction.
      * @param {string} workspaceId - The workspace ID (short name).
      * @param {string} requestingUserId - The ULID of the user making the request (for ownership check).
      * @returns {Promise<boolean>} True if the workspace instance is in the memory cache and owned by the requesting user.
@@ -491,7 +494,7 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Checks if a workspace instance is currently loaded AND active (started).
-     * @param {string} ownerId - The owner identifier (e.g., userEmail) used for key construction.
+     * @param {string} ownerId - The owner identifier (e.g., userId) used for key construction.
      * @param {string} workspaceId - The workspace ID (short name).
      * @param {string} requestingUserId - The ULID of the user making the request (for ownership check).
      * @returns {Promise<boolean>} True if the workspace instance is in cache, active, and owned by the user.
@@ -507,8 +510,8 @@ class WorkspaceManager extends EventEmitter {
     }
 
     /**
-     * Lists all workspaces for a given userId (e.g., userEmail).
-     * @param {string} userId - The owner identifier (e.g., userEmail) used for key prefixing.
+     * Lists all workspaces for a given userId (e.g., userId).
+     * @param {string} userId - The owner identifier (e.g., userId) used for key prefixing.
      * @returns {Promise<Array<Object>>} An array of workspace index entry objects.
      */
     async listUserWorkspaces(userId) {
@@ -539,6 +542,7 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Gets a loaded Workspace instance from memory. Alias for openWorkspace.
+     * TODO: This method has to be renamed
      * @param {string} userId - The owner identifier.
      * @param {string} workspaceId - The workspace ID.
      * @param {string} requestingUserId - The ULID of the user making the request.
@@ -971,5 +975,3 @@ export {
     WORKSPACE_STATUS_CODES,
     WORKSPACE_DIRECTORIES,
 };
-
-

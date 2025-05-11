@@ -29,7 +29,9 @@ const WS_EVENTS = {
   CONTEXT_CREATED: 'context:created',
   CONTEXT_UPDATED: 'context:updated',
   CONTEXT_DELETED: 'context:deleted',
-  CONTEXT_URL_CHANGED: 'context:url:changed'
+  CONTEXT_URL_CHANGED: 'context:url:changed',
+  CONTEXT_LOCKED: 'context:locked',
+  CONTEXT_UNLOCKED: 'context:unlocked'
 };
 
 /**
@@ -312,6 +314,204 @@ export default function setupWebSocketHandlers(fastify) {
         connection.lastActivity = Date.now();
       }
       socket.emit('pong', { time: Date.now() });
+    });
+
+    // Handle workspace events
+    socket.on(WS_EVENTS.WORKSPACE_UPDATED, (payload) => {
+      try {
+        if (!payload?.workspaceId) {
+          return socket.emit('error', { message: 'Missing workspaceId in payload' });
+        }
+        fastify.broadcastToWorkspace(payload.workspaceId, WS_EVENTS.WORKSPACE_UPDATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Workspace update error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.WORKSPACE_CREATED, (payload) => {
+      try {
+        if (!payload?.workspaceId) {
+          return socket.emit('error', { message: 'Missing workspaceId in payload' });
+        }
+        fastify.broadcastToWorkspace(payload.workspaceId, WS_EVENTS.WORKSPACE_CREATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Workspace creation error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.WORKSPACE_DELETED, (payload) => {
+      try {
+        if (!payload?.workspaceId) {
+          return socket.emit('error', { message: 'Missing workspaceId in payload' });
+        }
+        fastify.broadcastToWorkspace(payload.workspaceId, WS_EVENTS.WORKSPACE_DELETED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Workspace deletion error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.WORKSPACE_STATUS_CHANGED, (payload) => {
+      try {
+        if (!payload?.workspaceId || !payload?.status) {
+          return socket.emit('error', { message: 'Missing required fields in payload' });
+        }
+        fastify.broadcastToWorkspace(payload.workspaceId, WS_EVENTS.WORKSPACE_STATUS_CHANGED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Workspace status change error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.WORKSPACE_TREE_UPDATED, (payload) => {
+      try {
+        if (!payload?.workspaceId) {
+          return socket.emit('error', { message: 'Missing workspaceId in payload' });
+        }
+        fastify.broadcastToWorkspace(payload.workspaceId, WS_EVENTS.WORKSPACE_TREE_UPDATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Workspace tree update error: ${err.message}` });
+      }
+    });
+
+    // Handle context events
+    socket.on(WS_EVENTS.CONTEXT_CREATED, (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_CREATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context creation error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.CONTEXT_UPDATED, (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload' });
+        }
+        // Validate payload based on operation type
+        if (payload.operation) {
+          switch (payload.operation) {
+            case 'document:inserted':
+            case 'document:update':
+            case 'document:remove':
+            case 'document:delete':
+              if (!payload.document && !payload.documentArray) {
+                return socket.emit('error', { message: 'Missing document or documentArray in payload' });
+              }
+              break;
+          }
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_UPDATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context update error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.CONTEXT_DELETED, (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_DELETED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context deletion error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.CONTEXT_URL_CHANGED, (payload) => {
+      try {
+        if (!payload?.url) {
+          return socket.emit('error', { message: 'Missing url in payload' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_URL_CHANGED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context URL change error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.CONTEXT_LOCKED, (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload' });
+        }
+        if (typeof payload.locked !== 'boolean') {
+          return socket.emit('error', { message: 'Missing or invalid locked status in payload' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_LOCKED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context lock error: ${err.message}` });
+      }
+    });
+
+    socket.on(WS_EVENTS.CONTEXT_UNLOCKED, (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload' });
+        }
+        if (typeof payload.locked !== 'boolean') {
+          return socket.emit('error', { message: 'Missing or invalid locked status in payload' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_UNLOCKED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context unlock error: ${err.message}` });
+      }
+    });
+
+    // Handle document events
+    socket.on('document:insert', (payload) => {
+      try {
+        if (!payload?.documentId) {
+          return socket.emit('error', { message: 'Missing documentId in payload' });
+        }
+        fastify.broadcastToContext(payload.contextId, 'document:insert', payload);
+      } catch (err) {
+        socket.emit('error', { message: `Document insert error: ${err.message}` });
+      }
+    });
+
+    socket.on('document:update', (payload) => {
+      try {
+        if (!payload?.documentId) {
+          return socket.emit('error', { message: 'Missing documentId in payload' });
+        }
+        fastify.broadcastToContext(payload.contextId, 'document:update', payload);
+      } catch (err) {
+        socket.emit('error', { message: `Document update error: ${err.message}` });
+      }
+    });
+
+    socket.on('document:remove', (payload) => {
+      try {
+        if (!payload?.documentId) {
+          return socket.emit('error', { message: 'Missing documentId in payload' });
+        }
+        fastify.broadcastToContext(payload.contextId, 'document:remove', payload);
+      } catch (err) {
+        socket.emit('error', { message: `Document remove error: ${err.message}` });
+      }
+    });
+
+    socket.on('document:delete', (payload) => {
+      try {
+        if (!payload?.documentId) {
+          return socket.emit('error', { message: 'Missing documentId in payload' });
+        }
+        fastify.broadcastToContext(payload.contextId, 'document:delete', payload);
+      } catch (err) {
+        socket.emit('error', { message: `Document delete error: ${err.message}` });
+      }
+    });
+
+    socket.on('documents:delete', (payload) => {
+      try {
+        if (!payload?.count) {
+          return socket.emit('error', { message: 'Missing count in payload' });
+        }
+        fastify.broadcastToContext(payload.contextId, 'documents:delete', payload);
+      } catch (err) {
+        socket.emit('error', { message: `Documents delete error: ${err.message}` });
+      }
     });
 
     // Handle disconnect

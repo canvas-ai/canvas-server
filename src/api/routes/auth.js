@@ -19,30 +19,6 @@ export default async function authRoutes(fastify, options) {
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 6 }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                token: { type: 'string' },
-                user: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    email: { type: 'string' },
-                    name: { type: 'string' }
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -77,31 +53,13 @@ export default async function authRoutes(fastify, options) {
       }
 
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('An unexpected error occurred during login');
+      const response = new ResponseObject().notFound(error.message || 'An unexpected error occurred during login');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
   // Logout endpoint (client-side only)
   fastify.post('/logout', {
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
-      }
-    }
   }, async (request, reply) => {
     const response = new ResponseObject().success({ success: true }, 'Logout successful');
     return reply.code(response.statusCode).send(response.getResponse());
@@ -116,28 +74,6 @@ export default async function authRoutes(fastify, options) {
         properties: {
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 8 }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                user: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    email: { type: 'string' }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -174,22 +110,6 @@ export default async function authRoutes(fastify, options) {
           currentPassword: { type: 'string', minLength: 1 },
           newPassword: { type: 'string', minLength: 8 }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -221,23 +141,6 @@ export default async function authRoutes(fastify, options) {
         properties: {
           email: { type: 'string', format: 'email' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' },
-                message: { type: 'string' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -264,22 +167,6 @@ export default async function authRoutes(fastify, options) {
         properties: {
           token: { type: 'string' },
           newPassword: { type: 'string', minLength: 8 }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -311,23 +198,6 @@ export default async function authRoutes(fastify, options) {
         properties: {
           email: { type: 'string', format: 'email' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' },
-                message: { type: 'string' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -354,22 +224,6 @@ export default async function authRoutes(fastify, options) {
         properties: {
           token: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -390,33 +244,8 @@ export default async function authRoutes(fastify, options) {
 
   // List API tokens endpoint
   fastify.get('/tokens', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  description: { type: 'string' },
-                  created: { type: 'string', format: 'date-time' },
-                  lastUsed: { type: 'string', format: 'date-time' }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
+
   }, async (request, reply) => {
     try {
       const tokens = await authService.listTokens(request.user.id);
@@ -440,26 +269,6 @@ export default async function authRoutes(fastify, options) {
           name: { type: 'string' },
           description: { type: 'string' }
         }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                token: { type: 'string' },
-                name: { type: 'string' },
-                description: { type: 'string' },
-                created: { type: 'string', format: 'date-time' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -470,7 +279,7 @@ export default async function authRoutes(fastify, options) {
         token: token.value,
         name: token.name,
         description: token.description,
-        created: token.createdAt
+        createdAt: token.createdAt
       }, 'API token created successfully');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
@@ -489,22 +298,6 @@ export default async function authRoutes(fastify, options) {
         required: ['tokenId'],
         properties: {
           tokenId: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -541,25 +334,6 @@ export default async function authRoutes(fastify, options) {
           name: { type: 'string' },
           description: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                description: { type: 'string' },
-                updated: { type: 'string', format: 'date-time' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -586,30 +360,6 @@ export default async function authRoutes(fastify, options) {
         required: ['token'],
         properties: {
           token: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                valid: { type: 'boolean' },
-                user: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    email: { type: 'string' },
-                    userType: { type: 'string' }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -640,28 +390,8 @@ export default async function authRoutes(fastify, options) {
 
   // Get current user endpoint
   fastify.get('/me', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                email: { type: 'string' },
-                userType: { type: 'string' },
-                status: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
+
   }, async (request, reply) => {
     // Check if reply has already been sent by auth middleware or other mechanism
     if (reply.sent) {

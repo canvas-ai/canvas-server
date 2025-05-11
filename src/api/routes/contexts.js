@@ -39,37 +39,6 @@ export default async function contextRoutes(fastify, options) {
   // List all contexts
   fastify.get('/', {
     onRequest: [fastify.authenticate],
-    schema: {
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  name: { type: 'string' },
-                  label: { type: 'string' },
-                  description: { type: 'string' },
-                  color: { type: 'string' },
-                  type: { type: 'string' },
-                  owner: { type: 'string' },
-                  status: { type: 'string' },
-                  created: { type: 'string', format: 'date-time' },
-                  updated: { type: 'string', format: 'date-time' }
-                }
-              }
-            },
-            count: { type: 'number' }
-          }
-        }
-      }
-    }
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
@@ -92,43 +61,15 @@ export default async function contextRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['url', 'name'],
+        required: ['id'],
         properties: {
+          id: { type: 'string' },
           url: { type: 'string' },
-          name: { type: 'string' },
+          baseUrl: { type: 'string' },
           description: { type: 'string' },
           workspaceId: { type: 'string' },
           type: { type: 'string', enum: ['context', 'universe'] },
-          metadata: { type: 'object' },
-          acl: { type: 'object' },
-          restApi: { type: 'object' },
-          baseUrl: { type: 'string' }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    url: { type: 'string' },
-                    description: { type: 'string' },
-                    created: { type: 'string', format: 'date-time' },
-                    updated: { type: 'string', format: 'date-time' }
-                  }
-                }
-              }
-            }
-          }
+          metadata: { type: 'object' }
         }
       }
     }
@@ -138,27 +79,16 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      // Check if trying to create a default context when one already exists
-      if (request.body.name === 'default') {
-        const existingContexts = await fastify.contextManager.listUserContexts(request.user.id);
-        const defaultContextExists = existingContexts.some(ctx => ctx.name === 'default');
-        if (defaultContextExists) {
-          const response = new ResponseObject().conflict('A default context already exists');
-          return reply.code(response.statusCode).send(response.getResponse());
-        }
-      }
-
       const context = await fastify.contextManager.createContext(
         request.user.id,
         request.body.url,
         {
-          owner: request.user.id,
+          id: request.body.id,
+          userId: request.user.id,
           type: request.body.type || 'context',
-          name: request.body.name,
+          workspaceId: request.body.workspaceId,
           description: request.body.description || '',
           metadata: request.body.metadata,
-          acl: request.body.acl,
-          restApi: request.body.restApi,
           baseUrl: request.body.baseUrl
         }
       );
@@ -167,7 +97,7 @@ export default async function contextRoutes(fastify, options) {
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to create context');
+      const response = new ResponseObject().serverError('Failed to create context', error.message);
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
@@ -182,31 +112,45 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    url: { type: 'string' },
-                    description: { type: 'string' },
-                    created: { type: 'string', format: 'date-time' },
-                    updated: { type: 'string', format: 'date-time' }
-                  }
-                }
-              }
-            }
-          }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Revert test code and apply the correct structure according to the schema
+      const responseObject = new ResponseObject().found(
+        { context: context.toJSON() }, // Wrap context.toJSON() in a 'context' object
+        'Context retrieved successfully'
+      );
+      const finalResponse = responseObject.getResponse();
+
+      fastify.log.info(finalResponse); // Log the stored response
+      return reply.code(responseObject.statusCode).send(finalResponse); // Send the stored response
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context URL
+  fastify.get('/:id/url', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
         }
       }
     }
@@ -222,11 +166,118 @@ export default async function contextRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found({ context }, 'Context retrieved successfully');
+      const response = new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to get context');
+      const response = new ResponseObject().serverError('Failed to get context URL');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Set context URL
+  fastify.post('/:id/url', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      await context.setUrl(request.body.url);
+      const response = new ResponseObject().success({ url: context.url }, 'Context URL updated successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError(`Failed to set context URL: ${error.message}`);
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context path
+  fastify.get('/:id/path', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found({ path: context.path }, 'Context path retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context path');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Get context path array
+  fastify.get('/:id/path-array', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return reply;
+    }
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found({ pathArray: context.pathArray }, 'Context path array retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to get context path array');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });
@@ -245,35 +296,10 @@ export default async function contextRoutes(fastify, options) {
       body: {
         type: 'object',
         properties: {
-          name: { type: 'string' },
           description: { type: 'string' },
           metadata: { type: 'object' },
           acl: { type: 'object' },
           restApi: { type: 'object' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                context: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    name: { type: 'string' },
-                    description: { type: 'string' },
-                    updated: { type: 'string', format: 'date-time' }
-                  }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -313,16 +339,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -357,17 +373,19 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' }
         }
       },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
+      querystring: {
+        type: 'object',
+        properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          includeServerContext: { type: 'boolean' },
+          includeClientContext: { type: 'boolean' }
         }
       }
     }
@@ -377,18 +395,20 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      const documents = await fastify.contextManager.listDocuments(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
-
-      if (!documents) {
-        const response = new ResponseObject().notFound(`Context with ID ${request.params.id} not found`);
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found(documents, 'Documents retrieved successfully');
+      const { featureArray = [], filterArray = [] } = request.query;
+      const options = {
+        includeServerContext: request.query.includeServerContext,
+        includeClientContext: request.query.includeClientContext
+      };
+
+      const documents = await context.listDocuments(featureArray, filterArray, options);
+      const response = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.length);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -409,31 +429,32 @@ export default async function contextRoutes(fastify, options) {
         }
       },
       body: {
-        type: 'array',
-        items: {
-          type: 'object',
-          required: ['type', 'data'],
-          properties: {
-            type: { type: 'string' },
-            data: { type: 'object' }
-          }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
+        type: 'object',
+        required: ['contextSpec', 'documents'],
+        properties: {
+          contextSpec: { type: 'string' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          documents: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['type', 'data'],
+              properties: {
+                type: { type: 'string' },
+                data: {
+                  type: 'object',
+                  required: ['schema', 'data'],
+                  properties: {
+                    schema: { type: 'string' },
+                    data: { type: 'object' }
+                  }
                 }
               }
             }
@@ -447,19 +468,18 @@ export default async function contextRoutes(fastify, options) {
     }
 
     try {
-      const documents = await fastify.contextManager.insertDocuments(
-        request.user.email,
-        request.params.id,
-        request.user.id,
-        request.body
-      );
-
-      if (!documents) {
-        const response = new ResponseObject().notFound(`Context with ID ${request.params.id} not found`);
+      const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().created(documents, 'Documents inserted successfully');
+      const { featureArray = [], documents } = request.body;
+
+      // Insert the documents
+      const result = await context.insertDocumentArray(documents, featureArray);
+
+      const response = new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -488,27 +508,6 @@ export default async function contextRoutes(fastify, options) {
             id: { type: 'string' },
             type: { type: 'string' },
             data: { type: 'object' }
-          }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            }
           }
         }
       }
@@ -556,22 +555,6 @@ export default async function contextRoutes(fastify, options) {
         items: {
           type: 'string'
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -617,22 +600,6 @@ export default async function contextRoutes(fastify, options) {
         items: {
           type: 'string'
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -672,16 +639,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           id: { type: 'string' },
           docId: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            type: { type: 'string' },
-            data: { type: 'object' }
-          }
         }
       }
     }
@@ -723,19 +680,6 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' },
           abstraction: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -776,19 +720,6 @@ export default async function contextRoutes(fastify, options) {
           id: { type: 'string' },
           hashString: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              type: { type: 'string' },
-              data: { type: 'object' }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -827,36 +758,6 @@ export default async function contextRoutes(fastify, options) {
         required: ['id'],
         properties: {
           id: { type: 'string' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            nodes: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  path: { type: 'string' },
-                  type: { type: 'string' },
-                  data: { type: 'object' }
-                }
-              }
-            },
-            edges: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  source: { type: 'string' },
-                  target: { type: 'string' },
-                  type: { type: 'string' }
-                }
-              }
-            }
-          }
         }
       }
     }
@@ -903,14 +804,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           path: { type: 'string' },
           autoCreateLayers: { type: 'boolean' }
-        }
-      },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' }
-          }
         }
       }
     }
@@ -960,22 +853,6 @@ export default async function contextRoutes(fastify, options) {
           path: { type: 'string' },
           recursive: { type: 'boolean' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1024,22 +901,6 @@ export default async function contextRoutes(fastify, options) {
           from: { type: 'string' },
           to: { type: 'string' },
           recursive: { type: 'boolean' }
-        }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
         }
       }
     }
@@ -1091,22 +952,6 @@ export default async function contextRoutes(fastify, options) {
           to: { type: 'string' },
           recursive: { type: 'boolean' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1155,22 +1000,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           path: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1217,22 +1046,6 @@ export default async function contextRoutes(fastify, options) {
         properties: {
           path: { type: 'string' }
         }
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-            statusCode: { type: 'number' },
-            message: { type: 'string' },
-            payload: {
-              type: 'object',
-              properties: {
-                success: { type: 'boolean' }
-              }
-            }
-          }
-        }
       }
     }
   }, async (request, reply) => {
@@ -1262,3 +1075,4 @@ export default async function contextRoutes(fastify, options) {
     }
   });
 }
+

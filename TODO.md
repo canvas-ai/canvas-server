@@ -10,6 +10,12 @@
 - fix the config class to properly normalize paths(windoze + *nix)
 - Remove user + server priority logic
 
+## Context handling
+
+- We need to ensure 
+  - Context layers will get locked when open in a context
+  - Layers will need to have a in-memory map of userid/contextid locks
+
 ## Workspaces
 
 ```text
