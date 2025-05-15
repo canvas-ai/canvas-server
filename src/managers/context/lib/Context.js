@@ -324,7 +324,7 @@ class Context extends EventEmitter {
         }
 
         this.#clientContextArray = clientContextArray;
-        this.emit('context:updated', { clientContextArray: this.#clientContextArray });
+        this.emit('context:updated', { id: this.#id, clientContextArray: this.#clientContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -332,7 +332,7 @@ class Context extends EventEmitter {
 
     async clearClientContextArray() {
         this.#clientContextArray = [];
-        this.emit('context:updated', { clientContextArray: this.#clientContextArray });
+        this.emit('context:updated', { id: this.#id, clientContextArray: this.#clientContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -344,12 +344,12 @@ class Context extends EventEmitter {
         }
 
         this.#serverContextArray = serverContextArray;
-        this.emit('context:updated', { serverContextArray: this.#serverContextArray });
+        this.emit('context:updated', { id: this.#id, serverContextArray: this.#serverContextArray });
     }
 
     async clearServerContextArray() {
         this.#serverContextArray = [];
-        this.emit('context:updated', { serverContextArray: this.#serverContextArray });
+        this.emit('context:updated', { id: this.#id, serverContextArray: this.#serverContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -394,7 +394,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
-        this.emit('context:url:changed', { url: this.#url });
+        this.emit('context:url:changed', { id: this.#id, url: this.#url });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -435,7 +435,7 @@ class Context extends EventEmitter {
         debug(`Setting base URL from "${this.#baseUrl}" to "${newBaseUrl}"`);
         this.#baseUrl = newBaseUrl;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:updated', { baseUrl: this.#baseUrl });
+        this.emit('context:updated', { id: this.#id, baseUrl: this.#baseUrl });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -447,7 +447,7 @@ class Context extends EventEmitter {
     async lock() {
         this.#isLocked = true;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:locked', { locked: this.#isLocked });
+        this.emit('context:locked', { id: this.#id, locked: this.#isLocked });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -458,7 +458,7 @@ class Context extends EventEmitter {
     async unlock() {
         this.#isLocked = false;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:unlocked', { locked: this.#isLocked });
+        this.emit('context:unlocked', { id: this.#id, locked: this.#isLocked });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -515,7 +515,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = featureArray;
-        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     appendFeatureBitmaps(featureArray) {
@@ -523,7 +523,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray.push(...featureArray);
-        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     removeFeatureBitmaps(featureArray) {
@@ -531,12 +531,12 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = this.#featureBitmapArray.filter((feature) => !featureArray.includes(feature));
-        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     clearFeatureBitmaps() {
         this.#featureBitmapArray = [];
-        this.emit('context:updated', { featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     /**
@@ -570,6 +570,7 @@ class Context extends EventEmitter {
         const result = this.#db.insertDocument(document, contextArray, featureArray, options);
         this.emit('document:insert', document.id || result.id);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:inserted',
             document: document.id || result.id,
             contextArray: this.#contextBitmapArray,
@@ -607,6 +608,7 @@ class Context extends EventEmitter {
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'documentArray:inserted',
             documentArray: documentArray,
             contextArray: this.#contextBitmapArray,
@@ -782,6 +784,7 @@ class Context extends EventEmitter {
 
         this.emit('document:update', document.id);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:update',
             document: document.id,
             contextArray: this.#contextBitmapArray,
@@ -815,6 +818,7 @@ class Context extends EventEmitter {
         const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
 
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:update',
             documentArray: documentArray,
             contextArray: this.#contextBitmapArray,
@@ -836,6 +840,7 @@ class Context extends EventEmitter {
         const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
         this.emit('document:remove', documentId);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:remove',
             document: documentId,
             contextArray: this.#contextBitmapArray,
@@ -869,8 +874,9 @@ class Context extends EventEmitter {
         // We remove documents from the current context not from the database
         const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:remove',
-            documentArray: numericDocumentIdArray, // Emit with numeric IDs as well
+            documentArray: numericDocumentIdArray,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
         });
@@ -901,6 +907,7 @@ class Context extends EventEmitter {
         const result = this.#db.deleteDocument(documentId, this.#pathArray);
         this.emit('document:delete', documentId);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:delete',
             document: documentId,
         });
@@ -930,6 +937,7 @@ class Context extends EventEmitter {
         const result = this.#db.deleteDocumentArray(documentIdArray, this.#pathArray, options);
         this.emit('documents:delete', documentIdArray.length);
         this.emit('context:updated', {
+            id: this.#id,
             operation: 'document:delete',
             documentArray: documentIdArray,
         });

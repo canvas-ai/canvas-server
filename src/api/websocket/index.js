@@ -2,6 +2,7 @@
 
 import { verifyJWT, verifyApiToken, validateUser } from '../auth/strategies.js';
 import { Server } from 'socket.io';
+import registerContextWebSocket from './context.js';
 
 /**
  * WebSocket event types
@@ -253,6 +254,9 @@ export default function setupWebSocketHandlers(fastify) {
       lastActivity: Date.now()
     });
 
+    // Register context websocket events
+    registerContextWebSocket(fastify, socket);
+
     // Send authenticated event
     socket.emit('authenticated', {
       userId: user.id,
@@ -376,18 +380,24 @@ export default function setupWebSocketHandlers(fastify) {
     socket.on(WS_EVENTS.CONTEXT_CREATED, (payload) => {
       try {
         if (!payload?.id) {
-          return socket.emit('error', { message: 'Missing context id in payload' });
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_CREATED' });
         }
-        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_CREATED, payload);
+        if (!socket.user || !socket.user.id) {
+          console.error('[WebSocket] User information missing on socket for CONTEXT_CREATED broadcast');
+          return socket.emit('error', { message: 'Cannot broadcast CONTEXT_CREATED: User unauthenticated or ID missing.' });
+        }
+        // Broadcast to all connections of the user who triggered/owns this event
+        console.log(`[WebSocket] Broadcasting CONTEXT_CREATED for context ${payload.id} to user ${socket.user.id}`);
+        fastify.broadcastToUser(socket.user.id, WS_EVENTS.CONTEXT_CREATED, payload);
       } catch (err) {
-        socket.emit('error', { message: `Context creation error: ${err.message}` });
+        socket.emit('error', { message: `Context creation event error: ${err.message}` });
       }
     });
 
     socket.on(WS_EVENTS.CONTEXT_UPDATED, (payload) => {
       try {
         if (!payload?.id) {
-          return socket.emit('error', { message: 'Missing context id in payload' });
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_UPDATED' });
         }
         // Validate payload based on operation type
         if (payload.operation) {
@@ -421,8 +431,8 @@ export default function setupWebSocketHandlers(fastify) {
 
     socket.on(WS_EVENTS.CONTEXT_URL_CHANGED, (payload) => {
       try {
-        if (!payload?.url) {
-          return socket.emit('error', { message: 'Missing url in payload' });
+        if (!payload?.id || !payload?.url) {
+          return socket.emit('error', { message: 'Missing id or url in payload for CONTEXT_URL_CHANGED' });
         }
         fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_URL_CHANGED, payload);
       } catch (err) {
@@ -433,10 +443,10 @@ export default function setupWebSocketHandlers(fastify) {
     socket.on(WS_EVENTS.CONTEXT_LOCKED, (payload) => {
       try {
         if (!payload?.id) {
-          return socket.emit('error', { message: 'Missing context id in payload' });
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_LOCKED' });
         }
         if (typeof payload.locked !== 'boolean') {
-          return socket.emit('error', { message: 'Missing or invalid locked status in payload' });
+          return socket.emit('error', { message: 'Missing or invalid locked status in payload for CONTEXT_LOCKED' });
         }
         fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_LOCKED, payload);
       } catch (err) {
@@ -447,10 +457,10 @@ export default function setupWebSocketHandlers(fastify) {
     socket.on(WS_EVENTS.CONTEXT_UNLOCKED, (payload) => {
       try {
         if (!payload?.id) {
-          return socket.emit('error', { message: 'Missing context id in payload' });
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_UNLOCKED' });
         }
         if (typeof payload.locked !== 'boolean') {
-          return socket.emit('error', { message: 'Missing or invalid locked status in payload' });
+          return socket.emit('error', { message: 'Missing or invalid locked status in payload for CONTEXT_UNLOCKED' });
         }
         fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_UNLOCKED, payload);
       } catch (err) {
