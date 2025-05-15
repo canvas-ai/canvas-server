@@ -22,7 +22,8 @@ import {
 // Routes
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
-import contextRoutes from './routes/contexts.js';
+import contextRoutes from './routes/contexts/index.js';
+import userRoutes from './routes/users/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
 
@@ -59,7 +60,8 @@ export async function createServer(options = {}) {
     },
     trustProxy: true,
     // Disable response validation for better performance during development
-    disableResponseValidation: true
+    disableResponseValidation: true,
+    ignoreTrailingSlash: true
   });
 
   // Register fastify-jwt FIRST - needed for request.jwtVerify
@@ -258,6 +260,7 @@ export async function createServer(options = {}) {
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
+  server.register(userRoutes, { prefix: '/rest/v2/users' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
 
   // Set up WebSocket handlers before server starts

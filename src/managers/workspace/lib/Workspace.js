@@ -113,7 +113,7 @@ class Workspace extends EventEmitter {
     }
 
     get tree() {
-        if (!this.isActive || !this.#db?.tree) {
+        if (!this.isActive || !this.#db.tree) {
             // console.warn(`Tree not available. Workspace ${this.id} active: ${this.isActive}, DB initialized: ${!!this.#db}`);
             throw new Error(`Tree not available. Workspace ${this.id} is not active or DB is not initialized.`);
         }
@@ -122,7 +122,7 @@ class Workspace extends EventEmitter {
 
     get jsonTree() {
         try {
-            return this.tree?.jsonTree ? this.tree.jsonTree : '{}';
+            return this.#db.jsonTree;
         } catch (error) {
             // This can happen if tree itself throws an error (e.g., not active)
             debug(`Error accessing jsonTree for workspace ${this.id}: ${error.message}`);

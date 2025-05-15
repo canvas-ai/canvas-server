@@ -8,6 +8,22 @@ import ResponseObject from '../../ResponseObject.js';
  * @param {Object} options - Plugin options
  */
 export default async function workspaceTreeRoutes(fastify, options) {
+  // Helper to get workspace and handle common errors
+  async function getWorkspaceInstance(request, reply) {
+    const workspace = await fastify.workspaceManager.getWorkspace(
+      request.user.email, // Assuming user email is still needed for manager access
+      request.params.id,
+      request.user.id
+    );
+    if (!workspace) {
+      const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+      reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      return null;
+    }
+    // Workspace methods have internal #ensureActiveForTreeOp, which will throw if not active.
+    return workspace;
+  }
+
   // Get workspace tree
   fastify.get('/', {
     onRequest: [fastify.authenticate],
@@ -22,23 +38,85 @@ export default async function workspaceTreeRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return; // Error already sent
 
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+      const treeJsonString = workspace.jsonTree; // Use the getter
+      if (treeJsonString === undefined || treeJsonString === null) {
+        fastify.log.warn(`Received null or undefined jsonTree for workspace ${request.params.id}`);
+        const responseObject = new ResponseObject().serverError('Failed to retrieve valid tree data from workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const tree = await workspace.getTree();
-      const responseObject = new ResponseObject().found(tree, 'Workspace tree retrieved successfully');
+      let treeData;
+      try {
+        treeData = treeJsonString;
+      } catch (parseError) {
+        fastify.log.error(`Failed to parse tree JSON for workspace ${request.params.id}: ${parseError.message}. JSON: ${treeJsonString}`);
+        const responseObject = new ResponseObject().serverError('Failed to parse tree data from workspace.');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().found(treeData, 'Workspace tree retrieved successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Get workspace tree error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to get workspace tree');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  // Insert path (Added for consistency, mirrors Contexts tree.js)
+  // Workspace.js has insertPath(path, data = null, autoCreateLayers = true)
+  fastify.post('/paths', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string' },
+          autoCreateLayers: { type: 'boolean' },
+          data: { type: ['object', 'null'], default: null } // data for the node
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
+
+      const result = await workspace.insertPath(
+        request.body.path,
+        request.body.data, // Pass data from request
+        request.body.autoCreateLayers === undefined ? true : request.body.autoCreateLayers
+      );
+      const success = result === true || (typeof result === 'object' && result !== null);
+
+      if (!success) {
+        const responseObject = new ResponseObject().serverError('Failed to insert tree path in workspace.');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+      const responseObject = new ResponseObject().created(true, 'Path inserted successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(`Insert workspace path error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
+      const responseObject = new ResponseObject().serverError('Failed to insert path');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
@@ -56,36 +134,33 @@ export default async function workspaceTreeRoutes(fastify, options) {
       },
       body: {
         type: 'object',
-        required: ['sourcePath', 'targetPath'],
+        required: ['from', 'to'], // Changed from sourcePath, targetPath to from, to
         properties: {
-          sourcePath: { type: 'string' },
-          targetPath: { type: 'string' }
+          from: { type: 'string' }, // Was sourcePath
+          to: { type: 'string' },   // Was targetPath
+          recursive: { type: 'boolean', default: false }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
 
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
-
-      const success = await workspace.movePath(request.body.sourcePath, request.body.targetPath);
+      const success = await workspace.movePath(request.body.from, request.body.to, request.body.recursive);
       if (!success) {
-        const responseObject = new ResponseObject().badRequest('Failed to move path');
+        const responseObject = new ResponseObject().badRequest('Failed to move path in workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
       const responseObject = new ResponseObject().success(true, 'Path moved successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Move workspace path error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to move path');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
@@ -104,78 +179,78 @@ export default async function workspaceTreeRoutes(fastify, options) {
       },
       body: {
         type: 'object',
-        required: ['sourcePath', 'targetPath'],
+        required: ['from', 'to'], // Changed from sourcePath, targetPath to from, to
         properties: {
-          sourcePath: { type: 'string' },
-          targetPath: { type: 'string' }
+          from: { type: 'string' }, // Was sourcePath
+          to: { type: 'string' },   // Was targetPath
+          recursive: { type: 'boolean', default: false }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
 
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
-
-      const success = await workspace.copyPath(request.body.sourcePath, request.body.targetPath);
+      const success = await workspace.copyPath(request.body.from, request.body.to, request.body.recursive);
       if (!success) {
-        const responseObject = new ResponseObject().badRequest('Failed to copy path');
+        const responseObject = new ResponseObject().badRequest('Failed to copy path in workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
       const responseObject = new ResponseObject().success(true, 'Path copied successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Copy workspace path error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to copy path');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
 
   // Remove path
-  fastify.delete('/paths/*', {
+  // Using query parameter for path to be removed for DELETE
+  fastify.delete('/paths', {
     onRequest: [fastify.authenticate],
     schema: {
       params: {
         type: 'object',
-        required: ['id', '*'],
+        required: ['id'],
         properties: {
-          id: { type: 'string' },
-          '*': { type: 'string' }
+          id: { type: 'string' }
+        }
+      },
+      querystring: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string' },
+          recursive: { type: 'boolean', default: false }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
 
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
-
-      const path = '/' + request.params['*'];
-      const success = await workspace.removePath(path);
+      const success = await workspace.removePath(request.query.path, request.query.recursive);
       if (!success) {
-        const responseObject = new ResponseObject().badRequest('Failed to remove path');
+        const responseObject = new ResponseObject().badRequest('Failed to remove path from workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().deleted('Path removed successfully');
+      const responseObject = new ResponseObject().success(true, 'Path removed successfully'); // Or .deleted()
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Remove workspace path error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to remove path');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
@@ -202,27 +277,23 @@ export default async function workspaceTreeRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
-
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
 
       const success = await workspace.mergeUp(request.body.path);
       if (!success) {
-        const responseObject = new ResponseObject().badRequest('Failed to merge layer bitmaps upwards');
+        const responseObject = new ResponseObject().badRequest('Failed to merge layer bitmaps upwards in workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
       const responseObject = new ResponseObject().success(true, 'Layer bitmaps merged upwards successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Merge up workspace error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to merge layer bitmaps upwards');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
@@ -249,27 +320,23 @@ export default async function workspaceTreeRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
-
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
 
       const success = await workspace.mergeDown(request.body.path);
       if (!success) {
-        const responseObject = new ResponseObject().badRequest('Failed to merge layer bitmaps downwards');
+        const responseObject = new ResponseObject().badRequest('Failed to merge layer bitmaps downwards in workspace.');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
       const responseObject = new ResponseObject().success(true, 'Layer bitmaps merged downwards successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
-      fastify.log.error(error);
+      fastify.log.error(`Merge down workspace error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
       const responseObject = new ResponseObject().serverError('Failed to merge layer bitmaps downwards');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }

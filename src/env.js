@@ -43,7 +43,7 @@ export const env = {
         tokenExpiry: process.env.TOKEN_EXPIRY || '7d'
     },
     admin: {
-        email: process.env.CANVAS_ADMIN_EMAIL || 'my@universe.local',
+        email: process.env.CANVAS_ADMIN_EMAIL || 'admin@universe.local',
         password: process.env.CANVAS_ADMIN_PASSWORD || null, // null will trigger auto-generation
         forceReset: process.env.CANVAS_ADMIN_RESET === 'true' || false
     }

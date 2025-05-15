@@ -53,7 +53,11 @@ class ContextManager extends EventEmitter {
         if (this.#initialized) { return this; }
         debug('Initializing context manager: loading stored context IDs...');
 
-        debug(`ContextManager initialized with ${this.#indexStore.size} context(s) in index`);
+        // Log the number of items directly from the store if possible, or after loading.
+        // For a simple Map-like store, size might be available.
+        // If indexStore is more complex, this log might need adjustment.
+        const initialContextCount = typeof this.#indexStore.size === 'function' ? this.#indexStore.size() : (this.#indexStore.store ? Object.keys(this.#indexStore.store).length : 'N/A');
+        debug(`ContextManager initialized with ${initialContextCount} context(s) in index`);
         this.#initialized = true;
         return this;
     }
@@ -80,13 +84,17 @@ class ContextManager extends EventEmitter {
         if (!this.#initialized) {
             throw new Error('ContextManager not initialized');
         }
+
         if (!userId) {
             throw new Error('User ID is required to create a context');
         }
 
+        if (!options.id) {
+            throw new Error('Context ID is required to create a context');
+        }
+
         try {
-            // We need to streamline this part, its context ID whatever the user provides
-            let contextId = options?.id || options?.name;
+            let contextId = options.id;
             contextId = this.#sanitizeContextId(contextId);
 
             // Lets get the context key
@@ -133,82 +141,108 @@ class ContextManager extends EventEmitter {
 
     /**
      * Get a context by ID for a user
-     * @param {string} userId - User ID
-     * @param {string|number} contextId - Context ID (or 'default' for the default context)
+     * @param {string} userId - User ID of the person trying to access the context
+     * @param {string|number} contextIdOrFullIdentifier - Context ID (e.g., 'default', 'myContext') or a full identifier for a shared context (e.g., 'owner@email.com/contextName').
      * @param {Object} options - Options
-     * @param {boolean} [options.autoCreate=false] - Whether to auto-create the context if it doesn't exist
+     * @param {boolean} [options.autoCreate=false] - Whether to auto-create the context if it doesn't exist. This only applies if the context is for the accessing userId.
      * @param {string} [options.url='/'] - URL to use when auto-creating
      * @returns {Promise<Context>} Context instance
      */
-    async getContext(userId, contextId, options = {}) {
+    async getContext(userId, contextIdOrFullIdentifier, options = {}) {
         if (!this.#initialized) {
             throw new Error('ContextManager not initialized');
         }
         if (!userId) {
-            throw new Error('User ID is required');
+            throw new Error('User ID (accessing user) is required');
         }
 
-        if (contextId === undefined || contextId === null) {
-            contextId = 'default';
-        }
+        const { ownerUserId, contextId } = this.#parseContextIdentifier(contextIdOrFullIdentifier, userId);
 
-        const contextKey = this.#constructContextKey(userId, contextId);
+        // Auto-creation should only happen if the accessing user is the owner.
+        // And if the contextId is not a shared context identifier.
+        const canAutoCreate = options.autoCreate && ownerUserId === userId && !contextIdOrFullIdentifier.toString().includes('/');
+
+
+        const contextKey = this.#constructContextKey(ownerUserId, contextId);
         try {
+            let contextInstance = null;
             // Check in-memory cache first
             if (this.#contexts.has(contextKey)) {
                 debug(`Returning cached Context instance for ${contextKey}`);
-                return this.#contexts.get(contextKey);
-            }
+                contextInstance = this.#contexts.get(contextKey);
+            } else {
+                // Try to load from store
+                const storedContextData = this.#indexStore.get(contextKey);
+                if (storedContextData) {
+                    debug(`Context with key "${contextKey}" found in store, loading into memory.`);
+                    if (storedContextData.userId !== ownerUserId) {
+                        // This should ideally not happen if contextKey is correct, but good for sanity.
+                        throw new Error(`Mismatch in owner user ID. Expected ${ownerUserId}, found ${storedContextData.userId} in stored data for key ${contextKey}`);
+                    }
 
-            // Try to load from store
-            const storedContextData = this.#indexStore.get(contextKey);
-            if (storedContextData) {
-                debug(`Context with key "${contextKey}" found in store, loading into memory.`);
+                    const workspace = await this.#workspaceManager.getWorkspace(
+                        ownerUserId, // Use ownerUserId to load the workspace
+                        storedContextData.workspaceId,
+                        ownerUserId  // And ownerUserId for permission to access the workspace
+                    );
 
-                // Load workspace
-                const workspace = await this.#workspaceManager.getWorkspace(
-                    userId, storedContextData.workspaceId, userId
-                );
+                    if (!workspace) {
+                        throw new Error(`Failed to load workspace ${storedContextData.workspaceId} for context ${contextKey}`);
+                    }
 
-                if (!workspace) {
-                    throw new Error(`Failed to load workspace ${storedContextData.workspaceId} for context ${contextKey}`);
+                    const contextOptions = {
+                        ...storedContextData,
+                        // userId here refers to the owner of the context.
+                        userId: ownerUserId,
+                        workspace: workspace,
+                        workspaceManager: this.#workspaceManager,
+                        contextManager: this,
+                    };
+
+                    const loadedContext = new Context(storedContextData.url, contextOptions);
+                    await loadedContext.initialize();
+
+                    this.#contexts.set(contextKey, loadedContext);
+                    contextInstance = loadedContext;
                 }
-
-                const contextOptions = {
-                    ...storedContextData,
-                    userId: userId,
-                    workspace: workspace,
-                    workspaceManager: this.#workspaceManager,
-                    contextManager: this,
-                };
-
-                const loadedContext = new Context(storedContextData.url, contextOptions);
-                await loadedContext.initialize();
-
-                this.#contexts.set(contextKey, loadedContext);
-                return loadedContext;
             }
 
-            // Auto-create if enabled
-            if (options.autoCreate) {
-                debug(`Context with key "${contextKey}" not found, auto-creating`);
+            if (contextInstance) {
+                // Permission check: if accessing user is not the owner, check ACL
+                if (userId !== contextInstance.userId) { // contextInstance.userId is the owner
+                    // For getContext, 'documentRead' is a sensible default required permission
+                    if (!contextInstance.checkPermission(userId, 'documentRead')) {
+                        throw new Error(`Access denied. User ${userId} does not have sufficient permission for context ${contextKey}.`);
+                    }
+                    debug(`User ${userId} granted access to context ${contextKey} owned by ${contextInstance.userId}`);
+                }
+                return contextInstance;
+            }
+
+
+            // Auto-create if enabled and applicable
+            if (canAutoCreate) {
+                debug(`Context with key "${contextKey}" not found for owner ${ownerUserId}, auto-creating as ${userId}`);
+                // When auto-creating, the 'id' option should be the plain contextId, not the full identifier
                 const createOptions = { ...options, id: contextId.toString() };
                 return this.createContext(userId, options.url || '/', createOptions);
             }
 
-            throw new Error(`Context with key "${contextKey}" not found for user ${userId}`);
+            throw new Error(`Context with key "${contextKey}" not found for user ${ownerUserId}`);
         } catch (error) {
-            debug(`Error getting context: ${error.message}`);
+            debug(`Error getting context ${contextKey} for accessing user ${userId}: ${error.message}`);
             throw error;
         }
     }
 
-    hasContext(userId, contextId) {
+    hasContext(userId, contextIdOrFullIdentifier) {
         if (!this.#initialized) {
             throw new Error('ContextManager not initialized');
         }
-
-        const contextKey = this.#constructContextKey(userId, contextId);
+        const { ownerUserId, contextId } = this.#parseContextIdentifier(contextIdOrFullIdentifier, userId);
+        const contextKey = this.#constructContextKey(ownerUserId, contextId);
+        // This check doesn't verify permissions, just existence.
+        // For a true "has access" check, getContext would be needed.
         return this.#contexts.has(contextKey) || this.#indexStore.has(contextKey);
     }
 
@@ -224,31 +258,61 @@ class ContextManager extends EventEmitter {
         if (!userId) throw new Error('User ID is required');
 
         try {
-            const prefix = `${userId}/`;
+            const accessingUserId = userId; // Alias for clarity
             const userContextsArray = [];
             const processedKeys = new Set();
 
-            // Get contexts from in-memory cache
+            // 1. Get contexts owned by the accessingUserId from in-memory cache
+            const ownedPrefix = `${accessingUserId}/`;
             for (const [key, contextInstance] of this.#contexts) {
-                if (key.startsWith(prefix)) {
+                if (key.startsWith(ownedPrefix)) {
                     userContextsArray.push(contextInstance.toJSON());
                     processedKeys.add(key);
                 }
             }
 
-            // Get additional contexts from store
-            const allContextsInStore = this.#indexStore.store;
-            for (const key in allContextsInStore) {
-                if (key.startsWith(prefix) && !processedKeys.has(key)) {
-                    userContextsArray.push(allContextsInStore[key]);
+            // 2. Get contexts from the persistent store
+            const allContextsInStore = this.#indexStore.store; // Assuming .store gives access to the raw data
+            if (allContextsInStore && typeof allContextsInStore === 'object') {
+                for (const key in allContextsInStore) {
+                    if (processedKeys.has(key)) {
+                        continue; // Already processed from in-memory cache
+                    }
+
+                    const storedContextData = allContextsInStore[key];
+                    if (!storedContextData || typeof storedContextData !== 'object') {
+                        debug(`Skipping invalid stored data for key: ${key}`);
+                        continue;
+                    }
+
+                    // Check if it's an owned context (not already in memory)
+                    if (key.startsWith(ownedPrefix)) {
+                        userContextsArray.push(storedContextData);
+                        processedKeys.add(key);
+                    } else {
+                        // 3. Check if it's a context shared with the accessingUserId
+                        // The storedContextData.userId is the owner of this context.
+                        // We need to check storedContextData.acl for the accessingUserId.
+                        if (storedContextData.acl && typeof storedContextData.acl === 'object' && storedContextData.acl[accessingUserId]) {
+                            // The accessingUserId has some level of access to this context.
+                            // We can add a flag or modify the data slightly if needed to indicate it's a shared context.
+                            // For now, just add the raw data.
+                            userContextsArray.push({
+                                ...storedContextData,
+                                isShared: true, // Indicate that this context is accessed via a share
+                                sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
+                            });
+                            processedKeys.add(key); // Mark as processed to avoid duplicates if logic changes
+                        }
+                    }
                 }
             }
 
-            debug(`Listed ${userContextsArray.length} contexts for user ${userId}`);
+            debug(`Listed ${userContextsArray.length} contexts for user ${accessingUserId} (owned and shared)`);
             return userContextsArray;
         } catch (error) {
             debug(`Error listing contexts for user ${userId}: ${error.message}`);
-            return [];
+            return []; // Or rethrow, depending on desired error handling
         }
     }
 
@@ -264,8 +328,10 @@ class ContextManager extends EventEmitter {
         }
 
         if (!userId) throw new Error('User ID is required');
-        if (!contextId || contextId === undefined || contextId === null) {
-            throw new Error('Context ID is required');
+        // For removeContext, contextId should be a simple ID, not a shared one,
+        // as you can only remove your own contexts.
+        if (!contextId || contextId === undefined || contextId === null || contextId.toString().includes('/')) {
+            throw new Error('Valid Context ID is required and cannot be a shared context identifier.');
         }
 
         if (contextId === 'default') {
@@ -335,11 +401,75 @@ class ContextManager extends EventEmitter {
         contextId = contextId.substring(0, 16);
 
         // Ensure it's a string
-        return contextId.toString();
+        return contextId.toString().trim();
     }
 
     #constructContextKey(userId, contextId) {
-        return `${userId}/${contextId}`;
+        return `${userId}/${this.#sanitizeContextId(contextId.toString())}`; // Ensure contextId is sanitized here
+    }
+
+    #parseContextIdentifier(identifier, defaultUserId) {
+        const idStr = identifier.toString();
+        if (idStr.includes('/')) {
+            const parts = idStr.split('/');
+            if (parts.length === 2 && parts[0] && parts[1]) {
+                // Potentially validate email format for parts[0] if needed
+                return { ownerUserId: parts[0], contextId: this.#sanitizeContextId(parts[1]) };
+            } else {
+                throw new Error(`Invalid shared context identifier format: ${idStr}. Expected 'user@email.com/contextId'.`);
+            }
+        }
+        // If no '/', it's a simple contextId, owner is the defaultUserId (usually the accessing user)
+        return { ownerUserId: defaultUserId, contextId: this.#sanitizeContextId(idStr) };
+    }
+
+    async grantContextAccess(requestingUserId, targetContextIdentifier, sharedWithUserId, accessLevel) {
+        if (!this.#initialized) throw new Error('ContextManager not initialized');
+        if (!requestingUserId) throw new Error('Requesting User ID is required.');
+        if (!targetContextIdentifier) throw new Error('Target Context Identifier is required.');
+        if (!sharedWithUserId) throw new Error('User ID to share with is required.');
+        if (!accessLevel) throw new Error('Access level is required.');
+
+        const { ownerUserId, contextId: actualContextId } = this.#parseContextIdentifier(targetContextIdentifier, requestingUserId);
+
+        if (requestingUserId !== ownerUserId) {
+            throw new Error(`Access denied: User ${requestingUserId} is not the owner of context ${targetContextIdentifier}.`);
+        }
+
+        try {
+            // Get the context - this uses the owner's ID to fetch
+            const context = await this.getContext(ownerUserId, actualContextId); // Pass ownerUserId as accessing user for this internal step
+            await context.grantAccess(sharedWithUserId, accessLevel);
+            debug(`Access granted to ${sharedWithUserId} for context ${targetContextIdentifier} with level ${accessLevel} by ${requestingUserId}`);
+            return true;
+        } catch (error) {
+            debug(`Error granting access to context ${targetContextIdentifier}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async revokeContextAccess(requestingUserId, targetContextIdentifier, sharedWithUserId) {
+        if (!this.#initialized) throw new Error('ContextManager not initialized');
+        if (!requestingUserId) throw new Error('Requesting User ID is required.');
+        if (!targetContextIdentifier) throw new Error('Target Context Identifier is required.');
+        if (!sharedWithUserId) throw new Error('User ID to revoke access from is required.');
+
+        const { ownerUserId, contextId: actualContextId } = this.#parseContextIdentifier(targetContextIdentifier, requestingUserId);
+
+        if (requestingUserId !== ownerUserId) {
+            throw new Error(`Access denied: User ${requestingUserId} is not the owner of context ${targetContextIdentifier}.`);
+        }
+
+        try {
+            // Get the context - this uses the owner's ID to fetch
+            const context = await this.getContext(ownerUserId, actualContextId); // Pass ownerUserId as accessing user for this internal step
+            await context.revokeAccess(sharedWithUserId);
+            debug(`Access revoked from ${sharedWithUserId} for context ${targetContextIdentifier} by ${requestingUserId}`);
+            return true;
+        } catch (error) {
+            debug(`Error revoking access from context ${targetContextIdentifier}: ${error.message}`);
+            throw error;
+        }
     }
 
 }
