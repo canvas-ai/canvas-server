@@ -3,7 +3,6 @@
 // Utils
 import path from 'path';
 import EventEmitter from 'eventemitter2';
-import { generateULID } from '../../../utils/id.js';
 
 // Logging
 import logger, { createDebug } from '../../../utils/log/index.js';
@@ -59,7 +58,7 @@ class Workspace extends EventEmitter {
             }
         }
 
-        debug(`Workspace instance created for ID: ${this.id}, Name: ${this.name}, RootPath: ${this.rootPath}, Initial Status: ${this.#status}`);
+        debug(`Workspace instance created for ID: ${this.id}, rootPath: ${this.rootPath}, Initial Status: ${this.#status}`);
     }
 
     /**
@@ -74,9 +73,8 @@ class Workspace extends EventEmitter {
 
     // Persisted Configuration Getters (from configStore)
     get id() { return this.#configStore?.get('id'); }
-    get name() { return this.#configStore?.get('name'); }
-    get label() { return this.#configStore?.get('label', this.name); } // Fallback to name if label not set
-    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.name}`); }
+    get label() { return this.#configStore?.get('label', this.id); }
+    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.id}`); }
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); } // User ULID
@@ -146,7 +144,11 @@ class Workspace extends EventEmitter {
     }
 
     async setLabel(label) {
-        return this.#updateConfig('label', String(label || this.name));
+        if (!label) {
+            console.warn(`Invalid label for workspace ${this.id}. Must be a non-empty string.`);
+            return false;
+        }
+        return this.#updateConfig('label', String(label));
     }
 
     async setMetadata(metadata) {
@@ -221,14 +223,14 @@ class Workspace extends EventEmitter {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder
             this.setStatus(WORKSPACE_STATUS_CODES.ACTIVE);
-            this.emit('workspace:started', { id: this.id, name: this.name });
+            this.emit('workspace:started', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             console.error(`Failed to start workspace "${this.id}": ${err.message}`);
             await this.#shutdownResources(); // Ensure cleanup
             this.setStatus(WORKSPACE_STATUS_CODES.ERROR); // Set to error state on failed start
-            this.emit('workspace:start_failed', { id: this.id, name: this.name, error: err.message });
+            this.emit('workspace:start_failed', { id: this.id, error: err.message });
             throw err; // Re-throw to allow WorkspaceManager to handle index status
         }
     }
@@ -251,7 +253,7 @@ class Workspace extends EventEmitter {
             // await this.#shutdownRoles(); // Placeholder
             const previousStatus = this.#status;
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE);
-            this.emit('workspace:stopped', { id: this.id, name: this.name, previousStatus });
+            this.emit('workspace:stopped', { id: this.id, previousStatus: previousStatus });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
@@ -259,7 +261,7 @@ class Workspace extends EventEmitter {
             // Even if shutdown fails, set status to INACTIVE or ERROR?
             // Setting to INACTIVE seems safer as resources are likely down or in an unknown state.
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE); // Or ERROR depending on desired recovery behavior
-            this.emit('workspace:stop_failed', { id: this.id, name: this.name, error: err.message });
+            this.emit('workspace:stop_failed', { id: this.id, error: err.message });
             return false; // Indicate stop had issues
         }
     }
@@ -686,8 +688,7 @@ class Workspace extends EventEmitter {
         return {
             ...this.config, // Get all persisted config from configStore
             // Append/override with runtime or essential derived values
-            id: this.id, // ensure id from getter is present
-            name: this.name,
+            id: this.id,
             label: this.label,
             description: this.description,
             color: this.color,

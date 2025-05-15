@@ -25,6 +25,9 @@ class Context extends EventEmitter {
     #pathArray;
     #userId;
 
+    // Access Control List
+    #acl;
+
     // Runtime Context arrays
     #serverContextArray; // server/os/linux, server/version/1.0.0, server/datetime/, server/ip/192.168.1.1
     #clientContextArray; // client/os/linux, client/app/firefox, client/datetime/, client/user/john.doe
@@ -88,6 +91,9 @@ class Context extends EventEmitter {
         // Context metadata
         this.#createdAt = options.createdAt || new Date().toISOString();
         this.#updatedAt = options.updatedAt || new Date().toISOString();
+
+        // ACL
+        this.#acl = options.acl || {};
 
         // Server Context
         this.#serverContextArray = options.serverContextArray || [];
@@ -186,6 +192,7 @@ class Context extends EventEmitter {
             filter: this.#filterArray,
         };
     }
+    get acl() { return this.#acl; }
     get serverContextArray() { return this.#serverContextArray; }
     get clientContextArray() { return this.#clientContextArray; }
     get contextBitmapArray() { return this.#contextBitmapArray; }
@@ -195,6 +202,26 @@ class Context extends EventEmitter {
     /**
      * Context API
      */
+
+    async shareContext(contextId, userId, accessLevel = 'read') {
+        if (!this.#acl[contextId]) {
+            this.#acl[contextId] = [];
+        }
+        this.#acl[contextId].push({ userId, accessLevel });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
+    }
+
+    async unshareContext(contextId, userId) {
+        if (this.#acl[contextId]) {
+            this.#acl[contextId] = this.#acl[contextId].filter((entry) => entry.userId !== userId);
+        }
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
+    }
+
 
     async setClientContextArray(clientContextArray) {
         if (!Array.isArray(clientContextArray)) {
@@ -755,6 +782,7 @@ class Context extends EventEmitter {
             path: this.#path,
             pathArray: this.#pathArray,
             workspaceId: this.#workspace?.id,
+            acl: this.#acl,
             createdAt: this.#createdAt,
             updatedAt: this.#updatedAt,
             locked: this.#isLocked,

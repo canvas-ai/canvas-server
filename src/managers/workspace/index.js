@@ -20,7 +20,7 @@ import Workspace from './lib/Workspace.js';
  * Constants
  */
 
-// Workspace ID format: user.id/workspace.name
+// Workspace ID format: user.id/workspace.id
 // Example: user123/my-project
 // Example: user@domain.com/my-project
 // We need to cleanup the whole implementation!
@@ -51,8 +51,7 @@ const WORKSPACE_STATUS_CODES = {
 // Default configuration template for a new workspace's workspace.json
 // Keeping things minimal for now
 const DEFAULT_WORKSPACE_CONFIG = {
-    id: null, // Set to user.id/workspace.name
-    name: null,
+    id: null, // Set to user.id/workspace.id
     owner: null, // User ID (email)
     type: 'workspace', // "workspace" or "universe" (user home directory)
     label: 'Workspace',
@@ -124,7 +123,7 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Creates a new workspace directory, config file, and adds it to the index.
      * @param {string} userId - The identifier used for key prefix
-     * @param {string} name - The desired name for the workspace.
+     * @param {string} workspaceId - The desired workspaceId for the workspace.
      * @param {Object} options - Additional options for workspace config.
      * @param {string} options.owner - The ULID of the user who owns this workspace.
      * @param {string} [options.rootPath] - Custom root for this workspace path.
@@ -132,27 +131,25 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} [options.type='workspace'] - Type of workspace.
      * @returns {Promise<Object>} The index entry of the newly created workspace.
      */
-    async createWorkspace(userId, name, options = {}) {
+    async createWorkspace(userId, workspaceId, options = {}) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
         if (!userId) throw new Error('userId required to create a workspace.');
-        if (!name) throw new Error('Workspace name required to create a workspace.');
+        if (!workspaceId) throw new Error('Workspace ID required to create a workspace.');
 
-        // Check if the user already has a universe workspace
-        if (options.type === 'universe') {
-            const universeWorkspaceKey = `${userId}/universe`;
-            if (this.#indexStore.has(universeWorkspaceKey)) {
-                throw new Error(`User ${userId} already has a universe workspace. Only one universe workspace is allowed per user.`);
-            }
+        // Sanitize the workspace ID
+        workspaceId = this.#sanitizeWorkspaceId(workspaceId);
+
+        // Construct the workspace key
+        const workspaceKey = this.#constructWorkspaceKey(userId, workspaceId);
+
+        if (this.#indexStore.has(workspaceKey)) {
+            throw new Error(`Workspace with key "${workspaceKey}" already exists for user ${userId}.`);
         }
-
-        const sanitizedName = WorkspaceManager.sanitizeWorkspaceName(name);
-        const workspaceId = (options.type === 'universe') ? 'universe' : sanitizedName;
-        const workspaceKey = `${userId}/${workspaceId}`;
 
         // Determine workspace directory path
         const workspaceDir = options.workspacePath ||
-                            (options.rootPath ? path.join(options.rootPath, sanitizedName) :
-                            path.join(this.#defaultRootPath, userId, WORKSPACE_DIRECTORIES.workspaces, sanitizedName));
+                            (options.rootPath ? path.join(options.rootPath, workspaceId) :
+                            path.join(this.#defaultRootPath, userId, WORKSPACE_DIRECTORIES.workspaces, workspaceId));
         debug(`Using workspace path: ${workspaceDir}`);
 
         // Validate and create workspace
@@ -176,9 +173,8 @@ class WorkspaceManager extends EventEmitter {
         const isUniverse = options.type === 'universe';
         const configData = {
             ...DEFAULT_WORKSPACE_CONFIG,
-            id: workspaceId,
-            name: isUniverse ? 'Universe' : sanitizedName,
-            label: isUniverse ? 'Universe' : options.label || name,
+            id: (isUniverse ? 'universe' : workspaceId),
+            label: isUniverse ? 'Universe' : (options.label || workspaceId),
             description: isUniverse ? 'And then there was geometry..' : options.description || '',
             owner: userId,
             color: isUniverse ? '#FFFFFF' : options.color || WorkspaceManager.getRandomColor(),
@@ -194,7 +190,7 @@ class WorkspaceManager extends EventEmitter {
         // Create index entry
         const indexEntry = { ...configData, rootPath: workspaceDir, configPath: workspaceConfigPath, status: WORKSPACE_STATUS_CODES.AVAILABLE, lastAccessed: null };
         this.#indexStore.set(workspaceKey, indexEntry);
-        this.emit('workspace:created', { userId, workspaceId, name: sanitizedName, workspaceKey, workspace: indexEntry });
+        this.emit('workspace:created', { userId, workspaceId, workspaceKey, workspace: indexEntry });
         debug(`Workspace created: ${workspaceKey}`);
         return indexEntry;
     }
@@ -721,22 +717,6 @@ class WorkspaceManager extends EventEmitter {
      */
 
     /**
-     * Sanitizes a workspace name.
-     * @param {string} name - The workspace name.
-     * @returns {string} The sanitized name.
-     * @static
-     */
-    static sanitizeWorkspaceName(name) {
-        if (!name) return 'untitled';
-        return name.toString().toLowerCase()
-            .replace(/\s+/g, '-')           // Replace spaces with hyphens
-            .replace(/[^a-z0-9-]/g, '')    // Remove characters not a-z, 0-9, or hyphen
-            .replace(/--+/g, '-')          // Replace multiple hyphens with single
-            .replace(/^-+/, '')             // Trim hyphens from start
-            .replace(/-+$/, '');            // Trim hyphens from end
-    }
-
-    /**
      * Get a random color for workspace
      * @returns {string} Random color
      * @static
@@ -769,8 +749,26 @@ class WorkspaceManager extends EventEmitter {
     }
 
     /**
-     * Private Helper Methods
+     * Private Methods
      */
+
+    #sanitizeWorkspaceId(workspaceId) {
+        if (!workspaceId) return 'untitled';
+        let sanitized = workspaceId.toString().toLowerCase().trim();
+
+        // Remove all special characters except "_", "-"
+        sanitized = sanitized.replace(/[^a-z0-9-_]/g, '');
+
+        // Replace spaces with hyphens
+        sanitized = sanitized.replace(/\s+/g, '-');
+
+        // Return the sanitized workspaceId
+        return sanitized;
+    }
+
+    #constructWorkspaceKey(userId, workspaceId) {
+        return `${userId}/${workspaceId}`;
+    }
 
     /**
      * Pre-creates all subdirectories defined in WORKSPACE_DIRECTORIES.
@@ -941,21 +939,6 @@ class WorkspaceManager extends EventEmitter {
                 }
             }
         }
-    }
-
-    #validateWorkspaceConfig(config) {
-        if (!config) {
-            throw new Error('Workspace config is required');
-        }
-
-        if (!config.id) {
-            throw new Error('Workspace config must have an id.');
-        }
-
-        if (config.color && !WorkspaceManager.validateWorkspaceColor(config.color)) {
-            console.warn(`Invalid color value "${config.color}" for workspace ${config.id}.`);
-        }
-
     }
 
     /**

@@ -87,10 +87,10 @@ class ContextManager extends EventEmitter {
         try {
             // We need to streamline this part, its context ID whatever the user provides
             let contextId = options?.id || options?.name;
-            if (contextId === undefined || contextId === null || contextId === '') {
-                contextId = 'default';
-            }
-            const contextKey = `${userId}/${contextId}`;
+            contextId = this.#sanitizeContextId(contextId);
+
+            // Lets get the context key
+            const contextKey = this.#constructContextKey(userId, contextId);
 
             if (this.#contexts.has(contextKey) || this.#indexStore.has(contextKey)) {
                 throw new Error(`Context with key ${contextKey} already exists`);
@@ -152,7 +152,7 @@ class ContextManager extends EventEmitter {
             contextId = 'default';
         }
 
-        const contextKey = `${userId}/${contextId}`;
+        const contextKey = this.#constructContextKey(userId, contextId);
         try {
             // Check in-memory cache first
             if (this.#contexts.has(contextKey)) {
@@ -208,8 +208,8 @@ class ContextManager extends EventEmitter {
             throw new Error('ContextManager not initialized');
         }
 
-        const contextKey = `${userId}/${contextId}`;
-        return this.#contexts.has(contextKey) || this.#indexStore.has(contextKey); 
+        const contextKey = this.#constructContextKey(userId, contextId);
+        return this.#contexts.has(contextKey) || this.#indexStore.has(contextKey);
     }
 
     /**
@@ -273,7 +273,7 @@ class ContextManager extends EventEmitter {
         }
 
         try {
-            const contextKey = `${userId}/${contextId}`;
+            const contextKey = this.#constructContextKey(userId, contextId);
 
             if (this.#contexts.has(contextKey)) {
                 const context = this.#contexts.get(contextKey);
@@ -310,13 +310,36 @@ class ContextManager extends EventEmitter {
             throw new Error(`Invalid context data: ${JSON.stringify(context)}`);
         };
 
-        const contextKey = `${userId}/${context.id}`;
+        const contextKey = this.#constructContextKey(userId, context.id);
         const contextData = context.toJSON();
 
         // Save to in-memory cache
         this.#contexts.set(contextKey, context);
         this.#indexStore.set(contextKey, contextData);
         debug(`Saved context with key ${contextKey}`);
+    }
+
+    /**
+     * Private methods
+     */
+
+    #sanitizeContextId(contextId) {
+        if (contextId === undefined || contextId === null || contextId === '') {
+            contextId = 'default';
+        }
+
+        // Remove all special characters
+        contextId = contextId.replace(/[^a-zA-Z0-9]/g, '');
+
+        // Limit to 16 characters
+        contextId = contextId.substring(0, 16);
+
+        // Ensure it's a string
+        return contextId.toString();
+    }
+
+    #constructContextKey(userId, contextId) {
+        return `${userId}/${contextId}`;
     }
 
 }
