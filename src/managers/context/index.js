@@ -130,7 +130,11 @@ class ContextManager extends EventEmitter {
             await context.initialize();
 
             this.saveContext(userId, context);
-            this.emit('context:created', { userId, contextId: context.id, contextKey });
+
+            // Emit the context:created event with a consistent payload structure including id
+            const contextData = context.toJSON();
+            this.emit('context:created', { id: context.id, ...contextData });
+            debug(`Context created with ID ${context.id} and emitted context:created event`);
 
             return context;
         } catch (error) {
@@ -383,6 +387,27 @@ class ContextManager extends EventEmitter {
         this.#contexts.set(contextKey, context);
         this.#indexStore.set(contextKey, contextData);
         debug(`Saved context with key ${contextKey}`);
+
+        // Forward relevant events from the context instance to the manager
+        // This ensures all context events are accessible at the manager level
+        if (!context._eventsForwarded) {
+            const forwardEvent = (eventName) => {
+                context.on(eventName, (payload) => {
+                    debug(`Forwarding ${eventName} event from context ${context.id} to ContextManager`);
+                    this.emit(eventName, payload);
+                });
+            };
+
+            // Forward each important event type
+            forwardEvent('context:url:changed');
+            forwardEvent('context:updated');
+            forwardEvent('context:locked');
+            forwardEvent('context:unlocked');
+            forwardEvent('context:deleted');
+
+            // Mark this context as having its events forwarded
+            context._eventsForwarded = true;
+        }
     }
 
     /**

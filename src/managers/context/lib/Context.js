@@ -224,7 +224,7 @@ class Context extends EventEmitter {
 
         this.#acl[sharedWithUserId] = accessLevel;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:acl:updated', { userId: sharedWithUserId, accessLevel });
+        this.emit('context:acl:updated', { id: this.#id, userId: sharedWithUserId, accessLevel });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -248,7 +248,7 @@ class Context extends EventEmitter {
         if (this.#acl[sharedWithUserId]) {
             delete this.#acl[sharedWithUserId];
             this.#updatedAt = new Date().toISOString();
-            this.emit('context:acl:revoked', { userId: sharedWithUserId });
+            this.emit('context:acl:revoked', { id: this.#id, userId: sharedWithUserId });
 
             // Save changes to index
             await this.#contextManager.saveContext(this.#userId, this);

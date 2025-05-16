@@ -13,7 +13,11 @@ export default function registerContextWebSocket(fastify, socket) {
   function ensureUser(cb) {
     const userId = getUserId();
     if (!userId) {
-      cb(new ResponseObject().unauthorized('Valid authentication required').getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().unauthorized('Valid authentication required').getResponse());
+      } else {
+        socket.emit('error', { message: 'Valid authentication required' });
+      }
       return null;
     }
     return userId;
@@ -21,27 +25,66 @@ export default function registerContextWebSocket(fastify, socket) {
 
   // --- Context Lifecycle Events ---
   socket.on('context:list', async (cb) => {
-    const userId = ensureUser(cb);
-    if (!userId) return;
+    const userId = getUserId();
+    if (!userId) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().unauthorized('Valid authentication required').getResponse());
+      } else {
+        socket.emit('error', { message: 'Valid authentication required' });
+      }
+      return;
+    }
+
     try {
       const contexts = await fastify.contextManager.listUserContexts(userId);
-      cb(new ResponseObject().found(contexts, 'Contexts retrieved successfully', 200, contexts.length).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().found(contexts, 'Contexts retrieved successfully', 200, contexts.length).getResponse());
+      } else {
+        // If no callback provided, emit the response as an event
+        socket.emit('context:list:result', new ResponseObject().found(contexts, 'Contexts retrieved successfully', 200, contexts.length).getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to list contexts', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to list contexts', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to list contexts: ${err.message}` });
+      }
     }
   });
 
   socket.on('context:get', async (contextId, cb) => {
-    const userId = ensureUser(cb);
-    if (!userId) return;
+    const userId = getUserId();
+    if (!userId) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().unauthorized('Valid authentication required').getResponse());
+      } else {
+        socket.emit('error', { message: 'Valid authentication required' });
+      }
+      return;
+    }
+
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          socket.emit('error', { message: 'Context not found' });
+        }
+        return;
       }
-      cb(new ResponseObject().found({ context: context.toJSON() }, 'Context retrieved successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().found({ context: context.toJSON() }, 'Context retrieved successfully').getResponse());
+      } else {
+        socket.emit('context:get:result', new ResponseObject().found({ context: context.toJSON() }, 'Context retrieved successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to get context', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to get context', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to get context: ${err.message}` });
+      }
     }
   });
 
@@ -52,11 +95,24 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
-      cb(new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully').getResponse());
+      } else {
+        socket.emit('context:url:get:result', new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to get context URL', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to get context URL', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to get context URL: ${err.message}` });
+      }
     }
   });
 
@@ -66,12 +122,28 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
+      // Let the context update its URL - this will emit context:url:changed event
+      // which is handled at the API level to broadcast to websocket clients
       await context.setUrl(url);
-      cb(new ResponseObject().updated({ url: context.url }, 'Context URL updated successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().updated({ url: context.url }, 'Context URL updated successfully').getResponse());
+      } else {
+        socket.emit('context:url:set:result', new ResponseObject().updated({ url: context.url }, 'Context URL updated successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to set context URL', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to set context URL', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to set context URL: ${err.message}` });
+      }
     }
   });
 
@@ -82,12 +154,26 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
       const dbResult = await context.listDocuments(userId, featureArray, filterArray, options);
-      cb(new ResponseObject().found(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count).getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().found(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count).getResponse());
+      } else {
+        socket.emit('context:documents:list:result', new ResponseObject().found(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count).getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to list documents', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to list documents', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to list documents: ${err.message}` });
+      }
     }
   });
 
@@ -97,12 +183,26 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
       const result = await context.insertDocumentArray(userId, documents, featureArray, options);
-      cb(new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length).getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length).getResponse());
+      } else {
+        socket.emit('context:documents:insert:result', new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length).getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to insert documents', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to insert documents', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to insert documents: ${err.message}` });
+      }
     }
   });
 
@@ -112,12 +212,26 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
       const result = await context.updateDocumentArray(userId, documents, featureArray, options);
-      cb(new ResponseObject().updated(result, 'Documents updated successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().updated(result, 'Documents updated successfully').getResponse());
+      } else {
+        socket.emit('context:documents:update:result', new ResponseObject().updated(result, 'Documents updated successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to update documents', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to update documents', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to update documents: ${err.message}` });
+      }
     }
   });
 
@@ -127,12 +241,26 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
       const result = await context.removeDocumentArray(userId, documentIdArray);
-      cb(new ResponseObject().deleted('Documents removed from context successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().deleted('Documents removed from context successfully').getResponse());
+      } else {
+        socket.emit('context:documents:remove:result', new ResponseObject().deleted('Documents removed from context successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to remove documents', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to remove documents', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to remove documents: ${err.message}` });
+      }
     }
   });
 
@@ -142,12 +270,143 @@ export default function registerContextWebSocket(fastify, socket) {
     try {
       const context = await fastify.contextManager.getContext(userId, contextId);
       if (!context) {
-        return cb(new ResponseObject().notFound('Context not found').getResponse());
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
       }
+
       const result = await context.deleteDocumentArrayFromDb(userId, documentIdArray);
-      cb(new ResponseObject().deleted('Documents deleted from database successfully').getResponse());
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().deleted('Documents deleted from database successfully').getResponse());
+      } else {
+        socket.emit('context:documents:delete:result', new ResponseObject().deleted('Documents deleted from database successfully').getResponse());
+      }
     } catch (err) {
-      cb(new ResponseObject().serverError('Failed to delete documents', err.message).getResponse());
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to delete documents', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to delete documents: ${err.message}` });
+      }
+    }
+  });
+
+  // --- Single Document Events ---
+  socket.on('context:document:insert', async ({ contextId, document, featureArray = [], options = {} }, cb) => {
+    const userId = ensureUser(cb);
+    if (!userId) return;
+    try {
+      const context = await fastify.contextManager.getContext(userId, contextId);
+      if (!context) {
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
+      }
+
+      const result = await context.insertDocumentArray(userId, [document], featureArray, options);
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().created(result[0], 'Document inserted successfully').getResponse());
+      } else {
+        socket.emit('context:document:insert:result', new ResponseObject().created(result[0], 'Document inserted successfully').getResponse());
+      }
+    } catch (err) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to insert document', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to insert document: ${err.message}` });
+      }
+    }
+  });
+
+  socket.on('context:document:update', async ({ contextId, document, featureArray = [], options = {} }, cb) => {
+    const userId = ensureUser(cb);
+    if (!userId) return;
+    try {
+      const context = await fastify.contextManager.getContext(userId, contextId);
+      if (!context) {
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
+      }
+
+      const result = await context.updateDocumentArray(userId, [document], featureArray, options);
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().updated(result[0], 'Document updated successfully').getResponse());
+      } else {
+        socket.emit('context:document:update:result', new ResponseObject().updated(result[0], 'Document updated successfully').getResponse());
+      }
+    } catch (err) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to update document', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to update document: ${err.message}` });
+      }
+    }
+  });
+
+  socket.on('context:document:remove', async ({ contextId, documentId }, cb) => {
+    const userId = ensureUser(cb);
+    if (!userId) return;
+    try {
+      const context = await fastify.contextManager.getContext(userId, contextId);
+      if (!context) {
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
+      }
+
+      const result = await context.removeDocumentArray(userId, [documentId]);
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().deleted('Document removed from context successfully').getResponse());
+      } else {
+        socket.emit('context:document:remove:result', new ResponseObject().deleted('Document removed from context successfully').getResponse());
+      }
+    } catch (err) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to remove document', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to remove document: ${err.message}` });
+      }
+    }
+  });
+
+  socket.on('context:document:delete', async ({ contextId, documentId }, cb) => {
+    const userId = ensureUser(cb);
+    if (!userId) return;
+    try {
+      const context = await fastify.contextManager.getContext(userId, contextId);
+      if (!context) {
+        if (typeof cb === 'function') {
+          return cb(new ResponseObject().notFound('Context not found').getResponse());
+        } else {
+          return socket.emit('error', { message: 'Context not found' });
+        }
+      }
+
+      const result = await context.deleteDocumentArrayFromDb(userId, [documentId]);
+
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().deleted('Document deleted from database successfully').getResponse());
+      } else {
+        socket.emit('context:document:delete:result', new ResponseObject().deleted('Document deleted from database successfully').getResponse());
+      }
+    } catch (err) {
+      if (typeof cb === 'function') {
+        cb(new ResponseObject().serverError('Failed to delete document', err.message).getResponse());
+      } else {
+        socket.emit('error', { message: `Failed to delete document: ${err.message}` });
+      }
     }
   });
 }

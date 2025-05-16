@@ -32,7 +32,11 @@ const WS_EVENTS = {
   CONTEXT_DELETED: 'context:deleted',
   CONTEXT_URL_CHANGED: 'context:url:changed',
   CONTEXT_LOCKED: 'context:locked',
-  CONTEXT_UNLOCKED: 'context:unlocked'
+  CONTEXT_UNLOCKED: 'context:unlocked',
+
+  // ACL events
+  CONTEXT_ACL_UPDATED: 'context:acl:updated',
+  CONTEXT_ACL_REVOKED: 'context:acl:revoked'
 };
 
 /**
@@ -386,14 +390,16 @@ export default function setupWebSocketHandlers(fastify) {
           console.error('[WebSocket] User information missing on socket for CONTEXT_CREATED broadcast');
           return socket.emit('error', { message: 'Cannot broadcast CONTEXT_CREATED: User unauthenticated or ID missing.' });
         }
-        // Broadcast to all connections of the user who triggered/owns this event
-        console.log(`[WebSocket] Broadcasting CONTEXT_CREATED for context ${payload.id} to user ${socket.user.id}`);
+        // Broadcast full context JSON to all user connections
         fastify.broadcastToUser(socket.user.id, WS_EVENTS.CONTEXT_CREATED, payload);
       } catch (err) {
         socket.emit('error', { message: `Context creation event error: ${err.message}` });
       }
     });
 
+    // CONTEXT_UPDATED always sends the full context JSON (including URL and all params).
+    // The frontend should listen for CONTEXT_UPDATED and update context state accordingly.
+    // CONTEXT_URL_CHANGED is only needed for legacy or very specific cases.
     socket.on(WS_EVENTS.CONTEXT_UPDATED, (payload) => {
       try {
         if (!payload?.id) {
@@ -465,6 +471,29 @@ export default function setupWebSocketHandlers(fastify) {
         fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_UNLOCKED, payload);
       } catch (err) {
         socket.emit('error', { message: `Context unlock error: ${err.message}` });
+      }
+    });
+
+    // Handle context ACL events
+    socket.on('context:acl:updated', (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_ACL_UPDATED' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_ACL_UPDATED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context ACL update error: ${err.message}` });
+      }
+    });
+
+    socket.on('context:acl:revoked', (payload) => {
+      try {
+        if (!payload?.id) {
+          return socket.emit('error', { message: 'Missing context id in payload for CONTEXT_ACL_REVOKED' });
+        }
+        fastify.broadcastToContext(payload.id, WS_EVENTS.CONTEXT_ACL_REVOKED, payload);
+      } catch (err) {
+        socket.emit('error', { message: `Context ACL revoke error: ${err.message}` });
       }
     });
 
