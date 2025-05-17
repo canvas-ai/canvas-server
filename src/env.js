@@ -24,8 +24,15 @@ export const env = {
         logLevel: process.env.LOG_LEVEL || 'info',
         api: {
             enabled: process.env.CANVAS_DISABLE_API || true,
+            protocol: process.env.CANVAS_API_PROTOCOL || 'http',
             port: process.env.CANVAS_API_PORT || 8001, // Needs to be changed in ./src/ui/web/.env ..for now
             host: process.env.CANVAS_API_HOST || '0.0.0.0'
+        },
+        web: {
+            enabled: process.env.CANVAS_DISABLE_WEB || true,
+            protocol: process.env.CANVAS_WEB_PROTOCOL || 'http',
+            port: process.env.CANVAS_WEB_PORT || 8001,
+            host: process.env.CANVAS_WEB_HOST || '0.0.0.0'
         }
     },
     user: {
@@ -36,7 +43,7 @@ export const env = {
         tokenExpiry: process.env.TOKEN_EXPIRY || '7d'
     },
     admin: {
-        email: process.env.CANVAS_ADMIN_EMAIL || 'my@universe.local',
+        email: process.env.CANVAS_ADMIN_EMAIL || 'admin@universe.local',
         password: process.env.CANVAS_ADMIN_PASSWORD || null, // null will trigger auto-generation
         forceReset: process.env.CANVAS_ADMIN_RESET === 'true' || false
     }

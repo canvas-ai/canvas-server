@@ -22,7 +22,8 @@ import {
 // Routes
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
-import contextRoutes from './routes/contexts.js';
+import contextRoutes from './routes/contexts/index.js';
+import userRoutes from './routes/users/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
 
@@ -59,7 +60,8 @@ export async function createServer(options = {}) {
     },
     trustProxy: true,
     // Disable response validation for better performance during development
-    disableResponseValidation: true
+    disableResponseValidation: true,
+    ignoreTrailingSlash: true
   });
 
   // Register fastify-jwt FIRST - needed for request.jwtVerify
@@ -107,6 +109,43 @@ export async function createServer(options = {}) {
     },
     transports: ['websocket'] // Force WebSockets, disable long-polling
   });
+
+  // Setup WebSocket handlers
+  setupWebSocketHandlers(server);
+
+  // Register event listeners to relay Context events to WebSocket clients
+  if (server.contextManager) {
+    // Listen for context URL changes and other important events
+    server.contextManager.on('context:url:changed', (payload) => {
+      if (payload && payload.id) {
+        try {
+          server.broadcastToContext(payload.id, 'context:url:changed', payload);
+          debug(`Relayed context:url:changed event for context ${payload.id} to WebSocket clients`);
+        } catch (error) {
+          console.error(`Error broadcasting context:url:changed event: ${error.message}`);
+        }
+      }
+    });
+
+    // Other important context events can be added here in the same pattern
+    server.contextManager.on('context:updated', (payload) => {
+      if (payload && payload.id) {
+        server.broadcastToContext(payload.id, 'context:updated', payload);
+      }
+    });
+
+    server.contextManager.on('context:locked', (payload) => {
+      if (payload && payload.id) {
+        server.broadcastToContext(payload.id, 'context:locked', payload);
+      }
+    });
+
+    server.contextManager.on('context:unlocked', (payload) => {
+      if (payload && payload.id) {
+        server.broadcastToContext(payload.id, 'context:unlocked', payload);
+      }
+    });
+  }
 
   // Static file server for the UI
   await server.register(fastifyStatic, {
@@ -258,10 +297,8 @@ export async function createServer(options = {}) {
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
+  server.register(userRoutes, { prefix: '/rest/v2/users' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
-
-  // Set up WebSocket handlers before server starts
-  setupWebSocketHandlers(server);
 
   // Global 404 handler
   server.setNotFoundHandler((request, reply) => {
