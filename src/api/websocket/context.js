@@ -1,5 +1,9 @@
 import ResponseObject from '../ResponseObject.js';
 
+// Logging
+import logger, { createDebug } from '../../utils/log/index.js';
+const debug = createDebug('canvas-server:websocket:context');
+
 /**
  * Register context-related websocket events for a socket connection.
  * @param {Object} fastify - Fastify instance (provides contextManager)
