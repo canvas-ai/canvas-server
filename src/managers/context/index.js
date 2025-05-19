@@ -394,16 +394,21 @@ class ContextManager extends EventEmitter {
             const forwardEvent = (eventName) => {
                 context.on(eventName, (payload) => {
                     debug(`Forwarding ${eventName} event from context ${context.id} to ContextManager`);
-                    this.emit(eventName, payload);
+                    // Add context ID to payload if not present
+                    const enrichedPayload = { ...payload, contextId: context.id };
+                    this.emit(eventName, enrichedPayload);
                 });
             };
 
             // Forward each important event type
-            forwardEvent('context:url:changed');
+            forwardEvent('context:url:set');
             forwardEvent('context:updated');
             forwardEvent('context:locked');
             forwardEvent('context:unlocked');
             forwardEvent('context:deleted');
+            forwardEvent('context:created');
+            forwardEvent('context:acl:updated');
+            forwardEvent('context:acl:revoked');
 
             // Mark this context as having its events forwarded
             context._eventsForwarded = true;

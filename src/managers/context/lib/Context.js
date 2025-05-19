@@ -151,7 +151,7 @@ class Context extends EventEmitter {
         }
 
         debug(`Context ${this.#id} constructor finished. Initial URL state: ${this.#url}, Base URL: ${this.#baseUrl}`);
-        this.emit('created', this.toJSON());
+        this.emit('context:created', this.toJSON());
     }
 
     /**
@@ -394,7 +394,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
-        this.emit('context:url:changed', { id: this.#id, url: this.#url });
+        this.emit('context:url:set', { id: this.#id, url: this.#url });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
