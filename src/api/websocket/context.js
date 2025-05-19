@@ -6,10 +6,16 @@ import ResponseObject from '../ResponseObject.js';
  * @param {Object} socket - Socket.io socket (with authenticated user)
  */
 export default function registerContextWebSocket(fastify, socket) {
+  const contextManager = fastify.contextManager;
+
+  // Increase max listeners limit for context manager
+  contextManager.setMaxListeners(20); // Increased from default 10
+
   // --- User Validation Helper ---
   function getUserId() {
     return socket.user && socket.user.id;
   }
+
   function ensureUser(cb) {
     const userId = getUserId();
     if (!userId) {
@@ -35,28 +41,39 @@ export default function registerContextWebSocket(fastify, socket) {
     'context:acl:revoked'
   ];
 
-  // Set up event listeners for each context event
+  // Store event listeners for cleanup
+  const listeners = new Map();
+
+  // Register context event listeners
   contextEvents.forEach(eventName => {
-    fastify.contextManager.on(eventName, (payload) => {
-      // Only forward events for contexts the user has access to
-      const userId = getUserId();
-      if (!userId) return;
+    const listener = async (payload) => {
+      try {
+        // Check if user has access to this context
+        const contextId = payload.contextId;
+        if (contextId) {
+          const hasAccess = await contextManager.hasContext(userId, contextId);
+          if (!hasAccess) {
+            debug(`Not forwarding ${eventName} event for context ${contextId} - user ${userId} has no access`);
+            return;
+          }
+        }
+        socket.emit(eventName, payload);
+      } catch (error) {
+        debug(`Error handling ${eventName} event:`, error);
+      }
+    };
 
-      // Check if this is a shared context or owned by the user
-      const contextId = payload.contextId || payload.id;
-      if (!contextId) return;
+    // Store listener for cleanup
+    listeners.set(eventName, listener);
+    contextManager.on(eventName, listener);
+  });
 
-      // Get the context to check permissions
-      fastify.contextManager.getContext(userId, contextId)
-        .then(context => {
-          // If we can get the context, user has access - forward the event
-          socket.emit(eventName, payload);
-        })
-        .catch(() => {
-          // User doesn't have access to this context, don't forward the event
-          debug(`Not forwarding ${eventName} for context ${contextId} to user ${userId} - no access`);
-        });
+  // Clean up listeners on disconnect
+  socket.on('disconnect', () => {
+    listeners.forEach((listener, eventName) => {
+      contextManager.removeListener(eventName, listener);
     });
+    listeners.clear();
   });
 
   // --- Context Lifecycle Events ---
