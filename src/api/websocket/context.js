@@ -23,6 +23,42 @@ export default function registerContextWebSocket(fastify, socket) {
     return userId;
   }
 
+  // --- Context Event Forwarding ---
+  const contextEvents = [
+    'context:url:set',
+    'context:updated',
+    'context:locked',
+    'context:unlocked',
+    'context:deleted',
+    'context:created',
+    'context:acl:updated',
+    'context:acl:revoked'
+  ];
+
+  // Set up event listeners for each context event
+  contextEvents.forEach(eventName => {
+    fastify.contextManager.on(eventName, (payload) => {
+      // Only forward events for contexts the user has access to
+      const userId = getUserId();
+      if (!userId) return;
+
+      // Check if this is a shared context or owned by the user
+      const contextId = payload.contextId || payload.id;
+      if (!contextId) return;
+
+      // Get the context to check permissions
+      fastify.contextManager.getContext(userId, contextId)
+        .then(context => {
+          // If we can get the context, user has access - forward the event
+          socket.emit(eventName, payload);
+        })
+        .catch(() => {
+          // User doesn't have access to this context, don't forward the event
+          debug(`Not forwarding ${eventName} for context ${contextId} to user ${userId} - no access`);
+        });
+    });
+  });
+
   // --- Context Lifecycle Events ---
   socket.on('context:list', async (cb) => {
     const userId = getUserId();
