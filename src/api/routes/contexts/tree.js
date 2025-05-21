@@ -72,7 +72,7 @@ export default async function treeRoutes(fastify, options) {
 
       let treeData;
       try {
-        treeData = JSON.parse(treeJsonString);
+        treeData = treeJsonString;
       } catch (parseError) {
         fastify.log.error(`Failed to parse tree JSON for context ${contextId}: ${parseError.message}. JSON: ${treeJsonString}`);
         const response = new ResponseObject().serverError('Failed to parse tree data from workspace.');

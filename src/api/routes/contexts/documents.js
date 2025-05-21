@@ -92,37 +92,22 @@ export default async function documentRoutes(fastify, options) {
   fastify.post('/', {
     onRequest: [fastify.authenticate],
     schema: {
-      // params.id is implicitly available
       body: {
         type: 'object',
-        required: ['contextSpec', 'documents'], // contextSpec might be legacy or for specific use, adjust if not needed
+        required: ['documents'],
         properties: {
-          contextSpec: { type: 'string' },
           featureArray: {
             type: 'array',
             items: { type: 'string' }
           },
-          filterArray: {
-            type: 'array',
-            items: { type: 'string' }
-          },
           documents: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['type', 'data'],
-              properties: {
-                type: { type: 'string' },
-                data: {
-                  type: 'object',
-                  required: ['schema', 'data'],
-                  properties: {
-                    schema: { type: 'string' },
-                    data: { type: 'object' }
-                  }
-                }
+            oneOf: [
+              { type: 'object' },
+              {
+                type: 'array',
+                items: { type: 'object' }
               }
-            }
+            ]
           }
         }
       }
@@ -141,8 +126,10 @@ export default async function documentRoutes(fastify, options) {
       }
 
       const { featureArray = [], documents } = request.body;
+      // Convert single document to array if needed
+      const documentArray = Array.isArray(documents) ? documents : [documents];
 
-      const result = await context.insertDocumentArray(request.user.id, documents, featureArray);
+      const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
 
       const response = new ResponseObject().created(result, 'Documents inserted successfully', 201, result.length);
       return reply.code(response.statusCode).send(response.getResponse());
