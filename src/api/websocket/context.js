@@ -52,8 +52,15 @@ export default function registerContextWebSocket(fastify, socket) {
   contextEvents.forEach(eventName => {
     const listener = async (payload) => {
       try {
+        // Get current user ID
+        const userId = getUserId();
+        if (!userId) {
+          debug(`Not forwarding ${eventName} event - no authenticated user`);
+          return;
+        }
+
         // Check if user has access to this context
-        const contextId = payload.contextId;
+        const contextId = payload.id || payload.contextId;
         if (contextId) {
           const hasAccess = await contextManager.hasContext(userId, contextId);
           if (!hasAccess) {
