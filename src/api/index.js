@@ -26,6 +26,7 @@ import contextRoutes from './routes/contexts/index.js';
 import userRoutes from './routes/users/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
+import mcpRoutes from './mcp/routes.js';
 
 // WebSocket handlers
 import setupWebSocketHandlers from './websocket/index.js';
@@ -299,6 +300,7 @@ export async function createServer(options = {}) {
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
   server.register(userRoutes, { prefix: '/rest/v2/users' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
+  server.register(mcpRoutes); // MCP routes don't need prefix as they define their own paths
 
   // Global 404 handler
   server.setNotFoundHandler((request, reply) => {
