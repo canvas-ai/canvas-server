@@ -7,13 +7,12 @@
   "type": "module",
   "scripts": {
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
-    "start:dev": "cross-env DEBUG=* node ./src/init.js",
+    "dev": "cross-env DEBUG=* node ./src/init.js",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
     "build": "npm run build -w src/ui/web && npm run build -w src/ui/browser",
     "postinstall": "npm run build -w src/ui/web && npm run build -w src/ui/browser",
     "lint": "eslint \"**/*.{js,ts}\"",
-    "lint:fix": "eslint \"**/*.{js,ts}\" --fix",
-    "format": "prettier --write \"**/*.js\""
+    "lint:fix": "eslint \"**/*.{js,ts}\" --fix"
   },
   "workspaces": [
     ".",
@@ -35,6 +34,7 @@
     "@fastify/multipart": "^8.0.0",
     "@fastify/static": "^6.12.0",
     "@fastify/websocket": "^8.3.1",
+    "@modelcontextprotocol/sdk": "^1.12.0",
     "bcryptjs": "^2.4.3",
     "conf": "^13.1.0",
     "cross-env": "^7.0.3",
@@ -43,6 +43,7 @@
     "eventemitter2": "^6.4.9",
     "fastify": "^4.24.3",
     "fastify-socket.io": "^5.1.0",
+    "fastmcp": "^2.1.2",
     "jsonwebtoken": "^9.0.2",
     "node-machine-id": "^1.1.12",
     "pino-pretty": "^10.3.1",
@@ -51,12 +52,16 @@
     "ulid": "^3.0.0",
     "uuid": "^11.1.0",
     "validator": "^13.15.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "zod": "^3.25.26",
+    "zod-to-json-schema": "^3.24.5"
   },
   "engines": {
     "node": ">=20.0.0 <21.0.0"
   },
   "devDependencies": {
-    "@types/socket.io-client": "^3.0.0"
+    "@types/socket.io-client": "^3.0.0",
+    "eventsource": "^4.0.0",
+    "node-fetch": "^3.3.2"
   }
 }
