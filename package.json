@@ -43,6 +43,7 @@
     "eventemitter2": "^6.4.9",
     "fastify": "^4.24.3",
     "fastify-socket.io": "^5.1.0",
+    "fastmcp": "^2.1.2",
     "jsonwebtoken": "^9.0.2",
     "node-machine-id": "^1.1.12",
     "pino-pretty": "^10.3.1",
