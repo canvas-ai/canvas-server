@@ -22,6 +22,7 @@ class User extends EventEmitter {
     #email;
     #userType;
     #homePath;
+    #avatar;
 
     // Runtime state
     #status = 'inactive'; // inactive, active, disabled, deleted
@@ -43,6 +44,7 @@ class User extends EventEmitter {
         if (!options.id) { throw new Error('ID is required'); }
         if (!options.email) { throw new Error('Email is required'); }
         if (!options.homePath) { throw new Error('Home path is required'); }
+        if (!options.avatar) { options.avatar = '/images/avatars/default.png'; }
 
         /**
          * User properties
@@ -50,6 +52,7 @@ class User extends EventEmitter {
 
         this.#id = options.id || generateULID(12, 'lower');
         this.#email = options.email;
+        this.#avatar = options.avatar;
         this.#homePath = path.resolve(options.homePath); // Ensure absolute path
         this.#userType = options.userType || 'user';
         this.#status = options.status || 'inactive';
@@ -64,6 +67,7 @@ class User extends EventEmitter {
     get email() { return this.#email; }
     get userType() { return this.#userType; }
     get homePath() { return this.#homePath; }
+    get avatar() { return this.#avatar; }
     get status() { return this.#status; }
     get uptime() { return Date.now() - this.#startTime; }
 
@@ -105,6 +109,7 @@ class User extends EventEmitter {
             email: this.#email,
             userType: this.#userType,
             homePath: this.#homePath,
+            avatar: this.#avatar,
             status: this.#status
         };
     }

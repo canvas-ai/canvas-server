@@ -74,14 +74,15 @@ class Workspace extends EventEmitter {
     // Persisted Configuration Getters (from configStore)
     get id() { return this.#configStore?.get('id'); }
     get label() { return this.#configStore?.get('label', this.id); }
+    get icon() { return this.#configStore?.get('icon'); }
     get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.id}`); }
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); } // User ULID
     get acl() { return this.#configStore?.get('acl', {}); }
     get createdAt() { return this.#configStore?.get('createdAt'); }
-    get updatedAt() { return this.#configStore?.get('updatedAt'); }
-    get metadata() { return this.#configStore?.get('metadata', {}); } // Generic metadata object
+    get updatedAt() { return this.#configStore?.get('updatedAt'); }    get metadata() { return this.#configStore?.get('metadata', {}); } // Generic metadata object
+
 
     // Runtime Status Getters & Setters
     get status() { return this.#status; }
@@ -169,10 +170,12 @@ class Workspace extends EventEmitter {
         const allowedKeys = [
             'label',
             'description',
+            'icon',
             'color',
             'locked',
             'acl',       // ACLs are complex; ensure `value` is a valid ACL object.
             'metadata',  // For generic metadata object
+            'status',    // Internal runtime status
         ];
 
         if (!allowedKeys.includes(key)) {
@@ -690,6 +693,7 @@ class Workspace extends EventEmitter {
             // Append/override with runtime or essential derived values
             id: this.id,
             label: this.label,
+            icon: this.icon,
             description: this.description,
             color: this.color,
             type: this.type,

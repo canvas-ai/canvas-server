@@ -178,7 +178,7 @@ class WorkspaceManager extends EventEmitter {
             label: isUniverse ? 'Universe' : (options.label || workspaceId),
             description: isUniverse ? 'And then there was geometry..' : options.description || '',
             owner: userId,
-            color: isUniverse ? '#FFFFFF' : options.color || WorkspaceManager.getRandomColor(),
+            color: isUniverse ? '#ffffff' : options.color || WorkspaceManager.getRandomColor(),
             type: options.type || 'workspace',
             acl: options.acl || { "rw": [userId], "ro": [] },
             created: new Date().toISOString(),
