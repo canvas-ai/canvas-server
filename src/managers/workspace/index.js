@@ -41,7 +41,7 @@ const WORKSPACE_DIRECTORIES = {
 
 const WORKSPACE_STATUS_CODES = {
     AVAILABLE: 'available', // Workspace dir exists, config readable
-    NOT_FOUND: 'path_not_found', // Workspace dir/config specified in index not found
+    NOT_FOUND: 'not_found', // Workspace dir/config specified in index not found
     ERROR: 'error', // Config invalid, FS issues, etc.
     ACTIVE: 'active', // Workspace is loaded and started (db connected)
     INACTIVE: 'inactive', // Workspace is loaded but not started

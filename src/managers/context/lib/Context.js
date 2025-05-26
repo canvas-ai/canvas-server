@@ -24,6 +24,7 @@ class Context extends EventEmitter {
     #path;
     #pathArray;
     #userId;
+    #color;
 
     // Access Control List: maps userId to accessLevel (e.g., {"user@example.com": "documentRead"})
     #acl;
@@ -86,6 +87,7 @@ class Context extends EventEmitter {
         this.#workspaceManager = options.workspaceManager;
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
+        this.#color = this.#workspace.color;
         this.#contextManager = options.contextManager;
 
         // Context metadata
@@ -182,6 +184,7 @@ class Context extends EventEmitter {
     get workspace() { return this.#workspace; }
     get workspaceId() { return this.#workspace.id; }
     get tree() { return this.#tree.toJSON(); }
+    get color() { return this.#color; }
     get pendingUrl() { return this.#pendingUrl; }
     get bitmapArrays() {
         return {
@@ -498,6 +501,7 @@ class Context extends EventEmitter {
                 this.#workspace = newWorkspaceInstance;
                 this.#db = this.#workspace.db;
                 this.#tree = this.#workspace.tree;
+                this.#color = this.#workspace.color;
             } catch (error) {
                 throw new Error(`Failed to switch workspace: ${error.message}`);
             }
@@ -958,6 +962,7 @@ class Context extends EventEmitter {
             path: this.#path,
             pathArray: this.#pathArray,
             workspaceId: this.#workspace?.id,
+            color: this.#color,
             acl: this.#acl,
             createdAt: this.#createdAt,
             updatedAt: this.#updatedAt,
