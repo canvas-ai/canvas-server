@@ -210,8 +210,10 @@ export default async function documentRoutes(fastify, options) {
     schema: {
       // params.id is implicitly available
       body: {
-        type: ['string', 'number', 'array'],
-        description: "A document ID or an array of document IDs to delete directly from the database."
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: "An array of document IDs to delete directly from the database."
       }
     }
   }, async (request, reply) => {
@@ -259,8 +261,10 @@ export default async function documentRoutes(fastify, options) {
     schema: {
       // params.id is implicitly available
       body: {
-        type: ['string', 'number', 'array'],
-        description: "A document ID or an array of document IDs to remove from the context."
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: "An array of document IDs to remove from the context."
       }
     }
   }, async (request, reply) => {

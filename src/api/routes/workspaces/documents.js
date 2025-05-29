@@ -297,21 +297,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         }
       },
       body: {
-        type: 'object',
-        required: ['documents'],
-        properties: {
-          documents: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['schema', 'data'],
-              properties: {
-                schema: { type: 'string' },
-                data: { type: 'object' }
-              }
-            }
-          }
-        }
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: "An array of document IDs to delete from the workspace."
       }
     }
   }, async (request, reply) => {
@@ -327,7 +316,9 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const success = await workspace.deleteDocumentArray(request.body.documents);
+      // Convert array of IDs to the format workspace expects
+      const documentIds = Array.isArray(request.body) ? request.body : [request.body];
+      const success = await workspace.deleteDocumentArray(documentIds);
       if (!success) {
         const responseObject = new ResponseObject().badRequest('Failed to delete documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -354,21 +345,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         }
       },
       body: {
-        type: 'object',
-        required: ['documents'],
-        properties: {
-          documents: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['schema', 'data'],
-              properties: {
-                schema: { type: 'string' },
-                data: { type: 'object' }
-              }
-            }
-          }
-        }
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: "An array of document IDs to remove from the workspace."
       }
     }
   }, async (request, reply) => {
@@ -384,7 +364,9 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const success = await workspace.removeDocumentArray(request.body.documents);
+      // Convert array of IDs to the format workspace expects
+      const documentIds = Array.isArray(request.body) ? request.body : [request.body];
+      const success = await workspace.removeDocumentArray(documentIds);
       if (!success) {
         const responseObject = new ResponseObject().badRequest('Failed to remove documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());

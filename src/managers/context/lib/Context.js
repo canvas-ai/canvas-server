@@ -993,14 +993,20 @@ class Context extends EventEmitter {
             throw new Error('Workspace or database not available');
         }
 
+        // Ensure document ID is a number (consistent with array version)
+        const numericDocumentId = parseInt(documentId, 10);
+        if (isNaN(numericDocumentId)) {
+            throw new Error(`Invalid document ID: ${documentId}. Must be a number or a string coercible to a number.`);
+        }
+
         // Completely delete the document from the database, respecting the context
-        const result = this.#db.deleteDocument(documentId, this.#pathArray);
+        const result = this.#db.deleteDocument(numericDocumentId, this.#pathArray);
 
         // Prepare document data for events
         const documentEventPayload = {
             contextId: this.#id,
             operation: 'delete',
-            documentId: documentId,
+            documentId: numericDocumentId,
             url: this.#url,
             workspaceId: this.#workspace.id,
             timestamp: new Date().toISOString()
@@ -1010,7 +1016,7 @@ class Context extends EventEmitter {
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:delete',
-            document: documentId,
+            document: numericDocumentId,
         });
 
         return result;
@@ -1034,15 +1040,24 @@ class Context extends EventEmitter {
             throw new Error('Document ID array must be an array');
         }
 
+        // Ensure all document IDs are numbers (same validation as removeDocumentArray)
+        const numericDocumentIdArray = documentIdArray.map(id => {
+            const numId = parseInt(id, 10);
+            if (isNaN(numId)) {
+                throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
+            }
+            return numId;
+        });
+
         // Completely delete the documents from the database, respecting the context
-        const result = this.#db.deleteDocumentArray(documentIdArray, this.#pathArray, options);
+        const result = this.#db.deleteDocumentArray(numericDocumentIdArray, this.#pathArray, options);
 
         // Prepare document data for events
         const documentEventPayload = {
             contextId: this.#id,
             operation: 'delete',
-            documentIds: documentIdArray,
-            count: documentIdArray.length,
+            documentIds: numericDocumentIdArray,
+            count: numericDocumentIdArray.length,
             url: this.#url,
             workspaceId: this.#workspace.id,
             timestamp: new Date().toISOString()
@@ -1053,7 +1068,7 @@ class Context extends EventEmitter {
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:delete',
-            documentArray: documentIdArray,
+            documentArray: numericDocumentIdArray,
         });
 
         return result;
