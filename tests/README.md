@@ -2,6 +2,117 @@
 
 This directory contains test scripts and utilities for testing Canvas Server functionality.
 
+## Critical Fix: WebSocket Document Event Broadcasting
+
+### Problem Identified
+
+The Canvas system had a critical issue where **document events were not being broadcasted to connected clients** (like browser extensions). The event chain was broken at the WebSocket layer:
+
+- ✅ Context class properly emitted `document:insert`, `document:update`, etc. events
+- ✅ ContextManager forwarded events from individual contexts to manager level  
+- ✅ Browser extension had proper event handlers ready
+- ❌ **Missing**: WebSocket broadcasting system to actually send events to connected clients
+
+### Root Cause
+
+The `src/api/websocket/index.js` file had broadcast methods (`broadcastToUser`, `broadcastToContext`) but **no event listeners** connecting the ContextManager events to these broadcast methods.
+
+### Solution Implemented
+
+Added ContextManager event listeners in `src/api/websocket/index.js` that:
+1. Listen for document events from ContextManager
+2. Check user permissions for each context
+3. Broadcast events to all connected clients who have access
+4. Log broadcasting activity for debugging
+
+**Code Added:**
+```javascript
+// Set up ContextManager event listeners for broadcasting
+if (fastify.contextManager) {
+  const contextManager = fastify.contextManager;
+  
+  // Document events - broadcast to all users who have access to the context
+  const documentEvents = [
+    'document:insert', 'document:update', 'document:remove', 
+    'document:delete', 'documents:delete'
+  ];
+
+  documentEvents.forEach(eventType => {
+    contextManager.on(eventType, async (payload) => {
+      const contextId = payload.contextId || payload.id;
+      if (contextId) {
+        // Find all users who have access to this context and broadcast to them
+        for (const [socketId, connection] of connections.entries()) {
+          const hasAccess = await contextManager.hasContext(connection.user.id, contextId);
+          if (hasAccess) {
+            connection.socket.emit(eventType, payload);
+          }
+        }
+      }
+    });
+  });
+}
+```
+
+## Full Event Chain Integration Test
+
+### Overview
+
+The `full-event-chain-test.js` script provides end-to-end verification that document events flow correctly through the complete system:
+
+**Event Flow:** CLI → Context → ContextManager → WebSocket Broadcasting → Browser Extension
+
+### What it tests
+
+1. **Authentication** - Verifies user can authenticate with the Canvas server
+2. **WebSocket Connection** - Establishes authenticated WebSocket connection
+3. **Document Insertion** - Simulates CLI adding a document with URL
+4. **Event Broadcasting** - Verifies events are broadcasted to connected clients
+5. **Browser Extension Simulation** - Simulates browser extension receiving and handling events
+
+### Running the Test
+
+```bash
+# Ensure server is running on port 3000
+npm start
+
+# In another terminal, run the integration test
+node tests/full-event-chain-test.js
+```
+
+### Expected Output
+
+```
+🧪 Starting Full Event Chain Integration Test
+   Testing document event flow from CLI to Browser Extension
+
+🔐 Step 1: Authenticating user...
+   ✅ User authenticated successfully
+
+🌐 Step 2: Setting up WebSocket connection...
+   ✅ WebSocket connected successfully
+   ✅ WebSocket authenticated for user: test@canvas.local
+
+📝 Step 3: Inserting document via CLI API (simulating CLI call)...
+   📄 Inserting document: Test Document from CLI
+   🌐 Document URL: https://example.com/test-document
+   ✅ Document inserted successfully via CLI API
+
+🔌 Browser Extension: Received document:insert event!
+   📋 Event payload: {
+     "contextId": "testcontext",
+     "operation": "insert",
+     "documentId": 123456,
+     "document": { "url": "https://example.com/test-document", ... },
+     ...
+   }
+   🌐 Browser Extension: Would auto-open tabs for URLs:
+      - https://example.com/test-document
+   ✅ Document insert event handled successfully!
+
+✅ Full Event Chain Integration Test PASSED!
+```
+
 ## Document Events Test
 
 ### Overview
@@ -84,7 +195,10 @@ The ContextManager now forwards document-specific events from individual context
 
 ### WebSocket API Changes
 
-The WebSocket API now includes document events in the list of forwarded events, ensuring connected clients receive real-time notifications.
+The WebSocket API now includes:
+1. Document events in the list of forwarded events for individual socket connections
+2. **NEW**: Global ContextManager event listeners that broadcast to all connected clients
+3. Permission checking to ensure only authorized users receive context events
 
 ### Browser Extension Changes
 
@@ -106,59 +220,45 @@ This event system enables:
 
 ## Configuration
 
-Browser extension behavior can be configured through the sync settings:
+Browser extension auto-open behavior is controlled by the `autoOpenCanvasTabs` configuration setting:
 
-- `autoOpenCanvasTabs` - Whether to automatically open tabs for inserted documents
-- `tabBehaviorOnContextChange` - How to handle existing tabs when context changes ("Close", "Save and Close", "Keep")
-
-## Context Switching Cache Fix
-
-### Problem
-
-When switching from a context with documents (e.g., `/foo`) to a context with no documents (e.g., `/bar`), the browser extension would still show the old cached entries even though the CLI correctly showed no documents.
-
-### Root Cause
-
-The issue was in the context switching logic. When `requestFetchTabsForContext()` returned an empty array `[]` for contexts with no documents, the condition `if (tabs)` would still evaluate to `true` (because empty arrays are truthy in JavaScript), so the cache clearing logic was never executed.
-
-### Solution
-
-Fixed the context switching logic in two places:
-
-1. **`setContextUrl()` in `context.ts`**
-2. **`handleContextChange()` in `index.ts`**
-
-Changed from:
 ```javascript
-if (tabs) {
-  // Update cache with new tabs
-} else {
-  // Clear cache
+// In browser extension config
+{
+  sync: {
+    autoOpenCanvasTabs: true  // Enable automatic tab opening for new URL documents
+  }
 }
 ```
 
-To:
-```javascript
-if (tabs && tabs.length > 0) {
-  // Update cache with new tabs
-} else {
-  // Clear cache (handles empty arrays, null, undefined)
-}
-```
+## Troubleshooting
 
-### Testing
+### Document Events Not Received
 
-Run the context switching test to verify the fix:
+1. **Check WebSocket Connection**: Ensure browser extension is connected to WebSocket
+2. **Verify Authentication**: Ensure user is properly authenticated
+3. **Check Context Access**: Ensure user has access to the context where documents are being added
+4. **Check Server Logs**: Look for broadcasting messages in server logs:
+   ```
+   [WebSocket] Broadcasting document:insert event for context contextId
+   [WebSocket] Document event document:insert broadcasted to N connected users
+   ```
+
+### Auto-Open Tabs Not Working
+
+1. **Check Configuration**: Ensure `autoOpenCanvasTabs` is set to `true`
+2. **Check Document URLs**: Ensure documents have valid `url` properties
+3. **Check Event Payload**: Verify `document:insert` events contain URL documents
+4. **Check Browser Permissions**: Ensure browser extension has tab creation permissions
+
+### Testing Event Chain
+
+Use the provided test scripts to verify each part of the event chain:
 
 ```bash
-node tests/context-switching-test.js
+# Test basic event forwarding
+node tests/document-events-test.js
+
+# Test full integration with real server
+node tests/full-event-chain-test.js
 ```
-
-### Verification
-
-To verify the fix works:
-
-1. Open browser extension in a context with documents
-2. Switch to an empty context via CLI or another application
-3. Browser extension should now show no documents (cache cleared)
-4. Check browser console for cache clearing log messages
