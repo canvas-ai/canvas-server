@@ -410,6 +410,13 @@ class ContextManager extends EventEmitter {
             forwardEvent('context:acl:updated');
             forwardEvent('context:acl:revoked');
 
+            // Forward document-specific events
+            forwardEvent('document:insert');
+            forwardEvent('document:update');
+            forwardEvent('document:remove');
+            forwardEvent('document:delete');
+            forwardEvent('documents:delete');
+
             // Mark this context as having its events forwarded
             context._eventsForwarded = true;
         }

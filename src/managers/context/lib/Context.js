@@ -572,11 +572,26 @@ class Context extends EventEmitter {
 
         // Insert the document
         const result = this.#db.insertDocument(document, contextArray, featureArray, options);
-        this.emit('document:insert', document.id || result.id);
+
+        // Prepare document data for events
+        const documentId = document.id || result.id;
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'insert',
+            documentId: documentId,
+            document: document,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:insert', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:inserted',
-            document: document.id || result.id,
+            document: documentId,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
         });
@@ -611,6 +626,22 @@ class Context extends EventEmitter {
 
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
+
+        // Prepare document data for events
+        const documentIds = result && Array.isArray(result) ? result : documentArray.map(doc => doc.id);
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'insert',
+            documentIds: documentIds,
+            documents: documentArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:insert', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'documentArray:inserted',
@@ -786,7 +817,20 @@ class Context extends EventEmitter {
         // Update the document
         const result = this.#db.updateDocument(document, contextArray, featureArray);
 
-        this.emit('document:update', document.id);
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'update',
+            documentId: document.id,
+            document: document,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:update', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:update',
@@ -821,6 +865,21 @@ class Context extends EventEmitter {
         // Update the documents
         const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
 
+        // Prepare document data for events
+        const documentIds = documentArray.map(doc => doc.id);
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'update',
+            documentIds: documentIds,
+            documents: documentArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:update', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:update',
@@ -842,7 +901,20 @@ class Context extends EventEmitter {
 
         // We remove document from the current context not from the database
         const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
-        this.emit('document:remove', documentId);
+
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'remove',
+            documentId: documentId,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:remove', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:remove',
@@ -877,6 +949,20 @@ class Context extends EventEmitter {
 
         // We remove documents from the current context not from the database
         const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
+
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'remove',
+            documentIds: numericDocumentIdArray,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:remove', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:remove',
@@ -909,7 +995,18 @@ class Context extends EventEmitter {
 
         // Completely delete the document from the database, respecting the context
         const result = this.#db.deleteDocument(documentId, this.#pathArray);
-        this.emit('document:delete', documentId);
+
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'delete',
+            documentId: documentId,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:delete', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:delete',
@@ -939,7 +1036,20 @@ class Context extends EventEmitter {
 
         // Completely delete the documents from the database, respecting the context
         const result = this.#db.deleteDocumentArray(documentIdArray, this.#pathArray, options);
-        this.emit('documents:delete', documentIdArray.length);
+
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'delete',
+            documentIds: documentIdArray,
+            count: documentIdArray.length,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('documents:delete', documentEventPayload);
+        this.emit('document:delete', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:delete',

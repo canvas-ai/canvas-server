@@ -42,7 +42,13 @@ export default function registerContextWebSocket(fastify, socket) {
     'context:deleted',
     'context:created',
     'context:acl:updated',
-    'context:acl:revoked'
+    'context:acl:revoked',
+    // Document-specific events
+    'document:insert',
+    'document:update',
+    'document:remove',
+    'document:delete',
+    'documents:delete'
   ];
 
   // Store event listeners for cleanup
