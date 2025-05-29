@@ -109,4 +109,56 @@ This event system enables:
 Browser extension behavior can be configured through the sync settings:
 
 - `autoOpenCanvasTabs` - Whether to automatically open tabs for inserted documents
-- `tabBehaviorOnContextChange` - How to handle existing tabs when context changes ("Close", "Save and Close", "Keep") 
+- `tabBehaviorOnContextChange` - How to handle existing tabs when context changes ("Close", "Save and Close", "Keep")
+
+## Context Switching Cache Fix
+
+### Problem
+
+When switching from a context with documents (e.g., `/foo`) to a context with no documents (e.g., `/bar`), the browser extension would still show the old cached entries even though the CLI correctly showed no documents.
+
+### Root Cause
+
+The issue was in the context switching logic. When `requestFetchTabsForContext()` returned an empty array `[]` for contexts with no documents, the condition `if (tabs)` would still evaluate to `true` (because empty arrays are truthy in JavaScript), so the cache clearing logic was never executed.
+
+### Solution
+
+Fixed the context switching logic in two places:
+
+1. **`setContextUrl()` in `context.ts`**
+2. **`handleContextChange()` in `index.ts`**
+
+Changed from:
+```javascript
+if (tabs) {
+  // Update cache with new tabs
+} else {
+  // Clear cache
+}
+```
+
+To:
+```javascript
+if (tabs && tabs.length > 0) {
+  // Update cache with new tabs
+} else {
+  // Clear cache (handles empty arrays, null, undefined)
+}
+```
+
+### Testing
+
+Run the context switching test to verify the fix:
+
+```bash
+node tests/context-switching-test.js
+```
+
+### Verification
+
+To verify the fix works:
+
+1. Open browser extension in a context with documents
+2. Switch to an empty context via CLI or another application
+3. Browser extension should now show no documents (cache cleared)
+4. Check browser console for cache clearing log messages
