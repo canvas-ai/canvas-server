@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import argv from 'node:process';
 import os from 'os';
+import crypto from 'crypto';
 
 // Runtime
 const SERVER_MODE = argv.argv.slice(2).includes('--user') ? 'user' : 'standalone';
@@ -39,8 +40,9 @@ export const env = {
         home: USER_HOME
     },
     auth: {
-        jwtSecret: process.env.JWT_SECRET || 'canvas-jwt-secret-change-in-production',
-        tokenExpiry: process.env.TOKEN_EXPIRY || '7d'
+        // TODO: Use SERVER_HOME/config/auth.json for jwtSecret and tokenExpiry
+        jwtSecret: process.env.CANVAS_JWT_SECRET || 'canvas-jwt-secret-change-in-production', //generateJwtSecret(),
+        tokenExpiry: process.env.CANVAS_JWT_TOKEN_EXPIRY || '7d'
     },
     admin: {
         email: process.env.CANVAS_ADMIN_EMAIL || 'admin@universe.local',
@@ -77,4 +79,10 @@ function getUserHome() {
     }
 
     return path.join(SERVER_HOME, 'users');
+}
+
+function generateJwtSecret() {
+    const randomSecret = crypto.randomBytes(64).toString('hex');
+    console.log('[ENV] Generated random JWT secret (sessions will not persist across server restarts)');
+    return randomSecret;
 }
