@@ -480,6 +480,20 @@ class Workspace extends EventEmitter {
         return result;
     }
 
+    clearDatabaseSync() {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+        return this.db.clearSync();
+    }
+
+    clearDatabaseAsync() {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+        return this.db.clearAsync();
+    }
+
     /**
      * Tree Manipulation Methods
      */

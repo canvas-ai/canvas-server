@@ -11,6 +11,9 @@ const debug = createDebug('context-manager:context');
 // Includes
 import Url from './Url.js';
 
+// Constants
+const DEFAULT_BASE_URL = '/';
+
 /**
  * Context
  */
@@ -55,40 +58,32 @@ class Context extends EventEmitter {
     // Additional properties
     #pendingUrl;
 
-    constructor(url, options) {
+    constructor(url = DEFAULT_BASE_URL, options = {}) {
         super();
 
         // Context properties
-        this.#id = options.id || uuidv4();
-
-        // User ID
-        if (!options.userId) {
-            throw new Error('User ID is required');
-        }
-        this.#userId = options.userId;
-
-        // Store the provided baseUrl, default to '/'
-        const providedBaseUrl = options.baseUrl || '/';
+        this.#id = options.id || uuidv4(); // TODO: Use human-typeable 6-char ULID
+        this.#url = null;
+        this.#baseUrl = options.baseUrl || DEFAULT_BASE_URL;
+        this.#path = null;
+        this.#pathArray = [];
         this.#isLocked = options.locked || false;
 
+        // User ID
+        if (!options.userId) { throw new Error('User ID is required'); }
+        this.#userId = options.userId;
+
         // Workspace references
-        if (!options.workspace) {
-            throw new Error('Workspace instance is required');
-        }
-
-        if (!options.workspaceManager) {
-            throw new Error('Workspace manager instance is required');
-        }
-
-        if (!options.contextManager) {
-            throw new Error('Context manager instance is required');
-        }
-
+        if (!options.workspace) { throw new Error('Workspace instance is required'); }
+        if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
         this.#workspace = options.workspace;
         this.#workspaceManager = options.workspaceManager;
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
         this.#color = this.#workspace.color;
+
+        // Context manager references
+        if (!options.contextManager) { throw new Error('Context manager instance is required'); }
         this.#contextManager = options.contextManager;
 
         // Context metadata
@@ -98,58 +93,58 @@ class Context extends EventEmitter {
         // ACL
         this.#acl = options.acl || {};
 
-        // Server Context
+        // Context variables
         this.#serverContextArray = options.serverContextArray || [];
-
-        // Client Context
         this.#clientContextArray = options.clientContextArray || [];
-
-        // Initialize url and path related properties
-        this.#url = null;
-        this.#path = null;
-        this.#pathArray = [];
 
         // Set up event forwarding from workspace
         this.#setupWorkspaceEventForwarding();
 
-        // Set initial base URL - this must happen before setting the initial URL
+        // Set initial URL - simplified logic now that Url properly handles null workspaceId
         try {
-            // Directly set the internal variable first
-            this.#baseUrl = providedBaseUrl;
-            // Now validate and handle potential conflicts (though unlikely in constructor)
-            // We use a temporary Url object for validation and path checking
-            const base = new Url(this.#baseUrl);
-            if (!base.isValid) {
-                throw new Error(`Invalid base URL provided: ${providedBaseUrl}`);
-            }
-            // Ensure the initial context URL respects the base URL
-            let initialUrl = url;
-            const parsedInitial = new Url(initialUrl);
-
-            if (this.#baseUrl !== '/' && !parsedInitial.path.startsWith(base.path)) {
-                debug(`Provided URL "${initialUrl}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`);
-                initialUrl = this.#baseUrl; // Force URL to base
+            // Validate base URL if provided
+            if (this.#baseUrl !== '/') {
+                const base = new Url(this.#baseUrl);
+                if (!base.isValid) {
+                    throw new Error(`Invalid base URL provided: ${this.#baseUrl}`);
+                }
             }
 
-            // Now set the initial URL using the potentially adjusted value
-            // We bypass setUrl here as workspace/layer logic happens in initialize/setUrl calls
-            const finalParsed = new Url(initialUrl);
+            // Parse the initial URL
+            const parsedUrl = new Url(url);
+            if (!parsedUrl.isValid) {
+                throw new Error(`Invalid initial URL provided: ${url}`);
+            }
 
-            if (finalParsed.workspaceID === this.#workspace.name) {
-                this.#url = finalParsed.url;
-                this.#path = finalParsed.path;
-                this.#pathArray = finalParsed.pathArray;
-                // Initial context/feature bitmaps will be set by setUrl/initialize later
+            // Check if URL is within base URL constraints
+            if (this.#baseUrl !== '/' && !parsedUrl.path.startsWith(new Url(this.#baseUrl).path)) {
+                debug(`Provided URL "${url}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`);
+                const baseUrl = new Url(this.#baseUrl);
+                this.#url = baseUrl.url;
+                this.#path = baseUrl.path;
+                this.#pathArray = baseUrl.pathArray;
             } else {
-                // This logic remains for handling initial cross-workspace URLs
-                this.#url = `${this.#workspace.name}://${finalParsed.path}`; // Use current workspace name temporarily
-                this.#path = finalParsed.path;
-                this.#pathArray = finalParsed.pathArray;
-                this.#pendingUrl = initialUrl; // Store the original full URL
+                // If no workspaceId in URL, use current workspace
+                if (!parsedUrl.workspaceId) {
+                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                } else if (parsedUrl.workspaceId === this.#workspace.id) {
+                    // Same workspace, use as-is
+                    this.#url = parsedUrl.url;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                } else {
+                    // Different workspace, store as pending for later switching
+                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                    this.#pendingUrl = url;
+                }
             }
         } catch (error) {
-            // Clean up potentially partially set state
-            this.#baseUrl = '/'; // Reset base to default on error
+            // Clean up on error
+            this.#baseUrl = '/';
             this.#url = null;
             this.#path = null;
             this.#pathArray = [];
@@ -368,32 +363,36 @@ class Context extends EventEmitter {
         }
 
         const parsed = new Url(url);
+        if (!parsed.isValid) {
+            throw new Error(`Invalid URL provided: ${url}`);
+        }
+
         debug(`Attempting to set URL to ${parsed.url}`);
-        debug(`Parsed URL: ${JSON.stringify(parsed)}`);
+        debug(`Parsed URL: ${JSON.stringify({ workspaceId: parsed.workspaceId, path: parsed.path, pathArray: parsed.pathArray })}`);
 
         // Validate against base URL if it's set and not root
         if (this.#baseUrl && this.#baseUrl !== '/') {
-            const base = new Url(this.#baseUrl); // Assuming baseUrl is always valid by this point
-            // Ensure the target URL path starts with the base URL path
+            const base = new Url(this.#baseUrl);
             if (!parsed.path.startsWith(base.path)) {
                 throw new Error(`Cannot set URL "${url}" outside the context base URL "${this.#baseUrl}"`);
             }
         }
 
+        // Determine target workspace ID
+        const targetWorkspaceId = parsed.workspaceId || this.#workspace.id;
+
         // If the workspace ID is different, switch to the new workspace
-        if (parsed.workspaceID !== this.#workspace.name) {
-            // #switchWorkspace will handle setting the final URL path after switching
-            await this.#switchWorkspace(parsed.workspaceID, parsed.path);
+        if (targetWorkspaceId !== this.#workspace.id) {
+            await this.#switchWorkspace(targetWorkspaceId);
         }
 
         // Create the URL path in the current workspace
-        const contextLayers = this.#workspace.insertPath(parsed.path); // This will return a list of layer IDs
-        // Since we move the Layer to Path logic to SynapsD we can keep using paths in the context
+        const contextLayers = this.#workspace.insertPath(parsed.path);
         this.#contextBitmapArray = parsed.pathArray;
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the internal URL state
-        this.#url = parsed.url;
+        this.#url = `${this.#workspace.id}://${parsed.path.replace(/^\//, '')}`;
         this.#path = parsed.path;
         this.#pathArray = parsed.pathArray;
 
@@ -406,7 +405,6 @@ class Context extends EventEmitter {
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
 
-        // Return this for method chaining and to maintain consistency with async version
         return Promise.resolve(this);
     }
 
@@ -423,15 +421,16 @@ class Context extends EventEmitter {
                 throw new Error(`Invalid base URL format: ${newBaseUrl}`);
             }
             // Ensure the new base URL is within the same workspace
-            if (parsedNewBase.workspaceID !== this.#workspace.name) {
+            if (parsedNewBase.workspaceId && parsedNewBase.workspaceId !== this.#workspace.id) {
                 throw new Error(`Cannot set base URL to a different workspace: ${newBaseUrl}`);
             }
 
-            // Option C: Check if the *current* URL is compatible with the *new* base URL
+            // Check if the current URL is compatible with the new base URL
             if (this.#url) {
                 const currentParsed = new Url(this.#url);
                 // Only check path if the current URL is actually in the same workspace
-                if (currentParsed.workspaceID === this.#workspace.name && !currentParsed.path.startsWith(parsedNewBase.path)) {
+                if ((!currentParsed.workspaceId || currentParsed.workspaceId === this.#workspace.id) &&
+                    !currentParsed.path.startsWith(parsedNewBase.path)) {
                     throw new Error(
                         `Current URL "${this.#url}" is outside the proposed new base URL "${newBaseUrl}". Please navigate within the new base URL before setting it.`,
                     );
@@ -447,7 +446,6 @@ class Context extends EventEmitter {
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
 
-        // No automatic setUrl according to Option C
         return Promise.resolve(this);
     }
 
@@ -496,32 +494,32 @@ class Context extends EventEmitter {
         return Promise.resolve(this);
     }
 
-    async #switchWorkspace(workspaceId, url = '/') {
+    async #switchWorkspace(workspaceId) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
 
         const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceId, this.#userId);
-        if (hasWs) {
-            try {
-                // Clean up event forwarding from the old workspace
-                this.#cleanupWorkspaceEventForwarding();
-
-                const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
-                this.#workspace = newWorkspaceInstance;
-                this.#db = this.#workspace.db;
-                this.#tree = this.#workspace.tree;
-                this.#color = this.#workspace.color;
-
-                // Set up event forwarding for the new workspace
-                this.#setupWorkspaceEventForwarding();
-
-                debug(`Context "${this.#id}" successfully switched to workspace "${workspaceId}"`);
-            } catch (error) {
-                throw new Error(`Failed to switch workspace: ${error.message}`);
-            }
-        } else {
+        if (!hasWs) {
             throw new Error(`Workspace "${workspaceId}" not found`);
+        }
+
+        try {
+            // Clean up event forwarding from the old workspace
+            this.#cleanupWorkspaceEventForwarding();
+
+            const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
+            this.#workspace = newWorkspaceInstance;
+            this.#db = this.#workspace.db;
+            this.#tree = this.#workspace.tree;
+            this.#color = this.#workspace.color;
+
+            // Set up event forwarding for the new workspace
+            this.#setupWorkspaceEventForwarding();
+
+            debug(`Context "${this.#id}" successfully switched to workspace "${workspaceId}"`);
+        } catch (error) {
+            throw new Error(`Failed to switch workspace: ${error.message}`);
         }
     }
 
@@ -1276,7 +1274,7 @@ class Context extends EventEmitter {
      * @private
      */
     #handleWorkspaceTreeDocumentEvent(eventType, payload) {
-        // Check if the event is relevant to this context based on path overlap
+                // Check if the event is relevant to this context based on path overlap
         const isRelevant = this.#isEventRelevantToContext(payload);
 
         if (isRelevant) {
@@ -1287,7 +1285,7 @@ class Context extends EventEmitter {
                 contextPathArray: this.#pathArray,
                 userId: this.#userId,
                 relevant: true,
-                ...payload
+                 ...payload
             });
 
             debug(`Context "${this.#id}" forwarded relevant ${eventType} event for path "${payload.contextSpec || 'unknown'}"`);

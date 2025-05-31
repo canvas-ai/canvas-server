@@ -11,6 +11,9 @@ const debug = createDebug('context-manager');
 // Includes
 import Context from './lib/Context.js';
 
+// Constants
+const DEFAULT_WORKSPACE_ID = 'universe';
+
 /**
  * Context Manager
  */
@@ -107,8 +110,8 @@ class ContextManager extends EventEmitter {
             debug(`Creating context with key ${contextKey} and URL: ${url} for user: ${userId}`);
             const parsed = new Url(url);
             if (!parsed.workspaceID) {
-                parsed.workspaceID = 'universe';
-                debug(`Relative URL provided, defaulting to universe workspace: ${parsed.workspaceID} for user ${userId}`);
+                parsed.workspaceID = DEFAULT_WORKSPACE_ID;
+                debug(`Relative URL provided, using default workspace: ${parsed.workspaceID} for user ${userId}`);
             }
 
             const workspace = await this.#workspaceManager.getWorkspace(userId, parsed.workspaceID, userId);
@@ -164,8 +167,9 @@ class ContextManager extends EventEmitter {
 
         // Auto-creation should only happen if the accessing user is the owner.
         // And if the contextId is not a shared context identifier.
-        const canAutoCreate = options.autoCreate && ownerUserId === userId && !contextIdOrFullIdentifier.toString().includes('/');
-
+        const canAutoCreate = options.autoCreate
+            && ownerUserId === userId &&
+            !contextIdOrFullIdentifier.toString().includes('/');
 
         const contextKey = this.#constructContextKey(ownerUserId, contextId);
         try {

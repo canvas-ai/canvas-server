@@ -423,4 +423,60 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
+
+    // Clear workspace database (DEVELOPMENT ONLY)
+  fastify.delete('/clear-database', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    // Only allow in development mode
+    if (process.env.NODE_ENV !== 'development') {
+      const responseObject = new ResponseObject().forbidden('Database clear operation only available in development mode');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+
+    try {
+      const workspace = await fastify.workspaceManager.getWorkspace(
+        request.user.email,
+        request.params.id,
+        request.user.id
+      );
+
+      if (!workspace) {
+        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      // Ensure workspace is active - start it if it's not
+      if (!workspace.isActive) {
+        fastify.log.info(`Workspace ${request.params.id} is not active, attempting to start...`);
+        try {
+          await workspace.start();
+          fastify.log.info(`Workspace ${request.params.id} started successfully`);
+        } catch (startError) {
+          fastify.log.error(`Failed to start workspace ${request.params.id}: ${startError.message}`);
+          const responseObject = new ResponseObject().serverError(`Failed to start workspace: ${startError.message}`);
+          return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+        }
+      }
+
+      // Clear the database synchronously
+      const result = workspace.clearDatabaseSync();
+
+      const responseObject = new ResponseObject().success(result, 'Workspace database cleared successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to clear workspace database');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
 }
