@@ -655,14 +655,6 @@ class Context extends EventEmitter {
         };
 
         this.emit('document:insert', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'documentArray:inserted',
-            documentArray: documentArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
-
         return result;
     }
 
@@ -844,14 +836,6 @@ class Context extends EventEmitter {
         };
 
         this.emit('document:update', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:update',
-            document: document.id,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
-
         return result;
     }
 
@@ -893,14 +877,6 @@ class Context extends EventEmitter {
         };
 
         this.emit('document:update', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:update',
-            documentArray: documentArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
-
         return result;
     }
 
@@ -941,15 +917,6 @@ class Context extends EventEmitter {
 
             debug(`#removeDocument: Emitting document:remove event`);
             this.emit('document:remove', documentEventPayload);
-
-            debug(`#removeDocument: Emitting context:updated event`);
-            this.emit('context:updated', {
-                id: this.#id,
-                operation: 'document:remove',
-                document: documentId,
-                contextArray: this.#contextBitmapArray,
-                featureArray: featureArray,
-            });
 
             debug(`#removeDocument: Successfully completed removal of document ${documentId} from context`);
             return result;
@@ -1015,16 +982,6 @@ class Context extends EventEmitter {
 
             debug(`#removeDocumentArray: Emitting document:remove event`);
             this.emit('document:remove', documentEventPayload);
-
-            debug(`#removeDocumentArray: Emitting context:updated event`);
-            this.emit('context:updated', {
-                id: this.#id,
-                operation: 'document:remove',
-                documentArray: numericDocumentIdArray,
-                contextArray: this.#contextBitmapArray,
-                featureArray: featureArray,
-            });
-
             debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
             return result;
         } catch (error) {
@@ -1090,13 +1047,6 @@ class Context extends EventEmitter {
 
             debug(`#deleteDocumentFromDb: Emitting document:delete event`);
             this.emit('document:delete', documentEventPayload);
-
-            debug(`#deleteDocumentFromDb: Emitting context:updated event`);
-            this.emit('context:updated', {
-                id: this.#id,
-                operation: 'document:delete',
-                document: numericDocumentId,
-            });
 
             debug(`#deleteDocumentFromDb: Successfully completed deletion of document ${numericDocumentId}`);
             return result;
@@ -1172,13 +1122,6 @@ class Context extends EventEmitter {
 
             debug(`#deleteDocumentArrayFromDb: Emitting document:delete event`);
             this.emit('document:delete', documentEventPayload);
-
-            debug(`#deleteDocumentArrayFromDb: Emitting context:updated event`);
-            this.emit('context:updated', {
-                id: this.#id,
-                operation: 'document:delete',
-                documentArray: numericDocumentIdArray,
-            });
 
             debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
             return result;
