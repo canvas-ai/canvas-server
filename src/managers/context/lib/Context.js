@@ -905,86 +905,133 @@ class Context extends EventEmitter {
     }
 
     removeDocument(accessingUserId, documentId, featureArray = [], options = {}) {
+        debug(`#removeDocument: Starting removal for documentId: ${documentId}, accessingUserId: ${accessingUserId}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#removeDocument: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission.');
         }
+        debug(`#removeDocument: Permission check passed`);
+
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#removeDocument: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#removeDocument: Workspace and database available`);
+        debug(`#removeDocument: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
-        // We remove document from the current context not from the database
-        const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
+        try {
+            // We remove document from the current context not from the database
+            debug(`#removeDocument: Calling db.removeDocument with documentId: ${documentId}, contextArray: ${JSON.stringify(this.#contextBitmapArray)}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
+            debug(`#removeDocument: Database removal successful, result: ${JSON.stringify(result)}`);
 
-        // Prepare document data for events
-        const documentEventPayload = {
-            contextId: this.#id,
-            operation: 'remove',
-            documentId: documentId,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-            url: this.#url,
-            workspaceId: this.#workspace.id,
-            timestamp: new Date().toISOString()
-        };
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'remove',
+                documentId: documentId,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#removeDocument: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-        this.emit('document:remove', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:remove',
-            document: documentId,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
+            debug(`#removeDocument: Emitting document:remove event`);
+            this.emit('document:remove', documentEventPayload);
 
-        return result;
+            debug(`#removeDocument: Emitting context:updated event`);
+            this.emit('context:updated', {
+                id: this.#id,
+                operation: 'document:remove',
+                document: documentId,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+            });
+
+            debug(`#removeDocument: Successfully completed removal of document ${documentId} from context`);
+            return result;
+        } catch (error) {
+            debug(`#removeDocument: Error during removal process: ${error.message}`);
+            debug(`#removeDocument: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     removeDocumentArray(accessingUserId, documentIdArray, featureArray = [], options = {}) {
+        debug(`#removeDocumentArray: Starting removal for documentIdArray: ${JSON.stringify(documentIdArray)}, accessingUserId: ${accessingUserId}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#removeDocumentArray: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission.');
         }
+        debug(`#removeDocumentArray: Permission check passed`);
+
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#removeDocumentArray: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#removeDocumentArray: Workspace and database available`);
 
         if (!Array.isArray(documentIdArray)) {
+            debug(`#removeDocumentArray: Invalid input - not an array: ${typeof documentIdArray}`);
             throw new Error('Document ID array must be an array');
         }
+        debug(`#removeDocumentArray: Input validation passed - array length: ${documentIdArray.length}`);
+        debug(`#removeDocumentArray: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
-        // Ensure all document IDs are numbers
-        const numericDocumentIdArray = documentIdArray.map(id => {
-            const numId = parseInt(id, 10);
-            if (isNaN(numId)) {
-                throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-            }
-            return numId;
-        });
+        try {
+            // Ensure all document IDs are numbers
+            debug(`#removeDocumentArray: Converting document IDs to numbers`);
+            const numericDocumentIdArray = documentIdArray.map((id, index) => {
+                const numId = parseInt(id, 10);
+                if (isNaN(numId)) {
+                    debug(`#removeDocumentArray: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
+                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
+                }
+                return numId;
+            });
+            debug(`#removeDocumentArray: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
 
-        // We remove documents from the current context not from the database
-        const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
+            // We remove documents from the current context not from the database
+            debug(`#removeDocumentArray: Calling db.removeDocumentArray with documentIds: ${JSON.stringify(numericDocumentIdArray)}, contextArray: ${JSON.stringify(this.#contextBitmapArray)}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
+            debug(`#removeDocumentArray: Database removal successful, result: ${JSON.stringify(result)}`);
 
-        // Prepare document data for events
-        const documentEventPayload = {
-            contextId: this.#id,
-            operation: 'remove',
-            documentIds: numericDocumentIdArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-            url: this.#url,
-            workspaceId: this.#workspace.id,
-            timestamp: new Date().toISOString()
-        };
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'remove',
+                documentIds: numericDocumentIdArray,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#removeDocumentArray: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-        this.emit('document:remove', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:remove',
-            documentArray: numericDocumentIdArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
+            debug(`#removeDocumentArray: Emitting document:remove event`);
+            this.emit('document:remove', documentEventPayload);
 
-        return result;
+            debug(`#removeDocumentArray: Emitting context:updated event`);
+            this.emit('context:updated', {
+                id: this.#id,
+                operation: 'document:remove',
+                documentArray: numericDocumentIdArray,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+            });
+
+            debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
+            return result;
+        } catch (error) {
+            debug(`#removeDocumentArray: Error during removal process: ${error.message}`);
+            debug(`#removeDocumentArray: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     /**
@@ -993,98 +1040,153 @@ class Context extends EventEmitter {
      */
 
     deleteDocumentFromDb(accessingUserId, documentId) {
+        debug(`#deleteDocumentFromDb: Starting deletion for documentId: ${documentId}, accessingUserId: ${accessingUserId}`);
+
         // This is a direct DB access method, only context owner should call it.
         if (accessingUserId !== this.#userId) {
+            debug(`#deleteDocumentFromDb: Access denied - user ${accessingUserId} is not owner ${this.#userId}`);
             throw new Error('Access denied: Only the context owner can delete documents directly from the database.');
         }
+        debug(`#deleteDocumentFromDb: Owner check passed`);
+
         // Technically, owner has all permissions, but check for completeness or if that changes.
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#deleteDocumentFromDb: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission for direct DB deletion.');
         }
+        debug(`#deleteDocumentFromDb: Permission check passed`);
 
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#deleteDocumentFromDb: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#deleteDocumentFromDb: Workspace and database available`);
 
         // Ensure document ID is a number (consistent with array version)
         const numericDocumentId = parseInt(documentId, 10);
         if (isNaN(numericDocumentId)) {
+            debug(`#deleteDocumentFromDb: Invalid document ID conversion - original: ${documentId}, parsed: ${numericDocumentId}`);
             throw new Error(`Invalid document ID: ${documentId}. Must be a number or a string coercible to a number.`);
         }
+        debug(`#deleteDocumentFromDb: Document ID validation passed - using: ${numericDocumentId}`);
+        debug(`#deleteDocumentFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
-        // Completely delete the document from the database, respecting the context
-        const result = this.#db.deleteDocument(numericDocumentId, this.#pathArray);
+        try {
+            // Completely delete the document from the database, respecting the context
+            debug(`#deleteDocumentFromDb: Calling db.deleteDocument with documentId: ${numericDocumentId}, pathArray: ${JSON.stringify(this.#pathArray)}`);
+            const result = this.#db.deleteDocument(numericDocumentId, this.#pathArray);
+            debug(`#deleteDocumentFromDb: Database deletion successful, result: ${JSON.stringify(result)}`);
 
-        // Prepare document data for events
-        const documentEventPayload = {
-            contextId: this.#id,
-            operation: 'delete',
-            documentId: numericDocumentId,
-            url: this.#url,
-            workspaceId: this.#workspace.id,
-            timestamp: new Date().toISOString()
-        };
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'delete',
+                documentId: numericDocumentId,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#deleteDocumentFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-        this.emit('document:delete', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:delete',
-            document: numericDocumentId,
-        });
+            debug(`#deleteDocumentFromDb: Emitting document:delete event`);
+            this.emit('document:delete', documentEventPayload);
 
-        return result;
+            debug(`#deleteDocumentFromDb: Emitting context:updated event`);
+            this.emit('context:updated', {
+                id: this.#id,
+                operation: 'document:delete',
+                document: numericDocumentId,
+            });
+
+            debug(`#deleteDocumentFromDb: Successfully completed deletion of document ${numericDocumentId}`);
+            return result;
+        } catch (error) {
+            debug(`#deleteDocumentFromDb: Error during deletion process: ${error.message}`);
+            debug(`#deleteDocumentFromDb: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     deleteDocumentArrayFromDb(accessingUserId, documentIdArray, options = {}) {
+        debug(`#deleteDocumentArrayFromDb: Starting deletion for documentIdArray: ${JSON.stringify(documentIdArray)}, accessingUserId: ${accessingUserId}, options: ${JSON.stringify(options)}`);
+
         // This is a direct DB access method, only context owner should call it.
         if (accessingUserId !== this.#userId) {
+            debug(`#deleteDocumentArrayFromDb: Access denied - user ${accessingUserId} is not owner ${this.#userId}`);
             throw new Error('Access denied: Only the context owner can delete documents directly from the database.');
         }
+        debug(`#deleteDocumentArrayFromDb: Owner check passed`);
+
         // Technically, owner has all permissions, but check for completeness or if that changes.
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#deleteDocumentArrayFromDb: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission for direct DB deletion.');
         }
+        debug(`#deleteDocumentArrayFromDb: Permission check passed`);
 
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#deleteDocumentArrayFromDb: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#deleteDocumentArrayFromDb: Workspace and database available`);
 
         if (!Array.isArray(documentIdArray)) {
+            debug(`#deleteDocumentArrayFromDb: Invalid input - not an array: ${typeof documentIdArray}`);
             throw new Error('Document ID array must be an array');
         }
+        debug(`#deleteDocumentArrayFromDb: Input validation passed - array length: ${documentIdArray.length}`);
 
-        // Ensure all document IDs are numbers (same validation as removeDocumentArray)
-        const numericDocumentIdArray = documentIdArray.map(id => {
-            const numId = parseInt(id, 10);
-            if (isNaN(numId)) {
-                throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-            }
-            return numId;
-        });
+        try {
+            // Ensure all document IDs are numbers (same validation as removeDocumentArray)
+            debug(`#deleteDocumentArrayFromDb: Converting document IDs to numbers`);
+            const numericDocumentIdArray = documentIdArray.map((id, index) => {
+                const numId = parseInt(id, 10);
+                if (isNaN(numId)) {
+                    debug(`#deleteDocumentArrayFromDb: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
+                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
+                }
+                return numId;
+            });
+            debug(`#deleteDocumentArrayFromDb: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
+            debug(`#deleteDocumentArrayFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
-        // Completely delete the documents from the database, respecting the context
-        const result = this.#db.deleteDocumentArray(numericDocumentIdArray, this.#pathArray, options);
+            // Completely delete the documents from the database, respecting the context
+            debug(`#deleteDocumentArrayFromDb: Calling db.deleteDocumentArray with documentIds: ${JSON.stringify(numericDocumentIdArray)}, pathArray: ${JSON.stringify(this.#pathArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.deleteDocumentArray(numericDocumentIdArray, this.#pathArray, options);
+            debug(`#deleteDocumentArrayFromDb: Database deletion successful, result: ${JSON.stringify(result)}`);
 
-        // Prepare document data for events
-        const documentEventPayload = {
-            contextId: this.#id,
-            operation: 'delete',
-            documentIds: numericDocumentIdArray,
-            count: numericDocumentIdArray.length,
-            url: this.#url,
-            workspaceId: this.#workspace.id,
-            timestamp: new Date().toISOString()
-        };
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'delete',
+                documentIds: numericDocumentIdArray,
+                count: numericDocumentIdArray.length,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#deleteDocumentArrayFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-        this.emit('documents:delete', documentEventPayload);
-        this.emit('document:delete', documentEventPayload);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:delete',
-            documentArray: numericDocumentIdArray,
-        });
+            debug(`#deleteDocumentArrayFromDb: Emitting documents:delete event`);
+            this.emit('documents:delete', documentEventPayload);
 
-        return result;
+            debug(`#deleteDocumentArrayFromDb: Emitting document:delete event`);
+            this.emit('document:delete', documentEventPayload);
+
+            debug(`#deleteDocumentArrayFromDb: Emitting context:updated event`);
+            this.emit('context:updated', {
+                id: this.#id,
+                operation: 'document:delete',
+                documentArray: numericDocumentIdArray,
+            });
+
+            debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
+            return result;
+        } catch (error) {
+            debug(`#deleteDocumentArrayFromDb: Error during deletion process: ${error.message}`);
+            debug(`#deleteDocumentArrayFromDb: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     /**
