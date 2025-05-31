@@ -15,6 +15,8 @@ export default function registerContextWebSocket(fastify, socket) {
   // Increase max listeners limit for context manager
   contextManager.setMaxListeners(20); // Increased from default 10
 
+  debug(`🌐 WebSocket: New context connection established for socket ${socket.id}`);
+
   // --- User Validation Helper ---
   function getUserId() {
     return socket.user && socket.user.id;
@@ -82,50 +84,63 @@ export default function registerContextWebSocket(fastify, socket) {
   // Store event listeners for cleanup
   const listeners = new Map();
 
+  debug(`🌐 WebSocket: Setting up ${contextEvents.length} context event listeners for socket ${socket.id}`);
+
   // Register context event listeners
   contextEvents.forEach(eventName => {
     const listener = async (payload) => {
       try {
+        debug(`🌐 WebSocket: Received ${eventName} event from ContextManager:`, JSON.stringify(payload, null, 2));
+
         // Get current user ID
         const userId = getUserId();
         if (!userId) {
-          debug(`Not forwarding ${eventName} event - no authenticated user`);
+          debug(`🌐 WebSocket: Not forwarding ${eventName} event - no authenticated user on socket ${socket.id}`);
           return;
         }
 
         // Extract context ID from various possible payload structures
         const contextId = payload.id || payload.contextId || payload.context?.id;
+        debug(`🌐 WebSocket: Processing ${eventName} event for contextId: ${contextId}, userId: ${userId}`);
 
         if (contextId) {
           // Check if user has access to this context
           const hasAccess = await contextManager.hasContext(userId, contextId);
           if (!hasAccess) {
-            debug(`Not forwarding ${eventName} event for context ${contextId} - user ${userId} has no access`);
+            debug(`🌐 WebSocket: Access denied - not forwarding ${eventName} event for context ${contextId} - user ${userId} has no access`);
             return;
           }
 
-          debug(`Forwarding ${eventName} event for context ${contextId} to user ${userId}`);
+          debug(`🌐 WebSocket: ✅ Forwarding ${eventName} event for context ${contextId} to user ${userId} on socket ${socket.id}`);
         } else {
-          debug(`Forwarding ${eventName} event (no specific context) to user ${userId}`);
+          debug(`🌐 WebSocket: ✅ Forwarding ${eventName} event (no specific context) to user ${userId} on socket ${socket.id}`);
         }
 
         socket.emit(eventName, payload);
+        debug(`🌐 WebSocket: ✅ Successfully emitted ${eventName} event to client socket ${socket.id}`);
       } catch (error) {
-        debug(`Error handling ${eventName} event:`, error);
+        debug(`🌐 WebSocket: ❌ Error handling ${eventName} event on socket ${socket.id}:`, error);
+        console.error(`WebSocket context event error for ${eventName}:`, error);
       }
     };
 
     // Store listener for cleanup
     listeners.set(eventName, listener);
     contextManager.on(eventName, listener);
+    debug(`🌐 WebSocket: Registered listener for ${eventName} on ContextManager`);
   });
+
+  debug(`🌐 WebSocket: All event listeners registered for socket ${socket.id}`);
 
   // Clean up listeners on disconnect
   socket.on('disconnect', () => {
+    debug(`🌐 WebSocket: Socket ${socket.id} disconnecting, cleaning up ${listeners.size} event listeners`);
     listeners.forEach((listener, eventName) => {
       contextManager.removeListener(eventName, listener);
+      debug(`🌐 WebSocket: Cleaned up listener for ${eventName}`);
     });
     listeners.clear();
+    debug(`🌐 WebSocket: All listeners cleaned up for disconnected socket ${socket.id}`);
   });
 
   // --- Context Lifecycle Events ---
