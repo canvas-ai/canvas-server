@@ -1,0 +1,39 @@
+Successfull reply
+
+$ curl -s -X DELETE "http://0.0.0.0:8001/rest/v2/contexts/default/documents" -H "Authorization: Bearer canvas-6ae3e87125a9280c7bb251540db2b95a21acd11182213d45" -H "Content-Type: application/json" -d '["100001"]' | jq{
+  "status": "success",
+  "statusCode": 200,
+  "message": "Documents deleted from database successfully",
+  "payload": {
+    "successful": [
+      {
+        "index": 0,
+        "id": 100001
+      }
+    ],
+    "failed": [],
+    "count": 1
+  },
+  "count": null
+}
+
+Failed reply
+
+$ curl -s -X DELETE "http://0.0.0.0:8001/rest/v2/contexts/default/documents" -H "Authorization: Bearer canvas-6ae3e87125a9280c7bb251540db2b95a21acd11182213d45" -H "Content-Type: application/json" -d '["1009999"]' | jq
+{
+  "status": "success",
+  "statusCode": 200,
+  "message": "Documents deleted from database successfully",
+  "payload": {
+    "successful": [],
+    "failed": [
+      {
+        "index": 0,
+        "id": 1009999,
+        "error": "Document not found or already deleted"
+      }
+    ],
+    "count": 1
+  },
+  "count": null
+}
