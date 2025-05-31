@@ -2,9 +2,9 @@
   "mcpServers": {
     "canvas-server": {
       "type": "sse",
-      "url": "http://127.0.0.1:8002/sse",
+      "url": "http://127.0.0.1:8002/sse?token=canvas-6ae3e87125a9280c7bb251540db2b95a21acd11182213d45",
       "headers": {
-          "Authorization": "Bearer canvas-88dd5eb14b80dc70630ddf7ff08c84dd300f6bfd01d450ae"
+          "Authorization": "Bearer canvas-6ae3e87125a9280c7bb251540db2b95a21acd11182213d45"
       }
     }
   }

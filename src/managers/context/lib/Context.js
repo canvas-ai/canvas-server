@@ -45,6 +45,7 @@ class Context extends EventEmitter {
     #tree; // workspace.tree
     #workspaceManager; // Workspace manager instance
     #contextManager; // Context manager instance
+    #workspaceEventHandlers; // Event handlers for workspace event forwarding
 
     // Context metadata
     #createdAt;
@@ -107,6 +108,9 @@ class Context extends EventEmitter {
         this.#url = null;
         this.#path = null;
         this.#pathArray = [];
+
+        // Set up event forwarding from workspace
+        this.#setupWorkspaceEventForwarding();
 
         // Set initial base URL - this must happen before setting the initial URL
         try {
@@ -471,6 +475,9 @@ class Context extends EventEmitter {
         // Perform any cleanup needed
         this.#isLocked = true;
 
+        // Clean up workspace event forwarding
+        this.#cleanupWorkspaceEventForwarding();
+
         // Clear references
         this.#db = null;
         this.#tree = null;
@@ -497,11 +504,19 @@ class Context extends EventEmitter {
         const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceId, this.#userId);
         if (hasWs) {
             try {
+                // Clean up event forwarding from the old workspace
+                this.#cleanupWorkspaceEventForwarding();
+
                 const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
                 this.#workspace = newWorkspaceInstance;
                 this.#db = this.#workspace.db;
                 this.#tree = this.#workspace.tree;
                 this.#color = this.#workspace.color;
+
+                // Set up event forwarding for the new workspace
+                this.#setupWorkspaceEventForwarding();
+
+                debug(`Context "${this.#id}" successfully switched to workspace "${workspaceId}"`);
             } catch (error) {
                 throw new Error(`Failed to switch workspace: ${error.message}`);
             }
@@ -1156,6 +1171,211 @@ class Context extends EventEmitter {
             return null;
         }
         return document;
+    }
+
+    /**
+     * Setup event forwarding from workspace to context
+     * @private
+     */
+    #setupWorkspaceEventForwarding() {
+        if (!this.#workspace) return;
+
+        debug(`Setting up workspace event forwarding for context "${this.#id}"`);
+
+        // Store references to the bound event handlers for cleanup
+        this.#workspaceEventHandlers = {
+            documentInserted: (payload) => this.#handleWorkspaceDocumentEvent('document:inserted', payload),
+            documentUpdated: (payload) => this.#handleWorkspaceDocumentEvent('document:updated', payload),
+            documentRemoved: (payload) => this.#handleWorkspaceDocumentEvent('document:removed', payload),
+            documentDeleted: (payload) => this.#handleWorkspaceDocumentEvent('document:deleted', payload),
+            treePathInserted: (payload) => this.#handleWorkspaceTreeEvent('tree:path:inserted', payload),
+            treePathMoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:moved', payload),
+            treePathCopied: (payload) => this.#handleWorkspaceTreeEvent('tree:path:copied', payload),
+            treePathRemoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:removed', payload),
+            treeDocumentInserted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted', payload),
+            treeDocumentInsertedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted:batch', payload),
+            treeDocumentUpdated: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated', payload),
+            treeDocumentUpdatedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated:batch', payload),
+            treeDocumentRemoved: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed', payload),
+            treeDocumentRemovedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed:batch', payload),
+            treeDocumentDeleted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted', payload),
+            treeDocumentDeletedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted:batch', payload),
+            treePathLocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:locked', payload),
+            treePathUnlocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:unlocked', payload),
+            treeLayerMergedUp: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:up', payload),
+            treeLayerMergedDown: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:down', payload),
+            treeSaved: (payload) => this.#handleWorkspaceTreeEvent('tree:saved', payload),
+            treeLoaded: (payload) => this.#handleWorkspaceTreeEvent('tree:loaded', payload),
+            treeRecalculated: (payload) => this.#handleWorkspaceTreeEvent('tree:recalculated', payload),
+            treeError: (payload) => this.#handleWorkspaceTreeEvent('tree:error', payload)
+        };
+
+        // Register the event handlers
+        this.#workspace.on('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.on('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.on('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.on('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.on('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.on('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.on('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.on('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.on('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.on('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.on('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.on('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.on('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.on('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.on('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.on('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.on('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.on('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.on('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.on('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.on('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.on('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.on('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.on('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+
+        debug(`Workspace event forwarding setup completed for context "${this.#id}"`);
+    }
+
+    /**
+     * Handle workspace document events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceDocumentEvent(eventType, payload) {
+        // Forward all workspace document events with context information
+        this.emit(`context:workspace:${eventType}`, {
+            contextId: this.#id,
+            contextUrl: this.#url,
+            contextPath: this.#path,
+            contextPathArray: this.#pathArray,
+            userId: this.#userId,
+            ...payload
+        });
+    }
+
+    /**
+     * Handle workspace tree events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceTreeEvent(eventType, payload) {
+        // Forward tree events that might affect this context
+        this.emit(`context:workspace:${eventType}`, {
+            contextId: this.#id,
+            contextUrl: this.#url,
+            contextPath: this.#path,
+            contextPathArray: this.#pathArray,
+            userId: this.#userId,
+            ...payload
+        });
+    }
+
+    /**
+     * Handle workspace tree document events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceTreeDocumentEvent(eventType, payload) {
+        // Check if the event is relevant to this context based on path overlap
+        const isRelevant = this.#isEventRelevantToContext(payload);
+
+        if (isRelevant) {
+            this.emit(`context:workspace:${eventType}`, {
+                contextId: this.#id,
+                contextUrl: this.#url,
+                contextPath: this.#path,
+                contextPathArray: this.#pathArray,
+                userId: this.#userId,
+                relevant: true,
+                ...payload
+            });
+
+            debug(`Context "${this.#id}" forwarded relevant ${eventType} event for path "${payload.contextSpec || 'unknown'}"`);
+        } else {
+            // Still emit the event but mark it as not directly relevant
+            this.emit(`context:workspace:${eventType}`, {
+                contextId: this.#id,
+                contextUrl: this.#url,
+                contextPath: this.#path,
+                contextPathArray: this.#pathArray,
+                userId: this.#userId,
+                relevant: false,
+                ...payload
+            });
+        }
+    }
+
+    /**
+     * Check if a workspace event is relevant to this context based on path overlap
+     * @private
+     */
+    #isEventRelevantToContext(payload) {
+        if (!payload.contextSpec && !payload.path) {
+            // If no path information, consider it relevant (safer default)
+            return true;
+        }
+
+        const eventPath = payload.contextSpec || payload.path || '';
+        const contextPath = this.#path || '/';
+
+        // Check if the event path is within this context's path or vice versa
+        // This handles cases like:
+        // - Context at /foo/bar receives event for /foo/bar/baz (child)
+        // - Context at /foo/bar/baz receives event for /foo/bar (parent)
+        // - Context at /foo/bar receives event for /foo/bar (same)
+
+        const normalizePathForComparison = (path) => {
+            if (!path || path === '/') return '/';
+            return path.endsWith('/') ? path.slice(0, -1) : path;
+        };
+
+        const normalizedEventPath = normalizePathForComparison(eventPath);
+        const normalizedContextPath = normalizePathForComparison(contextPath);
+
+        // Check for path overlap (either path contains the other)
+        return normalizedEventPath.startsWith(normalizedContextPath) ||
+               normalizedContextPath.startsWith(normalizedEventPath);
+    }
+
+    /**
+     * Clean up workspace event forwarding
+     * @private
+     */
+    #cleanupWorkspaceEventForwarding() {
+        if (!this.#workspace || !this.#workspaceEventHandlers) return;
+
+        debug(`Cleaning up workspace event forwarding for context "${this.#id}"`);
+
+        // Remove specific event listeners using stored handler references
+        this.#workspace.off('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.off('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.off('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.off('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.off('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.off('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.off('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.off('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.off('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.off('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.off('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.off('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.off('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.off('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.off('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.off('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.off('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.off('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.off('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.off('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.off('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.off('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.off('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.off('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+
+        // Clear the handlers reference
+        this.#workspaceEventHandlers = null;
+
+        debug(`Workspace event forwarding cleanup completed for context "${this.#id}"`);
     }
 }
 
