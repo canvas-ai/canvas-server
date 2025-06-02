@@ -11,6 +11,9 @@ const debug = createDebug('context-manager:context');
 // Includes
 import Url from './Url.js';
 
+// Constants
+const DEFAULT_BASE_URL = '/';
+
 /**
  * Context
  */
@@ -24,6 +27,7 @@ class Context extends EventEmitter {
     #path;
     #pathArray;
     #userId;
+    #color;
 
     // Access Control List: maps userId to accessLevel (e.g., {"user@example.com": "documentRead"})
     #acl;
@@ -44,6 +48,7 @@ class Context extends EventEmitter {
     #tree; // workspace.tree
     #workspaceManager; // Workspace manager instance
     #contextManager; // Context manager instance
+    #workspaceEventHandlers; // Event handlers for workspace event forwarding
 
     // Context metadata
     #createdAt;
@@ -53,39 +58,32 @@ class Context extends EventEmitter {
     // Additional properties
     #pendingUrl;
 
-    constructor(url, options) {
+    constructor(url = DEFAULT_BASE_URL, options = {}) {
         super();
 
         // Context properties
-        this.#id = options.id || uuidv4();
-
-        // User ID
-        if (!options.userId) {
-            throw new Error('User ID is required');
-        }
-        this.#userId = options.userId;
-
-        // Store the provided baseUrl, default to '/'
-        const providedBaseUrl = options.baseUrl || '/';
+        this.#id = options.id || uuidv4(); // TODO: Use human-typeable 6-char ULID
+        this.#url = null;
+        this.#baseUrl = options.baseUrl || DEFAULT_BASE_URL;
+        this.#path = null;
+        this.#pathArray = [];
         this.#isLocked = options.locked || false;
 
+        // User ID
+        if (!options.userId) { throw new Error('User ID is required'); }
+        this.#userId = options.userId;
+
         // Workspace references
-        if (!options.workspace) {
-            throw new Error('Workspace instance is required');
-        }
-
-        if (!options.workspaceManager) {
-            throw new Error('Workspace manager instance is required');
-        }
-
-        if (!options.contextManager) {
-            throw new Error('Context manager instance is required');
-        }
-
+        if (!options.workspace) { throw new Error('Workspace instance is required'); }
+        if (!options.workspaceManager) { throw new Error('Workspace manager instance is required'); }
         this.#workspace = options.workspace;
         this.#workspaceManager = options.workspaceManager;
         this.#db = this.#workspace.db;
         this.#tree = this.#workspace.tree;
+        this.#color = this.#workspace.color;
+
+        // Context manager references
+        if (!options.contextManager) { throw new Error('Context manager instance is required'); }
         this.#contextManager = options.contextManager;
 
         // Context metadata
@@ -95,55 +93,58 @@ class Context extends EventEmitter {
         // ACL
         this.#acl = options.acl || {};
 
-        // Server Context
+        // Context variables
         this.#serverContextArray = options.serverContextArray || [];
-
-        // Client Context
         this.#clientContextArray = options.clientContextArray || [];
 
-        // Initialize url and path related properties
-        this.#url = null;
-        this.#path = null;
-        this.#pathArray = [];
+        // Set up event forwarding from workspace
+        this.#setupWorkspaceEventForwarding();
 
-        // Set initial base URL - this must happen before setting the initial URL
+        // Set initial URL - simplified logic now that Url properly handles null workspaceId
         try {
-            // Directly set the internal variable first
-            this.#baseUrl = providedBaseUrl;
-            // Now validate and handle potential conflicts (though unlikely in constructor)
-            // We use a temporary Url object for validation and path checking
-            const base = new Url(this.#baseUrl);
-            if (!base.isValid) {
-                throw new Error(`Invalid base URL provided: ${providedBaseUrl}`);
-            }
-            // Ensure the initial context URL respects the base URL
-            let initialUrl = url;
-            const parsedInitial = new Url(initialUrl);
-
-            if (this.#baseUrl !== '/' && !parsedInitial.path.startsWith(base.path)) {
-                debug(`Provided URL "${initialUrl}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`);
-                initialUrl = this.#baseUrl; // Force URL to base
+            // Validate base URL if provided
+            if (this.#baseUrl !== '/') {
+                const base = new Url(this.#baseUrl);
+                if (!base.isValid) {
+                    throw new Error(`Invalid base URL provided: ${this.#baseUrl}`);
+                }
             }
 
-            // Now set the initial URL using the potentially adjusted value
-            // We bypass setUrl here as workspace/layer logic happens in initialize/setUrl calls
-            const finalParsed = new Url(initialUrl);
+            // Parse the initial URL
+            const parsedUrl = new Url(url);
+            if (!parsedUrl.isValid) {
+                throw new Error(`Invalid initial URL provided: ${url}`);
+            }
 
-            if (finalParsed.workspaceID === this.#workspace.name) {
-                this.#url = finalParsed.url;
-                this.#path = finalParsed.path;
-                this.#pathArray = finalParsed.pathArray;
-                // Initial context/feature bitmaps will be set by setUrl/initialize later
+            // Check if URL is within base URL constraints
+            if (this.#baseUrl !== '/' && !parsedUrl.path.startsWith(new Url(this.#baseUrl).path)) {
+                debug(`Provided URL "${url}" is outside base URL "${this.#baseUrl}". Forcing URL to base URL.`);
+                const baseUrl = new Url(this.#baseUrl);
+                this.#url = baseUrl.url;
+                this.#path = baseUrl.path;
+                this.#pathArray = baseUrl.pathArray;
             } else {
-                // This logic remains for handling initial cross-workspace URLs
-                this.#url = `${this.#workspace.name}://${finalParsed.path}`; // Use current workspace name temporarily
-                this.#path = finalParsed.path;
-                this.#pathArray = finalParsed.pathArray;
-                this.#pendingUrl = initialUrl; // Store the original full URL
+                // If no workspaceId in URL, use current workspace
+                if (!parsedUrl.workspaceId) {
+                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                } else if (parsedUrl.workspaceId === this.#workspace.id) {
+                    // Same workspace, use as-is
+                    this.#url = parsedUrl.url;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                } else {
+                    // Different workspace, store as pending for later switching
+                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#path = parsedUrl.path;
+                    this.#pathArray = parsedUrl.pathArray;
+                    this.#pendingUrl = url;
+                }
             }
         } catch (error) {
-            // Clean up potentially partially set state
-            this.#baseUrl = '/'; // Reset base to default on error
+            // Clean up on error
+            this.#baseUrl = '/';
             this.#url = null;
             this.#path = null;
             this.#pathArray = [];
@@ -182,6 +183,7 @@ class Context extends EventEmitter {
     get workspace() { return this.#workspace; }
     get workspaceId() { return this.#workspace.id; }
     get tree() { return this.#tree.toJSON(); }
+    get color() { return this.#color; }
     get pendingUrl() { return this.#pendingUrl; }
     get bitmapArrays() {
         return {
@@ -361,32 +363,36 @@ class Context extends EventEmitter {
         }
 
         const parsed = new Url(url);
+        if (!parsed.isValid) {
+            throw new Error(`Invalid URL provided: ${url}`);
+        }
+
         debug(`Attempting to set URL to ${parsed.url}`);
-        debug(`Parsed URL: ${JSON.stringify(parsed)}`);
+        debug(`Parsed URL: ${JSON.stringify({ workspaceId: parsed.workspaceId, path: parsed.path, pathArray: parsed.pathArray })}`);
 
         // Validate against base URL if it's set and not root
         if (this.#baseUrl && this.#baseUrl !== '/') {
-            const base = new Url(this.#baseUrl); // Assuming baseUrl is always valid by this point
-            // Ensure the target URL path starts with the base URL path
+            const base = new Url(this.#baseUrl);
             if (!parsed.path.startsWith(base.path)) {
                 throw new Error(`Cannot set URL "${url}" outside the context base URL "${this.#baseUrl}"`);
             }
         }
 
+        // Determine target workspace ID
+        const targetWorkspaceId = parsed.workspaceId || this.#workspace.id;
+
         // If the workspace ID is different, switch to the new workspace
-        if (parsed.workspaceID !== this.#workspace.name) {
-            // #switchWorkspace will handle setting the final URL path after switching
-            await this.#switchWorkspace(parsed.workspaceID, parsed.path);
+        if (targetWorkspaceId !== this.#workspace.id) {
+            await this.#switchWorkspace(targetWorkspaceId);
         }
 
         // Create the URL path in the current workspace
-        const contextLayers = this.#workspace.insertPath(parsed.path); // This will return a list of layer IDs
-        // Since we move the Layer to Path logic to SynapsD we can keep using paths in the context
+        const contextLayers = this.#workspace.insertPath(parsed.path);
         this.#contextBitmapArray = parsed.pathArray;
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the internal URL state
-        this.#url = parsed.url;
+        this.#url = `${this.#workspace.id}://${parsed.path.replace(/^\//, '')}`;
         this.#path = parsed.path;
         this.#pathArray = parsed.pathArray;
 
@@ -399,7 +405,6 @@ class Context extends EventEmitter {
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
 
-        // Return this for method chaining and to maintain consistency with async version
         return Promise.resolve(this);
     }
 
@@ -416,15 +421,16 @@ class Context extends EventEmitter {
                 throw new Error(`Invalid base URL format: ${newBaseUrl}`);
             }
             // Ensure the new base URL is within the same workspace
-            if (parsedNewBase.workspaceID !== this.#workspace.name) {
+            if (parsedNewBase.workspaceId && parsedNewBase.workspaceId !== this.#workspace.id) {
                 throw new Error(`Cannot set base URL to a different workspace: ${newBaseUrl}`);
             }
 
-            // Option C: Check if the *current* URL is compatible with the *new* base URL
+            // Check if the current URL is compatible with the new base URL
             if (this.#url) {
                 const currentParsed = new Url(this.#url);
                 // Only check path if the current URL is actually in the same workspace
-                if (currentParsed.workspaceID === this.#workspace.name && !currentParsed.path.startsWith(parsedNewBase.path)) {
+                if ((!currentParsed.workspaceId || currentParsed.workspaceId === this.#workspace.id) &&
+                    !currentParsed.path.startsWith(parsedNewBase.path)) {
                     throw new Error(
                         `Current URL "${this.#url}" is outside the proposed new base URL "${newBaseUrl}". Please navigate within the new base URL before setting it.`,
                     );
@@ -440,7 +446,6 @@ class Context extends EventEmitter {
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
 
-        // No automatic setUrl according to Option C
         return Promise.resolve(this);
     }
 
@@ -468,6 +473,9 @@ class Context extends EventEmitter {
         // Perform any cleanup needed
         this.#isLocked = true;
 
+        // Clean up workspace event forwarding
+        this.#cleanupWorkspaceEventForwarding();
+
         // Clear references
         this.#db = null;
         this.#tree = null;
@@ -486,23 +494,32 @@ class Context extends EventEmitter {
         return Promise.resolve(this);
     }
 
-    async #switchWorkspace(workspaceId, url = '/') {
+    async #switchWorkspace(workspaceId) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
 
         const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceId, this.#userId);
-        if (hasWs) {
-            try {
-                const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
-                this.#workspace = newWorkspaceInstance;
-                this.#db = this.#workspace.db;
-                this.#tree = this.#workspace.tree;
-            } catch (error) {
-                throw new Error(`Failed to switch workspace: ${error.message}`);
-            }
-        } else {
+        if (!hasWs) {
             throw new Error(`Workspace "${workspaceId}" not found`);
+        }
+
+        try {
+            // Clean up event forwarding from the old workspace
+            this.#cleanupWorkspaceEventForwarding();
+
+            const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
+            this.#workspace = newWorkspaceInstance;
+            this.#db = this.#workspace.db;
+            this.#tree = this.#workspace.tree;
+            this.#color = this.#workspace.color;
+
+            // Set up event forwarding for the new workspace
+            this.#setupWorkspaceEventForwarding();
+
+            debug(`Context "${this.#id}" successfully switched to workspace "${workspaceId}"`);
+        } catch (error) {
+            throw new Error(`Failed to switch workspace: ${error.message}`);
         }
     }
 
@@ -568,11 +585,26 @@ class Context extends EventEmitter {
 
         // Insert the document
         const result = this.#db.insertDocument(document, contextArray, featureArray, options);
-        this.emit('document:insert', document.id || result.id);
+
+        // Prepare document data for events
+        const documentId = document.id || result.id;
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'insert',
+            documentId: documentId,
+            document: document,
+            contextArray: this.#contextBitmapArray,
+            featureArray: featureArray,
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
+
+        this.emit('document:insert', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:inserted',
-            document: document.id || result.id,
+            document: documentId,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
         });
@@ -607,14 +639,22 @@ class Context extends EventEmitter {
 
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'documentArray:inserted',
-            documentArray: documentArray,
+
+        // Prepare document data for events
+        const documentIds = result && Array.isArray(result) ? result : documentArray.map(doc => doc.id);
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'insert',
+            documentIds: documentIds,
+            documents: documentArray,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
-        });
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
 
+        this.emit('document:insert', documentEventPayload);
         return result;
     }
 
@@ -782,15 +822,20 @@ class Context extends EventEmitter {
         // Update the document
         const result = this.#db.updateDocument(document, contextArray, featureArray);
 
-        this.emit('document:update', document.id);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:update',
-            document: document.id,
+        // Prepare document data for events
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'update',
+            documentId: document.id,
+            document: document,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
-        });
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
 
+        this.emit('document:update', documentEventPayload);
         return result;
     }
 
@@ -817,71 +862,133 @@ class Context extends EventEmitter {
         // Update the documents
         const result = this.#db.updateDocumentArray(documentArray, contextArray, featureArray);
 
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:update',
-            documentArray: documentArray,
+        // Prepare document data for events
+        const documentIds = documentArray.map(doc => doc.id);
+        const documentEventPayload = {
+            contextId: this.#id,
+            operation: 'update',
+            documentIds: documentIds,
+            documents: documentArray,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
-        });
+            url: this.#url,
+            workspaceId: this.#workspace.id,
+            timestamp: new Date().toISOString()
+        };
 
+        this.emit('document:update', documentEventPayload);
         return result;
     }
 
     removeDocument(accessingUserId, documentId, featureArray = [], options = {}) {
+        debug(`#removeDocument: Starting removal for documentId: ${documentId}, accessingUserId: ${accessingUserId}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#removeDocument: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission.');
         }
+        debug(`#removeDocument: Permission check passed`);
+
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#removeDocument: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#removeDocument: Workspace and database available`);
+        debug(`#removeDocument: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
-        // We remove document from the current context not from the database
-        const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
-        this.emit('document:remove', documentId);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:remove',
-            document: documentId,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
+        try {
+            // We remove document from the current context not from the database
+            debug(`#removeDocument: Calling db.removeDocument with documentId: ${documentId}, contextArray: ${JSON.stringify(this.#contextBitmapArray)}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.removeDocument(documentId, this.#contextBitmapArray, featureArray, options);
+            debug(`#removeDocument: Database removal successful, result: ${JSON.stringify(result)}`);
 
-        return result;
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'remove',
+                documentId: documentId,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#removeDocument: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
+
+            debug(`#removeDocument: Emitting document:remove event`);
+            this.emit('document:remove', documentEventPayload);
+
+            debug(`#removeDocument: Successfully completed removal of document ${documentId} from context`);
+            return result;
+        } catch (error) {
+            debug(`#removeDocument: Error during removal process: ${error.message}`);
+            debug(`#removeDocument: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     removeDocumentArray(accessingUserId, documentIdArray, featureArray = [], options = {}) {
+        debug(`#removeDocumentArray: Starting removal for documentIdArray: ${JSON.stringify(documentIdArray)}, accessingUserId: ${accessingUserId}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#removeDocumentArray: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission.');
         }
+        debug(`#removeDocumentArray: Permission check passed`);
+
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#removeDocumentArray: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#removeDocumentArray: Workspace and database available`);
 
         if (!Array.isArray(documentIdArray)) {
+            debug(`#removeDocumentArray: Invalid input - not an array: ${typeof documentIdArray}`);
             throw new Error('Document ID array must be an array');
         }
+        debug(`#removeDocumentArray: Input validation passed - array length: ${documentIdArray.length}`);
+        debug(`#removeDocumentArray: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
-        // Ensure all document IDs are numbers
-        const numericDocumentIdArray = documentIdArray.map(id => {
-            const numId = parseInt(id, 10);
-            if (isNaN(numId)) {
-                throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-            }
-            return numId;
-        });
+        try {
+            // Ensure all document IDs are numbers
+            debug(`#removeDocumentArray: Converting document IDs to numbers`);
+            const numericDocumentIdArray = documentIdArray.map((id, index) => {
+                const numId = parseInt(id, 10);
+                if (isNaN(numId)) {
+                    debug(`#removeDocumentArray: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
+                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
+                }
+                return numId;
+            });
+            debug(`#removeDocumentArray: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
 
-        // We remove documents from the current context not from the database
-        const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:remove',
-            documentArray: numericDocumentIdArray,
-            contextArray: this.#contextBitmapArray,
-            featureArray: featureArray,
-        });
+            // We remove documents from the current context not from the database
+            debug(`#removeDocumentArray: Calling db.removeDocumentArray with documentIds: ${JSON.stringify(numericDocumentIdArray)}, contextArray: ${JSON.stringify(this.#contextBitmapArray)}, featureArray: ${JSON.stringify(featureArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.removeDocumentArray(numericDocumentIdArray, this.#contextBitmapArray, featureArray, options);
+            debug(`#removeDocumentArray: Database removal successful, result: ${JSON.stringify(result)}`);
 
-        return result;
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'remove',
+                documentIds: numericDocumentIdArray,
+                contextArray: this.#contextBitmapArray,
+                featureArray: featureArray,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#removeDocumentArray: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
+
+            debug(`#removeDocumentArray: Emitting document:remove event`);
+            this.emit('document:remove', documentEventPayload);
+            debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
+            return result;
+        } catch (error) {
+            debug(`#removeDocumentArray: Error during removal process: ${error.message}`);
+            debug(`#removeDocumentArray: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     /**
@@ -890,59 +997,139 @@ class Context extends EventEmitter {
      */
 
     deleteDocumentFromDb(accessingUserId, documentId) {
+        debug(`#deleteDocumentFromDb: Starting deletion for documentId: ${documentId}, accessingUserId: ${accessingUserId}`);
+
         // This is a direct DB access method, only context owner should call it.
         if (accessingUserId !== this.#userId) {
+            debug(`#deleteDocumentFromDb: Access denied - user ${accessingUserId} is not owner ${this.#userId}`);
             throw new Error('Access denied: Only the context owner can delete documents directly from the database.');
         }
+        debug(`#deleteDocumentFromDb: Owner check passed`);
+
         // Technically, owner has all permissions, but check for completeness or if that changes.
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#deleteDocumentFromDb: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission for direct DB deletion.');
         }
+        debug(`#deleteDocumentFromDb: Permission check passed`);
 
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#deleteDocumentFromDb: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#deleteDocumentFromDb: Workspace and database available`);
 
-        // Completely delete the document from the database, respecting the context
-        const result = this.#db.deleteDocument(documentId, this.#pathArray);
-        this.emit('document:delete', documentId);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:delete',
-            document: documentId,
-        });
+        // Ensure document ID is a number (consistent with array version)
+        const numericDocumentId = parseInt(documentId, 10);
+        if (isNaN(numericDocumentId)) {
+            debug(`#deleteDocumentFromDb: Invalid document ID conversion - original: ${documentId}, parsed: ${numericDocumentId}`);
+            throw new Error(`Invalid document ID: ${documentId}. Must be a number or a string coercible to a number.`);
+        }
+        debug(`#deleteDocumentFromDb: Document ID validation passed - using: ${numericDocumentId}`);
+        debug(`#deleteDocumentFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
-        return result;
+        try {
+            // Completely delete the document from the database, respecting the context
+            debug(`#deleteDocumentFromDb: Calling db.deleteDocument with documentId: ${numericDocumentId}, pathArray: ${JSON.stringify(this.#pathArray)}`);
+            const result = this.#db.deleteDocument(numericDocumentId, this.#pathArray);
+            debug(`#deleteDocumentFromDb: Database deletion successful, result: ${JSON.stringify(result)}`);
+
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'delete',
+                documentId: numericDocumentId,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#deleteDocumentFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
+
+            debug(`#deleteDocumentFromDb: Emitting document:delete event`);
+            this.emit('document:delete', documentEventPayload);
+
+            debug(`#deleteDocumentFromDb: Successfully completed deletion of document ${numericDocumentId}`);
+            return result;
+        } catch (error) {
+            debug(`#deleteDocumentFromDb: Error during deletion process: ${error.message}`);
+            debug(`#deleteDocumentFromDb: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     deleteDocumentArrayFromDb(accessingUserId, documentIdArray, options = {}) {
+        debug(`#deleteDocumentArrayFromDb: Starting deletion for documentIdArray: ${JSON.stringify(documentIdArray)}, accessingUserId: ${accessingUserId}, options: ${JSON.stringify(options)}`);
+
         // This is a direct DB access method, only context owner should call it.
         if (accessingUserId !== this.#userId) {
+            debug(`#deleteDocumentArrayFromDb: Access denied - user ${accessingUserId} is not owner ${this.#userId}`);
             throw new Error('Access denied: Only the context owner can delete documents directly from the database.');
         }
+        debug(`#deleteDocumentArrayFromDb: Owner check passed`);
+
         // Technically, owner has all permissions, but check for completeness or if that changes.
         if (!this.checkPermission(accessingUserId, 'documentReadWrite')) {
+            debug(`#deleteDocumentArrayFromDb: Permission check failed for user ${accessingUserId}`);
             throw new Error('Access denied: User requires documentReadWrite permission for direct DB deletion.');
         }
+        debug(`#deleteDocumentArrayFromDb: Permission check passed`);
 
         if (!this.#workspace || !this.#workspace.db) {
+            debug(`#deleteDocumentArrayFromDb: Workspace or database not available - workspace: ${!!this.#workspace}, db: ${!!this.#workspace?.db}`);
             throw new Error('Workspace or database not available');
         }
+        debug(`#deleteDocumentArrayFromDb: Workspace and database available`);
 
         if (!Array.isArray(documentIdArray)) {
+            debug(`#deleteDocumentArrayFromDb: Invalid input - not an array: ${typeof documentIdArray}`);
             throw new Error('Document ID array must be an array');
         }
+        debug(`#deleteDocumentArrayFromDb: Input validation passed - array length: ${documentIdArray.length}`);
 
-        // Completely delete the documents from the database, respecting the context
-        const result = this.#db.deleteDocumentArray(documentIdArray, this.#pathArray, options);
-        this.emit('documents:delete', documentIdArray.length);
-        this.emit('context:updated', {
-            id: this.#id,
-            operation: 'document:delete',
-            documentArray: documentIdArray,
-        });
+        try {
+            // Ensure all document IDs are numbers (same validation as removeDocumentArray)
+            debug(`#deleteDocumentArrayFromDb: Converting document IDs to numbers`);
+            const numericDocumentIdArray = documentIdArray.map((id, index) => {
+                const numId = parseInt(id, 10);
+                if (isNaN(numId)) {
+                    debug(`#deleteDocumentArrayFromDb: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
+                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
+                }
+                return numId;
+            });
+            debug(`#deleteDocumentArrayFromDb: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
+            debug(`#deleteDocumentArrayFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
-        return result;
+            // Completely delete the documents from the database, respecting the context
+            debug(`#deleteDocumentArrayFromDb: Calling db.deleteDocumentArray with documentIds: ${JSON.stringify(numericDocumentIdArray)}, pathArray: ${JSON.stringify(this.#pathArray)}, options: ${JSON.stringify(options)}`);
+            const result = this.#db.deleteDocumentArray(numericDocumentIdArray, this.#pathArray, options);
+            debug(`#deleteDocumentArrayFromDb: Database deletion successful, result: ${JSON.stringify(result)}`);
+
+            // Prepare document data for events
+            const documentEventPayload = {
+                contextId: this.#id,
+                operation: 'delete',
+                documentIds: numericDocumentIdArray,
+                count: numericDocumentIdArray.length,
+                url: this.#url,
+                workspaceId: this.#workspace.id,
+                timestamp: new Date().toISOString()
+            };
+            debug(`#deleteDocumentArrayFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
+
+            debug(`#deleteDocumentArrayFromDb: Emitting documents:delete event`);
+            this.emit('documents:delete', documentEventPayload);
+
+            debug(`#deleteDocumentArrayFromDb: Emitting document:delete event`);
+            this.emit('document:delete', documentEventPayload);
+
+            debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
+            return result;
+        } catch (error) {
+            debug(`#deleteDocumentArrayFromDb: Error during deletion process: ${error.message}`);
+            debug(`#deleteDocumentArrayFromDb: Error stack: ${error.stack}`);
+            throw error;
+        }
     }
 
     /**
@@ -958,6 +1145,7 @@ class Context extends EventEmitter {
             path: this.#path,
             pathArray: this.#pathArray,
             workspaceId: this.#workspace?.id,
+            color: this.#color,
             acl: this.#acl,
             createdAt: this.#createdAt,
             updatedAt: this.#updatedAt,
@@ -1026,6 +1214,211 @@ class Context extends EventEmitter {
             return null;
         }
         return document;
+    }
+
+    /**
+     * Setup event forwarding from workspace to context
+     * @private
+     */
+    #setupWorkspaceEventForwarding() {
+        if (!this.#workspace) return;
+
+        debug(`Setting up workspace event forwarding for context "${this.#id}"`);
+
+        // Store references to the bound event handlers for cleanup
+        this.#workspaceEventHandlers = {
+            documentInserted: (payload) => this.#handleWorkspaceDocumentEvent('document:inserted', payload),
+            documentUpdated: (payload) => this.#handleWorkspaceDocumentEvent('document:updated', payload),
+            documentRemoved: (payload) => this.#handleWorkspaceDocumentEvent('document:removed', payload),
+            documentDeleted: (payload) => this.#handleWorkspaceDocumentEvent('document:deleted', payload),
+            treePathInserted: (payload) => this.#handleWorkspaceTreeEvent('tree:path:inserted', payload),
+            treePathMoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:moved', payload),
+            treePathCopied: (payload) => this.#handleWorkspaceTreeEvent('tree:path:copied', payload),
+            treePathRemoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:removed', payload),
+            treeDocumentInserted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted', payload),
+            treeDocumentInsertedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted:batch', payload),
+            treeDocumentUpdated: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated', payload),
+            treeDocumentUpdatedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated:batch', payload),
+            treeDocumentRemoved: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed', payload),
+            treeDocumentRemovedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed:batch', payload),
+            treeDocumentDeleted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted', payload),
+            treeDocumentDeletedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted:batch', payload),
+            treePathLocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:locked', payload),
+            treePathUnlocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:unlocked', payload),
+            treeLayerMergedUp: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:up', payload),
+            treeLayerMergedDown: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:down', payload),
+            treeSaved: (payload) => this.#handleWorkspaceTreeEvent('tree:saved', payload),
+            treeLoaded: (payload) => this.#handleWorkspaceTreeEvent('tree:loaded', payload),
+            treeRecalculated: (payload) => this.#handleWorkspaceTreeEvent('tree:recalculated', payload),
+            treeError: (payload) => this.#handleWorkspaceTreeEvent('tree:error', payload)
+        };
+
+        // Register the event handlers
+        this.#workspace.on('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.on('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.on('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.on('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.on('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.on('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.on('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.on('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.on('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.on('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.on('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.on('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.on('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.on('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.on('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.on('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.on('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.on('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.on('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.on('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.on('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.on('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.on('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.on('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+
+        debug(`Workspace event forwarding setup completed for context "${this.#id}"`);
+    }
+
+    /**
+     * Handle workspace document events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceDocumentEvent(eventType, payload) {
+        // Forward all workspace document events with context information
+        this.emit(`context:workspace:${eventType}`, {
+            contextId: this.#id,
+            contextUrl: this.#url,
+            contextPath: this.#path,
+            contextPathArray: this.#pathArray,
+            userId: this.#userId,
+            ...payload
+        });
+    }
+
+    /**
+     * Handle workspace tree events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceTreeEvent(eventType, payload) {
+        // Forward tree events that might affect this context
+        this.emit(`context:workspace:${eventType}`, {
+            contextId: this.#id,
+            contextUrl: this.#url,
+            contextPath: this.#path,
+            contextPathArray: this.#pathArray,
+            userId: this.#userId,
+            ...payload
+        });
+    }
+
+    /**
+     * Handle workspace tree document events and decide whether to forward them
+     * @private
+     */
+    #handleWorkspaceTreeDocumentEvent(eventType, payload) {
+                // Check if the event is relevant to this context based on path overlap
+        const isRelevant = this.#isEventRelevantToContext(payload);
+
+        if (isRelevant) {
+            this.emit(`context:workspace:${eventType}`, {
+                contextId: this.#id,
+                contextUrl: this.#url,
+                contextPath: this.#path,
+                contextPathArray: this.#pathArray,
+                userId: this.#userId,
+                relevant: true,
+                 ...payload
+            });
+
+            debug(`Context "${this.#id}" forwarded relevant ${eventType} event for path "${payload.contextSpec || 'unknown'}"`);
+        } else {
+            // Still emit the event but mark it as not directly relevant
+            this.emit(`context:workspace:${eventType}`, {
+                contextId: this.#id,
+                contextUrl: this.#url,
+                contextPath: this.#path,
+                contextPathArray: this.#pathArray,
+                userId: this.#userId,
+                relevant: false,
+                ...payload
+            });
+        }
+    }
+
+    /**
+     * Check if a workspace event is relevant to this context based on path overlap
+     * @private
+     */
+    #isEventRelevantToContext(payload) {
+        if (!payload.contextSpec && !payload.path) {
+            // If no path information, consider it relevant (safer default)
+            return true;
+        }
+
+        const eventPath = payload.contextSpec || payload.path || '';
+        const contextPath = this.#path || '/';
+
+        // Check if the event path is within this context's path or vice versa
+        // This handles cases like:
+        // - Context at /foo/bar receives event for /foo/bar/baz (child)
+        // - Context at /foo/bar/baz receives event for /foo/bar (parent)
+        // - Context at /foo/bar receives event for /foo/bar (same)
+
+        const normalizePathForComparison = (path) => {
+            if (!path || path === '/') return '/';
+            return path.endsWith('/') ? path.slice(0, -1) : path;
+        };
+
+        const normalizedEventPath = normalizePathForComparison(eventPath);
+        const normalizedContextPath = normalizePathForComparison(contextPath);
+
+        // Check for path overlap (either path contains the other)
+        return normalizedEventPath.startsWith(normalizedContextPath) ||
+               normalizedContextPath.startsWith(normalizedEventPath);
+    }
+
+    /**
+     * Clean up workspace event forwarding
+     * @private
+     */
+    #cleanupWorkspaceEventForwarding() {
+        if (!this.#workspace || !this.#workspaceEventHandlers) return;
+
+        debug(`Cleaning up workspace event forwarding for context "${this.#id}"`);
+
+        // Remove specific event listeners using stored handler references
+        this.#workspace.off('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.off('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.off('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.off('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.off('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.off('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.off('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.off('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.off('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.off('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.off('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.off('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.off('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.off('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.off('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.off('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.off('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.off('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.off('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.off('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.off('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.off('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.off('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.off('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+
+        // Clear the handlers reference
+        this.#workspaceEventHandlers = null;
+
+        debug(`Workspace event forwarding cleanup completed for context "${this.#id}"`);
     }
 }
 

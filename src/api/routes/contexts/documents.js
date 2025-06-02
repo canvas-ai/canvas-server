@@ -211,7 +211,8 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: { type: 'string' },
+        items: { type: ['string', 'number'] },
+        minItems: 1,
         description: "An array of document IDs to delete directly from the database."
       }
     }
@@ -228,12 +229,16 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const documentIdArray = request.body;
-      if (!Array.isArray(documentIdArray) || !documentIdArray.every(item => typeof item === 'string')) {
-        const response = new ResponseObject().badRequest('Request body must be an array of document IDs (strings).');
+      // Validate that we have a body
+      if (request.body === undefined || request.body === null) {
+        const response = new ResponseObject().badRequest('Request body is required.');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
+      // Normalize input to array format
+      const documentIdArray = Array.isArray(request.body) ? request.body : [request.body];
+
+      // Let the Context.deleteDocumentArrayFromDb method handle the ID validation and conversion
       const result = await context.deleteDocumentArrayFromDb(request.user.id, documentIdArray);
 
       const response = new ResponseObject().success(result, 'Documents deleted from database successfully');
@@ -257,9 +262,8 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: {
-          type: 'string'
-        },
+        items: { type: ['string', 'number'] },
+        minItems: 1,
         description: "An array of document IDs to remove from the context."
       }
     }
@@ -276,12 +280,16 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const documentIdArray = request.body;
-      if (!Array.isArray(documentIdArray) || !documentIdArray.every(item => typeof item === 'string')) {
-        const response = new ResponseObject().badRequest('Request body must be an array of document IDs (strings).');
+      // Validate that we have a body
+      if (request.body === undefined || request.body === null) {
+        const response = new ResponseObject().badRequest('Request body is required.');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
+      // Normalize input to array format
+      const documentIdArray = Array.isArray(request.body) ? request.body : [request.body];
+
+      // Let the Context.removeDocumentArray method handle the ID validation and conversion
       const result = await context.removeDocumentArray(request.user.id, documentIdArray);
 
       const response = new ResponseObject().success(result, 'Documents removed from context successfully');

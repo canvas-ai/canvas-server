@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
-    "dev": "cross-env DEBUG=* node ./src/init.js",
+    "dev": "cross-env DEBUG=* NODE_ENV=development node ./src/init.js",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
     "build": "npm run build -w src/ui/web && npm run build -w src/ui/browser",
     "postinstall": "npm run build -w src/ui/web && npm run build -w src/ui/browser",

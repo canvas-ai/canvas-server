@@ -49,10 +49,10 @@ export default async function lifecycleRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['id', 'url'],
+        required: ['id'],
         properties: {
           id: { type: 'string', description: "User-defined ID for the new context. This will be sanitized." },
-          url: { type: 'string', description: "The URL for the new context (e.g., universe://my-context-name)" },
+          url: { type: 'string', description: "The URL for the new context (e.g., universe://my-context-name). Defaults to '/' if not provided." },
           baseUrl: { type: 'string' },
           description: { type: 'string' },
           workspaceId: { type: 'string' },
@@ -69,7 +69,7 @@ export default async function lifecycleRoutes(fastify, options) {
     try {
       const context = await fastify.contextManager.createContext(
         request.user.id,
-        request.body.url,
+        request.body.url || '/',
         {
           id: request.body.id,
           userId: request.user.id,

@@ -596,6 +596,82 @@ export default function setupWebSocketHandlers(fastify) {
       }
     }
   }, 5 * 60 * 1000);
+
+  // Set up ContextManager event listeners for broadcasting
+  if (fastify.contextManager) {
+    const contextManager = fastify.contextManager;
+
+    // Document events - broadcast to all users who have access to the context
+    const documentEvents = [
+      'document:insert',
+      'document:update',
+      'document:remove',
+      'document:delete',
+      'documents:delete'
+    ];
+
+    documentEvents.forEach(eventType => {
+      contextManager.on(eventType, async (payload) => {
+        const contextId = payload.contextId || payload.id;
+        if (contextId) {
+          console.log(`[WebSocket] Broadcasting ${eventType} event for context ${contextId}`);
+
+          // Find all users who have access to this context and broadcast to them
+          let broadcastCount = 0;
+          for (const [socketId, connection] of connections.entries()) {
+            try {
+              // Check if the user has access to this context
+              const hasAccess = await contextManager.hasContext(connection.user.id, contextId);
+              if (hasAccess) {
+                connection.socket.emit(eventType, payload);
+                broadcastCount++;
+              }
+            } catch (error) {
+              console.error(`[WebSocket] Error checking context access for user ${connection.user.id}:`, error);
+            }
+          }
+          console.log(`[WebSocket] Document event ${eventType} broadcasted to ${broadcastCount} connected users`);
+        }
+      });
+    });
+
+    // Context events - broadcast to context subscribers and context owners
+    const contextEvents = [
+      'context:url:set',
+      'context:updated',
+      'context:locked',
+      'context:unlocked',
+      'context:deleted',
+      'context:created',
+      'context:acl:updated',
+      'context:acl:revoked'
+    ];
+
+    contextEvents.forEach(eventType => {
+      contextManager.on(eventType, async (payload) => {
+        const contextId = payload.contextId || payload.id;
+        if (contextId) {
+          console.log(`[WebSocket] Broadcasting ${eventType} event for context ${contextId}`);
+
+          // Find all users who have access to this context and broadcast to them
+          let broadcastCount = 0;
+          for (const [socketId, connection] of connections.entries()) {
+            try {
+              // Check if the user has access to this context
+              const hasAccess = await contextManager.hasContext(connection.user.id, contextId);
+              if (hasAccess) {
+                connection.socket.emit(eventType, payload);
+                broadcastCount++;
+              }
+            } catch (error) {
+              console.error(`[WebSocket] Error checking context access for user ${connection.user.id}:`, error);
+            }
+          }
+          console.log(`[WebSocket] Context event ${eventType} broadcasted to ${broadcastCount} connected users`);
+        }
+      });
+    });
+  }
 }
 
 /**

@@ -111,18 +111,36 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    let success;
     try {
-      success = await fastify.workspaceManager.closeWorkspace(
+      // First get the workspace object before closing it
+      const workspace = await fastify.workspaceManager.openWorkspace(
+        request.user.email,
+        request.params.id,
+        request.user.id
+      );
+
+      if (!workspace) {
+        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      // Now close the workspace
+      const success = await fastify.workspaceManager.closeWorkspace(
         request.user.email,
         request.params.id,
         request.user.id
       );
 
       if (!success) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        const responseObject = new ResponseObject().serverError('Failed to close workspace');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
+
+      // Get updated workspace data after closing (status should now be 'inactive')
+      const updatedWorkspace = {
+        ...workspace.toJSON(),
+        status: 'inactive'
+      };
 
       // Emit WebSocket event for status change
       fastify.broadcastToUser(request.user.id, 'workspace:status:changed', {
@@ -130,7 +148,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
         status: 'inactive'
       });
 
-      const responseObject = new ResponseObject().success(true, 'Workspace closed successfully');
+      const responseObject = new ResponseObject().success(updatedWorkspace, 'Workspace closed successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

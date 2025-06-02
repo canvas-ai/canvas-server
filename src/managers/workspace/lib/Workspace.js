@@ -480,6 +480,20 @@ class Workspace extends EventEmitter {
         return result;
     }
 
+    clearDatabaseSync() {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+        return this.db.clearSync();
+    }
+
+    clearDatabaseAsync() {
+        if (!this.isActive) {
+            throw new Error('Workspace is not active');
+        }
+        return this.db.clearAsync();
+    }
+
     /**
      * Tree Manipulation Methods
      */
@@ -786,6 +800,10 @@ class Workspace extends EventEmitter {
             // this.#tree = this.#db.tree; // No longer needed if we use this.db.tree
 
             debug(`Database and Tree started for workspace "${this.id}".`);
+
+            // Set up event forwarding from database and tree
+            this.#setupEventForwarding();
+
         } catch (err) {
             debug(`Error during resource initialization for workspace "${this.id}": ${err.message}`);
             this.#db = null; // Clear DB instance on failure
@@ -794,11 +812,267 @@ class Workspace extends EventEmitter {
     }
 
     /**
+     * Setup event forwarding from database and tree to workspace
+     * @private
+     */
+    #setupEventForwarding() {
+        if (!this.#db) return;
+
+        debug(`Setting up event forwarding for workspace "${this.id}"`);
+
+        // Forward database events
+        this.#db.on('document:inserted', (payload) => {
+            this.emit('workspace:document:inserted', {
+                workspaceId: this.id,
+                workspaceName: this.label,
+                ...payload
+            });
+        });
+
+        this.#db.on('document:updated', (payload) => {
+            this.emit('workspace:document:updated', {
+                workspaceId: this.id,
+                workspaceName: this.label,
+                ...payload
+            });
+        });
+
+        this.#db.on('document:removed', (payload) => {
+            this.emit('workspace:document:removed', {
+                workspaceId: this.id,
+                workspaceName: this.label,
+                ...payload
+            });
+        });
+
+        this.#db.on('document:deleted', (payload) => {
+            this.emit('workspace:document:deleted', {
+                workspaceId: this.id,
+                workspaceName: this.label,
+                ...payload
+            });
+        });
+
+        // Forward tree events
+        const tree = this.#db.tree;
+        if (tree) {
+            tree.on('tree:path:inserted', (payload) => {
+                this.emit('workspace:tree:path:inserted', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:path:moved', (payload) => {
+                this.emit('workspace:tree:path:moved', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:path:copied', (payload) => {
+                this.emit('workspace:tree:path:copied', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:path:removed', (payload) => {
+                this.emit('workspace:tree:path:removed', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:inserted', (payload) => {
+                this.emit('workspace:tree:document:inserted', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:inserted:batch', (payload) => {
+                this.emit('workspace:tree:document:inserted:batch', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:updated', (payload) => {
+                this.emit('workspace:tree:document:updated', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:updated:batch', (payload) => {
+                this.emit('workspace:tree:document:updated:batch', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:removed', (payload) => {
+                this.emit('workspace:tree:document:removed', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:removed:batch', (payload) => {
+                this.emit('workspace:tree:document:removed:batch', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:deleted', (payload) => {
+                this.emit('workspace:tree:document:deleted', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:document:deleted:batch', (payload) => {
+                this.emit('workspace:tree:document:deleted:batch', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:path:locked', (payload) => {
+                this.emit('workspace:tree:path:locked', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:path:unlocked', (payload) => {
+                this.emit('workspace:tree:path:unlocked', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:layer:merged:up', (payload) => {
+                this.emit('workspace:tree:layer:merged:up', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:layer:merged:down', (payload) => {
+                this.emit('workspace:tree:layer:merged:down', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:saved', (payload) => {
+                this.emit('workspace:tree:saved', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:loaded', (payload) => {
+                this.emit('workspace:tree:loaded', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:recalculated', (payload) => {
+                this.emit('workspace:tree:recalculated', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+
+            tree.on('tree:error', (payload) => {
+                this.emit('workspace:tree:error', {
+                    workspaceId: this.id,
+                    workspaceName: this.label,
+                    ...payload
+                });
+            });
+        }
+
+        debug(`Event forwarding setup completed for workspace "${this.id}"`);
+    }
+
+    /**
+     * Clean up event listeners from database and tree
+     * @private
+     */
+    #cleanupEventForwarding() {
+        if (!this.#db) return;
+
+        debug(`Cleaning up event forwarding for workspace "${this.id}"`);
+
+        // Remove all listeners from database
+        this.#db.removeAllListeners('document:inserted');
+        this.#db.removeAllListeners('document:updated');
+        this.#db.removeAllListeners('document:removed');
+        this.#db.removeAllListeners('document:deleted');
+
+        // Remove all listeners from tree
+        const tree = this.#db.tree;
+        if (tree) {
+            tree.removeAllListeners('tree:path:inserted');
+            tree.removeAllListeners('tree:path:moved');
+            tree.removeAllListeners('tree:path:copied');
+            tree.removeAllListeners('tree:path:removed');
+            tree.removeAllListeners('tree:document:inserted');
+            tree.removeAllListeners('tree:document:inserted:batch');
+            tree.removeAllListeners('tree:document:updated');
+            tree.removeAllListeners('tree:document:updated:batch');
+            tree.removeAllListeners('tree:document:removed');
+            tree.removeAllListeners('tree:document:removed:batch');
+            tree.removeAllListeners('tree:document:deleted');
+            tree.removeAllListeners('tree:document:deleted:batch');
+            tree.removeAllListeners('tree:path:locked');
+            tree.removeAllListeners('tree:path:unlocked');
+            tree.removeAllListeners('tree:layer:merged:up');
+            tree.removeAllListeners('tree:layer:merged:down');
+            tree.removeAllListeners('tree:saved');
+            tree.removeAllListeners('tree:loaded');
+            tree.removeAllListeners('tree:recalculated');
+            tree.removeAllListeners('tree:error');
+        }
+
+        debug(`Event forwarding cleanup completed for workspace "${this.id}"`);
+    }
+
+    /**
      * Shutdown workspace resources (DB, Tree)
      * @private
      */
     async #shutdownResources() {
         debug(`Shutting down resources for workspace "${this.id}"...`);
+
+        // Clean up event forwarding first
+        this.#cleanupEventForwarding();
+
         // this.#tree = null; // Not needed if accessed via this.db.tree
 
         if (this.#db) {

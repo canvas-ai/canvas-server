@@ -5,18 +5,20 @@
  *
  * Formats supported:
  * - workspace-name://path - Format with workspace and path
+ * - workspace-name:/// - Format with workspace and root path
  * - /path or path - Simple path format (uses current workspace)
+ *
+ * The parser is designed to be forgiving and will clean up malformed URLs
+ * rather than rejecting them.
  */
 
 // Constants
-// TODO: Remove these, the only exception may be to validate a URL against a base URL
 const DEFAULT_PATH = '/';
-const DEFAULT_WORKSPACE_ID = 'universe';
 
 class Url {
     #raw;
     #url;
-    #workspaceID;
+    #workspaceId;
     #path;
     #pathArray;
     #valid = false;
@@ -32,8 +34,8 @@ class Url {
     get url() {
         return this.#url;
     } // Full URL string
-    get workspaceID() {
-        return this.#workspaceID;
+    get workspaceId() {
+        return this.#workspaceId;
     }
     get path() {
         return this.#path;
@@ -50,19 +52,17 @@ class Url {
             // Store the raw input
             this.#raw = url;
 
-            // Validate the URL
+            // Basic validation - only reject if completely invalid
             Url.validate(url);
 
-            // Pre-process the URL to handle spaces and backslashes before parsing
-            const preprocessedUrl = url
-                .replace(/\\/g, '/') // Standardize on forward slashes
-                .replace(/ +/g, '_'); // Replace spaces with underscores
+            // Clean and normalize the URL
+            const cleanedUrl = this.cleanUrl(url);
 
             // Set the workspace ID
-            this.#workspaceID = this.parseWorkspace(preprocessedUrl);
+            this.#workspaceId = this.parseWorkspace(cleanedUrl);
 
             // Set the URL path
-            this.#path = this.parsePath(preprocessedUrl);
+            this.#path = this.parsePath(cleanedUrl);
 
             // Store the sanitized URL
             this.#url = this.formatUrl();
@@ -74,7 +74,7 @@ class Url {
         } catch (error) {
             this.#valid = false;
             this.#url = null;
-            this.#workspaceID = DEFAULT_WORKSPACE_ID;
+            this.#workspaceId = null;
             this.#path = DEFAULT_PATH;
             this.#pathArray = [];
 
@@ -85,23 +85,89 @@ class Url {
     validate(url) {
         return Url.validate(url);
     }
+
     static validate(url) {
         if (!url || typeof url !== 'string') {
             throw new Error('Invalid URL: URL must be a string');
         }
 
-        // Check for disallowed special characters
-        if (/[`$%^*;'",<>{}[\]]/gi.test(url)) {
+        // Only reject URLs with truly problematic characters that can't be cleaned
+        // Reduced the list to only the most problematic characters
+        if (/[`'"<>{}[\]]/gi.test(url)) {
             throw new Error(`Unsupported characters in the context URL, got "${url}"`);
         }
 
         return url;
     }
 
+    // Clean and normalize malformed URLs
+    cleanUrl(url) {
+        // Start with basic cleanup
+        let cleaned = url
+            .trim() // Remove leading/trailing whitespace
+            .replace(/\\/g, '/') // Standardize on forward slashes
+            .replace(/ +/g, '_'); // Replace spaces with underscores
+
+        // Handle workspace URL format
+        if (cleaned.includes('://')) {
+            // Split into workspace and path parts
+            const colonSlashIndex = cleaned.indexOf('://');
+            let workspacePart = cleaned.substring(0, colonSlashIndex);
+            let pathPart = cleaned.substring(colonSlashIndex + 3);
+
+                                    // Clean workspace part - only allow alphanumeric and underscores
+            workspacePart = workspacePart.replace(/[^a-zA-Z0-9_]/g, '');
+
+            // If workspace becomes empty after cleaning, return just the path
+            if (!workspacePart) {
+                return this.cleanPath(pathPart) || '/';
+            }
+
+            // Clean path part
+            pathPart = this.cleanPath(pathPart);
+
+            // Reconstruct the URL
+            cleaned = `${workspacePart}://${pathPart}`;
+        } else {
+            // Simple path format - just clean the path
+            cleaned = this.cleanPath(cleaned);
+        }
+
+        return cleaned;
+    }
+
+    // Clean path component
+    cleanPath(path) {
+        if (!path) return '';
+
+        // Remove invalid characters, keeping only alphanumeric, slashes, underscores, hyphens, and dots
+        let cleaned = path.replace(/[^a-zA-Z0-9/_.-]/g, '');
+
+        // Normalize multiple consecutive slashes to single slash
+        cleaned = cleaned.replace(/\/+/g, '/');
+
+        // Remove leading slash duplicates after ://
+        if (cleaned.startsWith('//')) {
+            cleaned = cleaned.replace(/^\/+/, '/');
+        }
+
+        // Handle empty path or just slashes - normalize to empty for workspace URLs
+        if (!cleaned || cleaned === '/' || /^\/+$/.test(cleaned)) {
+            return '';
+        }
+
+        // Remove trailing slashes unless it's the root
+        if (cleaned.endsWith('/') && cleaned.length > 1) {
+            cleaned = cleaned.replace(/\/+$/, '');
+        }
+
+        return cleaned;
+    }
+
     // Format the URL based on the parsed components
     formatUrl() {
-        if (this.#workspaceID) {
-            return `${this.#workspaceID}://${this.#path.replace(/^\//, '')}`;
+        if (this.#workspaceId) {
+            return `${this.#workspaceId}://${this.#path.replace(/^\//, '')}`;
         } else {
             return this.#path;
         }
@@ -110,30 +176,53 @@ class Url {
     // Parse the workspace portion of the url if present
     parseWorkspace(url) {
         // Check for workspace format with protocol
-        const workspaceRegex = /^([^:/]+):\/\/(.*)$/;
+        const workspaceRegex = /^([a-zA-Z0-9_]+):\/\/(.*)$/;
         const workspaceMatch = url.match(workspaceRegex);
 
         if (workspaceMatch && workspaceMatch.length >= 2) {
             return workspaceMatch[1];
         }
 
-        // If it's just a path, use the default workspace
-        return DEFAULT_WORKSPACE_ID;
+        // If it's just a path, return null - let the application decide which workspace to use
+        return null;
     }
 
     // Parse the path portion of the url
     parsePath(url) {
         // Handle workspace format: workspace://path
-        const workspaceRegex = /^([^:/]+):\/\/(.*)$/;
+        const workspaceRegex = /^([a-zA-Z0-9_]+):\/\/(.*)$/;
         const workspaceMatch = url.match(workspaceRegex);
 
         if (workspaceMatch && workspaceMatch.length >= 3) {
-            const path = workspaceMatch[2];
-            return path.startsWith('/') ? path : '/' + path;
+            let path = workspaceMatch[2];
+
+            // Handle empty path (root case workspace:// or workspace:///)
+            if (!path || path === '') {
+                return '/';
+            }
+
+            // Ensure path starts with /
+            if (!path.startsWith('/')) {
+                path = '/' + path;
+            }
+
+            // Remove trailing slash unless it's the root path
+            if (path.length > 1 && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+
+            return path;
         }
 
         // Handle simple path format
-        return url.startsWith('/') ? url : '/' + url;
+        let path = url.startsWith('/') ? url : '/' + url;
+
+        // Remove trailing slash unless it's the root path
+        if (path.length > 1 && path.endsWith('/')) {
+            path = path.slice(0, -1);
+        }
+
+        return path;
     }
 }
 
