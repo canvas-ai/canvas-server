@@ -1,11 +1,12 @@
 'use strict';
 
 import authService from './service.js';
+import imapAuthStrategy from './imap-strategy.js';
 import createError from '@fastify/error';
 import ResponseObject from '../ResponseObject.js';
 
-// Export the auth service
-export { authService };
+// Export the auth service and strategies
+export { authService, imapAuthStrategy };
 
 /**
  * Custom errors
@@ -284,13 +285,14 @@ export async function verifyApiToken(request, reply, done) {
 }
 
 /**
- * Login with email/password
+ * Login with email/password (supports both local and IMAP authentication)
  * @param {string} email - User email
  * @param {string} password - User password
  * @param {Object} userManager - User manager instance
+ * @param {string} strategy - Authentication strategy ('local', 'imap', 'auto')
  * @returns {Promise<Object>} - User object and token
  */
-export async function login(email, password, userManager) {
+export async function login(email, password, userManager, strategy = 'auto') {
   if (!email || !password) {
     throw new InvalidCredentialsError('Email and password are required');
   }
@@ -300,38 +302,101 @@ export async function login(email, password, userManager) {
     throw new Error('User manager is not initialized');
   }
 
-  console.log(`[Auth/Login] Attempting login for ${email}`);
+  console.log(`[Auth/Login] Attempting login for ${email} with strategy: ${strategy}`);
 
-  // Get user by email
-  const user = await userManager.getUserByEmail(email);
-  if (!user) {
-    console.log(`[Auth/Login] User not found for email: ${email}`);
-    throw new InvalidCredentialsError('Invalid email or password');
+  // Auto-detect strategy based on existing user or IMAP configuration
+  if (strategy === 'auto') {
+    // First check if user exists locally
+    let existingUser;
+    try {
+      existingUser = await userManager.getUserByEmail(email);
+    } catch (error) {
+      // User doesn't exist, which is fine for auto-detection
+      existingUser = null;
+    }
+
+    if (existingUser && existingUser.authMethod === 'imap') {
+      strategy = 'imap';
+    } else if (existingUser) {
+      strategy = 'local';
+    } else {
+      // User doesn't exist, check if IMAP is configured for this domain
+      const domain = email.split('@')[1]?.toLowerCase();
+      if (domain && imapAuthStrategy.isEnabled() && imapAuthStrategy.getImapConfig(domain)) {
+        strategy = 'imap';
+      } else {
+        strategy = 'local';
+      }
+    }
   }
 
-  console.log(`[Auth/Login] User found: ${user.id}`);
+  console.log(`[Auth/Login] Using authentication strategy: ${strategy}`);
 
-  // Verify password
-  const validPassword = await authService.verifyPassword(user.id, password);
-  if (!validPassword) {
-    console.log(`[Auth/Login] Password verification failed for user: ${user.id}`);
-    throw new InvalidCredentialsError('Invalid email or password');
+  // IMAP Authentication
+  if (strategy === 'imap') {
+    try {
+      // Initialize IMAP strategy if not already done
+      await imapAuthStrategy.initialize();
+
+      // Authenticate against IMAP server
+      const imapResult = await imapAuthStrategy.authenticate(email, password);
+
+      // Get or create user
+      const user = await imapAuthStrategy.createUserFromImapAuth(imapResult, userManager);
+
+      console.log(`[Auth/Login] IMAP login successful for user: ${user.id}`);
+      return { user, authMethod: 'imap' };
+    } catch (error) {
+      console.log(`[Auth/Login] IMAP authentication failed: ${error.message}`);
+      // If IMAP fails and we're in auto mode, don't fall back to local auth for security
+      if (strategy === 'imap') {
+        throw error;
+      }
+    }
   }
 
-  // Check if account is active
-  if (user.status !== 'active') {
-    console.log(`[Auth/Login] User account not active: ${user.id}, status: ${user.status}`);
-    throw new InvalidCredentialsError('Account is not active');
+  // Local Authentication (original logic)
+  if (strategy === 'local') {
+    // Get user by email
+    let user;
+    try {
+      user = await userManager.getUserByEmail(email);
+    } catch (error) {
+      console.log(`[Auth/Login] User not found for email: ${email}`);
+      throw new InvalidCredentialsError('Invalid email or password');
+    }
+
+    if (!user) {
+      console.log(`[Auth/Login] User not found for email: ${email}`);
+      throw new InvalidCredentialsError('Invalid email or password');
+    }
+
+    console.log(`[Auth/Login] User found: ${user.id}`);
+
+    // Verify password
+    const validPassword = await authService.verifyPassword(user.id, password);
+    if (!validPassword) {
+      console.log(`[Auth/Login] Password verification failed for user: ${user.id}`);
+      throw new InvalidCredentialsError('Invalid email or password');
+    }
+
+    // Check if account is active
+    if (user.status !== 'active') {
+      console.log(`[Auth/Login] User account not active: ${user.id}, status: ${user.status}`);
+      throw new InvalidCredentialsError('Account is not active');
+    }
+
+    // Ensure users "Universe" workspace is running
+    await userManager.ensureUserUniverseWorkspaceIsRunning(user.id);
+
+    // Ensure users default context exists
+    await userManager.ensureDefaultUserContextExists(user.id);
+
+    console.log(`[Auth/Login] Local login successful for user: ${user.id}`);
+    return { user, authMethod: 'local' };
   }
 
-  // Ensure users "Universe" workspace is running
-  await userManager.ensureUserUniverseWorkspaceIsRunning(user.id);
-
-  // Ensure users default context exists
-  await userManager.ensureDefaultUserContextExists(user.id);
-
-  console.log(`[Auth/Login] Login successful for user: ${user.id}`);
-  return { user };
+  throw new InvalidCredentialsError('No valid authentication method found');
 }
 
 /**
