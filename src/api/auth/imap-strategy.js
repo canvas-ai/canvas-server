@@ -200,13 +200,14 @@ class ImapAuthStrategy {
 
     // Create new user
     const userData = {
+      id: authResult.email,
       email: authResult.email,
       userType: imapSettings.defaultUserType || 'user',
       status: imapSettings.defaultStatus || 'active',
       authMethod: 'imap',
-      imapDomain: authResult.domain,
-      imapServer: authResult.imapServer,
-      name: authResult.email.split('@')[0], // Use email prefix as default name
+      // imapDomain: authResult.domain, // Not used yet
+      // imapServer: authResult.imapServer, // Not used yet
+      //name: authResult.email.split('@')[0], // Use email prefix as default name
       created: new Date().toISOString(),
       updated: new Date().toISOString()
     };
