@@ -49,7 +49,7 @@
           "secure": false,
           "startTLS": false,
           "domain": "test.local",
-          "name": "Local Test Server (Plain Text)",
+          "name": "Local Test Server (Plain Text, allow self-signed certificates)",
           "tlsOptions": {
             "rejectUnauthorized": false
           }
