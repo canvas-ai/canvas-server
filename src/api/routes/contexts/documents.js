@@ -422,6 +422,53 @@ export default async function documentRoutes(fastify, options) {
     }
   });
 
+  // Get document by ID (direct route)
+  // Path: /:docId (relative to /:id/documents)
+  fastify.get('/:docId', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['docId'], // id is from prefix
+        properties: {
+          docId: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+      return;
+    }
+    const contextId = request.params.id;
+    const docId = request.params.docId;
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const document = await context.getDocumentById(request.user.id, docId);
+
+      if (!document) {
+        const response = new ResponseObject().notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().found(document, 'Document retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      if (error.message.startsWith('Access denied')) {
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().serverError('Failed to get document by ID');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
   // Get document by hash (owner-only direct DB access)
   // Path: /by-hash/:algo/:hash (relative to /:id/documents)
   fastify.get('/by-hash/:algo/:hash', {
