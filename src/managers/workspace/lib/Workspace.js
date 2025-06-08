@@ -523,32 +523,31 @@ class Workspace extends EventEmitter {
         return response;
     }
 
-    insertPath(path, data = null, autoCreateLayers = true) {
+    async insertPath(path, data = null, autoCreateLayers = true) {
         this.#ensureActiveForTreeOp('insertPath');
-        const result = this.tree.insertPath(path, data, autoCreateLayers);
+        const result = await this.tree.insertPath(path, data, autoCreateLayers);
         return result;
-        // return this.#emitTreeUpdateAndRespond('insertPath', { path, data, autoCreateLayers }, !!result, result ? { layerIds: result } : null);
     }
 
-    removePath(path, recursive = false) {
+        async removePath(path, recursive = false) {
         this.#ensureActiveForTreeOp('removePath');
-        const success = this.tree.removePath(path, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('removePath', { path, recursive }, success);
+        const result = await this.tree.removePath(path, recursive);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    movePath(pathFrom, pathTo, recursive = false) {
+    async movePath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('movePath');
-        const success = this.tree.movePath(pathFrom, pathTo, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('movePath', { pathFrom, pathTo, recursive }, success);
+        const result = await this.tree.movePath(pathFrom, pathTo, recursive);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    copyPath(pathFrom, pathTo, recursive = false) {
+    async copyPath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('copyPath');
-        const success = this.tree.copyPath(pathFrom, pathTo, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('copyPath', { pathFrom, pathTo, recursive }, success);
+        const result = await this.tree.copyPath(pathFrom, pathTo, recursive);
+        // ContextTree returns boolean for copyPath (different from other methods)
+        return result === true;
     }
 
     pathToIdArray(path) {
@@ -556,18 +555,18 @@ class Workspace extends EventEmitter {
         return this.tree.pathToIdArray(path); // This one might not need the standard response format
     }
 
-    mergeUp(path) {
+    async mergeUp(path) {
         this.#ensureActiveForTreeOp('mergeUp');
-        const success = this.tree.mergeUp(path);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('mergeUp', { path }, success);
+        const result = await this.tree.mergeUp(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    mergeDown(path) {
+    async mergeDown(path) {
         this.#ensureActiveForTreeOp('mergeDown');
-        const success = this.tree.mergeDown(path);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('mergeDown', { path }, success);
+        const result = await this.tree.mergeDown(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
     get paths() {

@@ -170,7 +170,7 @@ export default async function treeRoutes(fastify, options) {
       const workspace = await getWorkspaceFromContext(request, reply, contextId);
       if (!workspace) return;
 
-      const success = await workspace.removePath(
+            const success = await workspace.removePath(
         request.query.path,
         request.query.recursive || false
       );
