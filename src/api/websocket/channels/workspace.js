@@ -1,4 +1,4 @@
-import { createDebug } from '../../utils/log/index.js';
+import { createDebug } from '../../../utils/log/index.js';
 
 const debug = createDebug('canvas-server:websocket:workspace');
 
