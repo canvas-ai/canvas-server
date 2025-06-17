@@ -612,7 +612,7 @@ class Context extends EventEmitter {
         return result;
     }
 
-    insertDocumentArray(accessingUserId, documentArray, featureArray = [], options = {}) {
+    async insertDocumentArray(accessingUserId, documentArray, featureArray = [], options = {}) {
         if (!this.checkPermission(accessingUserId, 'documentWrite')) {
             throw new Error('Access denied: User requires documentWrite permission.');
         }
@@ -637,8 +637,8 @@ class Context extends EventEmitter {
         debug('#insertDocumentArray: Received featureArray:', featureArray);
         debug('#insertDocumentArray: Received options:', options);
 
-        // Insert the documents
-        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
+        // Insert the documents (handle async results)
+        const result = await Promise.resolve(this.#db.insertDocumentArray(documentArray, contextArray, featureArray));
 
         // Prepare document data for events - handle different result formats
         let documentIds = [];

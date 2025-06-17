@@ -18,6 +18,7 @@ export default function registerContextWebSocket(fastify, socket) {
   const listeners = new Map();
 
   const wildcardListener = async function (payload) {
+    debug('🎯 DEBUG: Wildcard listener received payload:', payload);
     try {
       const eventName = this.event;
       const contextId = payload?.contextId || payload?.id;
