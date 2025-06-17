@@ -30,7 +30,7 @@ class Workspace extends EventEmitter {
     // Runtime state
     #status = WORKSPACE_STATUS_CODES.INACTIVE; // Internal runtime status
     #db = null;
-    // #tree = null; // Tree is accessed via db.tree, so no need for a separate member
+    #eventForwardHandlers = null;
 
     /**
      * Create a new Workspace instance.
@@ -816,204 +816,28 @@ class Workspace extends EventEmitter {
     #setupEventForwarding() {
         if (!this.#db) return;
 
-        debug(`Setting up event forwarding for workspace "${this.id}"`);
+        debug(`Setting up event forwarding for workspace "${this.id}" (wild-card mode)`);
 
-        // Forward database events
-        this.#db.on('document:inserted', (payload) => {
-            this.emit('document.inserted', {
+        const forward = (eventName, payload) => {
+            const dotEvent = eventName.replace(/:/g, '.');
+            this.emit(dotEvent, {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
             });
-        });
+        };
 
-        this.#db.on('document:updated', (payload) => {
-            this.emit('document.updated', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
+        const dbHandler = (eventName, payload) => forward(eventName, payload);
+        this.#db.onAny(dbHandler);
 
-        this.#db.on('document:removed', (payload) => {
-            this.emit('document.removed', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
-
-        this.#db.on('document:deleted', (payload) => {
-            this.emit('document.deleted', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
-
-        // Forward tree events
-        const tree = this.#db.tree;
-        if (tree) {
-            tree.on('tree:path:inserted', (payload) => {
-                this.emit('tree.path.inserted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:moved', (payload) => {
-                this.emit('tree.path.moved', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:copied', (payload) => {
-                this.emit('tree.path.copied', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:removed', (payload) => {
-                this.emit('tree.path.removed', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:inserted', (payload) => {
-                this.emit('tree.document.inserted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:inserted:batch', (payload) => {
-                this.emit('tree.document.inserted.batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:updated', (payload) => {
-                this.emit('tree.document.updated', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:updated:batch', (payload) => {
-                this.emit('tree.document.updated.batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:removed', (payload) => {
-                this.emit('tree.document.removed', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:removed:batch', (payload) => {
-                this.emit('tree.document.removed.batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:deleted', (payload) => {
-                this.emit('tree.document.deleted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:deleted:batch', (payload) => {
-                this.emit('tree.document.deleted.batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:locked', (payload) => {
-                this.emit('tree.path.locked', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:unlocked', (payload) => {
-                this.emit('tree.path.unlocked', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:layer:merged:up', (payload) => {
-                this.emit('tree.layer.merged.up', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:layer:merged:down', (payload) => {
-                this.emit('tree.layer.merged.down', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:saved', (payload) => {
-                this.emit('tree.saved', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:loaded', (payload) => {
-                this.emit('tree.loaded', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:recalculated', (payload) => {
-                this.emit('tree.recalculated', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:error', (payload) => {
-                this.emit('tree.error', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
+        let treeHandler = null;
+        if (this.#db.tree) {
+            treeHandler = (eventName, payload) => forward(eventName, payload);
+            this.#db.tree.onAny(treeHandler);
         }
+
+        // Keep refs for cleanup
+        this.#eventForwardHandlers = { dbHandler, treeHandler };
 
         debug(`Event forwarding setup completed for workspace "${this.id}"`);
     }
@@ -1027,35 +851,12 @@ class Workspace extends EventEmitter {
 
         debug(`Cleaning up event forwarding for workspace "${this.id}"`);
 
-        // Remove all listeners from database
-        this.#db.removeAllListeners('document:inserted');
-        this.#db.removeAllListeners('document:updated');
-        this.#db.removeAllListeners('document:removed');
-        this.#db.removeAllListeners('document:deleted');
-
-        // Remove all listeners from tree
-        const tree = this.#db.tree;
-        if (tree) {
-            tree.removeAllListeners('tree:path:inserted');
-            tree.removeAllListeners('tree:path:moved');
-            tree.removeAllListeners('tree:path:copied');
-            tree.removeAllListeners('tree:path:removed');
-            tree.removeAllListeners('tree:document:inserted');
-            tree.removeAllListeners('tree:document:inserted:batch');
-            tree.removeAllListeners('tree:document:updated');
-            tree.removeAllListeners('tree:document:updated:batch');
-            tree.removeAllListeners('tree:document:removed');
-            tree.removeAllListeners('tree:document:removed:batch');
-            tree.removeAllListeners('tree:document:deleted');
-            tree.removeAllListeners('tree:document:deleted:batch');
-            tree.removeAllListeners('tree:path:locked');
-            tree.removeAllListeners('tree:path:unlocked');
-            tree.removeAllListeners('tree:layer:merged:up');
-            tree.removeAllListeners('tree:layer:merged:down');
-            tree.removeAllListeners('tree:saved');
-            tree.removeAllListeners('tree:loaded');
-            tree.removeAllListeners('tree:recalculated');
-            tree.removeAllListeners('tree:error');
+        if (this.#db && this.#eventForwardHandlers) {
+            this.#db.offAny(this.#eventForwardHandlers.dbHandler);
+            if (this.#db.tree && this.#eventForwardHandlers.treeHandler) {
+                this.#db.tree.offAny(this.#eventForwardHandlers.treeHandler);
+            }
+            this.#eventForwardHandlers = null;
         }
 
         debug(`Event forwarding cleanup completed for workspace "${this.id}"`);

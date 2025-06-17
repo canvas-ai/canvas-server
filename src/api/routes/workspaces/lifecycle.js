@@ -75,7 +75,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
       // Emit WebSocket event for status change
       try {
-        fastify.broadcastToUser(request.user.id, 'workspace:status:changed', {
+        fastify.broadcastToUser(request.user.id, 'status.changed', {
           workspaceId: request.params.id,
           status: workspace.status
         });
@@ -143,7 +143,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
       };
 
       // Emit WebSocket event for status change
-      fastify.broadcastToUser(request.user.id, 'workspace:status:changed', {
+      fastify.broadcastToUser(request.user.id, 'status.changed', {
         workspaceId: request.params.id,
         status: 'inactive'
       });
@@ -184,7 +184,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
       }
 
       // Emit WebSocket event for status change
-      fastify.broadcastToUser(request.user.id, 'workspace:status:changed', {
+      fastify.broadcastToUser(request.user.id, 'status.changed', {
         workspaceId: request.params.id,
         status: 'active'
       });
@@ -225,7 +225,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
       }
 
       // Emit WebSocket event for status change
-      fastify.broadcastToUser(request.user.id, 'workspace:status:changed', {
+      fastify.broadcastToUser(request.user.id, 'status.changed', {
         workspaceId: request.params.id,
         status: 'inactive'
       });

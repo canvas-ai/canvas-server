@@ -134,10 +134,10 @@ class ContextManager extends EventEmitter {
 
             this.saveContext(userId, context);
 
-            // Emit the context:created event with a consistent payload structure including id
+            // Emit the context.created event with a consistent payload structure including id
             const contextData = context.toJSON();
-            this.emit('context:created', { id: context.id, ...contextData });
-            debug(`Context created with ID ${context.id} and emitted context:created event`);
+            this.emit('context.created', { id: context.id, ...contextData });
+            debug(`Context created with ID ${context.id} and emitted context.created event`);
 
             return context;
         } catch (error) {
@@ -230,14 +230,14 @@ class ContextManager extends EventEmitter {
                         };
 
                         // Forward each important event type
-                        forwardEvent('context:url:set');
-                        forwardEvent('context:updated');
-                        forwardEvent('context:locked');
-                        forwardEvent('context:unlocked');
-                        forwardEvent('context:deleted');
-                        forwardEvent('context:created');
-                        forwardEvent('context:acl:updated');
-                        forwardEvent('context:acl:revoked');
+                        forwardEvent('context.url.set');
+                        forwardEvent('context.updated');
+                        forwardEvent('context.locked');
+                        forwardEvent('context.unlocked');
+                        forwardEvent('context.deleted');
+                        forwardEvent('context.created');
+                        forwardEvent('context.acl.updated');
+                        forwardEvent('context.acl.revoked');
 
                         // Forward document-specific events
                         forwardEvent('document.inserted');
@@ -426,7 +426,7 @@ class ContextManager extends EventEmitter {
                 this.#indexStore.delete(contextKey);
             }
 
-            this.emit('context:deleted', {
+            this.emit('context.deleted', {
                 contextKey: contextKey,
                 userId: userId,
                 contextId: contextId.toString()
@@ -475,14 +475,14 @@ class ContextManager extends EventEmitter {
             };
 
             // Forward each important event type
-            forwardEvent('context:url:set');
-            forwardEvent('context:updated');
-            forwardEvent('context:locked');
-            forwardEvent('context:unlocked');
-            forwardEvent('context:deleted');
-            forwardEvent('context:created');
-            forwardEvent('context:acl:updated');
-            forwardEvent('context:acl:revoked');
+            forwardEvent('context.url.set');
+            forwardEvent('context.updated');
+            forwardEvent('context.locked');
+            forwardEvent('context.unlocked');
+            forwardEvent('context.deleted');
+            forwardEvent('context.created');
+            forwardEvent('context.acl.updated');
+            forwardEvent('context.acl.revoked');
 
             // Forward document-specific events
             forwardEvent('document.inserted');

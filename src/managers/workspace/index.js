@@ -191,7 +191,7 @@ class WorkspaceManager extends EventEmitter {
         // Create index entry
         const indexEntry = { ...configData, rootPath: workspaceDir, configPath: workspaceConfigPath, status: WORKSPACE_STATUS_CODES.AVAILABLE, lastAccessed: null };
         this.#indexStore.set(workspaceKey, indexEntry);
-        this.emit('workspace:created', { userId, workspaceId, workspaceKey, workspace: indexEntry });
+        this.emit('workspace.created', { userId, workspaceId, workspaceKey, workspace: indexEntry });
         debug(`Workspace created: ${workspaceKey}`);
         return indexEntry;
     }
@@ -286,7 +286,7 @@ class WorkspaceManager extends EventEmitter {
         const deleted = this.#workspaces.delete(workspaceKey);
         if (deleted) {
             debug(`closeWorkspace: Removed workspace ${workspaceKey} from memory cache.`);
-            this.emit('workspace:closed', { workspaceKey, userId, workspaceId });
+            this.emit('workspace.closed', { workspaceKey, userId, workspaceId });
         }
         return deleted; // Or perhaps return `stopped && deleted`
     }
@@ -330,12 +330,12 @@ class WorkspaceManager extends EventEmitter {
             await workspace.start();
             this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ACTIVE, lastAccessed: new Date().toISOString() });
             debug(`Workspace ${workspaceKey} started successfully.`);
-            this.emit('workspace:started', { workspaceKey, workspace: workspace.toJSON() });
+            this.emit('workspace.started', { workspaceKey, workspace: workspace.toJSON() });
             return workspace;
         } catch (err) {
             console.error(`Failed to start workspace ${workspaceKey}: ${err.message}`);
             this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ERROR });
-            this.emit('workspace:start_failed', { workspaceKey, error: err.message });
+            this.emit('workspace.startFailed', { workspaceKey, error: err.message });
             return null;
         }
     }
@@ -383,12 +383,12 @@ class WorkspaceManager extends EventEmitter {
             await workspace.stop();
             this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.INACTIVE }, requestingUserId);
             debug(`Workspace ${workspaceKey} stopped successfully.`);
-            this.emit('workspace:stopped', { workspaceKey });
+            this.emit('workspace.stopped', { workspaceKey });
             return true;
         } catch (err) {
             console.error(`Failed to stop workspace ${workspaceKey}: ${err.message}`);
             this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ERROR }, requestingUserId);
-            this.emit('workspace:stop_failed', { workspaceKey, error: err.message });
+            this.emit('workspace.stopFailed', { workspaceKey, error: err.message });
             return false;
         }
     }
@@ -455,7 +455,7 @@ class WorkspaceManager extends EventEmitter {
         }
 
         this.#indexStore.delete(workspaceKey);
-        this.emit('workspace:removed', {
+        this.emit('workspace.removed', {
             userId,
             workspaceId,
             workspaceKey,
@@ -703,7 +703,7 @@ class WorkspaceManager extends EventEmitter {
                 if (validUpdates.acl !== undefined) indexUpdates.acl = validUpdates.acl; // Assuming ACL structure is validated elsewhere or trusted
 
                 this.#updateWorkspaceIndexEntry(workspaceKey, indexUpdates);
-                this.emit('workspace:config:updated', { workspaceKey, updates: validUpdates });
+                this.emit('workspace.config.updated', { workspaceKey, updates: validUpdates });
                 debug(`Workspace config updated for ${workspaceKey}`);
             }
             return true;
