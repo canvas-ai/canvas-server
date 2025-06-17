@@ -2,6 +2,7 @@
  * Canvas Server init script
  */
 
+// import './utils/event-name-normalizer.js';
 import server from './Server.js';
 import logger from './utils/log.js';
 

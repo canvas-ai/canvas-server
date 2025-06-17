@@ -240,37 +240,37 @@ class ContextManager extends EventEmitter {
                         forwardEvent('context:acl:revoked');
 
                         // Forward document-specific events
-                        forwardEvent('document:insert');
-                        forwardEvent('document:update');
-                        forwardEvent('document:remove');
-                        forwardEvent('document:delete');
-                        forwardEvent('documents:delete');
+                        forwardEvent('document.inserted');
+                        forwardEvent('document.updated');
+                        forwardEvent('document.removed');
+                        forwardEvent('document.deleted');
+                        forwardEvent('documents.delete');
 
-                        // Forward workspace-forwarded events
-                        forwardEvent('context:workspace:document:inserted');
-                        forwardEvent('context:workspace:document:updated');
-                        forwardEvent('context:workspace:document:removed');
-                        forwardEvent('context:workspace:document:deleted');
-                        forwardEvent('context:workspace:tree:path:inserted');
-                        forwardEvent('context:workspace:tree:path:moved');
-                        forwardEvent('context:workspace:tree:path:copied');
-                        forwardEvent('context:workspace:tree:path:removed');
-                        forwardEvent('context:workspace:tree:document:inserted');
-                        forwardEvent('context:workspace:tree:document:inserted:batch');
-                        forwardEvent('context:workspace:tree:document:updated');
-                        forwardEvent('context:workspace:tree:document:updated:batch');
-                        forwardEvent('context:workspace:tree:document:removed');
-                        forwardEvent('context:workspace:tree:document:removed:batch');
-                        forwardEvent('context:workspace:tree:document:deleted');
-                        forwardEvent('context:workspace:tree:document:deleted:batch');
-                        forwardEvent('context:workspace:tree:path:locked');
-                        forwardEvent('context:workspace:tree:path:unlocked');
-                        forwardEvent('context:workspace:tree:layer:merged:up');
-                        forwardEvent('context:workspace:tree:layer:merged:down');
-                        forwardEvent('context:workspace:tree:saved');
-                        forwardEvent('context:workspace:tree:loaded');
-                        forwardEvent('context:workspace:tree:recalculated');
-                        forwardEvent('context:workspace:tree:error');
+                        // Forward workspace-forwarded events using new naming
+                        forwardEvent('context.workspace.document.inserted');
+                        forwardEvent('context.workspace.document.updated');
+                        forwardEvent('context.workspace.document.removed');
+                        forwardEvent('context.workspace.document.deleted');
+                        forwardEvent('context.workspace.tree.path.inserted');
+                        forwardEvent('context.workspace.tree.path.moved');
+                        forwardEvent('context.workspace.tree.path.copied');
+                        forwardEvent('context.workspace.tree.path.removed');
+                        forwardEvent('context.workspace.tree.document.inserted');
+                        forwardEvent('context.workspace.tree.document.inserted.batch');
+                        forwardEvent('context.workspace.tree.document.updated');
+                        forwardEvent('context.workspace.tree.document.updated.batch');
+                        forwardEvent('context.workspace.tree.document.removed');
+                        forwardEvent('context.workspace.tree.document.removed.batch');
+                        forwardEvent('context.workspace.tree.document.deleted');
+                        forwardEvent('context.workspace.tree.document.deleted.batch');
+                        forwardEvent('context.workspace.tree.path.locked');
+                        forwardEvent('context.workspace.tree.path.unlocked');
+                        forwardEvent('context.workspace.tree.layer.merged.up');
+                        forwardEvent('context.workspace.tree.layer.merged.down');
+                        forwardEvent('context.workspace.tree.saved');
+                        forwardEvent('context.workspace.tree.loaded');
+                        forwardEvent('context.workspace.tree.recalculated');
+                        forwardEvent('context.workspace.tree.error');
 
                         // Mark this context as having its events forwarded
                         loadedContext._eventsForwarded = true;
@@ -485,37 +485,37 @@ class ContextManager extends EventEmitter {
             forwardEvent('context:acl:revoked');
 
             // Forward document-specific events
-            forwardEvent('document:insert');
-            forwardEvent('document:update');
-            forwardEvent('document:remove');
-            forwardEvent('document:delete');
-            forwardEvent('documents:delete');
+            forwardEvent('document.inserted');
+            forwardEvent('document.updated');
+            forwardEvent('document.removed');
+            forwardEvent('document.deleted');
+            forwardEvent('documents.delete');
 
-            // Forward workspace-forwarded events
-            forwardEvent('context:workspace:document:inserted');
-            forwardEvent('context:workspace:document:updated');
-            forwardEvent('context:workspace:document:removed');
-            forwardEvent('context:workspace:document:deleted');
-            forwardEvent('context:workspace:tree:path:inserted');
-            forwardEvent('context:workspace:tree:path:moved');
-            forwardEvent('context:workspace:tree:path:copied');
-            forwardEvent('context:workspace:tree:path:removed');
-            forwardEvent('context:workspace:tree:document:inserted');
-            forwardEvent('context:workspace:tree:document:inserted:batch');
-            forwardEvent('context:workspace:tree:document:updated');
-            forwardEvent('context:workspace:tree:document:updated:batch');
-            forwardEvent('context:workspace:tree:document:removed');
-            forwardEvent('context:workspace:tree:document:removed:batch');
-            forwardEvent('context:workspace:tree:document:deleted');
-            forwardEvent('context:workspace:tree:document:deleted:batch');
-            forwardEvent('context:workspace:tree:path:locked');
-            forwardEvent('context:workspace:tree:path:unlocked');
-            forwardEvent('context:workspace:tree:layer:merged:up');
-            forwardEvent('context:workspace:tree:layer:merged:down');
-            forwardEvent('context:workspace:tree:saved');
-            forwardEvent('context:workspace:tree:loaded');
-            forwardEvent('context:workspace:tree:recalculated');
-            forwardEvent('context:workspace:tree:error');
+            // Forward workspace-forwarded events using new naming
+            forwardEvent('context.workspace.document.inserted');
+            forwardEvent('context.workspace.document.updated');
+            forwardEvent('context.workspace.document.removed');
+            forwardEvent('context.workspace.document.deleted');
+            forwardEvent('context.workspace.tree.path.inserted');
+            forwardEvent('context.workspace.tree.path.moved');
+            forwardEvent('context.workspace.tree.path.copied');
+            forwardEvent('context.workspace.tree.path.removed');
+            forwardEvent('context.workspace.tree.document.inserted');
+            forwardEvent('context.workspace.tree.document.inserted.batch');
+            forwardEvent('context.workspace.tree.document.updated');
+            forwardEvent('context.workspace.tree.document.updated.batch');
+            forwardEvent('context.workspace.tree.document.removed');
+            forwardEvent('context.workspace.tree.document.removed.batch');
+            forwardEvent('context.workspace.tree.document.deleted');
+            forwardEvent('context.workspace.tree.document.deleted.batch');
+            forwardEvent('context.workspace.tree.path.locked');
+            forwardEvent('context.workspace.tree.path.unlocked');
+            forwardEvent('context.workspace.tree.layer.merged.up');
+            forwardEvent('context.workspace.tree.layer.merged.down');
+            forwardEvent('context.workspace.tree.saved');
+            forwardEvent('context.workspace.tree.loaded');
+            forwardEvent('context.workspace.tree.recalculated');
+            forwardEvent('context.workspace.tree.error');
 
             // Mark this context as having its events forwarded
             context._eventsForwarded = true;

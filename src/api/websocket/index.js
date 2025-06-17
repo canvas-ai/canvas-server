@@ -3,6 +3,7 @@
 import { verifyJWT, verifyApiToken, validateUser } from '../auth/strategies.js';
 import { Server } from 'socket.io';
 import registerContextWebSocket from './context.js';
+import registerWorkspaceWebSocket from './workspace.js';
 
 /**
  * WebSocket event types
@@ -258,8 +259,9 @@ export default function setupWebSocketHandlers(fastify) {
       lastActivity: Date.now()
     });
 
-    // Register context websocket events
+    // Register context & workspace websocket events
     registerContextWebSocket(fastify, socket);
+    registerWorkspaceWebSocket(fastify, socket);
 
     // Send authenticated event
     socket.emit('authenticated', {

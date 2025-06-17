@@ -600,7 +600,7 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:insert', documentEventPayload);
+        this.emit('document.inserted', documentEventPayload);
         this.emit('context:updated', {
             id: this.#id,
             operation: 'document:inserted',
@@ -640,13 +640,43 @@ class Context extends EventEmitter {
         // Insert the documents
         const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
 
-        // Prepare document data for events
-        const documentIds = result && Array.isArray(result) ? result : documentArray.map(doc => doc.id);
+        // Prepare document data for events - handle different result formats
+        let documentIds = [];
+
+        debug('#insertDocumentArray: DB result type:', typeof result, 'isArray:', Array.isArray(result));
+        debug('#insertDocumentArray: DB result value:', result);
+
+        if (result && Array.isArray(result)) {
+            // Result is an array of document IDs
+            documentIds = result;
+        } else if (result && typeof result === 'object' && result.data && Array.isArray(result.data)) {
+            // Result is wrapped in a response object with data array
+            documentIds = result.data.map(doc => doc.id || doc);
+        } else if (result && typeof result === 'object' && result.insertedIds) {
+            // Result has insertedIds property
+            documentIds = result.insertedIds;
+        } else if (result && typeof result === 'number') {
+            // Single document ID returned
+            documentIds = [result];
+        } else {
+            // Fallback: try to extract IDs from documents (though they might not have them yet)
+            documentIds = documentArray.map(doc => doc.id).filter(id => id != null);
+            debug('#insertDocumentArray: WARNING - Using fallback for documentIds, may contain nulls');
+        }
+
+        debug('#insertDocumentArray: Final documentIds:', documentIds);
+
+        // Enhance documents with IDs if available
+        const enhancedDocuments = documentArray.map((doc, index) => ({
+            ...doc,
+            id: documentIds[index] || doc.id
+        }));
+
         const documentEventPayload = {
             contextId: this.#id,
             operation: 'insert',
             documentIds: documentIds,
-            documents: documentArray,
+            documents: enhancedDocuments,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
             url: this.#url,
@@ -654,7 +684,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:insert', documentEventPayload);
+        debug('#insertDocumentArray: Emitting document.inserted event with payload:', JSON.stringify(documentEventPayload, null, 2));
+        this.emit('document.inserted', documentEventPayload);
         return result;
     }
 
@@ -835,7 +866,7 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:update', documentEventPayload);
+        this.emit('document.updated', documentEventPayload);
         return result;
     }
 
@@ -876,7 +907,7 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:update', documentEventPayload);
+        this.emit('document.updated', documentEventPayload);
         return result;
     }
 
@@ -915,8 +946,8 @@ class Context extends EventEmitter {
             };
             debug(`#removeDocument: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#removeDocument: Emitting document:remove event`);
-            this.emit('document:remove', documentEventPayload);
+            debug(`#removeDocument: Emitting document.remove event`);
+            this.emit('document.removed', documentEventPayload);
 
             debug(`#removeDocument: Successfully completed removal of document ${documentId} from context`);
             return result;
@@ -980,8 +1011,8 @@ class Context extends EventEmitter {
             };
             debug(`#removeDocumentArray: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#removeDocumentArray: Emitting document:remove event`);
-            this.emit('document:remove', documentEventPayload);
+            debug(`#removeDocumentArray: Emitting document.remove event`);
+            this.emit('document.removed', documentEventPayload);
             debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
             return result;
         } catch (error) {
@@ -1045,8 +1076,8 @@ class Context extends EventEmitter {
             };
             debug(`#deleteDocumentFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#deleteDocumentFromDb: Emitting document:delete event`);
-            this.emit('document:delete', documentEventPayload);
+            debug(`#deleteDocumentFromDb: Emitting document.delete event`);
+            this.emit('document.deleted', documentEventPayload);
 
             debug(`#deleteDocumentFromDb: Successfully completed deletion of document ${numericDocumentId}`);
             return result;
@@ -1117,11 +1148,11 @@ class Context extends EventEmitter {
             };
             debug(`#deleteDocumentArrayFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#deleteDocumentArrayFromDb: Emitting documents:delete event`);
-            this.emit('documents:delete', documentEventPayload);
+            debug(`#deleteDocumentArrayFromDb: Emitting documents.delete event`);
+            this.emit('documents.delete', documentEventPayload);
 
-            debug(`#deleteDocumentArrayFromDb: Emitting document:delete event`);
-            this.emit('document:delete', documentEventPayload);
+            debug(`#deleteDocumentArrayFromDb: Emitting document.delete event`);
+            this.emit('document.deleted', documentEventPayload);
 
             debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
             return result;
@@ -1227,57 +1258,57 @@ class Context extends EventEmitter {
 
         // Store references to the bound event handlers for cleanup
         this.#workspaceEventHandlers = {
-            documentInserted: (payload) => this.#handleWorkspaceDocumentEvent('document:inserted', payload),
-            documentUpdated: (payload) => this.#handleWorkspaceDocumentEvent('document:updated', payload),
-            documentRemoved: (payload) => this.#handleWorkspaceDocumentEvent('document:removed', payload),
-            documentDeleted: (payload) => this.#handleWorkspaceDocumentEvent('document:deleted', payload),
-            treePathInserted: (payload) => this.#handleWorkspaceTreeEvent('tree:path:inserted', payload),
-            treePathMoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:moved', payload),
-            treePathCopied: (payload) => this.#handleWorkspaceTreeEvent('tree:path:copied', payload),
-            treePathRemoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:removed', payload),
-            treeDocumentInserted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted', payload),
-            treeDocumentInsertedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted:batch', payload),
-            treeDocumentUpdated: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated', payload),
-            treeDocumentUpdatedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated:batch', payload),
-            treeDocumentRemoved: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed', payload),
-            treeDocumentRemovedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed:batch', payload),
-            treeDocumentDeleted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted', payload),
-            treeDocumentDeletedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted:batch', payload),
-            treePathLocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:locked', payload),
-            treePathUnlocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:unlocked', payload),
-            treeLayerMergedUp: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:up', payload),
-            treeLayerMergedDown: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:down', payload),
-            treeSaved: (payload) => this.#handleWorkspaceTreeEvent('tree:saved', payload),
-            treeLoaded: (payload) => this.#handleWorkspaceTreeEvent('tree:loaded', payload),
-            treeRecalculated: (payload) => this.#handleWorkspaceTreeEvent('tree:recalculated', payload),
-            treeError: (payload) => this.#handleWorkspaceTreeEvent('tree:error', payload)
+            documentInserted: (payload) => this.#handleWorkspaceDocumentEvent('document.inserted', payload),
+            documentUpdated: (payload) => this.#handleWorkspaceDocumentEvent('document.updated', payload),
+            documentRemoved: (payload) => this.#handleWorkspaceDocumentEvent('document.removed', payload),
+            documentDeleted: (payload) => this.#handleWorkspaceDocumentEvent('document.deleted', payload),
+            treePathInserted: (payload) => this.#handleWorkspaceTreeEvent('tree.path.inserted', payload),
+            treePathMoved: (payload) => this.#handleWorkspaceTreeEvent('tree.path.moved', payload),
+            treePathCopied: (payload) => this.#handleWorkspaceTreeEvent('tree.path.copied', payload),
+            treePathRemoved: (payload) => this.#handleWorkspaceTreeEvent('tree.path.removed', payload),
+            treeDocumentInserted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.inserted', payload),
+            treeDocumentInsertedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.inserted.batch', payload),
+            treeDocumentUpdated: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.updated', payload),
+            treeDocumentUpdatedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.updated.batch', payload),
+            treeDocumentRemoved: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.removed', payload),
+            treeDocumentRemovedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.removed.batch', payload),
+            treeDocumentDeleted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.deleted', payload),
+            treeDocumentDeletedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree.document.deleted.batch', payload),
+            treePathLocked: (payload) => this.#handleWorkspaceTreeEvent('tree.path.locked', payload),
+            treePathUnlocked: (payload) => this.#handleWorkspaceTreeEvent('tree.path.unlocked', payload),
+            treeLayerMergedUp: (payload) => this.#handleWorkspaceTreeEvent('tree.layer.merged.up', payload),
+            treeLayerMergedDown: (payload) => this.#handleWorkspaceTreeEvent('tree.layer.merged.down', payload),
+            treeSaved: (payload) => this.#handleWorkspaceTreeEvent('tree.saved', payload),
+            treeLoaded: (payload) => this.#handleWorkspaceTreeEvent('tree.loaded', payload),
+            treeRecalculated: (payload) => this.#handleWorkspaceTreeEvent('tree.recalculated', payload),
+            treeError: (payload) => this.#handleWorkspaceTreeEvent('tree.error', payload)
         };
 
         // Register the event handlers
-        this.#workspace.on('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
-        this.#workspace.on('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
-        this.#workspace.on('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
-        this.#workspace.on('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
-        this.#workspace.on('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
-        this.#workspace.on('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
-        this.#workspace.on('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
-        this.#workspace.on('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
-        this.#workspace.on('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
-        this.#workspace.on('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
-        this.#workspace.on('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
-        this.#workspace.on('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
-        this.#workspace.on('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
-        this.#workspace.on('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
-        this.#workspace.on('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
-        this.#workspace.on('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
-        this.#workspace.on('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
-        this.#workspace.on('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
-        this.#workspace.on('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
-        this.#workspace.on('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
-        this.#workspace.on('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
-        this.#workspace.on('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
-        this.#workspace.on('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
-        this.#workspace.on('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+        this.#workspace.on('document.inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.on('document.updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.on('document.removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.on('document.deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.on('tree.path.inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.on('tree.path.moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.on('tree.path.copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.on('tree.path.removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.on('tree.document.inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.on('tree.document.inserted.batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.on('tree.document.updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.on('tree.document.updated.batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.on('tree.document.removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.on('tree.document.removed.batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.on('tree.document.deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.on('tree.document.deleted.batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.on('tree.path.locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.on('tree.path.unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.on('tree.layer.merged.up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.on('tree.layer.merged.down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.on('tree.saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.on('tree.loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.on('tree.recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.on('tree.error', this.#workspaceEventHandlers.treeError);
 
         debug(`Workspace event forwarding setup completed for context "${this.#id}"`);
     }
@@ -1288,7 +1319,7 @@ class Context extends EventEmitter {
      */
     #handleWorkspaceDocumentEvent(eventType, payload) {
         // Forward all workspace document events with context information
-        this.emit(`context:workspace:${eventType}`, {
+        this.emit(`context.workspace.${eventType}`, {
             contextId: this.#id,
             contextUrl: this.#url,
             contextPath: this.#path,
@@ -1304,7 +1335,7 @@ class Context extends EventEmitter {
      */
     #handleWorkspaceTreeEvent(eventType, payload) {
         // Forward tree events that might affect this context
-        this.emit(`context:workspace:${eventType}`, {
+        this.emit(`context.workspace.${eventType}`, {
             contextId: this.#id,
             contextUrl: this.#url,
             contextPath: this.#path,
@@ -1323,7 +1354,7 @@ class Context extends EventEmitter {
         const isRelevant = this.#isEventRelevantToContext(payload);
 
         if (isRelevant) {
-            this.emit(`context:workspace:${eventType}`, {
+            this.emit(`context.workspace.${eventType}`, {
                 contextId: this.#id,
                 contextUrl: this.#url,
                 contextPath: this.#path,
@@ -1336,7 +1367,7 @@ class Context extends EventEmitter {
             debug(`Context "${this.#id}" forwarded relevant ${eventType} event for path "${payload.contextSpec || 'unknown'}"`);
         } else {
             // Still emit the event but mark it as not directly relevant
-            this.emit(`context:workspace:${eventType}`, {
+            this.emit(`context.workspace.${eventType}`, {
                 contextId: this.#id,
                 contextUrl: this.#url,
                 contextPath: this.#path,
@@ -1390,30 +1421,30 @@ class Context extends EventEmitter {
         debug(`Cleaning up workspace event forwarding for context "${this.#id}"`);
 
         // Remove specific event listeners using stored handler references
-        this.#workspace.off('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
-        this.#workspace.off('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
-        this.#workspace.off('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
-        this.#workspace.off('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
-        this.#workspace.off('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
-        this.#workspace.off('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
-        this.#workspace.off('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
-        this.#workspace.off('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
-        this.#workspace.off('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
-        this.#workspace.off('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
-        this.#workspace.off('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
-        this.#workspace.off('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
-        this.#workspace.off('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
-        this.#workspace.off('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
-        this.#workspace.off('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
-        this.#workspace.off('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
-        this.#workspace.off('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
-        this.#workspace.off('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
-        this.#workspace.off('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
-        this.#workspace.off('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
-        this.#workspace.off('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
-        this.#workspace.off('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
-        this.#workspace.off('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
-        this.#workspace.off('workspace:tree:error', this.#workspaceEventHandlers.treeError);
+        this.#workspace.off('document.inserted', this.#workspaceEventHandlers.documentInserted);
+        this.#workspace.off('document.updated', this.#workspaceEventHandlers.documentUpdated);
+        this.#workspace.off('document.removed', this.#workspaceEventHandlers.documentRemoved);
+        this.#workspace.off('document.deleted', this.#workspaceEventHandlers.documentDeleted);
+        this.#workspace.off('tree.path.inserted', this.#workspaceEventHandlers.treePathInserted);
+        this.#workspace.off('tree.path.moved', this.#workspaceEventHandlers.treePathMoved);
+        this.#workspace.off('tree.path.copied', this.#workspaceEventHandlers.treePathCopied);
+        this.#workspace.off('tree.path.removed', this.#workspaceEventHandlers.treePathRemoved);
+        this.#workspace.off('tree.document.inserted', this.#workspaceEventHandlers.treeDocumentInserted);
+        this.#workspace.off('tree.document.inserted.batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
+        this.#workspace.off('tree.document.updated', this.#workspaceEventHandlers.treeDocumentUpdated);
+        this.#workspace.off('tree.document.updated.batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
+        this.#workspace.off('tree.document.removed', this.#workspaceEventHandlers.treeDocumentRemoved);
+        this.#workspace.off('tree.document.removed.batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
+        this.#workspace.off('tree.document.deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
+        this.#workspace.off('tree.document.deleted.batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
+        this.#workspace.off('tree.path.locked', this.#workspaceEventHandlers.treePathLocked);
+        this.#workspace.off('tree.path.unlocked', this.#workspaceEventHandlers.treePathUnlocked);
+        this.#workspace.off('tree.layer.merged.up', this.#workspaceEventHandlers.treeLayerMergedUp);
+        this.#workspace.off('tree.layer.merged.down', this.#workspaceEventHandlers.treeLayerMergedDown);
+        this.#workspace.off('tree.saved', this.#workspaceEventHandlers.treeSaved);
+        this.#workspace.off('tree.loaded', this.#workspaceEventHandlers.treeLoaded);
+        this.#workspace.off('tree.recalculated', this.#workspaceEventHandlers.treeRecalculated);
+        this.#workspace.off('tree.error', this.#workspaceEventHandlers.treeError);
 
         // Clear the handlers reference
         this.#workspaceEventHandlers = null;

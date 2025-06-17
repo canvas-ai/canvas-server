@@ -97,7 +97,7 @@ class Workspace extends EventEmitter {
         if (this.#status !== status) {
             this.#status = status;
             debug(`Workspace ${this.id} status changed to: ${status}`);
-            this.emit('workspace:status:changed', { id: this.id, status: this.#status });
+            this.emit('status.changed', { id: this.id, status: this.#status });
             // Note: Persisting status to workspace.json is handled by WorkspaceManager based on its operations.
             // This setStatus is for internal runtime state of the Workspace object.
         }
@@ -226,14 +226,14 @@ class Workspace extends EventEmitter {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder
             this.setStatus(WORKSPACE_STATUS_CODES.ACTIVE);
-            this.emit('workspace:started', { id: this.id });
+            this.emit('afterStart', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             console.error(`Failed to start workspace "${this.id}": ${err.message}`);
             await this.#shutdownResources(); // Ensure cleanup
             this.setStatus(WORKSPACE_STATUS_CODES.ERROR); // Set to error state on failed start
-            this.emit('workspace:start_failed', { id: this.id, error: err.message });
+            this.emit('startFailed', { id: this.id, error: err.message });
             throw err; // Re-throw to allow WorkspaceManager to handle index status
         }
     }
@@ -256,7 +256,7 @@ class Workspace extends EventEmitter {
             // await this.#shutdownRoles(); // Placeholder
             const previousStatus = this.#status;
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE);
-            this.emit('workspace:stopped', { id: this.id, previousStatus: previousStatus });
+            this.emit('afterStop', { id: this.id, previousStatus });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
@@ -264,7 +264,7 @@ class Workspace extends EventEmitter {
             // Even if shutdown fails, set status to INACTIVE or ERROR?
             // Setting to INACTIVE seems safer as resources are likely down or in an unknown state.
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE); // Or ERROR depending on desired recovery behavior
-            this.emit('workspace:stop_failed', { id: this.id, error: err.message });
+            this.emit('stopFailed', { id: this.id, error: err.message });
             return false; // Indicate stop had issues
         }
     }
@@ -518,7 +518,7 @@ class Workspace extends EventEmitter {
             response.data = resultData;
         }
         if (success) {
-            this.emit('workspace:tree:updated', response);
+            this.emit('tree.updated', response);
         }
         return response;
     }
@@ -606,7 +606,7 @@ class Workspace extends EventEmitter {
             path: canvasPath,
             tree: this.jsonTree,
         };
-        this.emit('workspace:canvas:inserted', responsePayload);
+        this.emit('canvas.inserted', responsePayload);
         return responsePayload; // Return a more comprehensive object
     }
 
@@ -641,7 +641,7 @@ class Workspace extends EventEmitter {
             path: workspacePath,
             tree: this.jsonTree,
         };
-        this.emit('workspace:ref:inserted', responsePayload);
+        this.emit('ref.inserted', responsePayload);
         return responsePayload;
     }
 
@@ -654,7 +654,7 @@ class Workspace extends EventEmitter {
             console.error('Layer creation in SynapsD did not return a valid layer object with ID.', options);
             throw new Error('Failed to create layer or layer ID missing.');
         }
-        this.emit('workspace:layer:created', {
+        this.emit('layer.created', {
             layerId: layer.id,
             layerName: layer.name, // Assuming name is part of options or generated
             options,
@@ -748,8 +748,7 @@ class Workspace extends EventEmitter {
             this.#configStore.set(key, value);
             this.#configStore.set('updated', new Date().toISOString());
             // It might be good to emit an event specific to this workspace instance
-            this.emit(`configChanged`, { workspaceId: this.id, key, value, oldValue });
-            this.emit(`workspace:${key}:changed`, { id: this.id, [key]: value }); // Original event format
+            this.emit(`${key}.changed`, { id: this.id, [key]: value });
             debug(`Workspace "${this.id}" config updated: { ${key}: ${value} }. Old value: ${oldValue}`);
             return true;
         } catch (err) {
@@ -821,7 +820,7 @@ class Workspace extends EventEmitter {
 
         // Forward database events
         this.#db.on('document:inserted', (payload) => {
-            this.emit('workspace:document:inserted', {
+            this.emit('document.inserted', {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
@@ -829,7 +828,7 @@ class Workspace extends EventEmitter {
         });
 
         this.#db.on('document:updated', (payload) => {
-            this.emit('workspace:document:updated', {
+            this.emit('document.updated', {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
@@ -837,7 +836,7 @@ class Workspace extends EventEmitter {
         });
 
         this.#db.on('document:removed', (payload) => {
-            this.emit('workspace:document:removed', {
+            this.emit('document.removed', {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
@@ -845,7 +844,7 @@ class Workspace extends EventEmitter {
         });
 
         this.#db.on('document:deleted', (payload) => {
-            this.emit('workspace:document:deleted', {
+            this.emit('document.deleted', {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
@@ -856,7 +855,7 @@ class Workspace extends EventEmitter {
         const tree = this.#db.tree;
         if (tree) {
             tree.on('tree:path:inserted', (payload) => {
-                this.emit('workspace:tree:path:inserted', {
+                this.emit('tree.path.inserted', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -864,7 +863,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:path:moved', (payload) => {
-                this.emit('workspace:tree:path:moved', {
+                this.emit('tree.path.moved', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -872,7 +871,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:path:copied', (payload) => {
-                this.emit('workspace:tree:path:copied', {
+                this.emit('tree.path.copied', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -880,7 +879,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:path:removed', (payload) => {
-                this.emit('workspace:tree:path:removed', {
+                this.emit('tree.path.removed', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -888,7 +887,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:inserted', (payload) => {
-                this.emit('workspace:tree:document:inserted', {
+                this.emit('tree.document.inserted', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -896,7 +895,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:inserted:batch', (payload) => {
-                this.emit('workspace:tree:document:inserted:batch', {
+                this.emit('tree.document.inserted.batch', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -904,7 +903,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:updated', (payload) => {
-                this.emit('workspace:tree:document:updated', {
+                this.emit('tree.document.updated', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -912,7 +911,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:updated:batch', (payload) => {
-                this.emit('workspace:tree:document:updated:batch', {
+                this.emit('tree.document.updated.batch', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -920,7 +919,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:removed', (payload) => {
-                this.emit('workspace:tree:document:removed', {
+                this.emit('tree.document.removed', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -928,7 +927,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:removed:batch', (payload) => {
-                this.emit('workspace:tree:document:removed:batch', {
+                this.emit('tree.document.removed.batch', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -936,7 +935,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:deleted', (payload) => {
-                this.emit('workspace:tree:document:deleted', {
+                this.emit('tree.document.deleted', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -944,7 +943,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:document:deleted:batch', (payload) => {
-                this.emit('workspace:tree:document:deleted:batch', {
+                this.emit('tree.document.deleted.batch', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -952,7 +951,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:path:locked', (payload) => {
-                this.emit('workspace:tree:path:locked', {
+                this.emit('tree.path.locked', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -960,7 +959,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:path:unlocked', (payload) => {
-                this.emit('workspace:tree:path:unlocked', {
+                this.emit('tree.path.unlocked', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -968,7 +967,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:layer:merged:up', (payload) => {
-                this.emit('workspace:tree:layer:merged:up', {
+                this.emit('tree.layer.merged.up', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -976,7 +975,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:layer:merged:down', (payload) => {
-                this.emit('workspace:tree:layer:merged:down', {
+                this.emit('tree.layer.merged.down', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -984,7 +983,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:saved', (payload) => {
-                this.emit('workspace:tree:saved', {
+                this.emit('tree.saved', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -992,7 +991,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:loaded', (payload) => {
-                this.emit('workspace:tree:loaded', {
+                this.emit('tree.loaded', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -1000,7 +999,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:recalculated', (payload) => {
-                this.emit('workspace:tree:recalculated', {
+                this.emit('tree.recalculated', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
@@ -1008,7 +1007,7 @@ class Workspace extends EventEmitter {
             });
 
             tree.on('tree:error', (payload) => {
-                this.emit('workspace:tree:error', {
+                this.emit('tree.error', {
                     workspaceId: this.id,
                     workspaceName: this.label,
                     ...payload
