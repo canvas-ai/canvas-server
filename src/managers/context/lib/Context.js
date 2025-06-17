@@ -1011,8 +1011,8 @@ class Context extends EventEmitter {
             };
             debug(`#removeDocumentArray: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#removeDocumentArray: Emitting document.remove event`);
-            this.emit('document.removed', documentEventPayload);
+            debug(`#removeDocumentArray: Emitting document.removed.batch event`);
+            this.emit('document.removed.batch', documentEventPayload);
             debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
             return result;
         } catch (error) {
@@ -1148,11 +1148,8 @@ class Context extends EventEmitter {
             };
             debug(`#deleteDocumentArrayFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#deleteDocumentArrayFromDb: Emitting documents.delete event`);
-            this.emit('documents.delete', documentEventPayload);
-
-            debug(`#deleteDocumentArrayFromDb: Emitting document.delete event`);
-            this.emit('document.deleted', documentEventPayload);
+            debug(`#deleteDocumentArrayFromDb: Emitting document.deleted.batch event`);
+            this.emit('document.deleted.batch', documentEventPayload);
 
             debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
             return result;
