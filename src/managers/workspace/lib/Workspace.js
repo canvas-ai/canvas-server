@@ -30,7 +30,7 @@ class Workspace extends EventEmitter {
     // Runtime state
     #status = WORKSPACE_STATUS_CODES.INACTIVE; // Internal runtime status
     #db = null;
-    // #tree = null; // Tree is accessed via db.tree, so no need for a separate member
+    #eventForwardHandlers = null;
 
     /**
      * Create a new Workspace instance.
@@ -97,7 +97,7 @@ class Workspace extends EventEmitter {
         if (this.#status !== status) {
             this.#status = status;
             debug(`Workspace ${this.id} status changed to: ${status}`);
-            this.emit('workspace:status:changed', { id: this.id, status: this.#status });
+            this.emit('status.changed', { id: this.id, status: this.#status });
             // Note: Persisting status to workspace.json is handled by WorkspaceManager based on its operations.
             // This setStatus is for internal runtime state of the Workspace object.
         }
@@ -226,14 +226,14 @@ class Workspace extends EventEmitter {
             await this.#initializeResources();
             // await this.#initializeRoles(); // Placeholder
             this.setStatus(WORKSPACE_STATUS_CODES.ACTIVE);
-            this.emit('workspace:started', { id: this.id });
+            this.emit('afterStart', { id: this.id });
             debug(`Workspace "${this.id}" started successfully.`);
             return this;
         } catch (err) {
             console.error(`Failed to start workspace "${this.id}": ${err.message}`);
             await this.#shutdownResources(); // Ensure cleanup
             this.setStatus(WORKSPACE_STATUS_CODES.ERROR); // Set to error state on failed start
-            this.emit('workspace:start_failed', { id: this.id, error: err.message });
+            this.emit('startFailed', { id: this.id, error: err.message });
             throw err; // Re-throw to allow WorkspaceManager to handle index status
         }
     }
@@ -256,7 +256,7 @@ class Workspace extends EventEmitter {
             // await this.#shutdownRoles(); // Placeholder
             const previousStatus = this.#status;
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE);
-            this.emit('workspace:stopped', { id: this.id, previousStatus: previousStatus });
+            this.emit('afterStop', { id: this.id, previousStatus });
             debug(`Workspace "${this.id}" stopped successfully.`);
             return true;
         } catch (err) {
@@ -264,7 +264,7 @@ class Workspace extends EventEmitter {
             // Even if shutdown fails, set status to INACTIVE or ERROR?
             // Setting to INACTIVE seems safer as resources are likely down or in an unknown state.
             this.setStatus(WORKSPACE_STATUS_CODES.INACTIVE); // Or ERROR depending on desired recovery behavior
-            this.emit('workspace:stop_failed', { id: this.id, error: err.message });
+            this.emit('stopFailed', { id: this.id, error: err.message });
             return false; // Indicate stop had issues
         }
     }
@@ -518,37 +518,36 @@ class Workspace extends EventEmitter {
             response.data = resultData;
         }
         if (success) {
-            this.emit('workspace:tree:updated', response);
+            this.emit('tree.updated', response);
         }
         return response;
     }
 
-    insertPath(path, data = null, autoCreateLayers = true) {
+    async insertPath(path, data = null, autoCreateLayers = true) {
         this.#ensureActiveForTreeOp('insertPath');
-        const result = this.tree.insertPath(path, data, autoCreateLayers);
+        const result = await this.tree.insertPath(path, data, autoCreateLayers);
         return result;
-        // return this.#emitTreeUpdateAndRespond('insertPath', { path, data, autoCreateLayers }, !!result, result ? { layerIds: result } : null);
     }
 
-    removePath(path, recursive = false) {
+        async removePath(path, recursive = false) {
         this.#ensureActiveForTreeOp('removePath');
-        const success = this.tree.removePath(path, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('removePath', { path, recursive }, success);
+        const result = await this.tree.removePath(path, recursive);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    movePath(pathFrom, pathTo, recursive = false) {
+    async movePath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('movePath');
-        const success = this.tree.movePath(pathFrom, pathTo, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('movePath', { pathFrom, pathTo, recursive }, success);
+        const result = await this.tree.movePath(pathFrom, pathTo, recursive);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    copyPath(pathFrom, pathTo, recursive = false) {
+    async copyPath(pathFrom, pathTo, recursive = false) {
         this.#ensureActiveForTreeOp('copyPath');
-        const success = this.tree.copyPath(pathFrom, pathTo, recursive);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('copyPath', { pathFrom, pathTo, recursive }, success);
+        const result = await this.tree.copyPath(pathFrom, pathTo, recursive);
+        // ContextTree returns boolean for copyPath (different from other methods)
+        return result === true;
     }
 
     pathToIdArray(path) {
@@ -556,18 +555,18 @@ class Workspace extends EventEmitter {
         return this.tree.pathToIdArray(path); // This one might not need the standard response format
     }
 
-    mergeUp(path) {
+    async mergeUp(path) {
         this.#ensureActiveForTreeOp('mergeUp');
-        const success = this.tree.mergeUp(path);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('mergeUp', { path }, success);
+        const result = await this.tree.mergeUp(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
-    mergeDown(path) {
+    async mergeDown(path) {
         this.#ensureActiveForTreeOp('mergeDown');
-        const success = this.tree.mergeDown(path);
-        return success;
-        // return this.#emitTreeUpdateAndRespond('mergeDown', { path }, success);
+        const result = await this.tree.mergeDown(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
     }
 
     get paths() {
@@ -607,7 +606,7 @@ class Workspace extends EventEmitter {
             path: canvasPath,
             tree: this.jsonTree,
         };
-        this.emit('workspace:canvas:inserted', responsePayload);
+        this.emit('canvas.inserted', responsePayload);
         return responsePayload; // Return a more comprehensive object
     }
 
@@ -642,7 +641,7 @@ class Workspace extends EventEmitter {
             path: workspacePath,
             tree: this.jsonTree,
         };
-        this.emit('workspace:ref:inserted', responsePayload);
+        this.emit('ref.inserted', responsePayload);
         return responsePayload;
     }
 
@@ -655,7 +654,7 @@ class Workspace extends EventEmitter {
             console.error('Layer creation in SynapsD did not return a valid layer object with ID.', options);
             throw new Error('Failed to create layer or layer ID missing.');
         }
-        this.emit('workspace:layer:created', {
+        this.emit('layer.created', {
             layerId: layer.id,
             layerName: layer.name, // Assuming name is part of options or generated
             options,
@@ -749,8 +748,7 @@ class Workspace extends EventEmitter {
             this.#configStore.set(key, value);
             this.#configStore.set('updated', new Date().toISOString());
             // It might be good to emit an event specific to this workspace instance
-            this.emit(`configChanged`, { workspaceId: this.id, key, value, oldValue });
-            this.emit(`workspace:${key}:changed`, { id: this.id, [key]: value }); // Original event format
+            this.emit(`${key}.changed`, { id: this.id, [key]: value });
             debug(`Workspace "${this.id}" config updated: { ${key}: ${value} }. Old value: ${oldValue}`);
             return true;
         } catch (err) {
@@ -818,204 +816,28 @@ class Workspace extends EventEmitter {
     #setupEventForwarding() {
         if (!this.#db) return;
 
-        debug(`Setting up event forwarding for workspace "${this.id}"`);
+        debug(`Setting up event forwarding for workspace "${this.id}" (wild-card mode)`);
 
-        // Forward database events
-        this.#db.on('document:inserted', (payload) => {
-            this.emit('workspace:document:inserted', {
+        const forward = (eventName, payload) => {
+            const dotEvent = eventName.replace(/:/g, '.');
+            this.emit(dotEvent, {
                 workspaceId: this.id,
                 workspaceName: this.label,
                 ...payload
             });
-        });
+        };
 
-        this.#db.on('document:updated', (payload) => {
-            this.emit('workspace:document:updated', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
+        const dbHandler = (eventName, payload) => forward(eventName, payload);
+        this.#db.onAny(dbHandler);
 
-        this.#db.on('document:removed', (payload) => {
-            this.emit('workspace:document:removed', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
-
-        this.#db.on('document:deleted', (payload) => {
-            this.emit('workspace:document:deleted', {
-                workspaceId: this.id,
-                workspaceName: this.label,
-                ...payload
-            });
-        });
-
-        // Forward tree events
-        const tree = this.#db.tree;
-        if (tree) {
-            tree.on('tree:path:inserted', (payload) => {
-                this.emit('workspace:tree:path:inserted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:moved', (payload) => {
-                this.emit('workspace:tree:path:moved', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:copied', (payload) => {
-                this.emit('workspace:tree:path:copied', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:removed', (payload) => {
-                this.emit('workspace:tree:path:removed', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:inserted', (payload) => {
-                this.emit('workspace:tree:document:inserted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:inserted:batch', (payload) => {
-                this.emit('workspace:tree:document:inserted:batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:updated', (payload) => {
-                this.emit('workspace:tree:document:updated', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:updated:batch', (payload) => {
-                this.emit('workspace:tree:document:updated:batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:removed', (payload) => {
-                this.emit('workspace:tree:document:removed', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:removed:batch', (payload) => {
-                this.emit('workspace:tree:document:removed:batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:deleted', (payload) => {
-                this.emit('workspace:tree:document:deleted', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:document:deleted:batch', (payload) => {
-                this.emit('workspace:tree:document:deleted:batch', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:locked', (payload) => {
-                this.emit('workspace:tree:path:locked', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:path:unlocked', (payload) => {
-                this.emit('workspace:tree:path:unlocked', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:layer:merged:up', (payload) => {
-                this.emit('workspace:tree:layer:merged:up', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:layer:merged:down', (payload) => {
-                this.emit('workspace:tree:layer:merged:down', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:saved', (payload) => {
-                this.emit('workspace:tree:saved', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:loaded', (payload) => {
-                this.emit('workspace:tree:loaded', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:recalculated', (payload) => {
-                this.emit('workspace:tree:recalculated', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
-
-            tree.on('tree:error', (payload) => {
-                this.emit('workspace:tree:error', {
-                    workspaceId: this.id,
-                    workspaceName: this.label,
-                    ...payload
-                });
-            });
+        let treeHandler = null;
+        if (this.#db.tree) {
+            treeHandler = (eventName, payload) => forward(eventName, payload);
+            this.#db.tree.onAny(treeHandler);
         }
+
+        // Keep refs for cleanup
+        this.#eventForwardHandlers = { dbHandler, treeHandler };
 
         debug(`Event forwarding setup completed for workspace "${this.id}"`);
     }
@@ -1029,35 +851,12 @@ class Workspace extends EventEmitter {
 
         debug(`Cleaning up event forwarding for workspace "${this.id}"`);
 
-        // Remove all listeners from database
-        this.#db.removeAllListeners('document:inserted');
-        this.#db.removeAllListeners('document:updated');
-        this.#db.removeAllListeners('document:removed');
-        this.#db.removeAllListeners('document:deleted');
-
-        // Remove all listeners from tree
-        const tree = this.#db.tree;
-        if (tree) {
-            tree.removeAllListeners('tree:path:inserted');
-            tree.removeAllListeners('tree:path:moved');
-            tree.removeAllListeners('tree:path:copied');
-            tree.removeAllListeners('tree:path:removed');
-            tree.removeAllListeners('tree:document:inserted');
-            tree.removeAllListeners('tree:document:inserted:batch');
-            tree.removeAllListeners('tree:document:updated');
-            tree.removeAllListeners('tree:document:updated:batch');
-            tree.removeAllListeners('tree:document:removed');
-            tree.removeAllListeners('tree:document:removed:batch');
-            tree.removeAllListeners('tree:document:deleted');
-            tree.removeAllListeners('tree:document:deleted:batch');
-            tree.removeAllListeners('tree:path:locked');
-            tree.removeAllListeners('tree:path:unlocked');
-            tree.removeAllListeners('tree:layer:merged:up');
-            tree.removeAllListeners('tree:layer:merged:down');
-            tree.removeAllListeners('tree:saved');
-            tree.removeAllListeners('tree:loaded');
-            tree.removeAllListeners('tree:recalculated');
-            tree.removeAllListeners('tree:error');
+        if (this.#db && this.#eventForwardHandlers) {
+            this.#db.offAny(this.#eventForwardHandlers.dbHandler);
+            if (this.#db.tree && this.#eventForwardHandlers.treeHandler) {
+                this.#db.tree.offAny(this.#eventForwardHandlers.treeHandler);
+            }
+            this.#eventForwardHandlers = null;
         }
 
         debug(`Event forwarding cleanup completed for workspace "${this.id}"`);

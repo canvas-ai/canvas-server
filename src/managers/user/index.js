@@ -127,7 +127,7 @@ class UserManager extends EventEmitter {
             });
 
             this.#setupUserEventListeners(user);
-            this.emit('user:created', { id, email });
+            this.emit('user.created', { id, email });
             debug(`User created: ${user.email} (ID: ${user.id})`);
             return user;
         } catch (error) {
@@ -274,7 +274,7 @@ class UserManager extends EventEmitter {
             ...updatedUserDataToStore,
             workspaceManager: this.#workspaceManager,
         });
-        this.emit('user:updated', { id, updates: userData });
+        this.emit('user.updated', { id, updates: userData });
         return updatedUserInstance;
     }
 
@@ -292,7 +292,7 @@ class UserManager extends EventEmitter {
         if (!this.#indexStore.has(id)) {
             if (this.#users.has(id)) { // Should not happen if store is source of truth
                 this.#users.delete(id);
-                this.emit('user:deleted', { id });
+                this.emit('user.deleted', { id });
                 debug(`User ${id} deleted from memory (was not in index).`);
                 return true;
             }
@@ -306,7 +306,7 @@ class UserManager extends EventEmitter {
             this.#users.delete(id);
         }
         console.log(`User ${id} deleted. Home directory left in place: ${userHomePath}`);
-        this.emit('user:deleted', { id });
+        this.emit('user.deleted', { id });
         return true;
     }
 

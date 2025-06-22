@@ -34,7 +34,15 @@ class ContextManager extends EventEmitter {
      * @param {Object} options.workspaceManager - Workspace manager instance
      */
     constructor(options = {}) {
-        super(options.eventEmitterOptions || {});
+        // Ensure wildcard events are enabled so WebSocket bridge can listen to "**"
+        // Provide default delimiter "." to match our dot-notation events
+        super({
+            wildcard: true,
+            delimiter: '.',
+            newListener: false,
+            maxListeners: 100,
+            ...(options.eventEmitterOptions || {})
+        });
 
         if (!options.indexStore) {
             throw new Error('Index store is required for ContextManager');
@@ -134,10 +142,10 @@ class ContextManager extends EventEmitter {
 
             this.saveContext(userId, context);
 
-            // Emit the context:created event with a consistent payload structure including id
+            // Emit the context.created event with a consistent payload structure including id
             const contextData = context.toJSON();
-            this.emit('context:created', { id: context.id, ...contextData });
-            debug(`Context created with ID ${context.id} and emitted context:created event`);
+            this.emit('context.created', { id: context.id, ...contextData });
+            debug(`Context created with ID ${context.id} and emitted context.created event`);
 
             return context;
         } catch (error) {
@@ -216,65 +224,19 @@ class ContextManager extends EventEmitter {
 
                     // Set up event forwarding manually to avoid redundant cache/store operations
                     if (!loadedContext._eventsForwarded) {
-                        debug(`📋 ContextManager: Setting up event forwarding for loaded context ${loadedContext.id}`);
+                        debug(`📋 ContextManager: Setting up *wildcard* event forwarding for loaded context ${loadedContext.id}`);
 
-                        const forwardEvent = (eventName) => {
-                            loadedContext.on(eventName, (payload) => {
-                                debug(`📋 ContextManager: Forwarding ${eventName} event from context ${loadedContext.id} to ContextManager`);
-                                debug(`📋 ContextManager: Event payload:`, JSON.stringify(payload, null, 2));
-                                // Add context ID to payload if not present
-                                const enrichedPayload = { ...payload, contextId: loadedContext.id };
-                                this.emit(eventName, enrichedPayload);
-                                debug(`📋 ContextManager: ✅ Successfully emitted ${eventName} event to WebSocket listeners`);
-                            });
+                        const manager = this; // capture
+                        const wildcardForwarder = function (payload = {}) {
+                            const eventName = this.event;
+                            const enriched = { ...payload, contextId: loadedContext.id };
+                            manager.emit(eventName, enriched);
+                            debug(`📋 ContextManager: ➡️  forwarded ${eventName} for loaded context ${loadedContext.id}`);
                         };
 
-                        // Forward each important event type
-                        forwardEvent('context:url:set');
-                        forwardEvent('context:updated');
-                        forwardEvent('context:locked');
-                        forwardEvent('context:unlocked');
-                        forwardEvent('context:deleted');
-                        forwardEvent('context:created');
-                        forwardEvent('context:acl:updated');
-                        forwardEvent('context:acl:revoked');
-
-                        // Forward document-specific events
-                        forwardEvent('document:insert');
-                        forwardEvent('document:update');
-                        forwardEvent('document:remove');
-                        forwardEvent('document:delete');
-                        forwardEvent('documents:delete');
-
-                        // Forward workspace-forwarded events
-                        forwardEvent('context:workspace:document:inserted');
-                        forwardEvent('context:workspace:document:updated');
-                        forwardEvent('context:workspace:document:removed');
-                        forwardEvent('context:workspace:document:deleted');
-                        forwardEvent('context:workspace:tree:path:inserted');
-                        forwardEvent('context:workspace:tree:path:moved');
-                        forwardEvent('context:workspace:tree:path:copied');
-                        forwardEvent('context:workspace:tree:path:removed');
-                        forwardEvent('context:workspace:tree:document:inserted');
-                        forwardEvent('context:workspace:tree:document:inserted:batch');
-                        forwardEvent('context:workspace:tree:document:updated');
-                        forwardEvent('context:workspace:tree:document:updated:batch');
-                        forwardEvent('context:workspace:tree:document:removed');
-                        forwardEvent('context:workspace:tree:document:removed:batch');
-                        forwardEvent('context:workspace:tree:document:deleted');
-                        forwardEvent('context:workspace:tree:document:deleted:batch');
-                        forwardEvent('context:workspace:tree:path:locked');
-                        forwardEvent('context:workspace:tree:path:unlocked');
-                        forwardEvent('context:workspace:tree:layer:merged:up');
-                        forwardEvent('context:workspace:tree:layer:merged:down');
-                        forwardEvent('context:workspace:tree:saved');
-                        forwardEvent('context:workspace:tree:loaded');
-                        forwardEvent('context:workspace:tree:recalculated');
-                        forwardEvent('context:workspace:tree:error');
-
-                        // Mark this context as having its events forwarded
+                        loadedContext.on('**', wildcardForwarder);
                         loadedContext._eventsForwarded = true;
-                        debug(`📋 ContextManager: ✅ Event forwarding setup completed for context ${loadedContext.id}`);
+                        debug(`📋 ContextManager: ✅ Wildcard forwarding active for loaded context ${loadedContext.id}`);
                     }
 
                     contextInstance = loadedContext;
@@ -426,7 +388,7 @@ class ContextManager extends EventEmitter {
                 this.#indexStore.delete(contextKey);
             }
 
-            this.emit('context:deleted', {
+            this.emit('context.deleted', {
                 contextKey: contextKey,
                 userId: userId,
                 contextId: contextId.toString()
@@ -458,68 +420,21 @@ class ContextManager extends EventEmitter {
         this.#indexStore.set(contextKey, contextData);
         debug(`Saved context with key ${contextKey}`);
 
-        // Forward relevant events from the context instance to the manager
-        // This ensures all context events are accessible at the manager level
+        // Forward all events from the context instance to the manager using a wildcard listener
         if (!context._eventsForwarded) {
-            debug(`📋 ContextManager: Setting up event forwarding for context ${context.id}`);
+            debug(`📋 ContextManager: Setting up *wildcard* event forwarding for context ${context.id}`);
 
-            const forwardEvent = (eventName) => {
-                context.on(eventName, (payload) => {
-                    debug(`📋 ContextManager: Forwarding ${eventName} event from context ${context.id} to ContextManager`);
-                    debug(`📋 ContextManager: Event payload:`, JSON.stringify(payload, null, 2));
-                    // Add context ID to payload if not present
-                    const enrichedPayload = { ...payload, contextId: context.id };
-                    this.emit(eventName, enrichedPayload);
-                    debug(`📋 ContextManager: ✅ Successfully emitted ${eventName} event to WebSocket listeners`);
-                });
+            const manager = this; // capture for closure
+            const wildcardForwarder = function (payload = {}) {
+                const eventName = this.event; // EventEmitter2 provides the emitted event name
+                const enriched = { ...payload, contextId: context.id };
+                manager.emit(eventName, enriched);
+                debug(`📋 ContextManager: ➡️  forwarded ${eventName} for context ${context.id}`);
             };
 
-            // Forward each important event type
-            forwardEvent('context:url:set');
-            forwardEvent('context:updated');
-            forwardEvent('context:locked');
-            forwardEvent('context:unlocked');
-            forwardEvent('context:deleted');
-            forwardEvent('context:created');
-            forwardEvent('context:acl:updated');
-            forwardEvent('context:acl:revoked');
-
-            // Forward document-specific events
-            forwardEvent('document:insert');
-            forwardEvent('document:update');
-            forwardEvent('document:remove');
-            forwardEvent('document:delete');
-            forwardEvent('documents:delete');
-
-            // Forward workspace-forwarded events
-            forwardEvent('context:workspace:document:inserted');
-            forwardEvent('context:workspace:document:updated');
-            forwardEvent('context:workspace:document:removed');
-            forwardEvent('context:workspace:document:deleted');
-            forwardEvent('context:workspace:tree:path:inserted');
-            forwardEvent('context:workspace:tree:path:moved');
-            forwardEvent('context:workspace:tree:path:copied');
-            forwardEvent('context:workspace:tree:path:removed');
-            forwardEvent('context:workspace:tree:document:inserted');
-            forwardEvent('context:workspace:tree:document:inserted:batch');
-            forwardEvent('context:workspace:tree:document:updated');
-            forwardEvent('context:workspace:tree:document:updated:batch');
-            forwardEvent('context:workspace:tree:document:removed');
-            forwardEvent('context:workspace:tree:document:removed:batch');
-            forwardEvent('context:workspace:tree:document:deleted');
-            forwardEvent('context:workspace:tree:document:deleted:batch');
-            forwardEvent('context:workspace:tree:path:locked');
-            forwardEvent('context:workspace:tree:path:unlocked');
-            forwardEvent('context:workspace:tree:layer:merged:up');
-            forwardEvent('context:workspace:tree:layer:merged:down');
-            forwardEvent('context:workspace:tree:saved');
-            forwardEvent('context:workspace:tree:loaded');
-            forwardEvent('context:workspace:tree:recalculated');
-            forwardEvent('context:workspace:tree:error');
-
-            // Mark this context as having its events forwarded
+            context.on('**', wildcardForwarder);
             context._eventsForwarded = true;
-            debug(`📋 ContextManager: ✅ Event forwarding setup completed for context ${context.id}`);
+            debug(`📋 ContextManager: ✅ Wildcard event forwarding active for context ${context.id}`);
         }
     }
 

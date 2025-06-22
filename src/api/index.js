@@ -117,33 +117,33 @@ export async function createServer(options = {}) {
   // Register event listeners to relay Context events to WebSocket clients
   if (server.contextManager) {
     // Listen for context URL changes and other important events
-    server.contextManager.on('context:url:changed', (payload) => {
+    server.contextManager.on('context.url.set', (payload) => {
       if (payload && payload.id) {
         try {
-          server.broadcastToContext(payload.id, 'context:url:changed', payload);
-          debug(`Relayed context:url:changed event for context ${payload.id} to WebSocket clients`);
+          server.broadcastToContext(payload.id, 'context.url.set', payload);
+          debug(`Relayed context.url.set event for context ${payload.id} to WebSocket clients`);
         } catch (error) {
-          console.error(`Error broadcasting context:url:changed event: ${error.message}`);
+          console.error(`Error broadcasting context.url.set event: ${error.message}`);
         }
       }
     });
 
     // Other important context events can be added here in the same pattern
-    server.contextManager.on('context:updated', (payload) => {
+    server.contextManager.on('context.updated', (payload) => {
       if (payload && payload.id) {
-        server.broadcastToContext(payload.id, 'context:updated', payload);
+        server.broadcastToContext(payload.id, 'context.updated', payload);
       }
     });
 
-    server.contextManager.on('context:locked', (payload) => {
+    server.contextManager.on('context.locked', (payload) => {
       if (payload && payload.id) {
-        server.broadcastToContext(payload.id, 'context:locked', payload);
+        server.broadcastToContext(payload.id, 'context.locked', payload);
       }
     });
 
-    server.contextManager.on('context:unlocked', (payload) => {
+    server.contextManager.on('context.unlocked', (payload) => {
       if (payload && payload.id) {
-        server.broadcastToContext(payload.id, 'context:unlocked', payload);
+        server.broadcastToContext(payload.id, 'context.unlocked', payload);
       }
     });
   }

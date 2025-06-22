@@ -86,7 +86,7 @@ class DeviceManager extends EventEmitter {
             this.#currentDevice = device;
         }
 
-        this.emit('device:created', device);
+        this.emit('device.created', device);
 
         return device;
     }
@@ -132,7 +132,7 @@ class DeviceManager extends EventEmitter {
         Object.assign(device, data);
         device.lastSeen = new Date().toISOString();
 
-        this.emit('device:updated', device);
+        this.emit('device.updated', device);
 
         return device;
     }
@@ -150,7 +150,7 @@ class DeviceManager extends EventEmitter {
         const result = this.#devices.delete(id);
 
         if (result) {
-            this.emit('device:removed', id);
+            this.emit('device.removed', id);
         }
 
         return result;

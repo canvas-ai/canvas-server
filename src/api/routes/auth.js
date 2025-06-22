@@ -1,6 +1,6 @@
 'use strict';
 
-import { authService, login, register, verifyEmail, requestPasswordReset, resetPassword, validateUser } from '../auth/strategies.js';
+import { authService, imapAuthStrategy, login, register, verifyEmail, requestPasswordReset, resetPassword, validateUser } from '../auth/strategies.js';
 import ResponseObject from '../ResponseObject.js';
 
 /**
@@ -9,6 +9,30 @@ import ResponseObject from '../ResponseObject.js';
  * @param {Object} options - Plugin options
  */
 export default async function authRoutes(fastify, options) {
+  // Get authentication configuration
+  fastify.get('/config', async (request, reply) => {
+    try {
+      await imapAuthStrategy.initialize();
+
+      const config = {
+        strategies: {
+          local: { enabled: true },
+          imap: {
+            enabled: imapAuthStrategy.isEnabled(),
+            domains: imapAuthStrategy.getAvailableDomains()
+          }
+        }
+      };
+
+      const response = new ResponseObject().success(config, 'Authentication configuration retrieved');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError('Failed to retrieve authentication configuration');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
   // Login endpoint
   fastify.post('/login', {
     schema: {
@@ -17,7 +41,8 @@ export default async function authRoutes(fastify, options) {
         required: ['email', 'password'],
         properties: {
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 }
+          password: { type: 'string', minLength: 6 },
+          strategy: { type: 'string', enum: ['local', 'imap', 'auto'] }
         }
       }
     }
@@ -30,8 +55,8 @@ export default async function authRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { email, password } = request.body;
-      const result = await login(email, password, fastify.userManager);
+      const { email, password, strategy = 'auto' } = request.body;
+      const result = await login(email, password, fastify.userManager, strategy);
 
       // Generate JWT token
       const token = authService.generateJWT(result.user);
@@ -41,7 +66,8 @@ export default async function authRoutes(fastify, options) {
         user: {
           id: result.user.id,
           email: result.user.email,
-          name: result.user.name || result.user.email
+          name: result.user.name || result.user.email,
+          authMethod: result.authMethod || 'local'
         }
       }, 'Login successful');
       return reply.code(response.statusCode).send(response.getResponse());
@@ -52,8 +78,28 @@ export default async function authRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
+      // Handle IMAP-specific errors with more descriptive messages
+      if (error.code === 'ERR_IMAP_AUTH') {
+        fastify.log.info(`IMAP login failed: ${error.message}`);
+        const response = new ResponseObject().unauthorized(error.message || 'Email server authentication failed');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      if (error.code === 'ERR_IMAP_CONFIG') {
+        fastify.log.info(`IMAP config error: ${error.message}`);
+        const response = new ResponseObject().badRequest('Unsupported login domain - email server not configured');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Check if error message indicates unsupported domain
+      if (error.message && error.message.includes('not supported for domain')) {
+        fastify.log.info(`Unsupported domain: ${error.message}`);
+        const response = new ResponseObject().badRequest('Unsupported login domain - please check your email address or contact administrator');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
       fastify.log.error(error);
-      const response = new ResponseObject().notFound(error.message || 'An unexpected error occurred during login');
+      const response = new ResponseObject().serverError(error.message || 'An unexpected error occurred during login');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });

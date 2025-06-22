@@ -152,7 +152,7 @@ class Context extends EventEmitter {
         }
 
         debug(`Context ${this.#id} constructor finished. Initial URL state: ${this.#url}, Base URL: ${this.#baseUrl}`);
-        this.emit('context:created', this.toJSON());
+        this.emit('context.created', this.toJSON());
     }
 
     /**
@@ -226,7 +226,7 @@ class Context extends EventEmitter {
 
         this.#acl[sharedWithUserId] = accessLevel;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:acl:updated', { id: this.#id, userId: sharedWithUserId, accessLevel });
+        this.emit('context.acl.updated', { id: this.#id, userId: sharedWithUserId, accessLevel });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -250,7 +250,7 @@ class Context extends EventEmitter {
         if (this.#acl[sharedWithUserId]) {
             delete this.#acl[sharedWithUserId];
             this.#updatedAt = new Date().toISOString();
-            this.emit('context:acl:revoked', { id: this.#id, userId: sharedWithUserId });
+            this.emit('context.acl.revoked', { id: this.#id, userId: sharedWithUserId });
 
             // Save changes to index
             await this.#contextManager.saveContext(this.#userId, this);
@@ -326,7 +326,7 @@ class Context extends EventEmitter {
         }
 
         this.#clientContextArray = clientContextArray;
-        this.emit('context:updated', { id: this.#id, clientContextArray: this.#clientContextArray });
+        this.emit('context.updated', { id: this.#id, clientContextArray: this.#clientContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -334,7 +334,7 @@ class Context extends EventEmitter {
 
     async clearClientContextArray() {
         this.#clientContextArray = [];
-        this.emit('context:updated', { id: this.#id, clientContextArray: this.#clientContextArray });
+        this.emit('context.updated', { id: this.#id, clientContextArray: this.#clientContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -346,12 +346,12 @@ class Context extends EventEmitter {
         }
 
         this.#serverContextArray = serverContextArray;
-        this.emit('context:updated', { id: this.#id, serverContextArray: this.#serverContextArray });
+        this.emit('context.updated', { id: this.#id, serverContextArray: this.#serverContextArray });
     }
 
     async clearServerContextArray() {
         this.#serverContextArray = [];
-        this.emit('context:updated', { id: this.#id, serverContextArray: this.#serverContextArray });
+        this.emit('context.updated', { id: this.#id, serverContextArray: this.#serverContextArray });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -387,7 +387,7 @@ class Context extends EventEmitter {
         }
 
         // Create the URL path in the current workspace
-        const contextLayers = this.#workspace.insertPath(parsed.path);
+        const contextLayers = await this.#workspace.insertPath(parsed.path);
         this.#contextBitmapArray = parsed.pathArray;
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
@@ -400,7 +400,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
-        this.emit('context:url:set', { id: this.#id, url: this.#url });
+        this.emit('context.url.set', { id: this.#id, url: this.#url });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -441,7 +441,7 @@ class Context extends EventEmitter {
         debug(`Setting base URL from "${this.#baseUrl}" to "${newBaseUrl}"`);
         this.#baseUrl = newBaseUrl;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:updated', { id: this.#id, baseUrl: this.#baseUrl });
+        this.emit('context.updated', { id: this.#id, baseUrl: this.#baseUrl });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -452,7 +452,7 @@ class Context extends EventEmitter {
     async lock() {
         this.#isLocked = true;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:locked', { id: this.#id, locked: this.#isLocked });
+        this.emit('context.locked', { id: this.#id, locked: this.#isLocked });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -463,7 +463,7 @@ class Context extends EventEmitter {
     async unlock() {
         this.#isLocked = false;
         this.#updatedAt = new Date().toISOString();
-        this.emit('context:unlocked', { id: this.#id, locked: this.#isLocked });
+        this.emit('context.unlocked', { id: this.#id, locked: this.#isLocked });
 
         // Save changes to index
         await this.#contextManager.saveContext(this.#userId, this);
@@ -486,7 +486,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit destroy event
-        this.emit('context:deleted', { id: this.#id });
+        this.emit('context.deleted', { id: this.#id });
 
         // Remove all listeners
         this.removeAllListeners();
@@ -532,7 +532,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = featureArray;
-        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context.updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     appendFeatureBitmaps(featureArray) {
@@ -540,7 +540,7 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray.push(...featureArray);
-        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context.updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     removeFeatureBitmaps(featureArray) {
@@ -548,12 +548,12 @@ class Context extends EventEmitter {
             featureArray = [featureArray];
         }
         this.#featureBitmapArray = this.#featureBitmapArray.filter((feature) => !featureArray.includes(feature));
-        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context.updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     clearFeatureBitmaps() {
         this.#featureBitmapArray = [];
-        this.emit('context:updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
+        this.emit('context.updated', { id: this.#id, featureBitmapArray: this.#featureBitmapArray });
     }
 
     /**
@@ -600,10 +600,10 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:insert', documentEventPayload);
-        this.emit('context:updated', {
+        this.emit('document.inserted', documentEventPayload);
+        this.emit('context.updated', {
             id: this.#id,
-            operation: 'document:inserted',
+            operation: 'document.inserted',
             document: documentId,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
@@ -612,7 +612,7 @@ class Context extends EventEmitter {
         return result;
     }
 
-    insertDocumentArray(accessingUserId, documentArray, featureArray = [], options = {}) {
+    async insertDocumentArray(accessingUserId, documentArray, featureArray = [], options = {}) {
         if (!this.checkPermission(accessingUserId, 'documentWrite')) {
             throw new Error('Access denied: User requires documentWrite permission.');
         }
@@ -637,16 +637,46 @@ class Context extends EventEmitter {
         debug('#insertDocumentArray: Received featureArray:', featureArray);
         debug('#insertDocumentArray: Received options:', options);
 
-        // Insert the documents
-        const result = this.#db.insertDocumentArray(documentArray, contextArray, featureArray);
+        // Insert the documents (handle async results)
+        const result = await Promise.resolve(this.#db.insertDocumentArray(documentArray, contextArray, featureArray));
 
-        // Prepare document data for events
-        const documentIds = result && Array.isArray(result) ? result : documentArray.map(doc => doc.id);
+        // Prepare document data for events - handle different result formats
+        let documentIds = [];
+
+        debug('#insertDocumentArray: DB result type:', typeof result, 'isArray:', Array.isArray(result));
+        debug('#insertDocumentArray: DB result value:', result);
+
+        if (result && Array.isArray(result)) {
+            // Result is an array of document IDs
+            documentIds = result;
+        } else if (result && typeof result === 'object' && result.data && Array.isArray(result.data)) {
+            // Result is wrapped in a response object with data array
+            documentIds = result.data.map(doc => doc.id || doc);
+        } else if (result && typeof result === 'object' && result.insertedIds) {
+            // Result has insertedIds property
+            documentIds = result.insertedIds;
+        } else if (result && typeof result === 'number') {
+            // Single document ID returned
+            documentIds = [result];
+        } else {
+            // Fallback: try to extract IDs from documents (though they might not have them yet)
+            documentIds = documentArray.map(doc => doc.id).filter(id => id != null);
+            debug('#insertDocumentArray: WARNING - Using fallback for documentIds, may contain nulls');
+        }
+
+        debug('#insertDocumentArray: Final documentIds:', documentIds);
+
+        // Enhance documents with IDs if available
+        const enhancedDocuments = documentArray.map((doc, index) => ({
+            ...doc,
+            id: documentIds[index] || doc.id
+        }));
+
         const documentEventPayload = {
             contextId: this.#id,
             operation: 'insert',
             documentIds: documentIds,
-            documents: documentArray,
+            documents: enhancedDocuments,
             contextArray: this.#contextBitmapArray,
             featureArray: featureArray,
             url: this.#url,
@@ -654,7 +684,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:insert', documentEventPayload);
+        debug('#insertDocumentArray: Emitting document.inserted event with payload:', JSON.stringify(documentEventPayload, null, 2));
+        this.emit('document.inserted', documentEventPayload);
         return result;
     }
 
@@ -835,7 +866,7 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:update', documentEventPayload);
+        this.emit('document.updated', documentEventPayload);
         return result;
     }
 
@@ -876,7 +907,7 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        this.emit('document:update', documentEventPayload);
+        this.emit('document.updated', documentEventPayload);
         return result;
     }
 
@@ -915,8 +946,8 @@ class Context extends EventEmitter {
             };
             debug(`#removeDocument: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#removeDocument: Emitting document:remove event`);
-            this.emit('document:remove', documentEventPayload);
+            debug(`#removeDocument: Emitting document.remove event`);
+            this.emit('document.removed', documentEventPayload);
 
             debug(`#removeDocument: Successfully completed removal of document ${documentId} from context`);
             return result;
@@ -980,8 +1011,8 @@ class Context extends EventEmitter {
             };
             debug(`#removeDocumentArray: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#removeDocumentArray: Emitting document:remove event`);
-            this.emit('document:remove', documentEventPayload);
+            debug(`#removeDocumentArray: Emitting document.removed.batch event`);
+            this.emit('document.removed.batch', documentEventPayload);
             debug(`#removeDocumentArray: Successfully completed removal of ${numericDocumentIdArray.length} documents from context`);
             return result;
         } catch (error) {
@@ -1045,8 +1076,8 @@ class Context extends EventEmitter {
             };
             debug(`#deleteDocumentFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#deleteDocumentFromDb: Emitting document:delete event`);
-            this.emit('document:delete', documentEventPayload);
+            debug(`#deleteDocumentFromDb: Emitting document.delete event`);
+            this.emit('document.deleted', documentEventPayload);
 
             debug(`#deleteDocumentFromDb: Successfully completed deletion of document ${numericDocumentId}`);
             return result;
@@ -1117,11 +1148,8 @@ class Context extends EventEmitter {
             };
             debug(`#deleteDocumentArrayFromDb: Prepared event payload: ${JSON.stringify(documentEventPayload)}`);
 
-            debug(`#deleteDocumentArrayFromDb: Emitting documents:delete event`);
-            this.emit('documents:delete', documentEventPayload);
-
-            debug(`#deleteDocumentArrayFromDb: Emitting document:delete event`);
-            this.emit('document:delete', documentEventPayload);
+            debug(`#deleteDocumentArrayFromDb: Emitting document.deleted.batch event`);
+            this.emit('document.deleted.batch', documentEventPayload);
 
             debug(`#deleteDocumentArrayFromDb: Successfully completed deletion of ${numericDocumentIdArray.length} documents`);
             return result;
@@ -1223,161 +1251,42 @@ class Context extends EventEmitter {
     #setupWorkspaceEventForwarding() {
         if (!this.#workspace) return;
 
-        debug(`Setting up workspace event forwarding for context "${this.#id}"`);
+        debug(`Setting up workspace event forwarding for context "${this.#id}" (wild-card mode)`);
 
-        // Store references to the bound event handlers for cleanup
-        this.#workspaceEventHandlers = {
-            documentInserted: (payload) => this.#handleWorkspaceDocumentEvent('document:inserted', payload),
-            documentUpdated: (payload) => this.#handleWorkspaceDocumentEvent('document:updated', payload),
-            documentRemoved: (payload) => this.#handleWorkspaceDocumentEvent('document:removed', payload),
-            documentDeleted: (payload) => this.#handleWorkspaceDocumentEvent('document:deleted', payload),
-            treePathInserted: (payload) => this.#handleWorkspaceTreeEvent('tree:path:inserted', payload),
-            treePathMoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:moved', payload),
-            treePathCopied: (payload) => this.#handleWorkspaceTreeEvent('tree:path:copied', payload),
-            treePathRemoved: (payload) => this.#handleWorkspaceTreeEvent('tree:path:removed', payload),
-            treeDocumentInserted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted', payload),
-            treeDocumentInsertedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:inserted:batch', payload),
-            treeDocumentUpdated: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated', payload),
-            treeDocumentUpdatedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:updated:batch', payload),
-            treeDocumentRemoved: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed', payload),
-            treeDocumentRemovedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:removed:batch', payload),
-            treeDocumentDeleted: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted', payload),
-            treeDocumentDeletedBatch: (payload) => this.#handleWorkspaceTreeDocumentEvent('tree:document:deleted:batch', payload),
-            treePathLocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:locked', payload),
-            treePathUnlocked: (payload) => this.#handleWorkspaceTreeEvent('tree:path:unlocked', payload),
-            treeLayerMergedUp: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:up', payload),
-            treeLayerMergedDown: (payload) => this.#handleWorkspaceTreeEvent('tree:layer:merged:down', payload),
-            treeSaved: (payload) => this.#handleWorkspaceTreeEvent('tree:saved', payload),
-            treeLoaded: (payload) => this.#handleWorkspaceTreeEvent('tree:loaded', payload),
-            treeRecalculated: (payload) => this.#handleWorkspaceTreeEvent('tree:recalculated', payload),
-            treeError: (payload) => this.#handleWorkspaceTreeEvent('tree:error', payload)
-        };
-
-        // Register the event handlers
-        this.#workspace.on('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
-        this.#workspace.on('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
-        this.#workspace.on('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
-        this.#workspace.on('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
-        this.#workspace.on('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
-        this.#workspace.on('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
-        this.#workspace.on('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
-        this.#workspace.on('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
-        this.#workspace.on('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
-        this.#workspace.on('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
-        this.#workspace.on('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
-        this.#workspace.on('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
-        this.#workspace.on('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
-        this.#workspace.on('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
-        this.#workspace.on('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
-        this.#workspace.on('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
-        this.#workspace.on('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
-        this.#workspace.on('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
-        this.#workspace.on('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
-        this.#workspace.on('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
-        this.#workspace.on('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
-        this.#workspace.on('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
-        this.#workspace.on('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
-        this.#workspace.on('workspace:tree:error', this.#workspaceEventHandlers.treeError);
-
-        debug(`Workspace event forwarding setup completed for context "${this.#id}"`);
-    }
-
-    /**
-     * Handle workspace document events and decide whether to forward them
-     * @private
-     */
-    #handleWorkspaceDocumentEvent(eventType, payload) {
-        // Forward all workspace document events with context information
-        this.emit(`context:workspace:${eventType}`, {
-            contextId: this.#id,
-            contextUrl: this.#url,
-            contextPath: this.#path,
-            contextPathArray: this.#pathArray,
-            userId: this.#userId,
-            ...payload
-        });
-    }
-
-    /**
-     * Handle workspace tree events and decide whether to forward them
-     * @private
-     */
-    #handleWorkspaceTreeEvent(eventType, payload) {
-        // Forward tree events that might affect this context
-        this.emit(`context:workspace:${eventType}`, {
-            contextId: this.#id,
-            contextUrl: this.#url,
-            contextPath: this.#path,
-            contextPathArray: this.#pathArray,
-            userId: this.#userId,
-            ...payload
-        });
-    }
-
-    /**
-     * Handle workspace tree document events and decide whether to forward them
-     * @private
-     */
-    #handleWorkspaceTreeDocumentEvent(eventType, payload) {
-                // Check if the event is relevant to this context based on path overlap
-        const isRelevant = this.#isEventRelevantToContext(payload);
-
-        if (isRelevant) {
-            this.emit(`context:workspace:${eventType}`, {
+        // Wild-card listener – forwards every workspace event
+        const handler = (eventName, payload) => {
+            const enriched = {
                 contextId: this.#id,
                 contextUrl: this.#url,
                 contextPath: this.#path,
                 contextPathArray: this.#pathArray,
                 userId: this.#userId,
-                relevant: true,
-                 ...payload
-            });
-
-            debug(`Context "${this.#id}" forwarded relevant ${eventType} event for path "${payload.contextSpec || 'unknown'}"`);
-        } else {
-            // Still emit the event but mark it as not directly relevant
-            this.emit(`context:workspace:${eventType}`, {
-                contextId: this.#id,
-                contextUrl: this.#url,
-                contextPath: this.#path,
-                contextPathArray: this.#pathArray,
-                userId: this.#userId,
-                relevant: false,
                 ...payload
-            });
-        }
-    }
+            };
 
-    /**
-     * Check if a workspace event is relevant to this context based on path overlap
-     * @private
-     */
-    #isEventRelevantToContext(payload) {
-        if (!payload.contextSpec && !payload.path) {
-            // If no path information, consider it relevant (safer default)
-            return true;
-        }
+            this.emit(`context.workspace.${eventName}`, enriched);
 
-        const eventPath = payload.contextSpec || payload.path || '';
-        const contextPath = this.#path || '/';
+            // If the workspace event is a document CRUD operation, re-emit it as a direct context event
+            if (eventName.startsWith('document.')) {
+                // Forward the same document.* event at context level
+                this.emit(eventName, {
+                    contextId: this.#id,
+                    ...enriched
+                });
 
-        // Check if the event path is within this context's path or vice versa
-        // This handles cases like:
-        // - Context at /foo/bar receives event for /foo/bar/baz (child)
-        // - Context at /foo/bar/baz receives event for /foo/bar (parent)
-        // - Context at /foo/bar receives event for /foo/bar (same)
-
-        const normalizePathForComparison = (path) => {
-            if (!path || path === '/') return '/';
-            return path.endsWith('/') ? path.slice(0, -1) : path;
+                // Emit an umbrella context.updated so consumers can do cheap cache invalidation
+                this.emit('context.updated', {
+                    id: this.#id,
+                    operation: eventName,
+                    documentId: enriched.documentId || enriched.documentIds,
+                    contextArray: this.#contextBitmapArray,
+                    featureArray: enriched.featureArray || []
+                });
+            }
         };
 
-        const normalizedEventPath = normalizePathForComparison(eventPath);
-        const normalizedContextPath = normalizePathForComparison(contextPath);
-
-        // Check for path overlap (either path contains the other)
-        return normalizedEventPath.startsWith(normalizedContextPath) ||
-               normalizedContextPath.startsWith(normalizedEventPath);
+        this.#workspaceEventHandlers = handler;
+        this.#workspace.onAny(handler);
     }
 
     /**
@@ -1385,40 +1294,11 @@ class Context extends EventEmitter {
      * @private
      */
     #cleanupWorkspaceEventForwarding() {
-        if (!this.#workspace || !this.#workspaceEventHandlers) return;
-
-        debug(`Cleaning up workspace event forwarding for context "${this.#id}"`);
-
-        // Remove specific event listeners using stored handler references
-        this.#workspace.off('workspace:document:inserted', this.#workspaceEventHandlers.documentInserted);
-        this.#workspace.off('workspace:document:updated', this.#workspaceEventHandlers.documentUpdated);
-        this.#workspace.off('workspace:document:removed', this.#workspaceEventHandlers.documentRemoved);
-        this.#workspace.off('workspace:document:deleted', this.#workspaceEventHandlers.documentDeleted);
-        this.#workspace.off('workspace:tree:path:inserted', this.#workspaceEventHandlers.treePathInserted);
-        this.#workspace.off('workspace:tree:path:moved', this.#workspaceEventHandlers.treePathMoved);
-        this.#workspace.off('workspace:tree:path:copied', this.#workspaceEventHandlers.treePathCopied);
-        this.#workspace.off('workspace:tree:path:removed', this.#workspaceEventHandlers.treePathRemoved);
-        this.#workspace.off('workspace:tree:document:inserted', this.#workspaceEventHandlers.treeDocumentInserted);
-        this.#workspace.off('workspace:tree:document:inserted:batch', this.#workspaceEventHandlers.treeDocumentInsertedBatch);
-        this.#workspace.off('workspace:tree:document:updated', this.#workspaceEventHandlers.treeDocumentUpdated);
-        this.#workspace.off('workspace:tree:document:updated:batch', this.#workspaceEventHandlers.treeDocumentUpdatedBatch);
-        this.#workspace.off('workspace:tree:document:removed', this.#workspaceEventHandlers.treeDocumentRemoved);
-        this.#workspace.off('workspace:tree:document:removed:batch', this.#workspaceEventHandlers.treeDocumentRemovedBatch);
-        this.#workspace.off('workspace:tree:document:deleted', this.#workspaceEventHandlers.treeDocumentDeleted);
-        this.#workspace.off('workspace:tree:document:deleted:batch', this.#workspaceEventHandlers.treeDocumentDeletedBatch);
-        this.#workspace.off('workspace:tree:path:locked', this.#workspaceEventHandlers.treePathLocked);
-        this.#workspace.off('workspace:tree:path:unlocked', this.#workspaceEventHandlers.treePathUnlocked);
-        this.#workspace.off('workspace:tree:layer:merged:up', this.#workspaceEventHandlers.treeLayerMergedUp);
-        this.#workspace.off('workspace:tree:layer:merged:down', this.#workspaceEventHandlers.treeLayerMergedDown);
-        this.#workspace.off('workspace:tree:saved', this.#workspaceEventHandlers.treeSaved);
-        this.#workspace.off('workspace:tree:loaded', this.#workspaceEventHandlers.treeLoaded);
-        this.#workspace.off('workspace:tree:recalculated', this.#workspaceEventHandlers.treeRecalculated);
-        this.#workspace.off('workspace:tree:error', this.#workspaceEventHandlers.treeError);
-
-        // Clear the handlers reference
-        this.#workspaceEventHandlers = null;
-
-        debug(`Workspace event forwarding cleanup completed for context "${this.#id}"`);
+        if (this.#workspace && this.#workspaceEventHandlers) {
+            this.#workspace.offAny(this.#workspaceEventHandlers);
+            this.#workspaceEventHandlers = null;
+            debug(`Workspace event forwarding cleanup completed for context "${this.#id}"`);
+        }
     }
 }
 

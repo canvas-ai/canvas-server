@@ -21,6 +21,7 @@ class User extends EventEmitter {
     #id;
     #email;
     #userType;
+    #authMethod;
     #homePath;
     #avatar;
 
@@ -33,6 +34,7 @@ class User extends EventEmitter {
      * @param {Object} options - User options
      * @param {string} options.id - User ID
      * @param {string} options.email - User email
+     * @param {string} options.authMethod - User auth method (imap, local, etc.)
      * @param {string} options.homePath - User home path (Universe workspace)
      * @param {string} [options.userType='user'] - User type ('user' or 'admin')
      * @param {string} [options.status='inactive'] - User status
@@ -52,6 +54,7 @@ class User extends EventEmitter {
 
         this.#id = options.id || generateULID(12, 'lower');
         this.#email = options.email;
+        this.#authMethod = options.authMethod || 'local';
         this.#avatar = options.avatar;
         this.#homePath = path.resolve(options.homePath); // Ensure absolute path
         this.#userType = options.userType || 'user';
@@ -66,6 +69,7 @@ class User extends EventEmitter {
     get id() { return this.#id; }
     get email() { return this.#email; }
     get userType() { return this.#userType; }
+    get authMethod() { return this.#authMethod; }
     get homePath() { return this.#homePath; }
     get avatar() { return this.#avatar; }
     get status() { return this.#status; }
@@ -99,6 +103,10 @@ class User extends EventEmitter {
         return this.#status === 'active';
     }
 
+    isLocal() {
+        return this.#authMethod === 'local';
+    }
+
     /**
      * Convert user to JSON
      * @returns {Object} User JSON representation
@@ -108,6 +116,7 @@ class User extends EventEmitter {
             id: this.#id,
             email: this.#email,
             userType: this.#userType,
+            authMethod: this.#authMethod,
             homePath: this.#homePath,
             avatar: this.#avatar,
             status: this.#status
