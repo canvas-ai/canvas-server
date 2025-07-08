@@ -1,4 +1,5 @@
 import { createDebug } from '../../../utils/log/index.js';
+import crypto from 'crypto';
 
 const debug = createDebug('canvas-server:websocket:workspace');
 
@@ -41,8 +42,8 @@ export default function registerWorkspaceWebSocket(fastify, socket) {
         return;
       }
 
-      // Verify access – only owners / ACL'd users should receive.
-      const hasAccess = await workspaceManager.hasWorkspace(userId, workspaceId);
+      // Verify access using token-based ACL validation
+      const hasAccess = await validateWorkspaceAccess(socket, workspaceId);
       if (!hasAccess) {
         debug(`Access denied for user ${userId} to workspace ${workspaceId} – not forwarding ${eventName}`);
         return;
@@ -65,4 +66,78 @@ export default function registerWorkspaceWebSocket(fastify, socket) {
     listeners.clear();
     debug(`Cleaned workspace WS listeners for socket ${socket.id}`);
   });
+}
+
+/**
+ * Validate workspace access using token-based ACLs
+ * @param {Socket} socket - Authenticated socket with user info
+ * @param {string} workspaceId - Workspace ID to validate access for
+ * @returns {Promise<boolean>} True if access is granted, false otherwise
+ */
+async function validateWorkspaceAccess(socket, workspaceId) {
+  try {
+    const userId = socket.user?.id;
+    if (!userId) {
+      debug(`No user ID found on socket for workspace access validation`);
+      return false;
+    }
+
+    // Get the token from the socket handshake
+    const token = socket.handshake?.auth?.token;
+    if (!token || !token.startsWith('canvas-')) {
+      debug(`Invalid or missing Canvas token for workspace access`);
+      return false;
+    }
+
+    // Try owner access first (fastest path)
+    const workspaceManager = socket.server?.workspaceManager;
+    if (!workspaceManager) {
+      debug(`WorkspaceManager not available for access validation`);
+      return false;
+    }
+
+    try {
+      const workspace = await workspaceManager.getWorkspace(userId, workspaceId, userId);
+      if (workspace) {
+        debug(`Owner access granted for workspace ${workspaceId}`);
+        return true;
+      }
+    } catch (error) {
+      debug(`Owner access check failed: ${error.message}`);
+    }
+
+    // Try token-based access
+    const tokenHash = `sha256:${crypto.createHash('sha256').update(token).digest('hex')}`;
+    const allWorkspaces = workspaceManager.getAllWorkspaces();
+
+    for (const [workspaceKey, workspaceEntry] of Object.entries(allWorkspaces)) {
+      if (!workspaceKey.endsWith(`/${workspaceId}`)) {
+        continue;
+      }
+
+      const tokens = workspaceEntry.acl?.tokens || {};
+      const tokenData = tokens[tokenHash];
+
+      if (tokenData) {
+        // Check expiration
+        if (tokenData.expiresAt && new Date() > new Date(tokenData.expiresAt)) {
+          debug(`Token has expired for workspace ${workspaceId}`);
+          continue;
+        }
+
+        // WebSocket access requires at least read permission
+        if (tokenData.permissions.includes('read')) {
+          debug(`Token access granted for workspace ${workspaceId}`);
+          return true;
+        }
+      }
+    }
+
+    debug(`No valid access found for workspace ${workspaceId}`);
+    return false;
+
+  } catch (error) {
+    debug(`Error validating workspace access: ${error.message}`);
+    return false;
+  }
 }

@@ -19,6 +19,33 @@ import {
 
 /**
  * Canvas Workspace
+ *
+ * PROPOSED: Token-Based ACL Schema
+ * Instead of storing user emails, store token hashes with permissions:
+ *
+ * "acl": {
+ *   "tokens": {
+ *     "sha256:abc123...": {
+ *       "permissions": ["read", "write"],
+ *       "description": "John's home laptop",
+ *       "createdAt": "2024-01-01T00:00:00Z",
+ *       "expiresAt": null
+ *     },
+ *     "sha256:def456...": {
+ *       "permissions": ["read"],
+ *       "description": "Family member token",
+ *       "createdAt": "2024-01-01T00:00:00Z",
+ *       "expiresAt": "2025-01-01T00:00:00Z"
+ *     }
+ *   }
+ * }
+ *
+ * Benefits:
+ * - Workspace is truly portable (no server user dependency)
+ * - Tokens travel with clients, not workspace
+ * - Fine-grained permissions per token
+ * - Can revoke/rotate individual tokens
+ * - Self-contained ACL within workspace.json
  */
 
 class Workspace extends EventEmitter {

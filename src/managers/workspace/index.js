@@ -50,7 +50,7 @@ const WORKSPACE_STATUS_CODES = {
 };
 
 // Default configuration template for a new workspace's workspace.json
-// Keeping things minimal for now
+// Using token-based ACLs for portable workspace sharing
 const DEFAULT_WORKSPACE_CONFIG = {
     id: null, // Set to user.id/workspace.id
     owner: null, // User ID (email)
@@ -58,7 +58,9 @@ const DEFAULT_WORKSPACE_CONFIG = {
     label: 'Workspace',
     color: null,
     description: '',
-    acl: {},
+    acl: {
+        tokens: {} // Token-based ACL: { "sha256:hash": { permissions: [], description: "", createdAt: "", expiresAt: null } }
+    },
     created: null,
     updated: null,
 };
@@ -180,7 +182,7 @@ class WorkspaceManager extends EventEmitter {
             owner: userId,
             color: isUniverse ? '#ffffff' : options.color || WorkspaceManager.getRandomColor(),
             type: options.type || 'workspace',
-            acl: options.acl || { "rw": [userId], "ro": [] },
+            acl: options.acl || { tokens: {} }, // Token-based ACL (owner has implicit admin access)
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
         };
@@ -471,6 +473,14 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Public API - Workspace Information & Configuration
      */
+
+    /**
+     * Gets all workspace entries from the index (for internal use)
+     * @returns {Object} All workspace entries from the index store
+     */
+    getAllWorkspaces() {
+        return this.#indexStore?.store || {};
+    }
 
     /**
      * Checks if a workspace instance is currently loaded in memory.

@@ -1,6 +1,7 @@
 'use strict';
 
 import ResponseObject from '../../ResponseObject.js';
+import { requireWorkspaceRead, requireWorkspaceWrite, requireWorkspaceAdmin } from '../../middleware/workspace-acl.js';
 
 /**
  * Workspace lifecycle routes handler for the API
@@ -10,7 +11,7 @@ import ResponseObject from '../../ResponseObject.js';
 export default async function workspaceLifecycleRoutes(fastify, options) {
   // Get workspace status
   fastify.get('/status', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceRead()],
     schema: {
       params: {
         type: 'object',
@@ -22,16 +23,9 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const status = await fastify.workspaceManager.getWorkspaceStatus(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
-
-      if (!status) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
+      // Workspace access already validated by middleware
+      const workspace = request.workspace;
+      const status = workspace.status;
 
       const responseObject = new ResponseObject().found({ status }, 'Workspace status retrieved successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -44,7 +38,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
   // Open workspace
   fastify.post('/open', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -100,7 +94,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
   // Close workspace
   fastify.post('/close', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -159,7 +153,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
   // Start workspace
   fastify.post('/start', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -200,7 +194,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
   // Stop workspace
   fastify.post('/stop', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',

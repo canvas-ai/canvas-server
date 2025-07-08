@@ -1,6 +1,7 @@
 'use strict';
 
 import ResponseObject from '../../ResponseObject.js';
+import { requireWorkspaceRead, requireWorkspaceWrite, requireWorkspaceAdmin } from '../../middleware/workspace-acl.js';
 
 /**
  * Main workspace routes handler for the API
@@ -34,6 +35,7 @@ export default async function workspaceRoutes(fastify, options) {
   fastify.register(import('./documents.js'), { prefix: '/:id/documents' });
   fastify.register(import('./tree.js'), { prefix: '/:id/tree' });
   fastify.register(import('./lifecycle.js'), { prefix: '/:id' });
+  fastify.register(import('./tokens.js'), { prefix: '/:id/tokens' });
 
   // List all workspaces
   fastify.get('/', {
@@ -104,7 +106,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Get workspace details
   fastify.get('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceRead()],
     schema: {
       params: {
         type: 'object',
@@ -116,19 +118,19 @@ export default async function workspaceRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
-        request.params.id,
-        request.user.id
-      );
-
-      if (!workspace) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
-      }
+      // Workspace and access info already validated by middleware
+      const workspace = request.workspace;
+      const access = request.workspaceAccess;
 
       const responseObject = new ResponseObject().found(
-        { workspace: workspace.toJSON() },
+        {
+          workspace: workspace.toJSON(),
+          access: {
+            permissions: access.permissions,
+            isOwner: access.isOwner,
+            description: access.description
+          }
+        },
         'Workspace retrieved successfully'
       );
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -141,7 +143,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Update workspace
   fastify.patch('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -165,6 +167,12 @@ export default async function workspaceRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
+      // Access already validated by middleware
+      if (!request.workspaceAccess.isOwner) {
+        const responseObject = new ResponseObject().forbidden('Only workspace owners can modify workspace configuration');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
       const success = await fastify.workspaceManager.updateWorkspaceConfig(
         request.user.email,
         request.params.id,
@@ -173,7 +181,7 @@ export default async function workspaceRoutes(fastify, options) {
       );
 
       if (!success) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        const responseObject = new ResponseObject().serverError('Failed to update workspace configuration');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
@@ -188,7 +196,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Delete workspace
   fastify.delete('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -206,6 +214,12 @@ export default async function workspaceRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
+      // Only owners can delete workspaces
+      if (!request.workspaceAccess.isOwner) {
+        const responseObject = new ResponseObject().forbidden('Only workspace owners can delete workspaces');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
       const success = await fastify.workspaceManager.removeWorkspace(
         request.user.email,
         request.params.id,
@@ -214,7 +228,7 @@ export default async function workspaceRoutes(fastify, options) {
       );
 
       if (!success) {
-        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        const responseObject = new ResponseObject().serverError('Failed to delete workspace');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
