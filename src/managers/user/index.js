@@ -53,14 +53,10 @@ class UserManager extends EventEmitter {
             throw new Error('Index store is required for UserManager');
         }
 
-        if (!options.workspaceManager) {
-            throw new Error('Workspace manager is required for UserManager');
-        }
-
         this.#rootPath = options.rootPath;
         this.#indexStore = options.indexStore;
-        this.#workspaceManager = options.workspaceManager;
-        this.#contextManager = options.contextManager;
+        this.#workspaceManager = options.workspaceManager; // Can be initially undefined
+        this.#contextManager = options.contextManager; // Can be initially undefined
 
         debug(`Initializing UserManager with user home directory rootPath: ${this.#rootPath}`);
     }
@@ -86,8 +82,50 @@ class UserManager extends EventEmitter {
     get workspaceManager() { return this.#workspaceManager; }
 
     /**
+     * Setters for late dependency injection to solve circular dependencies.
+     */
+    setWorkspaceManager(manager) {
+        if (!this.#workspaceManager) {
+            this.#workspaceManager = manager;
+        }
+    }
+
+    setContextManager(manager) {
+        if (!this.#contextManager) {
+            this.#contextManager = manager;
+        }
+    }
+
+    /**
      * User Manager API
      */
+
+    /**
+     * Resolve a user identifier (ID, email, or name) to a user ID.
+     * @param {string} identifier - The user ID, email, or name.
+     * @returns {Promise<string|null>} The user ID if found, otherwise null.
+     */
+    async resolveToUserId(identifier) {
+        if (!this.#initialized) throw new Error('UserManager not initialized');
+        if (!identifier) return null;
+
+        // Check if it's an ID
+        if (await this.hasUser(identifier)) {
+            return identifier;
+        }
+
+        // Check if it's an email
+        if (validator.isEmail(identifier)) {
+            const userIdByEmail = this.#findUserIdByEmail(identifier);
+            if (userIdByEmail) return userIdByEmail;
+        }
+
+        // Check if it's a name
+        const userIdByName = this.#findUserIdByName(identifier);
+        if (userIdByName) return userIdByName;
+
+        return null;
+    }
 
     /**
      * Create a new user with a Universe workspace
@@ -103,16 +141,31 @@ class UserManager extends EventEmitter {
         if (!this.#initialized) throw new Error('UserManager not initialized');
 
         debug(`createUser: Creating user with data: ${JSON.stringify(userData)}`);
+        const id = userData.id || generateNanoid(8);
+
         try {
             this.#validateUserSettings(userData);
 
             const email = userData.email.toLowerCase();
             const name = userData.name;
-            const id = userData.id || generateNanoid(8);
             const userHomePath = userData.homePath || path.join(this.#rootPath, email);
 
             if (await this.hasUser(id)) throw new Error(`User already exists with ID: ${id}`);
             if (await this.hasUserByEmail(email)) throw new Error(`User already exists with email: ${email} (ID: ${id})`);
+
+            // Pre-register user in index so workspace creation can resolve the ID
+            const preliminaryUserData = {
+                id,
+                name,
+                email,
+                homePath: userHomePath,
+                userType: userData.userType || 'user',
+                status: 'pending', // Mark as pending until fully created
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            this.#indexStore.set(id, preliminaryUserData);
+            debug(`Pre-registered user in index: ${id}`);
 
             await this.#createHomeDirectory(userHomePath, id, email);
 
@@ -135,6 +188,14 @@ class UserManager extends EventEmitter {
             debug(`User created: ${user.name} (${user.email}) (ID: ${user.id})`);
             return user;
         } catch (error) {
+            // Rollback pre-registration if creation fails
+            if (this.#indexStore.has(id)) {
+                const storedData = this.#indexStore.get(id);
+                if (storedData?.status === 'pending') {
+                    this.#indexStore.delete(id);
+                    debug(`Rolled back pre-registration for user: ${id}`);
+                }
+            }
             debug(`Error creating user: ${error.message}`);
             throw error;
         }
@@ -184,6 +245,22 @@ class UserManager extends EventEmitter {
         const id = this.#findUserIdByEmail(email);
         if (!id) {
             throw new Error(`User not found by email: ${email}`);
+        }
+        return this.getUser(id);
+    }
+
+    /**
+     * Get a user by name
+     * @param {string} name - User name
+     * @returns {Promise<User>} User instance
+     */
+    async getUserByName(name) {
+        if (!this.#initialized) {
+            throw new Error('UserManager not initialized');
+        }
+        const id = this.#findUserIdByName(name);
+        if (!id) {
+            throw new Error(`User not found by name: ${name}`);
         }
         return this.getUser(id);
     }
@@ -271,7 +348,7 @@ class UserManager extends EventEmitter {
         const updatedUserDataToStore = {
             ...currentUserDataFromIndex,
             ...userData,
-            updated: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
         this.#indexStore.set(id, updatedUserDataToStore);
 
@@ -565,6 +642,23 @@ class UserManager extends EventEmitter {
         }
         for (const [id, data] of Object.entries(this.#indexStore.store || {})) {
             if (data?.email?.toLowerCase() === lower) return id;
+        }
+        return null;
+    }
+
+    /**
+     * Find a user ID by name in memory or store
+     * @param {string} name - User name
+     * @returns {string|null} User ID if found, otherwise null
+     * @private
+     */
+    #findUserIdByName(name) {
+        const lower = name.toLowerCase();
+        for (const user of this.#users.values()) {
+            if (user.name.toLowerCase() === lower) return user.id;
+        }
+        for (const [id, data] of Object.entries(this.#indexStore.store || {})) {
+            if (data?.name?.toLowerCase() === lower) return id;
         }
         return null;
     }

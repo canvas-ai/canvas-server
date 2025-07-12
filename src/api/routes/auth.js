@@ -56,6 +56,21 @@ export default async function authRoutes(fastify, options) {
       }
 
       const { email, password, strategy = 'auto' } = request.body;
+
+      // Ensure IMAP strategy is initialized before login attempt
+      if (strategy === 'imap' || strategy === 'auto') {
+        try {
+          await imapAuthStrategy.initialize();
+        } catch (error) {
+          fastify.log.warn(`IMAP strategy initialization failed: ${error.message}. IMAP login may be unavailable.`);
+          // If strategy is explicitly 'imap', fail fast
+          if (strategy === 'imap') {
+            const response = new ResponseObject().serverError('IMAP authentication is not available.');
+            return reply.code(response.statusCode).send(response.getResponse());
+          }
+        }
+      }
+
       const result = await login(email, password, fastify.userManager, strategy);
 
       // Generate JWT token

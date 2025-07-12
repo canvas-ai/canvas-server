@@ -84,27 +84,28 @@ export function validateUser(user, requiredProps = ['id', 'name', 'email']) {
  * @param {Object} request - Fastify request object
  * @param {Object} reply - Fastify reply object
  */
-export async function verifyJWT(request, reply, done) {
+export async function verifyJWT(request, reply) {
+  const response = new ResponseObject(reply);
   try {
     const authHeader = request.headers.authorization;
     console.log(`[Auth/JWT] Authorization header: ${authHeader ? 'present' : 'missing'}`);
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('[Auth/JWT] No Bearer token or invalid format');
-      return done(new InvalidTokenError('Bearer token required'));
+      return response.unauthorized('Bearer token required');
     }
 
     const token = authHeader.split(' ')[1];
     if (!token) {
       console.log('[Auth/JWT] Empty token');
-      return done(new InvalidTokenError('Token is empty'));
+      return response.unauthorized('Token is empty');
     }
 
     // Skip JWT verification if this is clearly an API token (starts with canvas-)
     // Let the API token strategy handle it
     if (token.startsWith('canvas-')) {
       console.log('[Auth/JWT] Detected API token in Authorization header, skipping JWT verification');
-      return done(new InvalidTokenError('Not a JWT token'));
+      throw new Error('Not a JWT token');
     }
 
     console.log('[Auth/JWT] Verifying JWT token...');
@@ -128,13 +129,13 @@ export async function verifyJWT(request, reply, done) {
       console.log(`[Auth/JWT] JWT verified, subject: ${decoded.sub}`);
     } catch (jwtError) {
       console.error(`[Auth/JWT] JWT verification failed: ${jwtError.message}`);
-      return done(new InvalidTokenError(`JWT verification failed: ${jwtError.message}`));
+      return response.unauthorized(`JWT verification failed: ${jwtError.message}`);
     }
 
     const userManager = request.server.userManager;
     if (!userManager) {
       console.error('[Auth/JWT] userManager not available on server');
-      return done(new Error('User manager not initialized'));
+      return response.error('User manager not initialized');
     }
 
     console.log(`[Auth/JWT] Getting user by ID: ${decoded.sub}`);
@@ -144,18 +145,18 @@ export async function verifyJWT(request, reply, done) {
       console.log(`[Auth/JWT] User retrieved: ${!!user}, ID: ${user ? user.id : 'null'}`);
     } catch (userError) {
       console.error(`[Auth/JWT] Error retrieving user: ${userError.message}`);
-      return done(new Error(`Error retrieving user: ${userError.message}`));
+      return response.error(`Error retrieving user: ${userError.message}`);
     }
 
     if (!user) {
       console.error(`[Auth/JWT] User not found: ${decoded.sub}`);
-      return done(new UserValidationError(`User not found: ${decoded.sub}`));
+      return response.unauthorized(`User not found: ${decoded.sub}`);
     }
 
     // Validate user status directly without modifying any properties
     if (user.status !== 'active') {
       console.log(`[Auth/JWT] User ${user.id} not active (${user.status})`);
-      return done(new InvalidTokenError('User account is not active'));
+      return response.unauthorized('User account is not active');
     }
 
     // Only check version if both token and user have versions
@@ -163,7 +164,7 @@ export async function verifyJWT(request, reply, done) {
       const userVersion = user.updatedAt || user.createdAt;
       if (decoded.ver !== userVersion) {
         console.log(`[Auth/JWT] Token version mismatch: ${decoded.ver} vs ${userVersion}`);
-        return done(new InvalidTokenError('Token is invalid - user data has changed'));
+        return response.unauthorized('Token is invalid - user data has changed');
       }
     }
 
@@ -179,15 +180,14 @@ export async function verifyJWT(request, reply, done) {
     console.log(`[Auth/JWT] Preparing to authenticate user: ${essentialUserData.id}`);
     request.user = essentialUserData; // Set request.user directly
     console.log(`[Auth/JWT] User ${essentialUserData.id} authenticated via JWT (set on request.user)`);
-    return done(); // Call done() on success
   } catch (err) {
     console.log(`[Auth/JWT] JWT verification failed: ${err.message}`, err);
     // For auth errors, pass them along
     if (err.code === 'ERR_INVALID_TOKEN' || err.code === 'ERR_USER_VALIDATION') {
-        return done(err); // Pass existing custom error
+        return response.unauthorized(err.message); // Pass existing custom error
     }
     // For other errors (e.g., jwtVerify throwing its own specific errors, or unexpected ones)
-    return done(new InvalidTokenError(err.message || 'JWT authentication failed'));
+    return response.unauthorized(err.message || 'JWT authentication failed');
   }
 }
 
@@ -196,24 +196,25 @@ export async function verifyJWT(request, reply, done) {
  * @param {Object} request - Fastify request object
  * @param {Object} reply - Fastify reply object
  */
-export async function verifyApiToken(request, reply, done) {
+export async function verifyApiToken(request, reply) {
+  const response = new ResponseObject(reply);
   try {
     // Check for token in Authorization header
     if (!request.headers.authorization || !request.headers.authorization.startsWith('Bearer ')) {
       console.log('[Auth/API] No Bearer token or invalid format');
-      return done(new InvalidTokenError('Bearer token required'));
+      return response.unauthorized('Bearer token required');
     }
 
     const token = request.headers.authorization.split(' ')[1];
     if (!token) {
       console.log('[Auth/API] Empty token');
-      return done(new InvalidTokenError('Token is empty'));
+      return response.unauthorized('Token is empty');
     }
 
     // Only process tokens with the "canvas-" prefix, which identifies it as an API token
     if (!token.startsWith('canvas-')) {
       console.log(`[Auth/API] Not an API token (missing canvas- prefix): ${token.substring(0, 10)}...`);
-      return done(new InvalidTokenError('Not a valid API token'));
+      throw new Error('Not an API token');
     }
 
     console.log(`[Auth/API] Verifying API token: ${token.substring(0, 10)}...`);
@@ -224,19 +225,19 @@ export async function verifyApiToken(request, reply, done) {
       console.log(`[Auth/API] Token verification result: ${JSON.stringify(tokenResult)}`);
     } catch (tokenError) {
       console.error(`[Auth/API] Token verification error: ${tokenError.message}`);
-      return done(new InvalidTokenError(`API token verification failed: ${tokenError.message}`));
+      return response.unauthorized(`API token verification failed: ${tokenError.message}`);
     }
 
     if (!tokenResult) {
       console.error('[Auth/API] Invalid API token - verification returned null');
-      return done(new InvalidTokenError('Invalid API token'));
+      return response.unauthorized('Invalid API token');
     }
 
     // Load user from UserManager
     const userManager = request.server.userManager;
     if (!userManager) {
       console.error('[Auth/API] userManager not available on server');
-      return done(new Error('User manager not initialized'));
+      return response.error('User manager not initialized');
     }
 
     console.log(`[Auth/API] Getting user with ID: ${tokenResult.userId}`);
@@ -246,23 +247,23 @@ export async function verifyApiToken(request, reply, done) {
       console.log(`[Auth/API] User found: ${!!user}, user ID: ${user ? user.id : 'null'}`);
     } catch (userError) {
       console.error(`[Auth/API] Error retrieving user: ${userError.message}`);
-      return done(new Error(`Error retrieving user: ${userError.message}`));
+      return response.error(`Error retrieving user: ${userError.message}`);
     }
 
     if (!user) {
       console.error(`[Auth/API] User not found for token userId: ${tokenResult.userId}`);
-      return done(new UserValidationError('User not found for this API token'));
+      return response.unauthorized('User not found for this API token');
     }
 
     // Check required properties without modifying the object
     if (!user.id || !user.email) {
       console.error(`[Auth/API] User missing required properties`);
-      return done(new UserValidationError('User missing required properties: id or email'));
+      return response.unauthorized('User missing required properties: id or email');
     }
 
     if (user.status !== 'active') {
       console.error(`[Auth/API] User account not active: ${user.status}`);
-      return done(new InvalidTokenError('User account is not active'));
+      return response.unauthorized('User account is not active');
     }
 
     // Create a simplified user object with essential properties
@@ -279,10 +280,9 @@ export async function verifyApiToken(request, reply, done) {
     request.token = tokenResult.tokenId; // Keep this for API token specific logic if any
 
     console.log(`[Auth/API] Authentication successful for user ${essentialUserData.id}`);
-    return done(); // Call done() on success
   } catch (err) {
     console.error(`[Auth/API] API token verification failed: ${err.message}`, err);
-    return done(new InvalidTokenError(err.message));
+    return response.unauthorized(err.message);
   }
 }
 

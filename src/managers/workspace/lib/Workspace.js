@@ -788,7 +788,7 @@ class Workspace extends EventEmitter {
                 // return true; // No change, but operation is successful in intent
             }
             this.#configStore.set(key, value);
-            this.#configStore.set('updated', new Date().toISOString());
+            this.#configStore.set('updatedAt', new Date().toISOString());
             // It might be good to emit an event specific to this workspace instance
             this.emit(`${key}.changed`, { id: this.id, [key]: value });
             debug(`Workspace "${this.id}" config updated: { ${key}: ${value} }. Old value: ${oldValue}`);

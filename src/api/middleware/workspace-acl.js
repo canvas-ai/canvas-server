@@ -151,8 +151,8 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read') {
  */
 async function tryOwnerAccess(workspaceManager, userId, workspaceIdentifier) {
   try {
-    // Check if identifier is a workspace ID (12 chars) or name
-    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+    // Check if identifier is a workspace ID or name
+    const isWorkspaceId = /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
     let workspace;
     if (isWorkspaceId) {

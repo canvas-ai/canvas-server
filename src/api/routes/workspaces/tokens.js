@@ -50,7 +50,7 @@ export default async function workspaceTokenRoutes(fastify, options) {
       }
 
       const { permissions, description, expiresAt } = request.body;
-      const workspaceId = request.params.id;
+      const workspace = request.workspace;
 
       // Generate new API token
       const tokenValue = `canvas-${crypto.randomBytes(24).toString('hex')}`;
@@ -65,7 +65,6 @@ export default async function workspaceTokenRoutes(fastify, options) {
       };
 
       // Update workspace ACL
-      const workspace = request.workspace;
       const currentACL = workspace.acl || { tokens: {} };
       currentACL.tokens = currentACL.tokens || {};
       currentACL.tokens[tokenHash] = tokenData;
@@ -73,7 +72,7 @@ export default async function workspaceTokenRoutes(fastify, options) {
       // Save the updated ACL
       const success = await fastify.workspaceManager.updateWorkspaceConfig(
         request.user.id,
-        workspaceId,
+        workspace.id,
         request.user.id,
         { acl: currentACL }
       );
@@ -182,10 +181,9 @@ export default async function workspaceTokenRoutes(fastify, options) {
       }
 
       const { permissions, description, expiresAt } = request.body;
-      const workspaceId = request.params.id;
+      const workspace = request.workspace;
       const tokenHash = request.params.tokenHash;
 
-      const workspace = request.workspace;
       const currentACL = workspace.acl || { tokens: {} };
       const tokens = currentACL.tokens || {};
 
@@ -205,7 +203,7 @@ export default async function workspaceTokenRoutes(fastify, options) {
       // Save the updated ACL
       const success = await fastify.workspaceManager.updateWorkspaceConfig(
         request.user.id,
-        workspaceId,
+        workspace.id,
         request.user.id,
         { acl: currentACL }
       );
@@ -256,10 +254,9 @@ export default async function workspaceTokenRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const workspaceId = request.params.id;
+      const workspace = request.workspace;
       const tokenHash = request.params.tokenHash;
 
-      const workspace = request.workspace;
       const currentACL = workspace.acl || { tokens: {} };
       const tokens = currentACL.tokens || {};
 
@@ -275,7 +272,7 @@ export default async function workspaceTokenRoutes(fastify, options) {
       // Save the updated ACL
       const success = await fastify.workspaceManager.updateWorkspaceConfig(
         request.user.id,
-        workspaceId,
+        workspace.id,
         request.user.id,
         { acl: currentACL }
       );

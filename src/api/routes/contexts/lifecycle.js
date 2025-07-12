@@ -4,23 +4,17 @@ import ResponseObject from '../../ResponseObject.js';
 import { validateUser } from '../../auth/strategies.js';
 
 export default async function lifecycleRoutes(fastify, options) {
-  // Helper functions (will be populated)
-  // const validateUser = (request) => { // Removed
-  //   const user = request.user;
-  //   if (!user || !user.id) {
-  //     return false;
-  //   }
-  //   return true;
-  // };
-
-  const validateUserWithResponse = (request, reply) => {
-    if (!validateUser(request.user, ['id'])) { // Updated to use imported validateUser
-      const response = new ResponseObject().unauthorized('Valid authentication required');
-      reply.code(response.statusCode).send(response.getResponse());
-      return false;
+  // Add a pre-handler hook to ensure user is authenticated and valid for all context document routes
+  fastify.addHook('preHandler', async (request, reply) => {
+    try {
+      // The `authenticate` hook should have already run and populated `request.user`
+      // We just need to validate it has the required fields for our operations.
+      validateUser(request.user, ['id']); // For context operations, we primarily need the user's ID.
+    } catch (err) {
+      // If validateUser throws, it means the user object is invalid.
+      return new ResponseObject(reply).unauthorized(err.message);
     }
-    return true;
-  };
+  });
 
   // Lifecycle routes will be added here
 
@@ -28,18 +22,16 @@ export default async function lifecycleRoutes(fastify, options) {
   fastify.get('/', {
     onRequest: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const contexts = await fastify.contextManager.listUserContexts(request.user.id);
-      const response = new ResponseObject().found(contexts, 'Contexts retrieved successfully', 200, contexts.length);
-      return reply.code(response.statusCode).send(response.getResponse());
+
+      // Send the array directly for this endpoint
+      return reply.code(200).send(contexts);
+
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to list contexts');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to list contexts');
     }
   });
 
@@ -62,10 +54,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.createContext(
         request.user.id,
@@ -81,12 +70,10 @@ export default async function lifecycleRoutes(fastify, options) {
         }
       );
 
-      const response = new ResponseObject().created({ context }, 'Context created successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.created('Context created successfully', { context });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to create context', error.message);
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to create context', null, error.message);
     }
   });
 
@@ -104,38 +91,24 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
 
       if (!context) {
-        const response = new ResponseObject().notFound(`Context with ID '${request.params.id}' not found or not accessible.`);
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound(`Context with ID '${request.params.id}' not found or not accessible.`);
       }
 
-      const responseObject = new ResponseObject().found(
-        { context: context.toJSON() },
-        'Context retrieved successfully'
-      );
-      const finalResponse = responseObject.getResponse();
-
-      fastify.log.info(finalResponse);
-      return reply.code(responseObject.statusCode).send(finalResponse);
+      return response.success('Context retrieved successfully', { context: context.toJSON() });
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        const response = new ResponseObject().forbidden(error.message);
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.forbidden(error.message);
       }
       if (error.message.includes('Invalid shared context identifier format') || error.message.includes('Expected ')) {
-        const response = new ResponseObject().badRequest(`Invalid context ID format for this endpoint. Use /users/{ownerId}/contexts/{contextId} for shared contexts. Context ID '${request.params.id}' is not valid here.`);
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.badRequest(`Invalid context ID format for this endpoint. Use /users/{ownerId}/contexts/{contextId} for shared contexts. Context ID '${request.params.id}' is not valid here.`);
       }
-      const response = new ResponseObject().serverError('Failed to get context');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to get context');
     }
   });
 
@@ -153,23 +126,17 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
-      const response = new ResponseObject().found({ url: context.url }, 'Context URL retrieved successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.success('Context URL retrieved successfully', { url: context.url });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to get context URL');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to get context URL');
     }
   });
 
@@ -194,24 +161,18 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
       await context.setUrl(request.body.url);
-      const response = new ResponseObject().success({ url: context.url }, 'Context URL updated successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.success('Context URL updated successfully', { url: context.url });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError(`Failed to set context URL: ${error.message}`);
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error(`Failed to set context URL: ${error.message}`);
     }
   });
 
@@ -229,23 +190,17 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
-      const response = new ResponseObject().found({ path: context.path }, 'Context path retrieved successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.success('Context path retrieved successfully', { path: context.path });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to get context path');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to get context path');
     }
   });
 
@@ -263,23 +218,17 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
-      const response = new ResponseObject().found({ pathArray: context.pathArray }, 'Context path array retrieved successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.success('Context path array retrieved successfully', { pathArray: context.pathArray });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to get context path array');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to get context path array');
     }
   });
 
@@ -306,10 +255,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const context = await fastify.contextManager.updateContext(
         request.user.id,
@@ -318,16 +264,13 @@ export default async function lifecycleRoutes(fastify, options) {
       );
 
       if (!context) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
-      const response = new ResponseObject().success({ context }, 'Context updated successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.updated('Context updated successfully', { context });
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to update context');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to update context');
     }
   });
 
@@ -345,23 +288,17 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    if (!validateUserWithResponse(request, reply)) {
-      return reply;
-    }
-
+    const response = new ResponseObject(reply);
     try {
       const success = await fastify.contextManager.removeContext(request.user.id, request.params.id);
       if (!success) {
-        const response = new ResponseObject().notFound('Context not found');
-        return reply.code(response.statusCode).send(response.getResponse());
+        return response.notFound('Context not found');
       }
 
-      const response = new ResponseObject().success(null, 'Context deleted successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.deleted('Context deleted successfully');
     } catch (error) {
       fastify.log.error(error);
-      const response = new ResponseObject().serverError('Failed to delete context');
-      return reply.code(response.statusCode).send(response.getResponse());
+      return response.error('Failed to delete context');
     }
   });
 }

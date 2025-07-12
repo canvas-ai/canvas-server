@@ -30,10 +30,10 @@ class ImapAuthStrategy {
     if (this.#initialized) return;
 
     try {
-      // Load auth configuration
+      // Load auth configuration (created by AuthService if needed)
       const configPath = path.join(process.cwd(), 'server/config/auth.json');
       if (!fs.existsSync(configPath)) {
-        throw new ImapConfigError('Auth configuration file not found');
+        throw new ImapConfigError('Auth configuration file not found - AuthService should have created it');
       }
 
       const configData = fs.readFileSync(configPath, 'utf8');

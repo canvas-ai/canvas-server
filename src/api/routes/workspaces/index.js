@@ -2,6 +2,7 @@
 
 import ResponseObject from '../../ResponseObject.js';
 import { requireWorkspaceRead, requireWorkspaceWrite, requireWorkspaceAdmin } from '../../middleware/workspace-acl.js';
+import { validateUser } from '../../auth/strategies.js';
 
 /**
  * Main workspace routes handler for the API
@@ -14,19 +15,11 @@ export default async function workspaceRoutes(fastify, options) {
    * @param {Object} request - Fastify request
    * @returns {boolean} true if valid, false if not
    */
-  const validateUser = (request) => {
-    const user = request.user;
-    if (!user || !user.email || !user.id) {
-      return false;
-    }
-    return true;
-  };
-
   const validateUserWithResponse = (request, reply) => {
-    if (!validateUser(request)) {
-      const response = new ResponseObject().unauthorized('Valid authentication required');
-      reply.code(response.statusCode).send(response.getResponse());
-      return false;
+    if (!validateUser(request.user, ['id', 'email'])) {
+        const response = new ResponseObject().unauthorized('Valid authentication required');
+        reply.code(response.statusCode).send(response.getResponse());
+        return false;
     }
     return true;
   };
@@ -41,21 +34,21 @@ export default async function workspaceRoutes(fastify, options) {
   fastify.get('/', {
     onRequest: [fastify.authenticate]
   }, async (request, reply) => {
+    const response = new ResponseObject(reply);
     try {
       // Validate user is authenticated properly
-      if (!request.user || !request.user.id) {
-        fastify.log.error('User data missing in request after authentication');
-        const responseObject = new ResponseObject().unauthorized('User authentication data is incomplete');
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      if (!validateUser(request.user, ['id', 'email'])) {
+        return response.unauthorized('Valid authentication required');
       }
 
       const workspaces = await fastify.workspaceManager.listUserWorkspaces(request.user.id);
-      const responseObject = new ResponseObject().found(workspaces, 'Workspaces retrieved successfully', 200, workspaces.length);
-      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+
+      // Send the array directly for this endpoint
+      return reply.code(200).send(workspaces);
+
     } catch (error) {
       fastify.log.error(error);
-      const responseObject = new ResponseObject().serverError('Failed to list workspaces');
-      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      return response.serverError('Failed to list workspaces');
     }
   });
 
@@ -79,6 +72,9 @@ export default async function workspaceRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+        return;
+    }
     try {
       const workspace = await fastify.workspaceManager.createWorkspace(
         request.user.id,
@@ -99,7 +95,8 @@ export default async function workspaceRoutes(fastify, options) {
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
-      const responseObject = new ResponseObject().serverError('Failed to create workspace');
+      // Return the actual error message instead of a generic one
+      const responseObject = new ResponseObject().serverError(error.message || 'Failed to create workspace');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
@@ -166,6 +163,9 @@ export default async function workspaceRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+        return;
+    }
     try {
       // Access already validated by middleware
       if (!request.workspaceAccess.isOwner) {
@@ -207,6 +207,9 @@ export default async function workspaceRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
+    if (!validateUserWithResponse(request, reply)) {
+        return;
+    }
     try {
       // Prevent deletion of universe workspace
       if (request.params.id === 'universe') {

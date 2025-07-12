@@ -131,9 +131,15 @@ class Server extends EventEmitter {
     }
 
     async #initializeCoreServices() {
+        this.#userManager = new UserManager({
+            rootPath: env.user.home,
+            indexStore: jim.createIndex('users'),
+        });
+
         this.#workspaceManager = new WorkspaceManager({
             defaultRootPath: env.user.home,
             indexStore: jim.createIndex('workspaces'),
+            userManager: this.#userManager,
         });
 
         this.#contextManager = new ContextManager({
@@ -141,17 +147,12 @@ class Server extends EventEmitter {
             workspaceManager: this.#workspaceManager
         });
 
-        this.#userManager = new UserManager({
-            rootPath: env.user.home,
-            indexStore: jim.createIndex('users'),
-            workspaceManager: this.#workspaceManager,
-            contextManager: this.#contextManager
-        });
+        this.#userManager.setWorkspaceManager(this.#workspaceManager);
+        this.#userManager.setContextManager(this.#contextManager);
 
-        // Initialize managers
-        this.#workspaceManager = await this.#workspaceManager.initialize();
-        this.#contextManager = await this.#contextManager.initialize();
-        this.#userManager = await this.#userManager.initialize();
+        await this.#userManager.initialize();
+        await this.#workspaceManager.initialize();
+        await this.#contextManager.initialize();
     }
 
     async #createAdminUser() {
