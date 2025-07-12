@@ -491,7 +491,12 @@ class UserManager extends EventEmitter {
             ];
 
             if (reservedNames.includes(username)) {
-                throw new Error(`User name '${username}' is reserved and cannot be used`);
+                // Allow 'admin' username only for admin user type
+                if (username === 'admin' && userSettings.userType === 'admin') {
+                    // Allow admin username for admin user type
+                } else {
+                    throw new Error(`User name '${username}' is reserved and cannot be used`);
+                }
             }
 
             // Check for uniqueness (only for new users or name changes)

@@ -238,8 +238,22 @@ async function findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, t
 
     if (isWorkspaceId) {
       // Direct lookup by workspace ID
-      const allWorkspaces = workspaceManager.getAllWorkspaces();
-      const workspaceEntry = allWorkspaces[workspaceIdentifier];
+      const allWorkspaces = workspaceManager.getAllWorkspacesWithKeys();
+      let workspaceEntry = null;
+
+      // Search for workspace by ID across all users
+      for (const [indexKey, entry] of Object.entries(allWorkspaces)) {
+        const parsed = workspaceManager.constructor.prototype.constructor.parseWorkspaceIndexKey?.(indexKey) ||
+                      (() => {
+                        const parts = indexKey.split('::');
+                        return parts.length === 2 ? { userId: parts[0], workspaceId: parts[1] } : null;
+                      })();
+
+        if (parsed && parsed.workspaceId === workspaceIdentifier) {
+          workspaceEntry = entry;
+          break;
+        }
+      }
 
       if (workspaceEntry) {
         // Check if token exists in this workspace's ACL
@@ -251,14 +265,19 @@ async function findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, t
       }
     } else {
       // Search through all workspaces for a matching name and token
-      const allWorkspaces = workspaceManager.getAllWorkspaces();
+      const allWorkspaces = workspaceManager.getAllWorkspacesWithKeys();
 
-      for (const [workspaceId, workspaceEntry] of Object.entries(allWorkspaces)) {
+      for (const [indexKey, workspaceEntry] of Object.entries(allWorkspaces)) {
         // Check if this workspace has the matching name and token
         if (workspaceEntry.name === workspaceIdentifier) {
           const tokens = workspaceEntry.acl?.tokens || {};
           if (tokens[tokenHash]) {
-            debug(`Found token in workspace ACL: ${workspaceId} (name: ${workspaceIdentifier})`);
+            const parsed = workspaceManager.constructor.prototype.constructor.parseWorkspaceIndexKey?.(indexKey) ||
+                          (() => {
+                            const parts = indexKey.split('::');
+                            return parts.length === 2 ? { userId: parts[0], workspaceId: parts[1] } : null;
+                          })();
+            debug(`Found token in workspace ACL: ${parsed?.workspaceId || 'unknown'} (name: ${workspaceIdentifier})`);
             return workspaceEntry;
           }
         }

@@ -57,7 +57,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
     try {
       const workspace = await fastify.workspaceManager.openWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -108,7 +108,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
     try {
       // First get the workspace object before closing it
       const workspace = await fastify.workspaceManager.openWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -120,7 +120,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
 
       // Now close the workspace
       const success = await fastify.workspaceManager.closeWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -167,7 +167,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
     let workspace;
     try {
       workspace = await fastify.workspaceManager.startWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -208,7 +208,7 @@ export default async function workspaceLifecycleRoutes(fastify, options) {
     let success;
     try {
       success = await fastify.workspaceManager.stopWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );

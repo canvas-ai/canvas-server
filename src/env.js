@@ -23,6 +23,7 @@ export const env = {
         root: SERVER_ROOT,
         home: SERVER_HOME,
         logLevel: process.env.LOG_LEVEL || 'info',
+        host: process.env.CANVAS_SERVER_HOST || 'canvas.local',
         api: {
             enabled: process.env.CANVAS_DISABLE_API || true,
             protocol: process.env.CANVAS_API_PROTOCOL || 'http',
@@ -34,7 +35,7 @@ export const env = {
             protocol: process.env.CANVAS_WEB_PROTOCOL || 'http',
             port: process.env.CANVAS_WEB_PORT || 8001,
             host: process.env.CANVAS_WEB_HOST || '0.0.0.0'
-        }
+        },
     },
     user: {
         home: USER_HOME

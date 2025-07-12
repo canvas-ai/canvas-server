@@ -183,7 +183,6 @@ class Server extends EventEmitter {
                 // Create new admin user
                 debug(`Creating new admin user ${adminEmail}`);
                 user = await this.#userManager.createUser({
-                    id: adminEmail,
                     name: this.#generateUsernameFromEmail(adminEmail), // Generate proper username
                     email: adminEmail,
                     userType: 'admin',
@@ -289,27 +288,11 @@ class Server extends EventEmitter {
         // Remove leading and trailing hyphens
         username = username.replace(/^-+|-+$/g, '');
 
-        // Ensure minimum length
-        if (username.length < 3) {
-            username = username + '123';
-        }
-
         // Ensure maximum length
-        if (username.length > 39) {
-            username = username.substring(0, 39);
+        if (username.length > 32) {
+            username = username.substring(0, 32);
             // Remove trailing hyphens if we cut in the middle
             username = username.replace(/-+$/, '');
-        }
-
-        // Check for reserved names and append number if needed
-        const reservedNames = [
-            'admin', 'administrator', 'root', 'system', 'support', 'help',
-            'api', 'www', 'mail', 'ftp', 'localhost', 'test', 'demo',
-            'canvas', 'universe', 'workspace', 'context', 'user', 'users'
-        ];
-
-        if (reservedNames.includes(username)) {
-            username = username + '1';
         }
 
         return username;
