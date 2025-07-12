@@ -3,11 +3,11 @@
 import ResponseObject from '../../ResponseObject.js'; // Assuming ResponseObject is in a relative path
 
 /**
- * User-specific routes, including shared context access.
+ * Public/shared resource routes for accessing contexts and documents shared by other users.
  * @param {FastifyInstance} fastify - Fastify instance
  * @param {Object} options - Plugin options
  */
-export default async function userRoutes(fastify, options) {
+export default async function pubRoutes(fastify, options) {
   /**
    * Helper function to validate user is authenticated and has an id
    * @param {Object} request - Fastify request

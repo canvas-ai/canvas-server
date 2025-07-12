@@ -23,7 +23,7 @@ import {
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
 import contextRoutes from './routes/contexts/index.js';
-import userRoutes from './routes/users/index.js';
+import pubRoutes from './routes/pub/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
 import { mcpPlugin } from './mcp/index.js';
@@ -298,7 +298,7 @@ export async function createServer(options = {}) {
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
-  server.register(userRoutes, { prefix: '/rest/v2/users' });
+  server.register(pubRoutes, { prefix: '/rest/v2/pub' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
   server.register(mcpPlugin); // TODO: Draft/test only!!!
 

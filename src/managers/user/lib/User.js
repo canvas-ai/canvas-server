@@ -19,6 +19,7 @@ import { USER_STATUS_CODES } from '../index.js';
 class User extends EventEmitter {
 
     #id;
+    #name;
     #email;
     #userType;
     #authMethod;
