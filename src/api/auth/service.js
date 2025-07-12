@@ -472,6 +472,7 @@ class AuthService {
           valid: true,
           user: {
             id: user.id,
+            name: user.name || user.email,
             email: user.email,
             userType: user.userType || 'user',
             status: user.status || 'active'
@@ -513,6 +514,7 @@ class AuthService {
           valid: true,
           user: {
             id: user.id,
+            name: user.name || user.email,
             email: user.email,
             userType: user.userType || 'user',
             status: user.status || 'active'

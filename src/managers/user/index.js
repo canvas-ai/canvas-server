@@ -92,7 +92,9 @@ class UserManager extends EventEmitter {
     /**
      * Create a new user with a Universe workspace
      * @param {Object} userData - User data
+     * @param {string} userData.name - User nickname/display name (required)
      * @param {string} userData.email - User email (required)
+     * @param {string} [userData.id] - User ID (if not provided, generates 8-char lowercase nanoid)
      * @param {string} [userData.userType='user'] - User type: 'user' or 'admin'
      * @param {string} [userData.status='active'] - User status
      * @returns {Promise<User>} Created user
@@ -105,7 +107,8 @@ class UserManager extends EventEmitter {
             this.#validateUserSettings(userData);
 
             const email = userData.email.toLowerCase();
-            const id = userData.id || email;
+            const name = userData.name;
+            const id = userData.id || generateULID('', 8, '');
             const userHomePath = userData.homePath || path.join(this.#rootPath, email);
 
             if (await this.hasUser(id)) throw new Error(`User already exists with ID: ${id}`);
@@ -115,6 +118,7 @@ class UserManager extends EventEmitter {
 
             const user = await this.#initializeUser({
                 id,
+                name,
                 email,
                 homePath: userHomePath,
                 userType: userData.userType || 'user',
@@ -127,8 +131,8 @@ class UserManager extends EventEmitter {
             });
 
             this.#setupUserEventListeners(user);
-            this.emit('user.created', { id, email });
-            debug(`User created: ${user.email} (ID: ${user.id})`);
+            this.emit('user.created', { id, name, email });
+            debug(`User created: ${user.name} (${user.email}) (ID: ${user.id})`);
             return user;
         } catch (error) {
             debug(`Error creating user: ${error.message}`);
@@ -256,6 +260,7 @@ class UserManager extends EventEmitter {
         const updateDataForValidation = {
             ...userData,
             homePath: currentUserDataFromIndex.homePath,
+            originalName: currentUserDataFromIndex.name,
         };
         try {
             this.#validateUserSettings(updateDataForValidation, true);
@@ -324,14 +329,14 @@ class UserManager extends EventEmitter {
             throw new Error(`User not found: ${userId}`);
         }
 
-        const universeWorkspace = await this.#workspaceManager.getWorkspace(user.email, 'universe');
+        const universeWorkspace = await this.#workspaceManager.getWorkspace(user.id, 'universe', user.id);
         if (!universeWorkspace) {
             throw new Error(`Universe workspace not found for user: ${user.email}`);
         }
 
         // This is handled by our stupid to-be-refactored/renamed getWorkspace method
         if (universeWorkspace.status !== 'running') {
-            await this.#workspaceManager.startWorkspace(user.email, 'universe');
+            await this.#workspaceManager.startWorkspace(user.id, 'universe', user.id);
         }
 
         return true;
@@ -383,7 +388,7 @@ class UserManager extends EventEmitter {
         }
 
         try {
-            await this.#workspaceManager.createWorkspace(userEmail, 'universe', {
+            await this.#workspaceManager.createWorkspace(userId, 'universe', {
                 workspacePath: userHomePath,
                 type: 'universe',
                 owner: userId,
@@ -398,14 +403,15 @@ class UserManager extends EventEmitter {
     }
 
     async #initializeUser(userData) {
-        debug(`Initializing user: ${userData.email} (ID: ${userData.id})`);
+        debug(`Initializing user: ${userData.name} (${userData.email}) (ID: ${userData.id})`);
 
         if (!userData.id) { throw new Error('User ID is required for #initializeUser'); }
+        if (!userData.name) { throw new Error('Name is required for #initializeUser'); }
         if (!userData.email) { throw new Error('Email is required for #initializeUser'); }
         if (!userData.homePath) { throw new Error('Home path is required for #initializeUser'); }
 
         const userOptions = {
-            ...userData, // This has id, email, homePath, userType, status
+            ...userData, // This has id, name, email, homePath, userType, status
             eventEmitterOptions: this.eventEmitterOptions
         };
 
@@ -416,14 +422,14 @@ class UserManager extends EventEmitter {
         this.#saveEntry(user.id, user);
 
         // Start the universe workspace - this is critical for user functionality
-        debug(`Starting universe workspace for user ${user.email}`);
+        debug(`Starting universe workspace for user ${user.name} (${user.email})`);
 
-        const workspace = await this.#workspaceManager.startWorkspace(user.email, 'universe', user.id);
+        const workspace = await this.#workspaceManager.startWorkspace(user.id, 'universe', user.id);
         if (!workspace) {
-            throw new Error(`Failed to start universe workspace for user ${user.email}`);
+            throw new Error(`Failed to start universe workspace for user ${user.name} (${user.email})`);
         }
 
-        debug(`Universe workspace started successfully for user ${user.email}`);
+        debug(`Universe workspace started successfully for user ${user.name} (${user.email})`);
 
         // Setup event listeners after workspace is started
         this.#setupUserEventListeners(user);
@@ -443,9 +449,58 @@ class UserManager extends EventEmitter {
             throw new Error('User settings are required');
         }
 
-        // Email is required for new users, and must be valid if provided
+        // Name and email are required for new users, and must be valid if provided
+        if (!isUpdate && !userSettings.name) {
+            throw new Error('User name is required');
+        }
+
         if (!isUpdate && !userSettings.email) {
             throw new Error('User email is required');
+        }
+
+        if (userSettings.name) {
+            if (typeof userSettings.name !== 'string') {
+                throw new Error('User name must be a string');
+            }
+
+            if (userSettings.name.trim().length === 0) {
+                throw new Error('User name cannot be empty');
+            }
+
+            // GitHub-style username validation
+            const username = userSettings.name.toLowerCase().trim();
+            const usernameRegex = /^[a-z0-9_-]+$/;
+
+            if (!usernameRegex.test(username)) {
+                throw new Error('User name can only contain lowercase letters, numbers, underscores, and hyphens');
+            }
+
+            if (username.length < 3) {
+                throw new Error('User name must be at least 3 characters long');
+            }
+
+            if (username.length > 39) {
+                throw new Error('User name cannot be longer than 39 characters');
+            }
+
+            // Check for reserved names (GitHub-style)
+            const reservedNames = [
+                'admin', 'administrator', 'root', 'system', 'support', 'help',
+                'api', 'www', 'mail', 'ftp', 'localhost', 'test', 'demo',
+                'canvas', 'universe', 'workspace', 'context', 'user', 'users'
+            ];
+
+            if (reservedNames.includes(username)) {
+                throw new Error(`User name '${username}' is reserved and cannot be used`);
+            }
+
+            // Check for uniqueness (only for new users or name changes)
+            if (!isUpdate || (isUpdate && userSettings.name !== userSettings.originalName)) {
+                this.#validateUsernameUniqueness(username, userSettings.id);
+            }
+
+            // Update the name to the validated format
+            userSettings.name = username;
         }
 
         if (userSettings.email && !validator.isEmail(userSettings.email)) {
@@ -460,6 +515,35 @@ class UserManager extends EventEmitter {
         // Validate status if provided
         if (userSettings.status && !USER_STATUS_CODES.includes(userSettings.status)) {
             throw new Error(`Invalid user status: ${userSettings.status}`);
+        }
+    }
+
+    /**
+     * Validate that a username is unique across all users
+     * @param {string} username - Username to validate
+     * @param {string} [excludeUserId] - User ID to exclude from uniqueness check (for updates)
+     * @throws {Error} If username is not unique
+     * @private
+     */
+    #validateUsernameUniqueness(username, excludeUserId = null) {
+        // Check in-memory users first
+        for (const user of this.#users.values()) {
+            if (excludeUserId && user.id === excludeUserId) {
+                continue; // Skip the user being updated
+            }
+            if (user.name === username) {
+                throw new Error(`User name '${username}' is already taken`);
+            }
+        }
+
+        // Check in the index store
+        for (const [id, userData] of Object.entries(this.#indexStore.store || {})) {
+            if (excludeUserId && id === excludeUserId) {
+                continue; // Skip the user being updated
+            }
+            if (userData?.name === username) {
+                throw new Error(`User name '${username}' is already taken`);
+            }
         }
     }
 

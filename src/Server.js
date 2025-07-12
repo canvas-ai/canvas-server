@@ -184,6 +184,7 @@ class Server extends EventEmitter {
                 debug(`Creating new admin user ${adminEmail}`);
                 user = await this.#userManager.createUser({
                     id: adminEmail,
+                    name: this.#generateUsernameFromEmail(adminEmail), // Generate proper username
                     email: adminEmail,
                     userType: 'admin',
                     status: 'active'
@@ -264,6 +265,54 @@ class Server extends EventEmitter {
         await this.stop();
         await this.start();
         return this;
+    }
+
+    /**
+     * Generate a GitHub-style username from an email address
+     * @param {string} email - Email address
+     * @returns {string} - Valid username
+     * @private
+     */
+    #generateUsernameFromEmail(email) {
+        // Extract the local part (before @)
+        let username = email.split('@')[0].toLowerCase();
+
+        // Remove special characters, keep only letters, numbers, dots, underscores, hyphens
+        username = username.replace(/[^a-z0-9._-]/g, '');
+
+        // Replace dots and underscores with hyphens for consistency
+        username = username.replace(/[._]/g, '-');
+
+        // Remove consecutive hyphens
+        username = username.replace(/-+/g, '-');
+
+        // Remove leading and trailing hyphens
+        username = username.replace(/^-+|-+$/g, '');
+
+        // Ensure minimum length
+        if (username.length < 3) {
+            username = username + '123';
+        }
+
+        // Ensure maximum length
+        if (username.length > 39) {
+            username = username.substring(0, 39);
+            // Remove trailing hyphens if we cut in the middle
+            username = username.replace(/-+$/, '');
+        }
+
+        // Check for reserved names and append number if needed
+        const reservedNames = [
+            'admin', 'administrator', 'root', 'system', 'support', 'help',
+            'api', 'www', 'mail', 'ftp', 'localhost', 'test', 'demo',
+            'canvas', 'universe', 'workspace', 'context', 'user', 'users'
+        ];
+
+        if (reservedNames.includes(username)) {
+            username = username + '1';
+        }
+
+        return username;
     }
 }
 

@@ -22,7 +22,7 @@ const UserValidationError = createError('ERR_USER_VALIDATION', 'User validation 
  * @returns {Object} - Validated user object
  * @throws {Error} - If validation fails
  */
-export function validateUser(user, requiredProps = ['id', 'email']) {
+export function validateUser(user, requiredProps = ['id', 'name', 'email']) {
   // Check if user exists
   if (!user) {
     throw new UserValidationError('User not found');
@@ -170,6 +170,7 @@ export async function verifyJWT(request, reply, done) {
     // Create a simplified user object that contains only the essential properties
     const essentialUserData = {
       id: user.id,
+      name: user.name || user.email,
       email: user.email ? user.email.toLowerCase() : null,
       userType: user.userType || 'user',
       status: user.status || 'active'
@@ -267,6 +268,7 @@ export async function verifyApiToken(request, reply, done) {
     // Create a simplified user object with essential properties
     const essentialUserData = {
       id: user.id,
+      name: user.name || user.email,
       email: user.email ? user.email.toLowerCase() : null,
       userType: user.userType || 'user',
       status: user.status || 'active'
@@ -408,6 +410,7 @@ export async function login(email, password, userManager, strategy = 'auto') {
 export async function register(userData, userManager) {
   // Create user
   const user = await userManager.createUser({
+    name: userData.name,
     email: userData.email,
     // firstName: userData.firstName,
     // lastName: userData.lastName,
@@ -426,6 +429,7 @@ export async function register(userData, userManager) {
     data: {
       user: {
         id: user.id,
+        name: user.name,
         email: user.email
       },
       token: verificationToken // This is the email verification token

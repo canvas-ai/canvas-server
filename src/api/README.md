@@ -1,8 +1,8 @@
 # To share content
-/users/:user_id/workspaces
-/users/:user_id/workspaces/:workspace_id
-/users/:user_id/canvases
-/users/:user_id/contexts
+/pub/:user_id/workspaces
+/pub/:user_id/workspaces/:workspace_id
+/pub/:user_id/canvases
+/pub/:user_id/contexts
 
 # Auth routes
 /auth/me
@@ -19,10 +19,3 @@
 /contexts
 /contexts/:context_id/documents
 
-# Example non-related to the current api
-$ curl -s https://fqdn/api/v1/hosts
-$ curl -s https://fqdn/api/v1/hosts/server.domain.tld
-$ curl -s https://fqdn/api/v1/hosts/server.domain.tld/packages
-$ curl -s https://fqdn/api/v1/packages/yelp-xsl
-$ curl -s https://fqdn/api/v1/packages/yelp-xsl/
-$ curl -s https://fqdn/api/v1/packages/yelp-xsl/3.36.0-1

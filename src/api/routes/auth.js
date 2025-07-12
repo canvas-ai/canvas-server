@@ -65,8 +65,8 @@ export default async function authRoutes(fastify, options) {
         token,
         user: {
           id: result.user.id,
-          email: result.user.email,
           name: result.user.name || result.user.email,
+          email: result.user.email,
           authMethod: result.authMethod || 'local'
         }
       }, 'Login successful');
@@ -116,8 +116,15 @@ export default async function authRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['email', 'password'],
+        required: ['name', 'email', 'password'],
         properties: {
+          name: {
+            type: 'string',
+            minLength: 3,
+            maxLength: 39,
+            pattern: '^[a-z0-9_-]+$',
+            description: 'Username (3-39 chars, lowercase letters, numbers, underscores, hyphens only)'
+          },
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 8 }
         }
@@ -135,13 +142,16 @@ export default async function authRoutes(fastify, options) {
       const response = new ResponseObject().created(result.data, 'Registration successful');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
-      fastify.log.error(`[Register Route Error] ${error.message}`, error);
-      if (error.message && error.message.toLowerCase().includes('user already exists')) {
-        const responseObject = new ResponseObject().conflict(error.message);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      fastify.log.error('[Register Route Error]', error.message);
+
+      // Provide specific error messages for username validation
+      if (error.message.includes('User name')) {
+        const response = new ResponseObject().badRequest(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      const responseObject = new ResponseObject().serverError(error.message || 'Registration failed due to an unexpected error');
-      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+
+      const response = new ResponseObject().serverError('Registration failed');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -534,6 +544,7 @@ export default async function authRoutes(fastify, options) {
       // Return user profile
       const response = new ResponseObject().found({
         id: userData.id,
+        name: userData.name || userData.email,
         email: userData.email,
         userType: userData.userType || 'user',
         status: userData.status || 'active'
