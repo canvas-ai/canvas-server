@@ -19,7 +19,7 @@ const USER_HOME = process.env.CANVAS_USER_HOME || getUserHome();
 
 export const env = {
     server: {
-        mode: SERVER_MODE,
+        mode: process.env.CANVAS_SERVER_MODE || SERVER_MODE,
         root: SERVER_ROOT,
         home: SERVER_HOME,
         logLevel: process.env.LOG_LEVEL || 'info',
@@ -45,7 +45,7 @@ export const env = {
         tokenExpiry: process.env.CANVAS_JWT_TOKEN_EXPIRY || '7d'
     },
     admin: {
-        email: process.env.CANVAS_ADMIN_EMAIL || 'admin@universe.local',
+        email: process.env.CANVAS_ADMIN_EMAIL || 'admin@canvas.local',
         password: process.env.CANVAS_ADMIN_PASSWORD || null, // null will trigger auto-generation
         forceReset: process.env.CANVAS_ADMIN_RESET === 'true' || false
     }
@@ -79,10 +79,4 @@ function getUserHome() {
     }
 
     return path.join(SERVER_HOME, 'users');
-}
-
-function generateJwtSecret() {
-    const randomSecret = crypto.randomBytes(64).toString('hex');
-    console.log('[ENV] Generated random JWT secret (sessions will not persist across server restarts)');
-    return randomSecret;
 }

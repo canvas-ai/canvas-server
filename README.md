@@ -7,12 +7,17 @@ Server runtime for the Canvas project
 **! Use the dev branch for now**  
 
 **On every iteration(refactor) of this project, I actually loose(as in - BREAK -) functionality!**  
-We already had tab management implemented(great showcase for the bitmap-based context tree index), with named sessions and working browser extensions. I decided to **slightly** refactor the context? or workspace manager? Don't even remember(git history would show) - 6 months later we still have no working runtime and using AI actually makes things worse!  
+We already had tab management implemented(great showcase for the bitmap-based context tree index), with named sessions and working browser extensions. I decided to **slightly** refactor the context? or workspace manager? don't even remember(git history would show) - 6 months later we still have no working runtime and using AI actually makes things worse!  
 (as we are now in an attention-based economy(creds for coining the term _for me_ to @TechLead, I'll rant about it in some "coding-canvas" live stream session @idnc.streams soon))
 
 Sooo
 
 New approach: **"Do The Simplest Thing That Could Possibly Work(tm)"**  
+
+- No federation support
+- No remote workspaces*
+- Contexts bound to the canvas-server instance
+
 Sorry Universe for the delay..
 
 ## Installation
@@ -22,8 +27,9 @@ Sorry Universe for the delay..
 ```bash
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server
-$ npm install # or yarn install
-$ npm run start # or yarn start
+$ npm install
+$ npm run dev # or
+$ npm run start
 ```
 
 ## Docker
@@ -55,8 +61,8 @@ CANVAS_ADMIN_RESET: ${CANVAS_ADMIN_RESET:-false}
 CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
 CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
 CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
-JWT_SECRET: ${JWT_SECRET:-$(openssl rand -base64 16)}
-TOKEN_EXPIRY: ${TOKEN_EXPIRY:-7d}
+CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 16)}
+CANVAS_JWT_TOKEN_EXPIRY: ${CANVAS_JWT_TOKEN_EXPIRY:-7d}
 
 # Canvas USER dirs for single-user mode
 # See env.js for more info
@@ -98,7 +104,7 @@ $ npm install
 $ npm start # or npm run pm2:start
 ```
 
-## Make Canavas Server WebUI available remotely
+## Make Canvas Server WebUI available remotely
 
 ```bash
 # Copy the .env.example file
@@ -111,79 +117,10 @@ $ npm run build
 
 ## Scripts
 
-### build-portable-image.sh
-
-This script builds a Docker image for the Canvas Server with a portable configuration.
-
-#### Usage
-
-```bash
-$ ./scripts/build-portable-image.sh [-n image_name] [-t image_tag] [-f dockerfile] [-c config_dir]
-```
-
-#### Options
-
-- `-n`: Image name (default: canvas-server)
-- `-t`: Image tag (default: portable)
-- `-f`: Dockerfile to use (default: Dockerfile)
-- `-c`: Config directory to copy (default: ./config)
-
-### install-docker.sh
-
-This script installs Docker and Docker Compose on an Ubuntu system. It checks if Docker and Docker Compose are already installed, and if not, installs them.
-
-#### Usage
-
-```bash
-$ ./scripts/install-docker.sh
-```
-
-### install-ubuntu.sh
-
-This script installs and sets up the Canvas Server on an Ubuntu system. It installs Node.js, clones the Canvas Server repository, and sets up the service.
-
-#### Usage
-
-```bash
-$ ./scripts/install-ubuntu.sh [-r canvas_root] [-u canvas_user] [-g canvas_group] [-b canvas_repo_branch] [-n nodejs_version] [-e web_admin_email] [-f web_fqdn]
-```
-
-#### Options
-
-- `-r`: Canvas root directory (default: /opt/canvas-server)
-- `-u`: Canvas user (default: canvas)
-- `-g`: Canvas group (default: www-data)
-- `-b`: Canvas repository branch (default: dev)
-- `-n`: Node.js version (default: 20)
-- `-e`: Web admin email (default: $(hostname)@cnvs.ai)
-- `-f`: Web FQDN (default: my.cnvs.ai)
-
-### update-docker.sh
-
-This script updates Docker containers for the Canvas Server.
-
-#### Usage
-
-```bash
-$ ./scripts/update-docker.sh [-r canvas_root] [-f docker_compose_file] [-b target_branch] [-l log_file]
-```
-
-#### Options
-
-- `-r`: Canvas root directory (default: /opt/canvas-server)
-- `-f`: Docker Compose file (default: docker-compose.yml)
-- `-b`: Target branch for git pull (default: main)
-- `-l`: Log file (default: /var/log/canvas-docker-update.log)
-
-### update-git.sh
-
-This script updates the Canvas Server by pulling the latest changes from the git repository and restarting the service.
-
-#### Usage
-
-```bash
-$ ./scripts/update-git.sh
-```
+`build-portable-image.sh`: Builds a Docker image for the Canvas Server with a portable configuration.
+`install-ubuntu.sh`: Installs and sets up the Canvas Server on an Ubuntu system. It installs Node.js, clones the Canvas Server repository, and sets up the service.
+`update-git.sh`: Script updates the Canvas Server by pulling the latest changes from the git repository and restarting the service.
+`update-submodules.sh`: Pushes git submodule changes to a remote git repository
 
 ## Authentication
 
@@ -193,6 +130,10 @@ Canvas Server supports two types of authentication:
 2. **[API Token Authentication](docs/api-token-auth.md)**: Used for programmatic access (CLI, Electron, browser extensions, curl-based scripts)
 
 ## References
+
+### API Documentation
+
+- [Canvas Server API Reference](docs/API.md) - Complete REST API and WebSocket documentation
 
 ### DB / Index
 
