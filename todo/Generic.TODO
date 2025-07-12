@@ -3,7 +3,7 @@
 ## Architectural changes
 
 - Integrate stored into synapsd
-- Use https://unstorage.unjs.io/ instead of a custom lmdb wrapper, in worst cases we can write a small lmdb driver for unstorage if we'll feel its justified
+- Use https://unstorage.unjs.io/ instead of a custom lmdb wrapper?, in worst cases we can write a small lmdb driver for unstorage if we'll feel its justified
 
 ## Utils/config
 
@@ -12,7 +12,8 @@
 
 ## Context handling
 
-- We need to ensure 
+- Support contexts on top of remote workspaces!
+- We need to ensure
   - Context layers will get locked when open in a context
   - Layers will need to have a in-memory map of userid/contextid locks
 
@@ -32,8 +33,7 @@ Workspace config paths
 
 - streamline the IDs used across managers (user-prefix is currently a mix of user.email and user.id)
 - !!! SIMPLIFY
-- !!! SIMPLIFY
-- !!! SIMPLIFY
+- !!! SIMPLIFY- !!! SIMPLIFY
 
 ## Workspace Manager
 

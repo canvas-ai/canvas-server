@@ -71,10 +71,10 @@ export default function registerWorkspaceWebSocket(fastify, socket) {
 /**
  * Validate workspace access using token-based ACLs
  * @param {Socket} socket - Authenticated socket with user info
- * @param {string} workspaceId - Workspace ID to validate access for
+ * @param {string} workspaceIdentifier - Workspace ID or name to validate access for
  * @returns {Promise<boolean>} True if access is granted, false otherwise
  */
-async function validateWorkspaceAccess(socket, workspaceId) {
+async function validateWorkspaceAccess(socket, workspaceIdentifier) {
   try {
     const userId = socket.user?.id;
     if (!userId) {
@@ -97,9 +97,18 @@ async function validateWorkspaceAccess(socket, workspaceId) {
     }
 
     try {
-      const workspace = await workspaceManager.getWorkspace(userId, workspaceId, userId);
+      // Check if identifier is a workspace ID (12 chars) or name
+      const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+
+      let workspace;
+      if (isWorkspaceId) {
+        workspace = await workspaceManager.getWorkspaceById(workspaceIdentifier, userId);
+      } else {
+        workspace = await workspaceManager.getWorkspaceByName(userId, workspaceIdentifier, userId);
+      }
+
       if (workspace) {
-        debug(`Owner access granted for workspace ${workspaceId}`);
+        debug(`Owner access granted for workspace ${workspaceIdentifier}`);
         return true;
       }
     } catch (error) {
@@ -110,30 +119,55 @@ async function validateWorkspaceAccess(socket, workspaceId) {
     const tokenHash = `sha256:${crypto.createHash('sha256').update(token).digest('hex')}`;
     const allWorkspaces = workspaceManager.getAllWorkspaces();
 
-    for (const [workspaceKey, workspaceEntry] of Object.entries(allWorkspaces)) {
-      if (!workspaceKey.endsWith(`/${workspaceId}`)) {
-        continue;
-      }
+    // Check if identifier is a workspace ID (12 chars) or name
+    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
-      const tokens = workspaceEntry.acl?.tokens || {};
-      const tokenData = tokens[tokenHash];
+    if (isWorkspaceId) {
+      // Direct lookup by workspace ID
+      const workspaceEntry = allWorkspaces[workspaceIdentifier];
+      if (workspaceEntry) {
+        const tokens = workspaceEntry.acl?.tokens || {};
+        const tokenData = tokens[tokenHash];
 
-      if (tokenData) {
-        // Check expiration
-        if (tokenData.expiresAt && new Date() > new Date(tokenData.expiresAt)) {
-          debug(`Token has expired for workspace ${workspaceId}`);
-          continue;
+        if (tokenData) {
+          // Check expiration
+          if (tokenData.expiresAt && new Date() > new Date(tokenData.expiresAt)) {
+            debug(`Token has expired for workspace ${workspaceIdentifier}`);
+            return false;
+          }
+
+          // WebSocket access requires at least read permission
+          if (tokenData.permissions.includes('read')) {
+            debug(`Token access granted for workspace ${workspaceIdentifier}`);
+            return true;
+          }
         }
+      }
+    } else {
+      // Search through all workspaces for a matching name and token
+      for (const [workspaceId, workspaceEntry] of Object.entries(allWorkspaces)) {
+        if (workspaceEntry.name === workspaceIdentifier) {
+          const tokens = workspaceEntry.acl?.tokens || {};
+          const tokenData = tokens[tokenHash];
 
-        // WebSocket access requires at least read permission
-        if (tokenData.permissions.includes('read')) {
-          debug(`Token access granted for workspace ${workspaceId}`);
-          return true;
+          if (tokenData) {
+            // Check expiration
+            if (tokenData.expiresAt && new Date() > new Date(tokenData.expiresAt)) {
+              debug(`Token has expired for workspace ${workspaceIdentifier}`);
+              continue;
+            }
+
+            // WebSocket access requires at least read permission
+            if (tokenData.permissions.includes('read')) {
+              debug(`Token access granted for workspace ${workspaceIdentifier}`);
+              return true;
+            }
+          }
         }
       }
     }
 
-    debug(`No valid access found for workspace ${workspaceId}`);
+    debug(`No valid access found for workspace ${workspaceIdentifier}`);
     return false;
 
   } catch (error) {

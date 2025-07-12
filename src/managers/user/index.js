@@ -5,7 +5,7 @@ import path from 'path';
 import { existsSync } from 'fs';
 import EventEmitter from 'eventemitter2';
 import validator from 'validator';
-import { generateULID } from '../../utils/id.js';
+import { generateNanoid } from '../../utils/id.js';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
@@ -108,7 +108,7 @@ class UserManager extends EventEmitter {
 
             const email = userData.email.toLowerCase();
             const name = userData.name;
-            const id = userData.id || generateULID('', 8, '');
+            const id = userData.id || generateNanoid(8);
             const userHomePath = userData.homePath || path.join(this.#rootPath, email);
 
             if (await this.hasUser(id)) throw new Error(`User already exists with ID: ${id}`);

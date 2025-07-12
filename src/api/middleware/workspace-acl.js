@@ -146,13 +146,23 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read') {
  * Try to access workspace as owner
  * @param {WorkspaceManager} workspaceManager - Workspace manager instance
  * @param {string} userId - User ID from token
- * @param {string} workspaceId - Workspace ID
+ * @param {string} workspaceIdentifier - Workspace ID or name
  * @returns {Promise<Workspace|null>} Workspace instance if owner, null otherwise
  */
-async function tryOwnerAccess(workspaceManager, userId, workspaceId) {
+async function tryOwnerAccess(workspaceManager, userId, workspaceIdentifier) {
   try {
-    // Try to get workspace where user is the owner
-    const workspace = await workspaceManager.getWorkspace(userId, workspaceId, userId);
+    // Check if identifier is a workspace ID (12 chars) or name
+    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+
+    let workspace;
+    if (isWorkspaceId) {
+      // Try to get workspace by ID
+      workspace = await workspaceManager.getWorkspaceById(workspaceIdentifier, userId);
+    } else {
+      // Try to get workspace by name
+      workspace = await workspaceManager.getWorkspaceByName(userId, workspaceIdentifier, userId);
+    }
+
     return workspace;
   } catch (error) {
     debug(`Owner access failed: ${error.message}`);
@@ -163,18 +173,18 @@ async function tryOwnerAccess(workspaceManager, userId, workspaceId) {
 /**
  * Try to access workspace via token-based ACL
  * @param {WorkspaceManager} workspaceManager - Workspace manager instance
- * @param {string} workspaceId - Workspace ID
+ * @param {string} workspaceIdentifier - Workspace ID or name
  * @param {string} token - API token
  * @param {string} requiredPermission - Required permission
  * @returns {Promise<Object|null>} Access info if valid, null otherwise
  */
-async function tryTokenAccess(workspaceManager, workspaceId, token, requiredPermission) {
+async function tryTokenAccess(workspaceManager, workspaceIdentifier, token, requiredPermission) {
   try {
     // Hash the token to match against ACL
     const tokenHash = `sha256:${crypto.createHash('sha256').update(token).digest('hex')}`;
 
     // Find workspace with this token in ACL
-    const workspaceEntry = await findWorkspaceByTokenHash(workspaceManager, workspaceId, tokenHash);
+    const workspaceEntry = await findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, tokenHash);
     if (!workspaceEntry) {
       debug(`Token not found in any workspace ACL: ${tokenHash.substring(0, 16)}...`);
       return null;
@@ -198,7 +208,7 @@ async function tryTokenAccess(workspaceManager, workspaceId, token, requiredPerm
     // Load the actual workspace instance for token access
     const workspace = await loadWorkspaceForTokenAccess(workspaceManager, workspaceEntry);
     if (!workspace) {
-      debug(`Failed to load workspace for token access: ${workspaceId}`);
+      debug(`Failed to load workspace for token access: ${workspaceIdentifier}`);
       return null;
     }
 
@@ -217,28 +227,41 @@ async function tryTokenAccess(workspaceManager, workspaceId, token, requiredPerm
 /**
  * Find workspace by searching for token hash in ACLs
  * @param {WorkspaceManager} workspaceManager - Workspace manager instance
- * @param {string} workspaceId - Workspace ID
+ * @param {string} workspaceIdentifier - Workspace ID or name
  * @param {string} tokenHash - Token hash to search for
  * @returns {Promise<Object|null>} Workspace config if found, null otherwise
  */
-async function findWorkspaceByTokenHash(workspaceManager, workspaceId, tokenHash) {
+async function findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, tokenHash) {
   try {
-        // In a production system, you'd maintain an index of token->workspace mappings
-    // For now, we'll search through the workspace index
+    // Check if identifier is a workspace ID (12 chars) or name
+    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
-    const allWorkspaces = workspaceManager.getAllWorkspaces();
+    if (isWorkspaceId) {
+      // Direct lookup by workspace ID
+      const allWorkspaces = workspaceManager.getAllWorkspaces();
+      const workspaceEntry = allWorkspaces[workspaceIdentifier];
 
-    for (const [workspaceKey, workspaceEntry] of Object.entries(allWorkspaces)) {
-      // Check if this is the workspace we're looking for
-      if (!workspaceKey.endsWith(`/${workspaceId}`)) {
-        continue;
+      if (workspaceEntry) {
+        // Check if token exists in this workspace's ACL
+        const tokens = workspaceEntry.acl?.tokens || {};
+        if (tokens[tokenHash]) {
+          debug(`Found token in workspace ACL: ${workspaceIdentifier}`);
+          return workspaceEntry;
+        }
       }
+    } else {
+      // Search through all workspaces for a matching name and token
+      const allWorkspaces = workspaceManager.getAllWorkspaces();
 
-      // Check if token exists in this workspace's ACL
-      const tokens = workspaceEntry.acl?.tokens || {};
-      if (tokens[tokenHash]) {
-        debug(`Found token in workspace ACL: ${workspaceKey}`);
-        return workspaceEntry;
+      for (const [workspaceId, workspaceEntry] of Object.entries(allWorkspaces)) {
+        // Check if this workspace has the matching name and token
+        if (workspaceEntry.name === workspaceIdentifier) {
+          const tokens = workspaceEntry.acl?.tokens || {};
+          if (tokens[tokenHash]) {
+            debug(`Found token in workspace ACL: ${workspaceId} (name: ${workspaceIdentifier})`);
+            return workspaceEntry;
+          }
+        }
       }
     }
 
@@ -259,13 +282,8 @@ async function findWorkspaceByTokenHash(workspaceManager, workspaceId, tokenHash
  */
 async function loadWorkspaceForTokenAccess(workspaceManager, workspaceEntry) {
   try {
-    // Extract owner and workspace ID from the entry
-    const [ownerId, workspaceId] = workspaceEntry.id.includes('/')
-      ? workspaceEntry.id.split('/')
-      : [workspaceEntry.owner, workspaceEntry.id];
-
-    // Load the workspace (this bypasses owner check since we validated ACL)
-    const workspace = await workspaceManager.openWorkspace(ownerId, workspaceId, ownerId);
+    // Load the workspace by ID (this bypasses owner check since we validated ACL)
+    const workspace = await workspaceManager.getWorkspaceById(workspaceEntry.id);
     return workspace;
 
   } catch (error) {

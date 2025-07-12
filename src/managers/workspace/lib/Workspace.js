@@ -100,9 +100,10 @@ class Workspace extends EventEmitter {
 
     // Persisted Configuration Getters (from configStore)
     get id() { return this.#configStore?.get('id'); }
-    get label() { return this.#configStore?.get('label', this.id); }
+    get name() { return this.#configStore?.get('name'); }
+    get label() { return this.#configStore?.get('label', this.name || this.id); }
     get icon() { return this.#configStore?.get('icon'); }
-    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.id}`); }
+    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.name || this.id}`); }
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); } // User ULID
@@ -177,6 +178,19 @@ class Workspace extends EventEmitter {
             return false;
         }
         return this.#updateConfig('label', String(label));
+    }
+
+    async setName(name) {
+        if (!name) {
+            console.warn(`Invalid name for workspace ${this.id}. Must be a non-empty string.`);
+            return false;
+        }
+        // Name should be slug-like (lowercase, alphanumeric, dashes, underscores)
+        const sanitizedName = name.toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        if (sanitizedName !== name) {
+            console.warn(`Name "${name}" was sanitized to "${sanitizedName}" for workspace ${this.id}`);
+        }
+        return this.#updateConfig('name', sanitizedName);
     }
 
     async setMetadata(metadata) {
@@ -746,6 +760,7 @@ class Workspace extends EventEmitter {
             configPath: this.configPath,
             status: this.status,
             isActive: this.isActive,
+            name: this.name,
         };
     }
 

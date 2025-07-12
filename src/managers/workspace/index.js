@@ -7,6 +7,7 @@ import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
 import EventEmitter from 'eventemitter2';
 import Conf from 'conf';
+import { generateNanoid } from '../../utils/id.js';
 // import AdmZip from 'adm-zip';
 
 // Logging
@@ -52,7 +53,8 @@ const WORKSPACE_STATUS_CODES = {
 // Default configuration template for a new workspace's workspace.json
 // Using token-based ACLs for portable workspace sharing
 const DEFAULT_WORKSPACE_CONFIG = {
-    id: null, // Set to user.id/workspace.id
+    id: null, // Set to 12-char nanoid (opaque identifier)
+    name: null, // User-defined slug-like name
     owner: null, // User ID (email)
     type: 'workspace', // "workspace" or "universe" (user home directory)
     label: 'Workspace',
@@ -72,10 +74,11 @@ const DEFAULT_WORKSPACE_CONFIG = {
 class WorkspaceManager extends EventEmitter {
 
     #defaultRootPath;   // Default Root path for all user workspaces managed by this instance (e.g., /users)
-    #indexStore;        // Persistent index of all workspaces
+    #indexStore;        // Persistent index of all workspaces (key: workspace.id -> workspace data)
+    #nameIndex;         // Secondary index for name lookups (key: userId/workspaceName -> workspace.id)
 
     // Runtime
-    #workspaces = new Map(); // Cache for loaded Workspace instances (key: userId/workspaceId -> Workspace)
+    #workspaces = new Map(); // Cache for loaded Workspace instances (key: workspace.id -> Workspace)
     #initialized = false; // Add initialized flag
 
     /**
@@ -98,6 +101,7 @@ class WorkspaceManager extends EventEmitter {
 
         this.#defaultRootPath = path.resolve(options.defaultRootPath); // Ensure absolute path
         this.#indexStore = options.indexStore;
+        this.#nameIndex = new Map(); // In-memory secondary index for name lookups
 
         debug(`Initializing WorkspaceManager with default rootPath: ${this.#defaultRootPath}`);
     }
@@ -107,6 +111,9 @@ class WorkspaceManager extends EventEmitter {
      */
     async initialize() {
         if (this.#initialized) { return true; }
+
+        // Rebuild name index from existing workspaces
+        await this.#rebuildNameIndex();
 
         // Scan the index for all workspaces
         await this.#scanIndexedWorkspaces();
@@ -126,7 +133,7 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Creates a new workspace directory, config file, and adds it to the index.
      * @param {string} userId - The identifier used for key prefix
-     * @param {string} workspaceId - The desired workspaceId for the workspace.
+     * @param {string} workspaceName - The desired workspace name (slug-like identifier).
      * @param {Object} options - Additional options for workspace config.
      * @param {string} options.owner - The ULID of the user who owns this workspace.
      * @param {string} [options.rootPath] - Custom root for this workspace path.
@@ -134,31 +141,30 @@ class WorkspaceManager extends EventEmitter {
      * @param {string} [options.type='workspace'] - Type of workspace.
      * @returns {Promise<Object>} The index entry of the newly created workspace.
      */
-    async createWorkspace(userId, workspaceId, options = {}) {
+    async createWorkspace(userId, workspaceName, options = {}) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
         if (!userId) throw new Error('userId required to create a workspace.');
-        if (!workspaceId) throw new Error('Workspace ID required to create a workspace.');
+        if (!workspaceName) throw new Error('Workspace name required to create a workspace.');
 
-        // Sanitize the workspace ID
-        workspaceId = this.#sanitizeWorkspaceId(workspaceId);
+        // Sanitize the workspace name
+        workspaceName = this.#sanitizeWorkspaceName(workspaceName);
 
-        // Construct the workspace key
-        const workspaceKey = this.#constructWorkspaceKey(userId, workspaceId);
+        // Generate unique workspace ID
+        const workspaceId = generateNanoid(12);
 
-        if (this.#indexStore.has(workspaceKey)) {
-            throw new Error(`Workspace with key "${workspaceKey}" already exists for user ${userId}.`);
+        // Check if workspace name already exists for this user
+        const nameKey = `${userId}/${workspaceName}`;
+        if (this.#nameIndex.has(nameKey)) {
+            throw new Error(`Workspace with name "${workspaceName}" already exists for user ${userId}.`);
         }
 
-        // Determine workspace directory path
+        // Determine workspace directory path (using name for filesystem)
         const workspaceDir = options.workspacePath ||
-                            (options.rootPath ? path.join(options.rootPath, workspaceId) :
-                            path.join(this.#defaultRootPath, userId, WORKSPACE_DIRECTORIES.workspaces, workspaceId));
-        debug(`Using workspace path: ${workspaceDir}`);
+                            (options.rootPath ? path.join(options.rootPath, workspaceName) :
+                            path.join(this.#defaultRootPath, userId, WORKSPACE_DIRECTORIES.workspaces, workspaceName));
+        debug(`Using workspace path: ${workspaceDir} for workspace ${workspaceId}`);
 
         // Validate and create workspace
-        if (this.#indexStore.has(workspaceKey)) {
-            throw new Error(`Workspace with key "${workspaceKey}" already exists.`);
-        }
         if (existsSync(workspaceDir)) {
             console.warn(`Workspace directory "${workspaceDir}" already exists.`);
         }
@@ -176,8 +182,9 @@ class WorkspaceManager extends EventEmitter {
         const isUniverse = options.type === 'universe';
         const configData = {
             ...DEFAULT_WORKSPACE_CONFIG,
-            id: (isUniverse ? 'universe' : workspaceId),
-            label: isUniverse ? 'Universe' : (options.label || workspaceId),
+            id: isUniverse ? 'universe' : workspaceId,
+            name: isUniverse ? 'universe' : workspaceName,
+            label: isUniverse ? 'Universe' : (options.label || workspaceName),
             description: isUniverse ? 'And then there was geometry..' : options.description || '',
             owner: userId,
             color: isUniverse ? '#ffffff' : options.color || WorkspaceManager.getRandomColor(),
@@ -192,49 +199,67 @@ class WorkspaceManager extends EventEmitter {
 
         // Create index entry
         const indexEntry = { ...configData, rootPath: workspaceDir, configPath: workspaceConfigPath, status: WORKSPACE_STATUS_CODES.AVAILABLE, lastAccessed: null };
-        this.#indexStore.set(workspaceKey, indexEntry);
-        this.emit('workspace.created', { userId, workspaceId, workspaceKey, workspace: indexEntry });
-        debug(`Workspace created: ${workspaceKey}`);
+
+        // Use workspace.id as primary key
+        this.#indexStore.set(workspaceId, indexEntry);
+
+        // Add to name index for lookups
+        this.#nameIndex.set(nameKey, workspaceId);
+
+        this.emit('workspace.created', { userId, workspaceId, workspaceName, workspace: indexEntry });
+        debug(`Workspace created: ${workspaceId} (name: ${workspaceName}) for user ${userId}`);
         return indexEntry;
     }
 
     /**
      * Opens a workspace, loading it into memory if not already loaded.
      * @param {string} userId - The owner identifier
-     * @param {string} workspaceId - The short ID/name of the workspace.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request (for ownership check).
      * @returns {Promise<Workspace|null>} The loaded Workspace instance.
      */
-    async openWorkspace(userId, workspaceId, requestingUserId) {
+    async openWorkspace(userId, workspaceIdentifier, requestingUserId) {
         if (!this.#initialized) {
             throw new Error('WorkspaceManager not initialized. Cannot open workspace.');
         }
-        if (!userId || !workspaceId) {
-            throw new Error(`userId and workspaceId are required to open a workspace, got userId: ${userId}, workspaceId: ${workspaceId}`);
+        if (!userId || !workspaceIdentifier) {
+            throw new Error(`userId and workspaceIdentifier are required to open a workspace, got userId: ${userId}, workspaceIdentifier: ${workspaceIdentifier}`);
         }
 
-        // This is not the brightest idea but convenient for now
         if (!requestingUserId) {
             requestingUserId = userId;
         }
 
-        const workspaceKey = `${userId}/${workspaceId}`;
-        debug(`Opening workspace: ${workspaceKey} for requestingUser: ${requestingUserId}`);
+        // Resolve workspace identifier to ID
+        let workspaceId;
+        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+
+        if (isWorkspaceId) {
+            workspaceId = workspaceIdentifier;
+        } else {
+            workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+            if (!workspaceId) {
+                debug(`openWorkspace failed: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                return null;
+            }
+        }
+
+        debug(`Opening workspace: ${workspaceId} (identifier: ${workspaceIdentifier}) for requestingUser: ${requestingUserId}`);
 
         // Return from cache if available and owner matches
-        if (this.#workspaces.has(workspaceKey)) {
-            debug(`Returning cached Workspace instance for ${workspaceKey}`);
-            const cachedWs = this.#workspaces.get(workspaceKey);
+        if (this.#workspaces.has(workspaceId)) {
+            debug(`Returning cached Workspace instance for ${workspaceId}`);
+            const cachedWs = this.#workspaces.get(workspaceId);
             if (cachedWs.owner !== requestingUserId) {
-                console.error(`Ownership mismatch for cached workspace ${workspaceKey}. Owner: ${cachedWs.owner}, Requester: ${requestingUserId}`);
+                console.error(`Ownership mismatch for cached workspace ${workspaceId}. Owner: ${cachedWs.owner}, Requester: ${requestingUserId}`);
                 return null;
             }
             return cachedWs;
         }
 
-        // Load from index
-        const entry = this.#indexStore.get(workspaceKey);
-        if (!this.#validateWorkspaceEntryForOpen(entry, workspaceKey, requestingUserId)) {
+        // Load from index using workspace ID
+        const entry = this.#indexStore.get(workspaceId);
+        if (!this.#validateWorkspaceEntryForOpen(entry, workspaceId, requestingUserId)) {
             return null; // Validation failed, details logged in helper
         }
 
@@ -249,12 +274,12 @@ class WorkspaceManager extends EventEmitter {
                 configStore: conf,
             });
 
-            this.#workspaces.set(workspaceKey, workspace);
-            debug(`Loaded and cached Workspace instance for ${workspaceKey}`);
-            this.#updateWorkspaceIndexEntry(workspaceKey, { lastAccessed: new Date().toISOString() });
+            this.#workspaces.set(workspaceId, workspace);
+            debug(`Loaded and cached Workspace instance for ${workspaceId}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { lastAccessed: new Date().toISOString() });
             return workspace;
         } catch (err) {
-            console.error(`openWorkspace failed: Could not load config or instantiate Workspace for ${workspaceKey}: ${err.message}`);
+            console.error(`openWorkspace failed: Could not load config or instantiate Workspace for ${workspaceId}: ${err.message}`);
             return null;
         }
     }
@@ -262,33 +287,45 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Closes a workspace, removing it from the memory cache after stopping it.
      * @param {string} userId - The owner identifier.
-     * @param {string} workspaceId - The workspace ID.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @returns {Promise<boolean>} True if closed or not loaded, false on failure to stop.
      */
-    async closeWorkspace(userId, workspaceId, requestingUserId) {
+    async closeWorkspace(userId, workspaceIdentifier, requestingUserId) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
-        this.#ensureRequiredParams({ userId, workspaceId, requestingUserId }, 'closeWorkspace');
+        this.#ensureRequiredParams({ userId, workspaceIdentifier: workspaceIdentifier, requestingUserId }, 'closeWorkspace');
 
-        const workspaceKey = `${userId}/${workspaceId}`;
+        // Resolve workspace identifier to ID
+        let workspaceId;
+        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
-        if (!this.#workspaces.has(workspaceKey)) {
-            debug(`closeWorkspace: Workspace ${workspaceKey} is not loaded in memory.`);
+        if (isWorkspaceId) {
+            workspaceId = workspaceIdentifier;
+        } else {
+            workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+            if (!workspaceId) {
+                debug(`closeWorkspace: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                return false;
+            }
+        }
+
+        if (!this.#workspaces.has(workspaceId)) {
+            debug(`closeWorkspace: Workspace ${workspaceId} is not loaded in memory.`);
             return true;
         }
 
-        const stopped = await this.stopWorkspace(userId, workspaceId, requestingUserId);
+        const stopped = await this.stopWorkspace(userId, workspaceIdentifier, requestingUserId);
         if (!stopped) {
             // stopWorkspace logs details, but we might want to indicate failure here too
-            console.warn(`closeWorkspace: Failed to stop workspace ${workspaceKey} before closing. It might still be in memory.`);
+            console.warn(`closeWorkspace: Failed to stop workspace ${workspaceId} before closing. It might still be in memory.`);
             // Depending on desired behavior, we might not delete from cache if stop failed.
             // For now, we proceed with deletion from cache.
         }
 
-        const deleted = this.#workspaces.delete(workspaceKey);
+        const deleted = this.#workspaces.delete(workspaceId);
         if (deleted) {
-            debug(`closeWorkspace: Removed workspace ${workspaceKey} from memory cache.`);
-            this.emit('workspace.closed', { workspaceKey, userId, workspaceId });
+            debug(`closeWorkspace: Removed workspace ${workspaceId} from memory cache.`);
+            this.emit('workspace.closed', { workspaceId, userId, workspaceIdentifier });
         }
         return deleted; // Or perhaps return `stopped && deleted`
     }
@@ -296,48 +333,60 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Starts an opened workspace.
      * @param {string} userId - The owner identifier.
-     * @param {string} workspaceId - The workspace ID.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @returns {Promise<Workspace|null>} The started Workspace instance or null on failure.
      */
-    async startWorkspace(userId, workspaceId, requestingUserId) {
+    async startWorkspace(userId, workspaceIdentifier, requestingUserId) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
         if (!requestingUserId) {
             requestingUserId = userId;
         }
 
+        this.#ensureRequiredParams({ userId, workspaceIdentifier: workspaceIdentifier, requestingUserId }, 'startWorkspace');
 
-        this.#ensureRequiredParams({ userId, workspaceId, requestingUserId }, 'startWorkspace');
+        // Resolve workspace identifier to ID
+        let workspaceId;
+        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
-        const workspaceKey = `${userId}/${workspaceId}`;
-        debug(`Starting workspace ${workspaceKey} for requestingUserId: ${requestingUserId}`);
-        let workspace = this.#workspaces.get(workspaceKey);
+        if (isWorkspaceId) {
+            workspaceId = workspaceIdentifier;
+        } else {
+            workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+            if (!workspaceId) {
+                debug(`startWorkspace: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                return null;
+            }
+        }
+
+        debug(`Starting workspace ${workspaceId} (identifier: ${workspaceIdentifier}) for requestingUserId: ${requestingUserId}`);
+        let workspace = this.#workspaces.get(workspaceId);
 
         if (!workspace) {
-            debug(`startWorkspace: Workspace ${workspaceKey} not found in memory, attempting to open...`);
-            workspace = await this.openWorkspace(userId, workspaceId, requestingUserId);
+            debug(`startWorkspace: Workspace ${workspaceId} not found in memory, attempting to open...`);
+            workspace = await this.openWorkspace(userId, workspaceIdentifier, requestingUserId);
             if (!workspace) {
-                debug(`startWorkspace: Could not open workspace ${userId}/${workspaceId}.`);
+                debug(`startWorkspace: Could not open workspace ${workspaceIdentifier} for user ${userId}.`);
                 return null;
             }
         }
 
         if (workspace.status === WORKSPACE_STATUS_CODES.ACTIVE) {
-            debug(`Workspace ${workspaceKey} is already active.`);
+            debug(`Workspace ${workspaceId} is already active.`);
             return workspace;
         }
 
-        debug(`Starting workspace ${workspaceKey}...`);
+        debug(`Starting workspace ${workspaceId}...`);
         try {
             await workspace.start();
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ACTIVE, lastAccessed: new Date().toISOString() });
-            debug(`Workspace ${workspaceKey} started successfully.`);
-            this.emit('workspace.started', { workspaceKey, workspace: workspace.toJSON() });
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.ACTIVE, lastAccessed: new Date().toISOString() });
+            debug(`Workspace ${workspaceId} started successfully.`);
+            this.emit('workspace.started', { workspaceId, workspace: workspace.toJSON() });
             return workspace;
         } catch (err) {
-            console.error(`Failed to start workspace ${workspaceKey}: ${err.message}`);
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ERROR });
-            this.emit('workspace.startFailed', { workspaceKey, error: err.message });
+            console.error(`Failed to start workspace ${workspaceId}: ${err.message}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.ERROR });
+            this.emit('workspace.startFailed', { workspaceId, error: err.message });
             return null;
         }
     }
@@ -345,52 +394,65 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Stops a loaded and active workspace.
      * @param {string} userId - The owner identifier.
-     * @param {string} workspaceId - The workspace ID.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @returns {Promise<boolean>} True if stopped or already inactive/not loaded, false on failure.
      */
-    async stopWorkspace(userId, workspaceId, requestingUserId) {
+    async stopWorkspace(userId, workspaceIdentifier, requestingUserId) {
         if (!this.#initialized) throw Error('WorkspaceManager not initialized');
         if (!requestingUserId) {
             requestingUserId = userId;
         }
-        this.#ensureRequiredParams({ userId, workspaceId, requestingUserId }, 'stopWorkspace');
+        this.#ensureRequiredParams({ userId, workspaceIdentifier: workspaceIdentifier, requestingUserId }, 'stopWorkspace');
 
-        const workspaceKey = `${userId}/${workspaceId}`;
-        const workspace = this.#workspaces.get(workspaceKey);
+        // Resolve workspace identifier to ID
+        let workspaceId;
+        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+
+        if (isWorkspaceId) {
+            workspaceId = workspaceIdentifier;
+        } else {
+            workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+            if (!workspaceId) {
+                debug(`stopWorkspace: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                return false;
+            }
+        }
+
+        const workspace = this.#workspaces.get(workspaceId);
 
         if (!workspace) {
-            debug(`Workspace ${workspaceKey} is not loaded in memory, considered stopped.`);
+            debug(`Workspace ${workspaceId} is not loaded in memory, considered stopped.`);
             // Potentially update index if it was marked ACTIVE but not in memory (e.g. after a crash)
-            const entry = this.#indexStore.get(workspaceKey);
+            const entry = this.#indexStore.get(workspaceId);
             if (entry && entry.owner === requestingUserId && entry.status === WORKSPACE_STATUS_CODES.ACTIVE) {
-                this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.INACTIVE });
-                debug(`Marked workspace ${workspaceKey} (not in memory) as INACTIVE in index.`);
+                this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.INACTIVE });
+                debug(`Marked workspace ${workspaceId} (not in memory) as INACTIVE in index.`);
             }
             return true;
         }
 
         if (workspace.owner !== requestingUserId) {
-            console.error(`stopWorkspace: User ${requestingUserId} not owner of ${workspaceKey}. Workspace owner: ${workspace.owner}`);
+            console.error(`stopWorkspace: User ${requestingUserId} not owner of ${workspaceId}. Workspace owner: ${workspace.owner}`);
             return false;
         }
 
         if ([WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.AVAILABLE].includes(workspace.status)) {
-            debug(`Workspace ${workspaceKey} is already stopped (status: ${workspace.status}).`);
+            debug(`Workspace ${workspaceId} is already stopped (status: ${workspace.status}).`);
             return true;
         }
 
-        debug(`Stopping workspace ${workspaceKey}...`);
+        debug(`Stopping workspace ${workspaceId}...`);
         try {
             await workspace.stop();
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.INACTIVE }, requestingUserId);
-            debug(`Workspace ${workspaceKey} stopped successfully.`);
-            this.emit('workspace.stopped', { workspaceKey });
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.INACTIVE }, requestingUserId);
+            debug(`Workspace ${workspaceId} stopped successfully.`);
+            this.emit('workspace.stopped', { workspaceId });
             return true;
         } catch (err) {
-            console.error(`Failed to stop workspace ${workspaceKey}: ${err.message}`);
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ERROR }, requestingUserId);
-            this.emit('workspace.stopFailed', { workspaceKey, error: err.message });
+            console.error(`Failed to stop workspace ${workspaceId}: ${err.message}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.ERROR }, requestingUserId);
+            this.emit('workspace.stopFailed', { workspaceId, error: err.message });
             return false;
         }
     }
@@ -398,45 +460,58 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Removes a workspace from the index and optionally deletes its data.
      * @param {string} userId - The owner identifier.
-     * @param {string} workspaceId - The workspace ID.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @param {boolean} [destroyData=false] - Whether to delete the workspace directory.
      * @returns {Promise<boolean>} True if successful, false otherwise.
      */
-    async removeWorkspace(userId, workspaceId, requestingUserId, destroyData = false) {
+    async removeWorkspace(userId, workspaceIdentifier, requestingUserId, destroyData = false) {
         if (!this.#initialized) throw new Error('WorkspaceManager not initialized');
         if (!requestingUserId) {
             requestingUserId = userId;
         }
-        this.#ensureRequiredParams({ userId, workspaceId, requestingUserId }, 'removeWorkspace');
+        this.#ensureRequiredParams({ userId, workspaceIdentifier: workspaceIdentifier, requestingUserId }, 'removeWorkspace');
 
-        const workspaceKey = `${userId}/${workspaceId}`;
-        debug(`Removing workspace: ${workspaceKey}, destroyData: ${destroyData}, requested by ${requestingUserId}`);
+        // Resolve workspace identifier to ID
+        let workspaceId;
+        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+
+        if (isWorkspaceId) {
+            workspaceId = workspaceIdentifier;
+        } else {
+            workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+            if (!workspaceId) {
+                debug(`removeWorkspace: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                return false;
+            }
+        }
+
+        debug(`Removing workspace: ${workspaceId} (identifier: ${workspaceIdentifier}), destroyData: ${destroyData}, requested by ${requestingUserId}`);
 
         // Prevent removal of universe workspace
-        if (this.#isUniverseWorkspace(workspaceKey)) {
+        if (this.#isUniverseWorkspace(workspaceId)) {
             throw new Error('Cannot remove the universe workspace');
         }
 
-        const entry = this.#indexStore.get(workspaceKey);
+        const entry = this.#indexStore.get(workspaceId);
         if (!entry) {
-            console.warn(`removeWorkspace failed: Workspace ${workspaceKey} not found in index.`);
+            console.warn(`removeWorkspace failed: Workspace ${workspaceId} not found in index.`);
             return false;
         }
         if (entry.owner !== requestingUserId) {
-            console.error(`removeWorkspace failed: User ${requestingUserId} is not the owner of ${workspaceKey}. Owner: ${entry.owner}`);
+            console.error(`removeWorkspace failed: User ${requestingUserId} is not the owner of ${workspaceId}. Owner: ${entry.owner}`);
             return false;
         }
 
         // Attempt to stop and remove from cache first
-        if (this.#workspaces.has(workspaceKey)) {
-            const stopped = await this.stopWorkspace(userId, workspaceId, requestingUserId);
+        if (this.#workspaces.has(workspaceId)) {
+            const stopped = await this.stopWorkspace(userId, workspaceIdentifier, requestingUserId);
             if (!stopped) {
-                console.error(`removeWorkspace: Could not stop workspace ${workspaceKey} before removal. Proceeding with index removal.`);
+                console.error(`removeWorkspace: Could not stop workspace ${workspaceId} before removal. Proceeding with index removal.`);
                 // Decide if we should abort or continue. For now, continue.
             }
-            this.#workspaces.delete(workspaceKey);
-            debug(`Removed workspace ${workspaceKey} from memory cache during removal process.`);
+            this.#workspaces.delete(workspaceId);
+            debug(`Removed workspace ${workspaceId} from memory cache during removal process.`);
         }
 
         let deletionError = null;
@@ -456,17 +531,21 @@ class WorkspaceManager extends EventEmitter {
             }
         }
 
-        this.#indexStore.delete(workspaceKey);
+        // Remove from name index
+        const nameKey = `${userId}/${entry.name}`;
+        this.#nameIndex.delete(nameKey);
+
+        this.#indexStore.delete(workspaceId);
         this.emit('workspace.removed', {
             userId,
             workspaceId,
-            workspaceKey,
+            workspaceIdentifier,
             requestingUserId,
             destroyData,
             success: !deletionError, // Success is true if data destruction didn't fail (or wasn't attempted)
             error: deletionError ? deletionError.message : null
         });
-        debug(`Workspace ${workspaceKey} removed from index for owner ${userId}.`);
+        debug(`Workspace ${workspaceId} removed from index for owner ${userId}.`);
         return !deletionError; // Return based on data destruction outcome if attempted
     }
 
@@ -480,6 +559,98 @@ class WorkspaceManager extends EventEmitter {
      */
     getAllWorkspaces() {
         return this.#indexStore?.store || {};
+    }
+
+    /**
+     * Resolves a workspace ID from a workspace name and user ID
+     * @param {string} userId - The user ID
+     * @param {string} workspaceName - The workspace name
+     * @returns {string|null} The workspace ID if found, null otherwise
+     */
+    resolveWorkspaceId(userId, workspaceName) {
+        const nameKey = `${userId}/${workspaceName}`;
+        return this.#nameIndex.get(nameKey) || null;
+    }
+
+    /**
+     * Gets a workspace by ID directly
+     * @param {string} workspaceId - The workspace ID
+     * @param {string} requestingUserId - The ULID of the user making the request
+     * @returns {Promise<Workspace|null>} The loaded Workspace instance
+     */
+    async getWorkspaceById(workspaceId, requestingUserId) {
+        if (!this.#initialized) {
+            throw new Error('WorkspaceManager not initialized. Cannot get workspace by ID.');
+        }
+        if (!workspaceId) {
+            throw new Error('workspaceId is required to get workspace by ID');
+        }
+
+        // Check if workspace exists in index
+        const entry = this.#indexStore.get(workspaceId);
+        if (!entry) {
+            debug(`getWorkspaceById: Workspace ${workspaceId} not found in index`);
+            return null;
+        }
+
+        // Check ownership if requesting user is provided
+        if (requestingUserId && entry.owner !== requestingUserId) {
+            debug(`getWorkspaceById: User ${requestingUserId} is not the owner of workspace ${workspaceId}`);
+            return null;
+        }
+
+        // Return from cache if available
+        if (this.#workspaces.has(workspaceId)) {
+            debug(`Returning cached Workspace instance for ${workspaceId}`);
+            return this.#workspaces.get(workspaceId);
+        }
+
+        // Load workspace
+        try {
+            const conf = new Conf({
+                configName: path.basename(entry.configPath, '.json'),
+                cwd: path.dirname(entry.configPath)
+            });
+
+            const workspace = new Workspace({
+                rootPath: entry.rootPath,
+                configStore: conf,
+            });
+
+            this.#workspaces.set(workspaceId, workspace);
+            debug(`Loaded and cached Workspace instance for ${workspaceId}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { lastAccessed: new Date().toISOString() });
+            return workspace;
+        } catch (err) {
+            console.error(`getWorkspaceById failed: Could not load config or instantiate Workspace for ${workspaceId}: ${err.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * Gets a workspace by name (resolves to ID first)
+     * @param {string} userId - The user ID
+     * @param {string} workspaceName - The workspace name
+     * @param {string} requestingUserId - The ULID of the user making the request
+     * @returns {Promise<Workspace|null>} The loaded Workspace instance
+     */
+    async getWorkspaceByName(userId, workspaceName, requestingUserId) {
+        if (!this.#initialized) {
+            throw new Error('WorkspaceManager not initialized. Cannot get workspace by name.');
+        }
+        if (!userId || !workspaceName) {
+            throw new Error('userId and workspaceName are required to get workspace by name');
+        }
+
+        // Resolve workspace ID from name
+        const workspaceId = this.resolveWorkspaceId(userId, workspaceName);
+        if (!workspaceId) {
+            debug(`getWorkspaceByName: No workspace found with name "${workspaceName}" for user ${userId}`);
+            return null;
+        }
+
+        // Get workspace by ID
+        return this.getWorkspaceById(workspaceId, requestingUserId || userId);
     }
 
     /**
@@ -728,6 +899,80 @@ class WorkspaceManager extends EventEmitter {
      */
 
     /**
+     * Parse remote workspace reference format: user.email@host:workspace.name
+     * @param {string} remoteRef - Remote workspace reference
+     * @returns {Object|null} Parsed remote workspace info or null if invalid
+     * @static
+     */
+    static parseRemoteWorkspaceRef(remoteRef) {
+        if (!remoteRef || typeof remoteRef !== 'string') {
+            return null;
+        }
+
+        // Format: user.email@host:workspace.name
+        const match = remoteRef.match(/^([^@]+)@([^:]+):(.+)$/);
+        if (!match) {
+            return null;
+        }
+
+        const [, userEmail, host, workspaceName] = match;
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(userEmail)) {
+            return null;
+        }
+
+        return {
+            userEmail,
+            host,
+            workspaceName,
+            original: remoteRef
+        };
+    }
+
+    /**
+     * Resolve remote workspace reference to internal format
+     * @param {string} remoteRef - Remote workspace reference
+     * @param {Function} userResolver - Function to resolve user.email to user.id
+     * @param {Function} workspaceResolver - Function to resolve workspace.name to workspace.id
+     * @returns {Promise<Object|null>} Resolved remote workspace info or null if invalid
+     * @static
+     */
+    static async resolveRemoteWorkspaceRef(remoteRef, userResolver, workspaceResolver) {
+        const parsed = WorkspaceManager.parseRemoteWorkspaceRef(remoteRef);
+        if (!parsed) {
+            return null;
+        }
+
+        try {
+            // Resolve user email to user ID
+            const userId = await userResolver(parsed.userEmail);
+            if (!userId) {
+                debug(`Failed to resolve user email to ID: ${parsed.userEmail}`);
+                return null;
+            }
+
+            // Resolve workspace name to workspace ID
+            const workspaceId = await workspaceResolver(userId, parsed.workspaceName);
+            if (!workspaceId) {
+                debug(`Failed to resolve workspace name to ID: ${parsed.workspaceName} for user ${userId}`);
+                return null;
+            }
+
+            return {
+                ...parsed,
+                userId,
+                workspaceId,
+                resolved: `${userId}@${parsed.host}:${workspaceId}`
+            };
+        } catch (error) {
+            debug(`Error resolving remote workspace reference: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
      * Get a random color for workspace
      * @returns {string} Random color
      * @static
@@ -763,9 +1008,27 @@ class WorkspaceManager extends EventEmitter {
      * Private Methods
      */
 
-    #sanitizeWorkspaceId(workspaceId) {
-        if (!workspaceId) return 'untitled';
-        let sanitized = workspaceId.toString().toLowerCase().trim();
+    /**
+     * Rebuilds the name index from existing workspaces in the index store
+     * @private
+     */
+    async #rebuildNameIndex() {
+        this.#nameIndex.clear();
+        const allWorkspaces = this.#indexStore.store;
+
+        for (const [workspaceId, workspaceEntry] of Object.entries(allWorkspaces)) {
+            if (workspaceEntry && workspaceEntry.name && workspaceEntry.owner) {
+                const nameKey = `${workspaceEntry.owner}/${workspaceEntry.name}`;
+                this.#nameIndex.set(nameKey, workspaceId);
+            }
+        }
+
+        debug(`Rebuilt name index with ${this.#nameIndex.size} workspace name mappings`);
+    }
+
+    #sanitizeWorkspaceName(workspaceName) {
+        if (!workspaceName) return 'untitled';
+        let sanitized = workspaceName.toString().toLowerCase().trim();
 
         // Remove all special characters except "_", "-"
         sanitized = sanitized.replace(/[^a-z0-9-_]/g, '');
@@ -773,13 +1036,11 @@ class WorkspaceManager extends EventEmitter {
         // Replace spaces with hyphens
         sanitized = sanitized.replace(/\s+/g, '-');
 
-        // Return the sanitized workspaceId
+        // Return the sanitized workspaceName
         return sanitized;
     }
 
-    #constructWorkspaceKey(userId, workspaceId) {
-        return `${userId}/${workspaceId}`;
-    }
+
 
     /**
      * Pre-creates all subdirectories defined in WORKSPACE_DIRECTORIES.
@@ -815,29 +1076,29 @@ class WorkspaceManager extends EventEmitter {
         const allWorkspaces = this.#indexStore.store;
         let requiresSave = false; // To track if any changes were made to the index
 
-        for (const workspaceKey in allWorkspaces) {
-            const workspaceEntry = allWorkspaces[workspaceKey];
+        for (const workspaceId in allWorkspaces) {
+            const workspaceEntry = allWorkspaces[workspaceId];
             // Basic validation of the entry structure
             if (!workspaceEntry || typeof workspaceEntry !== 'object' || !workspaceEntry.id) {
-                debug(`Skipping invalid or incomplete workspace entry for key: ${workspaceKey}`);
+                debug(`Skipping invalid or incomplete workspace entry for ID: ${workspaceId}`);
                 continue;
             }
 
-            debug(`Scanning workspace ${workspaceKey} (ID: ${workspaceEntry.id}, Owner: ${workspaceEntry.owner})`);
+            debug(`Scanning workspace ${workspaceId} (Name: ${workspaceEntry.name}, Owner: ${workspaceEntry.owner})`);
             let currentStatus = workspaceEntry.status;
             let newStatus = currentStatus;
 
             // Skip already processed states unless we need to re-validate
             if ([WORKSPACE_STATUS_CODES.REMOVED, WORKSPACE_STATUS_CODES.DESTROYED].includes(currentStatus)) {
-                debug(`Workspace ${workspaceKey} is in status ${currentStatus}, skipping.`);
+                debug(`Workspace ${workspaceId} is in status ${currentStatus}, skipping.`);
                 continue;
             }
 
             if (!workspaceEntry.rootPath || !existsSync(workspaceEntry.rootPath)) {
-                debug(`Workspace path not found for ${workspaceKey} at path ${workspaceEntry.rootPath}, marking as NOT_FOUND`);
+                debug(`Workspace path not found for ${workspaceId} at path ${workspaceEntry.rootPath}, marking as NOT_FOUND`);
                 newStatus = WORKSPACE_STATUS_CODES.NOT_FOUND;
             } else if (!workspaceEntry.configPath || !existsSync(workspaceEntry.configPath)) {
-                debug(`Workspace config not found for ${workspaceKey} at path ${workspaceEntry.configPath}, marking as ERROR`);
+                debug(`Workspace config not found for ${workspaceId} at path ${workspaceEntry.configPath}, marking as ERROR`);
                 newStatus = WORKSPACE_STATUS_CODES.ERROR;
             } else if (![WORKSPACE_STATUS_CODES.ACTIVE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ERROR, WORKSPACE_STATUS_CODES.NOT_FOUND].includes(currentStatus)) {
                 // If it's not in a definitive error/active/inactive state, mark as available (implies it passed path checks)
@@ -851,9 +1112,9 @@ class WorkspaceManager extends EventEmitter {
 
 
             if (newStatus !== currentStatus) {
-                this.#updateWorkspaceIndexEntry(workspaceKey, { status: newStatus });
+                this.#updateWorkspaceIndexEntry(workspaceId, { status: newStatus });
                 requiresSave = true; // Conf usually saves on set, but this flag is for conceptual grouping.
-                debug(`Updated status for ${workspaceKey} from ${currentStatus} to ${newStatus}`);
+                debug(`Updated status for ${workspaceId} from ${currentStatus} to ${newStatus}`);
             }
         }
 
@@ -867,28 +1128,28 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Validates a workspace index entry for opening.
      * @param {Object} entry - The workspace index entry.
-     * @param {string} workspaceKey - The key for the workspace.
+     * @param {string} workspaceId - The ID of the workspace.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @returns {boolean} True if valid, false otherwise.
      * @private
      */
-    #validateWorkspaceEntryForOpen(entry, workspaceKey, requestingUserId) {
+    #validateWorkspaceEntryForOpen(entry, workspaceId, requestingUserId) {
         if (!entry) {
-            debug(`openWorkspace failed: Workspace ${workspaceKey} not found in index.`);
+            debug(`openWorkspace failed: Workspace ${workspaceId} not found in index.`);
             return false;
         }
         if (entry.owner !== requestingUserId) {
-            console.warn(`openWorkspace failed: User ${requestingUserId} is not the owner of workspace ${workspaceKey}. Stored owner: ${entry.owner}`);
+            console.warn(`openWorkspace failed: User ${requestingUserId} is not the owner of workspace ${workspaceId}. Stored owner: ${entry.owner}`);
             return false;
         }
         if (!entry.rootPath || !existsSync(entry.rootPath)) {
-            console.warn(`openWorkspace failed: Workspace ${workspaceKey} rootPath is missing or does not exist: ${entry.rootPath}`);
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.NOT_FOUND });
+            console.warn(`openWorkspace failed: Workspace ${workspaceId} rootPath is missing or does not exist: ${entry.rootPath}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.NOT_FOUND });
             return false;
         }
         if (!entry.configPath || !existsSync(entry.configPath)) {
-            console.warn(`openWorkspace failed: Workspace ${workspaceKey} configPath is missing or does not exist: ${entry.configPath}`);
-            this.#updateWorkspaceIndexEntry(workspaceKey, { status: WORKSPACE_STATUS_CODES.ERROR });
+            console.warn(`openWorkspace failed: Workspace ${workspaceId} configPath is missing or does not exist: ${entry.configPath}`);
+            this.#updateWorkspaceIndexEntry(workspaceId, { status: WORKSPACE_STATUS_CODES.ERROR });
             return false;
         }
         const validOpenStatuses = [
@@ -898,7 +1159,7 @@ class WorkspaceManager extends EventEmitter {
             // WORKSPACE_STATUS_CODES.ERROR, // Should we allow opening an errored workspace? Perhaps if paths are now valid.
         ];
         if (!validOpenStatuses.includes(entry.status)) {
-            console.warn(`openWorkspace failed: Workspace ${workspaceKey} status is invalid (${entry.status}). Must be one of: ${validOpenStatuses.join(', ')}.`);
+            console.warn(`openWorkspace failed: Workspace ${workspaceId} status is invalid (${entry.status}). Must be one of: ${validOpenStatuses.join(', ')}.`);
             // Don't change status here, as it might be a temporary issue or a state we don't want to override.
             return false;
         }
@@ -908,28 +1169,28 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Helper to update a workspace's entry in the index store.
      * Ensures owner check if requestingUserId is provided for sensitive updates.
-     * @param {string} workspaceKey - The key of the workspace in the index.
+     * @param {string} workspaceId - The ID of the workspace in the index.
      * @param {Object} updates - Key-value pairs to update in the index entry.
      * @param {string} [requestingUserId] - Optional. If provided, validates ownership before certain updates.
      * @private
      */
-    #updateWorkspaceIndexEntry(workspaceKey, updates, requestingUserId = null) {
-        const currentEntry = this.#indexStore.get(workspaceKey);
+    #updateWorkspaceIndexEntry(workspaceId, updates, requestingUserId = null) {
+        const currentEntry = this.#indexStore.get(workspaceId);
         if (!currentEntry) {
-            debug(`Cannot update index for ${workspaceKey}: entry not found.`);
+            debug(`Cannot update index for ${workspaceId}: entry not found.`);
             return;
         }
 
         // If requestingUserId is provided (typically for status changes like stop/start),
         // ensure the action is performed by the owner.
         if (requestingUserId && currentEntry.owner !== requestingUserId) {
-            console.error(`Index update for ${workspaceKey} denied: User ${requestingUserId} is not the owner. Owner: ${currentEntry.owner}`);
+            console.error(`Index update for ${workspaceId} denied: User ${requestingUserId} is not the owner. Owner: ${currentEntry.owner}`);
             return;
         }
 
         const updatedEntry = { ...currentEntry, ...updates, updated: new Date().toISOString() };
-        this.#indexStore.set(workspaceKey, updatedEntry);
-        debug(`Updated index entry for ${workspaceKey} with: ${JSON.stringify(updates)}`);
+        this.#indexStore.set(workspaceId, updatedEntry);
+        debug(`Updated index entry for ${workspaceId} with: ${JSON.stringify(updates)}`);
     }
 
     /**
@@ -954,12 +1215,12 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Checks if a workspace is the universe workspace
-     * @param {string} workspaceKey - The workspace key to check
+     * @param {string} workspaceId - The workspace ID to check
      * @returns {boolean} True if the workspace is the universe workspace
      * @private
      */
-    #isUniverseWorkspace(workspaceKey) {
-        const entry = this.#indexStore.get(workspaceKey);
+    #isUniverseWorkspace(workspaceId) {
+        const entry = this.#indexStore.get(workspaceId);
         return entry && entry.type === 'universe';
     }
 }

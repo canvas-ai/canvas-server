@@ -3,7 +3,6 @@
 // Utils
 import path from 'path';
 import EventEmitter from 'eventemitter2';
-import { generateULID } from '../../../utils/id.js';
 
 // Logging
 import logger, { createDebug } from '../../../utils/log/index.js';
@@ -45,6 +44,7 @@ class User extends EventEmitter {
         super(options.eventEmitterOptions || {});
 
         // Validate required options
+        if (!options.id) { throw new Error('ID is required'); }
         if (!options.name) { throw new Error('Name is required'); }
         if (!options.email) { throw new Error('Email is required'); }
         if (!options.homePath) { throw new Error('Home path is required'); }
@@ -54,7 +54,7 @@ class User extends EventEmitter {
          * User properties
          */
 
-        this.#id = options.id || generateULID('', 8, ''); // Generate 8-char lowercase nanoid if not provided
+        this.#id = options.id;
         this.#name = options.name;
         this.#email = options.email;
         this.#authMethod = options.authMethod || 'local';
