@@ -28,7 +28,11 @@ export default function setupWebSocketHandlers(fastify) {
       attempt.count += 1;
       connectionAttempts.set(clientIp, attempt);
       if (attempt.count > 10 && (Date.now() - attempt.timestamp) < 60_000) {
-        return next(new Error('Too many connection attempts'));
+        const error = new Error('Too many connection attempts');
+        next(error);
+        // Force disconnect to close TCP connection
+        socket.disconnect(true);
+        return;
       }
       if ((Date.now() - attempt.timestamp) > 60_000) {
         attempt.count = 1;
@@ -37,25 +41,46 @@ export default function setupWebSocketHandlers(fastify) {
 
       // extract bearer / ws auth token
       const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.replace('Bearer ', '');
-      if (!token) return next(new Error('Authentication token required'));
+      if (!token) {
+        const error = new Error('Authentication token required');
+        next(error);
+        // Force disconnect to close TCP connection
+        socket.disconnect(true);
+        return;
+      }
 
       let user;
       if (token.startsWith('canvas-')) {
         const apiRes = await fastify.authService.verifyApiToken(token);
-        if (!apiRes) return next(new Error('Invalid API token'));
+        if (!apiRes) {
+          const error = new Error('Invalid API token');
+          next(error);
+          // Force disconnect to close TCP connection
+          socket.disconnect(true);
+          return;
+        }
         user = await fastify.userManager.getUserById(apiRes.userId);
       } else {
         const decoded = fastify.jwt.verify(token);
         user = await fastify.userManager.getUserById(decoded.sub);
       }
 
-      if (!user || user.status !== 'active') return next(new Error('Invalid user'));
+      if (!user || user.status !== 'active') {
+        const error = new Error('Invalid user');
+        next(error);
+        // Force disconnect to close TCP connection
+        socket.disconnect(true);
+        return;
+      }
 
       socket.user = { id: user.id, email: user.email.toLowerCase() };
       socket.connectionId = connectionId;
       next();
     } catch (err) {
-      next(new Error(`Auth error: ${err.message}`));
+      const error = new Error(`Auth error: ${err.message}`);
+      next(error);
+      // Force disconnect to close TCP connection
+      socket.disconnect(true);
     }
   });
 

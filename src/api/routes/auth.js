@@ -461,7 +461,7 @@ export default async function authRoutes(fastify, options) {
 
   // Get current user endpoint
   fastify.get('/me', {
-    onRequest: [fastify.authenticate]
+    onRequest: [fastify.authenticateCustom]
 
   }, async (request, reply) => {
     // Check if reply has already been sent by auth middleware or other mechanism

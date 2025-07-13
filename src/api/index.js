@@ -89,6 +89,43 @@ export async function createServer(options = {}) {
     server.verifyApiToken
   ], { relation: 'or' }));
 
+  // Create a custom authentication decorator that handles errors properly
+  server.decorate('authenticateCustom', async (request, reply) => {
+    try {
+      // Try JWT first
+      await server.verifyJWT(request, reply);
+      return; // Success
+    } catch (jwtError) {
+      console.log(`[Auth/Custom] JWT failed: ${jwtError.message}`);
+
+      try {
+        // Try API token if JWT fails
+        await server.verifyApiToken(request, reply);
+        return; // Success
+      } catch (apiError) {
+        console.log(`[Auth/Custom] API token failed: ${apiError.message}`);
+
+        // Both failed - send error response and close connection
+        const statusCode = apiError.statusCode || 401;
+        reply.header('Connection', 'close');
+
+        const response = new ResponseObject();
+        response.error(apiError.message || 'Authentication failed', null, [apiError], statusCode);
+        reply.code(statusCode).send(response.getResponse());
+
+        // Force close the connection after sending the response
+        setImmediate(() => {
+          console.log('Forcing connection close after authentication failure');
+          if (reply.raw.socket && !reply.raw.socket.destroyed) {
+            reply.raw.socket.end();
+          }
+        });
+
+        return; // Don't throw - we've handled the error
+      }
+    }
+  });
+
   // Make managers available
   if (options.userManager) server.decorate('userManager', options.userManager);
   if (options.workspaceManager) server.decorate('workspaceManager', options.workspaceManager);
@@ -188,16 +225,45 @@ export async function createServer(options = {}) {
     reply.sendFile('index.html');
   });
 
-  // Global error handler
+    // Global error handler
   server.setErrorHandler((error, request, reply) => {
-    server.log.error(error);
+    server.log.error('Global error handler called:', error);
+    console.log('Global error handler called:', error.message, 'statusCode:', error.statusCode);
 
     // Only send error response if a response hasn't been sent yet
     if (!reply.sent) {
-      const response = new ResponseObject(reply);
       const statusCode = error.statusCode || 500;
-      // Use the generic error method from our ResponseObject
-      response.error(error.message || 'Something went wrong', null, [error], statusCode);
+
+      // For authentication errors (401), close the connection to prevent resource exhaustion
+      if (statusCode === 401) {
+        // Set Connection: close header to signal connection should be closed
+        reply.header('Connection', 'close');
+        server.log.info('Authentication failed - closing connection');
+        console.log('Authentication failed - closing connection');
+
+                // Create and send the error response
+        const response = new ResponseObject();
+        response.error(error.message || 'Authentication failed', null, statusCode);
+
+        // Send the response and close the connection immediately after
+        reply.code(statusCode).send(response.getResponse());
+
+        // Force close the connection after sending the response
+        setImmediate(() => {
+          server.log.info('Forcing connection close after authentication failure');
+          console.log('Forcing connection close after authentication failure');
+          if (reply.raw.socket && !reply.raw.socket.destroyed) {
+            reply.raw.socket.end();
+          }
+        });
+      } else {
+        // Use the generic error method from our ResponseObject for non-auth errors
+        const response = new ResponseObject();
+        response.error(error.message || 'Something went wrong', null, [error], statusCode);
+        reply.code(response.statusCode).send(response.getResponse());
+      }
+    } else {
+      console.log('Reply already sent - not handling error');
     }
   });
 
