@@ -302,7 +302,19 @@ class ContextManager extends EventEmitter {
             const ownedPrefix = `${accessingUserId}/`;
             for (const [key, contextInstance] of this.#contexts) {
                 if (key.startsWith(ownedPrefix)) {
-                    userContextsArray.push(contextInstance.toJSON());
+                    // Resolve owner ID to user email
+                    try {
+                        const ownerUser = await this.#workspaceManager.userManager.getUser(contextInstance.userId);
+                        const contextWithOwnerEmail = {
+                            ...contextInstance.toJSON(),
+                            ownerEmail: ownerUser.email
+                        };
+                        userContextsArray.push(contextWithOwnerEmail);
+                    } catch (error) {
+                        debug(`Failed to resolve owner email for in-memory context ${contextInstance.id}: ${error.message}`);
+                        // Fallback to original entry if user resolution fails
+                        userContextsArray.push(contextInstance.toJSON());
+                    }
                     processedKeys.add(key);
                 }
             }
@@ -323,7 +335,19 @@ class ContextManager extends EventEmitter {
 
                     // Check if it's an owned context (not already in memory)
                     if (key.startsWith(ownedPrefix)) {
-                        userContextsArray.push(storedContextData);
+                        // Resolve owner ID to user email
+                        try {
+                            const ownerUser = await this.#workspaceManager.userManager.getUser(storedContextData.userId);
+                            const contextWithOwnerEmail = {
+                                ...storedContextData,
+                                ownerEmail: ownerUser.email
+                            };
+                            userContextsArray.push(contextWithOwnerEmail);
+                        } catch (error) {
+                            debug(`Failed to resolve owner email for context ${storedContextData.id}: ${error.message}`);
+                            // Fallback to original entry if user resolution fails
+                            userContextsArray.push(storedContextData);
+                        }
                         processedKeys.add(key);
                     } else {
                         // 3. Check if it's a context shared with the accessingUserId
@@ -333,11 +357,24 @@ class ContextManager extends EventEmitter {
                             // The accessingUserId has some level of access to this context.
                             // We can add a flag or modify the data slightly if needed to indicate it's a shared context.
                             // For now, just add the raw data.
-                            userContextsArray.push({
-                                ...storedContextData,
-                                isShared: true, // Indicate that this context is accessed via a share
-                                sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
-                            });
+                            try {
+                                const ownerUser = await this.#workspaceManager.userManager.getUser(storedContextData.userId);
+                                const contextWithOwnerEmail = {
+                                    ...storedContextData,
+                                    ownerEmail: ownerUser.email,
+                                    isShared: true, // Indicate that this context is accessed via a share
+                                    sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
+                                };
+                                userContextsArray.push(contextWithOwnerEmail);
+                            } catch (error) {
+                                debug(`Failed to resolve owner email for shared context ${storedContextData.id}: ${error.message}`);
+                                // Fallback to original entry if user resolution fails
+                                userContextsArray.push({
+                                    ...storedContextData,
+                                    isShared: true, // Indicate that this context is accessed via a share
+                                    sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
+                                });
+                            }
                             processedKeys.add(key); // Mark as processed to avoid duplicates if logic changes
                         }
                     }

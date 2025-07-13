@@ -216,6 +216,12 @@ class WorkspaceManager extends EventEmitter {
     }
 
     /**
+     * Getters
+     */
+
+    get userManager() { return this.#userManager; }
+
+    /**
      * Private helper to construct workspace index key
      * @param {string} userId - User ID
      * @param {string} workspaceId - Workspace ID
@@ -309,7 +315,7 @@ class WorkspaceManager extends EventEmitter {
         const host = options.host || DEFAULT_HOST;
 
         // Generate unique workspace ID
-        const workspaceId = generateUUID();
+        const workspaceId = options.id || generateUUID();
 
         // Check if workspace name already exists for this user on this host
         const referenceKey = this.constructWorkspaceReference(userId, workspaceName, host);
@@ -345,7 +351,7 @@ class WorkspaceManager extends EventEmitter {
             label: isUniverse ? 'Universe' : (options.label || workspaceName),
             description: options.description || '',
             owner: ownerId,
-            color: options.color || '#3b82f6',
+            color: isUniverse ? '#ffffff' : (options.color || this.getRandomColor()),
             type: isUniverse ? 'universe' : 'workspace',
             status: 'inactive',
             host: host, // Add host field to workspace data
@@ -1042,7 +1048,19 @@ class WorkspaceManager extends EventEmitter {
                     // More flexible host filtering - if workspace has no host field, assume it's the default host
                     const workspaceHost = workspaceEntry.host || DEFAULT_HOST;
                     if (!host || workspaceHost === host) {
-                        userWorkspaceEntries.push(workspaceEntry);
+                        // Resolve owner ID to user email
+                        try {
+                            const ownerUser = await this.#userManager.getUser(workspaceEntry.owner);
+                            const workspaceWithOwnerEmail = {
+                                ...workspaceEntry,
+                                ownerEmail: ownerUser.email
+                            };
+                            userWorkspaceEntries.push(workspaceWithOwnerEmail);
+                        } catch (error) {
+                            debug(`Failed to resolve owner email for workspace ${workspaceEntry.id}: ${error.message}`);
+                            // Fallback to original entry if user resolution fails
+                            userWorkspaceEntries.push(workspaceEntry);
+                        }
                     }
                 }
             }
