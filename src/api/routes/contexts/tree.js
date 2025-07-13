@@ -43,7 +43,7 @@ export default async function treeRoutes(fastify, options) {
         return response.error('Failed to retrieve valid tree data from workspace.');
       }
 
-      return response.success('Context tree retrieved successfully', treeData);
+      return response.success(treeData, 'Context tree retrieved successfully');
     } catch (error) {
       fastify.log.error(`Get tree error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active or DB is not initialized') || error.message.includes('is not active. Cannot perform tree operation')) {
@@ -95,7 +95,7 @@ export default async function treeRoutes(fastify, options) {
       if (!success) {
         return response.error('Failed to insert tree path in workspace.');
       }
-      return response.created('Tree path inserted successfully', true);
+      return response.created(true, 'Tree path inserted successfully');
     } catch (error) {
       fastify.log.error(`Insert path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
@@ -193,7 +193,7 @@ export default async function treeRoutes(fastify, options) {
       if (!success) {
         return response.error('Failed to move tree path in workspace.');
       }
-      return response.success('Tree path moved successfully', { success: true });
+      return response.success({ success: true }, 'Tree path moved successfully');
     } catch (error) {
       fastify.log.error(`Move path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
@@ -243,7 +243,7 @@ export default async function treeRoutes(fastify, options) {
       if (!success) {
         return response.error('Failed to copy tree path in workspace.');
       }
-      return response.success('Tree path copied successfully', { success: true });
+      return response.success({ success: true }, 'Tree path copied successfully');
     } catch (error) {
       fastify.log.error(`Copy path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
@@ -287,7 +287,7 @@ export default async function treeRoutes(fastify, options) {
       if (!success) {
         return response.error('Failed to merge layer bitmaps upwards in workspace.');
       }
-      return response.success('Layer bitmaps merged upwards successfully', { success: true });
+      return response.success({ success: true }, 'Layer bitmaps merged upwards successfully');
     } catch (error) {
       fastify.log.error(`Merge up error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
@@ -331,7 +331,7 @@ export default async function treeRoutes(fastify, options) {
       if (!success) {
         return response.error('Failed to merge layer bitmaps downwards in workspace.');
       }
-      return response.success('Layer bitmaps merged downwards successfully', { success: true });
+      return response.success({ success: true }, 'Layer bitmaps merged downwards successfully');
     } catch (error) {
       fastify.log.error(`Merge down error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {

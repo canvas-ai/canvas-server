@@ -151,8 +151,9 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read') {
  */
 async function tryOwnerAccess(workspaceManager, userId, workspaceIdentifier) {
   try {
-    // Check if identifier is a workspace ID or name
-    const isWorkspaceId = /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+    // Check if identifier is a workspace ID (12 characters, alphanumeric) or name
+    // Workspace IDs are generated UUIDs that are exactly 12 characters
+    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
     let workspace;
     if (isWorkspaceId) {
@@ -234,6 +235,7 @@ async function tryTokenAccess(workspaceManager, workspaceIdentifier, token, requ
 async function findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, tokenHash) {
   try {
     // Check if identifier is a workspace ID (12 chars) or name
+    // Workspace IDs are generated UUIDs that are exactly 12 characters
     const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
 
     if (isWorkspaceId) {

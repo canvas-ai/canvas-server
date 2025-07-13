@@ -107,7 +107,7 @@ export default async function pubRoutes(fastify, options) {
       }
 
       const responseObject = new ResponseObject().found(
-        { context: context.toJSON() },
+        context.toJSON(),
         'Context retrieved successfully'
       );
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());

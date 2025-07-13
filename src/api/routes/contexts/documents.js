@@ -65,7 +65,7 @@ export default async function documentRoutes(fastify, options) {
         return response.error('Failed to list documents due to a database error.', null, dbResult.error);
       }
 
-      return response.success('Documents retrieved successfully', { documents: dbResult.data, count: dbResult.count });
+      return response.success(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count);
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -116,7 +116,7 @@ export default async function documentRoutes(fastify, options) {
 
       const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
 
-      return response.created('Documents inserted successfully', result);
+      return response.created(result, 'Documents inserted successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -168,7 +168,7 @@ export default async function documentRoutes(fastify, options) {
 
       const result = await context.updateDocumentArray(request.user.id, documents, featureArray);
 
-      return response.updated('Documents updated successfully', result);
+      return response.updated(result, 'Documents updated successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -256,7 +256,7 @@ export default async function documentRoutes(fastify, options) {
       // Let the Context.removeDocumentArray method handle the ID validation and conversion
       const result = await context.removeDocumentArray(request.user.id, documentIdArray);
 
-      return response.success('Documents removed from context successfully', result);
+      return response.success(result, 'Documents removed from context successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -297,7 +297,7 @@ export default async function documentRoutes(fastify, options) {
         return response.notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
       }
 
-      return response.success('Document retrieved successfully', document);
+      return response.success(document, 'Document retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -359,7 +359,7 @@ export default async function documentRoutes(fastify, options) {
         return response.error('Failed to list documents by abstraction due to a database error.', null, dbResult.error);
       }
 
-      return response.success('Documents retrieved successfully by abstraction', { documents: dbResult.data, count: dbResult.count });
+      return response.success({ documents: dbResult.data, count: dbResult.count }, 'Documents retrieved successfully by abstraction');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -399,7 +399,7 @@ export default async function documentRoutes(fastify, options) {
         return response.notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
       }
 
-      return response.success('Document retrieved successfully', document);
+      return response.success(document, 'Document retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -442,7 +442,7 @@ export default async function documentRoutes(fastify, options) {
         return response.notFound(`Document with checksum '${checksumString}' not found via context '${contextId}' (owner access).`);
       }
 
-      return response.success('Document retrieved successfully by hash (owner access)', document);
+      return response.success(document, 'Document retrieved successfully by hash (owner access)');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {

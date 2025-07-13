@@ -539,13 +539,31 @@ export default async function authRoutes(fastify, options) {
 
         if (!userData) {
           fastify.log.error(`[Auth/Me] User not found in database: ${userId}`);
-          const response = new ResponseObject().notFound(`User not found: ${userId}`);
+          const response = new ResponseObject().unauthorized(`Authentication failed - user account no longer exists: ${userId}`);
           return reply.code(response.statusCode).send(response.getResponse());
         }
 
         fastify.log.info(`[Auth/Me] Successfully retrieved user data: ${userData.id}`);
       } catch (dbError) {
         fastify.log.error(`[Auth/Me] Database error: ${dbError.message}`);
+
+        // Handle the specific case where user exists in token but not in database
+        if (dbError.message.includes('User not found in index')) {
+          fastify.log.warn(`[Auth/Me] User ${userId} has valid token but missing from database - clearing authentication`);
+
+          // Return a specific error that the frontend can handle
+          const response = new ResponseObject().unauthorized(
+            'Your session is invalid. Please log in again.',
+            {
+              code: 'USER_NOT_FOUND_IN_DATABASE',
+              userId: userId,
+              action: 'logout'
+            }
+          );
+          return reply.code(response.statusCode).send(response.getResponse());
+        }
+
+        // For other database errors, return a generic server error
         const response = new ResponseObject().serverError('Database error when retrieving user profile');
         return reply.code(response.statusCode).send(response.getResponse());
       }

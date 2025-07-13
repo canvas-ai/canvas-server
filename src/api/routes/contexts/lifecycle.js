@@ -26,8 +26,8 @@ export default async function lifecycleRoutes(fastify, options) {
     try {
       const contexts = await fastify.contextManager.listUserContexts(request.user.id);
 
-      // Send the array directly for this endpoint
-      return reply.code(200).send(contexts);
+      // Return consistent ResponseObject format
+      return response.found(contexts, 'Contexts retrieved successfully', 200, contexts.length);
 
     } catch (error) {
       fastify.log.error(error);
@@ -70,7 +70,7 @@ export default async function lifecycleRoutes(fastify, options) {
         }
       );
 
-      return response.created('Context created successfully', { context });
+      return response.created({ context }, 'Context created successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error('Failed to create context', null, error.message);
@@ -99,7 +99,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return response.notFound(`Context with ID '${request.params.id}' not found or not accessible.`);
       }
 
-      return response.success('Context retrieved successfully', { context: context.toJSON() });
+      return response.success(context.toJSON(), 'Context retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -133,7 +133,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return response.notFound('Context not found');
       }
 
-      return response.success('Context URL retrieved successfully', { url: context.url });
+      return response.success({ url: context.url }, 'Context URL retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error('Failed to get context URL');
@@ -169,7 +169,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
 
       await context.setUrl(request.body.url);
-      return response.success('Context URL updated successfully', { url: context.url });
+      return response.success({ url: context.url }, 'Context URL updated successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error(`Failed to set context URL: ${error.message}`);
@@ -197,7 +197,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return response.notFound('Context not found');
       }
 
-      return response.success('Context path retrieved successfully', { path: context.path });
+      return response.success({ path: context.path }, 'Context path retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error('Failed to get context path');
@@ -225,7 +225,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return response.notFound('Context not found');
       }
 
-      return response.success('Context path array retrieved successfully', { pathArray: context.pathArray });
+      return response.success({ pathArray: context.pathArray }, 'Context path array retrieved successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error('Failed to get context path array');
@@ -267,7 +267,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return response.notFound('Context not found');
       }
 
-      return response.updated('Context updated successfully', { context });
+      return response.updated({ context }, 'Context updated successfully');
     } catch (error) {
       fastify.log.error(error);
       return response.error('Failed to update context');

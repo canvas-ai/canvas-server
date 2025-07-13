@@ -7,7 +7,7 @@ import * as fsPromises from 'fs/promises';
 import { existsSync } from 'fs';
 import EventEmitter from 'eventemitter2';
 import Conf from 'conf';
-import { generateNanoid } from '../../utils/id.js';
+import { generateUUID } from '../../utils/id.js';
 // import AdmZip from 'adm-zip';
 
 // Logging
@@ -309,7 +309,7 @@ class WorkspaceManager extends EventEmitter {
         const host = options.host || DEFAULT_HOST;
 
         // Generate unique workspace ID
-        const workspaceId = generateNanoid(12);
+        const workspaceId = generateUUID();
 
         // Check if workspace name already exists for this user on this host
         const referenceKey = this.constructWorkspaceReference(userId, workspaceName, host);
@@ -348,6 +348,7 @@ class WorkspaceManager extends EventEmitter {
             color: options.color || '#3b82f6',
             type: isUniverse ? 'universe' : 'workspace',
             status: 'inactive',
+            host: host, // Add host field to workspace data
             rootPath: workspaceDir,
             configPath: workspaceConfigPath,
             createdAt: new Date().toISOString(),
@@ -381,6 +382,9 @@ class WorkspaceManager extends EventEmitter {
         // Add to name index for backward compatibility and various user identifier lookups
         const nameKey = `${userId}@${host}:${workspaceName}`;
         this.#nameIndex.set(nameKey, workspaceId);
+
+        // Add reference field to the index entry
+        indexEntry.reference = referenceKey;
 
         this.emit('workspace.created', { userId: ownerId, workspaceId, workspaceName, workspace: indexEntry });
         debug(`Workspace created: ${workspaceId} (name: ${workspaceName}) for user ${ownerId} on host ${host}`);
@@ -425,9 +429,11 @@ class WorkspaceManager extends EventEmitter {
                 return null;
             }
         } else {
-            const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+            // Check if it's a workspace ID (either new 12-char format or legacy UUID format)
+            const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+            const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
 
-            if (isWorkspaceId) {
+            if (isNewWorkspaceId || isLegacyWorkspaceId) {
                 workspaceId = workspaceIdentifier;
             } else {
                 // Try to resolve as workspace name for the given user (using original identifier)
@@ -500,9 +506,11 @@ class WorkspaceManager extends EventEmitter {
 
         // Resolve workspace identifier to ID
         let workspaceId;
-        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        // Check if it's a workspace ID (either new 12-char format or legacy UUID format)
+        const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
 
-        if (isWorkspaceId) {
+        if (isNewWorkspaceId || isLegacyWorkspaceId) {
             workspaceId = workspaceIdentifier;
         } else {
             workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
@@ -561,9 +569,11 @@ class WorkspaceManager extends EventEmitter {
 
         // Resolve workspace identifier to ID
         let workspaceId;
-        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        // Check if it's a workspace ID (either new 12-char format or legacy UUID format)
+        const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
 
-        if (isWorkspaceId) {
+        if (isNewWorkspaceId || isLegacyWorkspaceId) {
             workspaceId = workspaceIdentifier;
         } else {
             workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
@@ -633,9 +643,11 @@ class WorkspaceManager extends EventEmitter {
 
         // Resolve workspace identifier to ID
         let workspaceId;
-        const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        // Check if it's a workspace ID (either new 12-char format or legacy UUID format)
+        const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+        const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
 
-        if (isWorkspaceId) {
+        if (isNewWorkspaceId || isLegacyWorkspaceId) {
             workspaceId = workspaceIdentifier;
         } else {
             workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
@@ -721,10 +733,11 @@ class WorkspaceManager extends EventEmitter {
             // Full reference format
             workspaceId = this.resolveWorkspaceIdFromReference(workspaceIdentifier);
         } else {
-            // Check if it's a workspace ID or name
-            const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+            // Check if it's a workspace ID (either new 12-char format or legacy UUID format) or name
+            const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+            const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
 
-            if (isWorkspaceId) {
+            if (isNewWorkspaceId || isLegacyWorkspaceId) {
                 workspaceId = workspaceIdentifier;
             } else {
                 workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
@@ -1019,15 +1032,16 @@ class WorkspaceManager extends EventEmitter {
         const prefix = `${ownerId}/`;
         debug(`Listing workspaces for userId ${ownerId} on host ${host}`);
 
-        const allWorkspaces = this.#indexStore.store;
+                const allWorkspaces = this.#indexStore.store;
         const userWorkspaceEntries = [];
 
         for (const key in allWorkspaces) {
             if (key.startsWith(prefix)) {
                 const workspaceEntry = allWorkspaces[key];
                 if (workspaceEntry && typeof workspaceEntry === 'object' && workspaceEntry.id) {
-                    // Filter by host if specified
-                    if (!host || workspaceEntry.host === host) {
+                    // More flexible host filtering - if workspace has no host field, assume it's the default host
+                    const workspaceHost = workspaceEntry.host || DEFAULT_HOST;
+                    if (!host || workspaceHost === host) {
                         userWorkspaceEntries.push(workspaceEntry);
                     }
                 }
