@@ -34,7 +34,7 @@ function generateULID(length = 12, prefix, delimiter = '-') {
  * @returns {string} nanoid
  */
 function generateNanoid(length = 12, prefix, delimiter = '-') {
-    const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', length);
+    const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', length);
     const id = nanoid();
     return (prefix ? `${prefix}${delimiter}${id}` : id);
 }
