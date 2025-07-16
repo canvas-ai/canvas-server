@@ -34,11 +34,12 @@ export default async function workspaceRoutes(fastify, options) {
   fastify.get('/', {
     onRequest: [fastify.authenticate]
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     try {
       // Validate user is authenticated properly
       if (!validateUser(request.user, ['id', 'email'])) {
-        return response.unauthorized('Valid authentication required');
+        const response = new ResponseObject().unauthorized('Valid authentication required');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspaces = await fastify.workspaceManager.listUserWorkspaces(request.user.id);
@@ -48,7 +49,8 @@ export default async function workspaceRoutes(fastify, options) {
 
     } catch (error) {
       fastify.log.error(error);
-      return response.serverError('Failed to list workspaces');
+      const response = new ResponseObject().serverError('Failed to list workspaces');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 

@@ -9,7 +9,8 @@ export default async function treeRoutes(fastify, options) {
     try {
       validateUser(request.user, ['id']);
     } catch (err) {
-      return new ResponseObject(reply).unauthorized(err.message);
+      const response = new ResponseObject().unauthorized(err.message);
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -21,35 +22,41 @@ export default async function treeRoutes(fastify, options) {
       // params.id is implicitly available
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const treeData = workspace.jsonTree;
 
       if (treeData === undefined || treeData === null) {
         fastify.log.warn(`Received null or undefined jsonTree for context ${contextId} from workspace ${workspace.id}`);
-        return response.error('Failed to retrieve valid tree data from workspace.');
+        const response = new ResponseObject().error('Failed to retrieve valid tree data from workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success(treeData, 'Context tree retrieved successfully');
+      const response = new ResponseObject().success(treeData, 'Context tree retrieved successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Get tree error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active or DB is not initialized') || error.message.includes('is not active. Cannot perform tree operation')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to get context tree');
+      const response = new ResponseObject().error('Failed to get context tree');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -69,19 +76,21 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const result = await workspace.insertPath(
@@ -93,15 +102,19 @@ export default async function treeRoutes(fastify, options) {
       const success = result === true || (typeof result === 'object' && result !== null);
 
       if (!success) {
-        return response.error('Failed to insert tree path in workspace.');
+        const response = new ResponseObject().error('Failed to insert tree path in workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.created(true, 'Tree path inserted successfully');
+      const response = new ResponseObject().created(true, 'Tree path inserted successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Insert path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to insert tree path');
+      const response = new ResponseObject().error('Failed to insert tree path');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -121,19 +134,21 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const success = await workspace.removePath(
@@ -141,15 +156,19 @@ export default async function treeRoutes(fastify, options) {
         request.query.recursive || false
       );
       if (!success) {
-        return response.error('Failed to remove tree path from workspace.');
+        const response = new ResponseObject().error('Failed to remove tree path from workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.deleted('Tree path removed successfully', { success: true });
+      const response = new ResponseObject().deleted('Tree path removed successfully', { success: true });
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Remove path error for context ${contextId}: ${error.message}`);
        if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to remove tree path');
+      const response = new ResponseObject().error('Failed to remove tree path');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -170,19 +189,21 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const success = await workspace.movePath(
@@ -191,15 +212,19 @@ export default async function treeRoutes(fastify, options) {
         request.body.recursive || false
       );
       if (!success) {
-        return response.error('Failed to move tree path in workspace.');
+        const response = new ResponseObject().error('Failed to move tree path in workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.success({ success: true }, 'Tree path moved successfully');
+      const response = new ResponseObject().success({ success: true }, 'Tree path moved successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Move path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to move tree path');
+      const response = new ResponseObject().error('Failed to move tree path');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -220,19 +245,21 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const success = await workspace.copyPath(
@@ -241,15 +268,19 @@ export default async function treeRoutes(fastify, options) {
         request.body.recursive || false
       );
       if (!success) {
-        return response.error('Failed to copy tree path in workspace.');
+        const response = new ResponseObject().error('Failed to copy tree path in workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.success({ success: true }, 'Tree path copied successfully');
+      const response = new ResponseObject().success({ success: true }, 'Tree path copied successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Copy path error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to copy tree path');
+      const response = new ResponseObject().error('Failed to copy tree path');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -268,32 +299,38 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const success = await workspace.mergeUp(request.body.path);
       if (!success) {
-        return response.error('Failed to merge layer bitmaps upwards in workspace.');
+        const response = new ResponseObject().error('Failed to merge layer bitmaps upwards in workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.success({ success: true }, 'Layer bitmaps merged upwards successfully');
+      const response = new ResponseObject().success({ success: true }, 'Layer bitmaps merged upwards successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Merge up error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to merge layer bitmaps upwards');
+      const response = new ResponseObject().error('Failed to merge layer bitmaps upwards');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -312,32 +349,38 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const workspace = context.workspace;
       if (!workspace) {
         fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
-        return response.error(`Workspace for context ${contextId} is not available.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const success = await workspace.mergeDown(request.body.path);
       if (!success) {
-        return response.error('Failed to merge layer bitmaps downwards in workspace.');
+        const response = new ResponseObject().error('Failed to merge layer bitmaps downwards in workspace.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.success({ success: true }, 'Layer bitmaps merged downwards successfully');
+      const response = new ResponseObject().success({ success: true }, 'Layer bitmaps merged downwards successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Merge down error for context ${contextId}: ${error.message}`);
       if (error.message.includes('is not active')) {
-        return response.error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to merge layer bitmaps downwards');
+      const response = new ResponseObject().error('Failed to merge layer bitmaps downwards');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 }

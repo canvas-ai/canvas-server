@@ -110,7 +110,7 @@ export async function createServer(options = {}) {
         reply.header('Connection', 'close');
 
         const response = new ResponseObject();
-        response.error(apiError.message || 'Authentication failed', null, [apiError], statusCode);
+        response.error(apiError.message || 'Authentication failed', [apiError], statusCode);
         reply.code(statusCode).send(response.getResponse());
 
         // Force close the connection after sending the response
@@ -217,7 +217,8 @@ export async function createServer(options = {}) {
   server.setNotFoundHandler((request, reply) => {
     // For API routes, return a JSON 404 response
     if (request.url.startsWith('/rest/v2/')) {
-      return new ResponseObject(reply).notFound(`Route ${request.method}:${request.url} not found`);
+      const response = new ResponseObject().notFound(`Route ${request.method}:${request.url} not found`);
+      return reply.code(response.statusCode).send(response.getResponse());
     }
 
     // For all other routes (UI routes), serve the index.html
@@ -259,7 +260,7 @@ export async function createServer(options = {}) {
       } else {
         // Use the generic error method from our ResponseObject for non-auth errors
         const response = new ResponseObject();
-        response.error(error.message || 'Something went wrong', null, [error], statusCode);
+        response.error(error.message || 'Something went wrong', [error], statusCode);
         reply.code(response.statusCode).send(response.getResponse());
       }
     } else {

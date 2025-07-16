@@ -13,7 +13,8 @@ export default async function documentRoutes(fastify, options) {
       validateUser(request.user, ['id']); // For context operations, we primarily need the user's ID.
     } catch (err) {
       // If validateUser throws, it means the user object is invalid.
-      return new ResponseObject(reply).unauthorized(err.message);
+      const response = new ResponseObject().unauthorized(err.message);
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -43,13 +44,13 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound('Context not found');
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const { featureArray = [], filterArray = [] } = request.query;
@@ -62,16 +63,20 @@ export default async function documentRoutes(fastify, options) {
 
       if (dbResult.error) {
         fastify.log.error(`SynapsD error in listDocuments: ${dbResult.error}`);
-        return response.error('Failed to list documents due to a database error.', null, dbResult.error);
+        const response = new ResponseObject().error('Failed to list documents due to a database error.', dbResult.error);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count);
+      const response = new ResponseObject().success(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count);
+      return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to list documents');
+      const response = new ResponseObject().error('Failed to list documents');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -101,13 +106,13 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound('Context not found');
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const { featureArray = [], documents } = request.body;
@@ -116,13 +121,16 @@ export default async function documentRoutes(fastify, options) {
 
       const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
 
-      return response.created(result, 'Documents inserted successfully');
+      const response = new ResponseObject().created(result, 'Documents inserted successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to insert documents');
+      const response = new ResponseObject().error('Failed to insert documents');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -152,29 +160,34 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const { documents, featureArray = [] } = request.body;
       if (!Array.isArray(documents)) {
-        return response.badRequest('Request body must contain an array of documents.');
+        const response = new ResponseObject().badRequest('Request body must contain an array of documents.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const result = await context.updateDocumentArray(request.user.id, documents, featureArray);
 
-      return response.updated(result, 'Documents updated successfully');
+      const response = new ResponseObject().updated(result, 'Documents updated successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to update documents');
+      const response = new ResponseObject().error('Failed to update documents');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -192,7 +205,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
@@ -203,7 +216,8 @@ export default async function documentRoutes(fastify, options) {
 
       // Validate that we have a body
       if (request.body === undefined || request.body === null) {
-        return response.badRequest('Request body is required.');
+        const response = new ResponseObject().badRequest('Request body is required.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       // Normalize input to array format
@@ -212,13 +226,16 @@ export default async function documentRoutes(fastify, options) {
       // Let the Context.deleteDocumentArrayFromDb method handle the ID validation and conversion
       const result = await context.deleteDocumentArrayFromDb(request.user.id, documentIdArray);
 
-      return response.deleted('Documents deleted from database successfully', result);
+      const response = new ResponseObject().deleted('Documents deleted from database successfully', result);
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to delete documents from database');
+      const response = new ResponseObject().error('Failed to delete documents from database');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -236,18 +253,20 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       // Validate that we have a body
       if (request.body === undefined || request.body === null) {
-        return response.badRequest('Request body is required.');
+        const response = new ResponseObject().badRequest('Request body is required.');
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       // Normalize input to array format
@@ -256,13 +275,16 @@ export default async function documentRoutes(fastify, options) {
       // Let the Context.removeDocumentArray method handle the ID validation and conversion
       const result = await context.removeDocumentArray(request.user.id, documentIdArray);
 
-      return response.success(result, 'Documents removed from context successfully');
+      const response = new ResponseObject().success(result, 'Documents removed from context successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to remove documents from context');
+      const response = new ResponseObject().error('Failed to remove documents from context');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -281,29 +303,34 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
     const docId = request.params.docId;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const document = await context.getDocumentById(request.user.id, docId);
 
       if (!document) {
-        return response.notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
+        const response = new ResponseObject().notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success(document, 'Document retrieved successfully');
+      const response = new ResponseObject().success(document, 'Document retrieved successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to get document by ID');
+      const response = new ResponseObject().error('Failed to get document by ID');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -334,14 +361,15 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
     const abstraction = request.params.abstraction;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const derivedFeatureArray = [`data/abstraction/${abstraction}`];
@@ -356,16 +384,20 @@ export default async function documentRoutes(fastify, options) {
 
       if (dbResult.error) {
         fastify.log.error(`SynapsD error in listDocuments (by-abstraction): ${dbResult.error}`);
-        return response.error('Failed to list documents by abstraction due to a database error.', null, dbResult.error);
+        const response = new ResponseObject().error('Failed to list documents by abstraction due to a database error.', dbResult.error);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success({ documents: dbResult.data, count: dbResult.count }, 'Documents retrieved successfully by abstraction');
+      const response = new ResponseObject().success({ documents: dbResult.data, count: dbResult.count }, 'Documents retrieved successfully by abstraction');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to get documents by abstraction');
+      const response = new ResponseObject().error('Failed to get documents by abstraction');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -383,29 +415,34 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
     const docId = request.params.docId;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const document = await context.getDocumentById(request.user.id, docId);
 
       if (!document) {
-        return response.notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
+        const response = new ResponseObject().notFound(`Document with ID '${docId}' not found in context '${contextId}'.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success(document, 'Document retrieved successfully');
+      const response = new ResponseObject().success(document, 'Document retrieved successfully');
+        return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to get document by ID');
+      const response = new ResponseObject().error('Failed to get document by ID');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -425,14 +462,15 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    const response = new ResponseObject(reply);
+    
     const contextId = request.params.id;
     const { algo, hash } = request.params;
 
     try {
       const context = await fastify.contextManager.getContext(request.user.id, contextId);
       if (!context) {
-        return response.notFound(`Context with ID ${contextId} not found or not accessible.`);
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found or not accessible.`);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
 
       const checksumString = `${algo}/${hash}`;
@@ -446,9 +484,11 @@ export default async function documentRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
-        return response.forbidden(error.message);
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      return response.error('Failed to get document by hash');
+      const response = new ResponseObject().error('Failed to get document by hash');
+        return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 }
