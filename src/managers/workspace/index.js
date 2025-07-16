@@ -1170,11 +1170,11 @@ class WorkspaceManager extends EventEmitter {
     /**
      * Checks if a workspace exists in the index for the given owner and user.
      * @param {string} userId - The owner identifier.
-     * @param {string} workspaceId - The workspace ID.
+     * @param {string} workspaceIdentifier - The workspace ID or name.
      * @param {string} requestingUserId - The ULID of the user making the request.
      * @returns {Promise<boolean>} True if the workspace exists and is owned by the user.
      */
-    async hasWorkspace(userId, workspaceId, requestingUserId) {
+    async hasWorkspace(userId, workspaceIdentifier, requestingUserId) {
         if (!this.#initialized) { throw new Error('WorkspaceManager not initialized'); }
         const ownerId = await this.#userManager.resolveToUserId(userId);
         if (!ownerId) return false;
@@ -1187,9 +1187,27 @@ class WorkspaceManager extends EventEmitter {
             requestingUserId = resolvedRequesterId;
         }
 
-        this.#ensureRequiredParams({ userId: ownerId, workspaceId, requestingUserId }, 'hasWorkspace', false); // Allow missing requestingUserId for a general check if needed, but enforce for ownership check
+        this.#ensureRequiredParams({ userId: ownerId, workspaceIdentifier, requestingUserId }, 'hasWorkspace', false); // Allow missing requestingUserId for a general check if needed, but enforce for ownership check
 
         try {
+            // Resolve workspace identifier to ID (handle both IDs and names)
+            let workspaceId;
+
+            // Check if it's a workspace ID (either new 12-char format or legacy UUID format)
+            const isNewWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+            const isLegacyWorkspaceId = workspaceIdentifier.length === 36 && /^[a-f0-9-]+$/.test(workspaceIdentifier);
+
+            if (isNewWorkspaceId || isLegacyWorkspaceId) {
+                workspaceId = workspaceIdentifier;
+            } else {
+                // Try to resolve as workspace name
+                workspaceId = this.resolveWorkspaceId(userId, workspaceIdentifier);
+                if (!workspaceId) {
+                    debug(`hasWorkspace: No workspace found with name "${workspaceIdentifier}" for user ${userId}`);
+                    return false;
+                }
+            }
+
             const workspaceKey = `${ownerId}/${workspaceId}`;
             debug(`Checking if workspace exists: ${workspaceKey} for user ${requestingUserId}`);
             const entry = this.#indexStore.get(workspaceKey);

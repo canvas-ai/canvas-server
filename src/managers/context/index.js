@@ -413,25 +413,34 @@ class ContextManager extends EventEmitter {
 
         try {
             const contextKey = this.#constructContextKey(userId, contextId);
+            let contextWasRemoved = false;
 
             if (this.#contexts.has(contextKey)) {
                 const context = this.#contexts.get(contextKey);
                 await context.destroy();
                 this.#contexts.delete(contextKey);
+                contextWasRemoved = true;
             }
 
             // Remove from index store if exists (which should be the case)
             if (this.#indexStore.has(contextKey)) {
                 this.#indexStore.delete(contextKey);
+                contextWasRemoved = true;
             }
 
-            this.emit('context.deleted', {
-                contextKey: contextKey,
-                userId: userId,
-                contextId: contextId.toString()
-            });
-            debug(`Context ${contextKey} removed.`);
-            return true;
+            // Only emit event and log if something was actually removed
+            if (contextWasRemoved) {
+                this.emit('context.deleted', {
+                    contextKey: contextKey,
+                    userId: userId,
+                    contextId: contextId.toString()
+                });
+                debug(`Context ${contextKey} removed.`);
+                return true;
+            } else {
+                debug(`Context ${contextKey} not found, nothing to remove.`);
+                return false;
+            }
         } catch (error) {
             debug(`Error removing context for user ${userId}: ${error.message}`);
             return false;
