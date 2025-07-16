@@ -2,6 +2,7 @@
 
 import ResponseObject from '../../ResponseObject.js';
 import { validateUser } from '../../auth/strategies.js';
+import { resolveContextAddress } from '../../middleware/address-resolver.js';
 
 export default async function lifecycleRoutes(fastify, options) {
   // Add a pre-handler hook to ensure user is authenticated and valid for all context document routes
@@ -23,7 +24,7 @@ export default async function lifecycleRoutes(fastify, options) {
   fastify.get('/', {
     onRequest: [fastify.authenticate],
   }, async (request, reply) => {
-    
+
     try {
       const contexts = await fastify.contextManager.listUserContexts(request.user.id);
 
@@ -56,7 +57,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.createContext(
         request.user.id,
@@ -84,7 +85,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Get context by ID
   // Note: The prefix for this group is '/', so this becomes GET /:id
   fastify.get('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -95,7 +96,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
 
@@ -104,7 +105,25 @@ export default async function lifecycleRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      return response.success(context.toJSON(), 'Context retrieved successfully');
+      const responsePayload = context.toJSON();
+
+      // Include resource address if it was resolved from user/resource format
+      if (request.originalAddress) {
+        responsePayload.resourceAddress = request.originalAddress;
+      } else {
+        // Try to construct resource address from context data
+        try {
+          const resourceAddress = await fastify.contextManager.constructResourceAddress(context);
+          if (resourceAddress) {
+            responsePayload.resourceAddress = resourceAddress;
+          }
+        } catch (error) {
+          // Ignore errors in address construction
+        }
+      }
+
+      const response = new ResponseObject().success(responsePayload, 'Context retrieved successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
       if (error.message.startsWith('Access denied')) {
@@ -123,7 +142,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Get context URL
   // Note: The prefix for this group is '/', so this becomes GET /:id/url
   fastify.get('/:id/url', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -134,7 +153,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
@@ -154,7 +173,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Set context URL
   // Note: The prefix for this group is '/', so this becomes POST /:id/url
   fastify.post('/:id/url', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -172,7 +191,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
@@ -193,7 +212,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Get context path
   // Note: The prefix for this group is '/', so this becomes GET /:id/path
   fastify.get('/:id/path', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -204,7 +223,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
@@ -224,7 +243,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Get context path array
   // Note: The prefix for this group is '/', so this becomes GET /:id/path-array
   fastify.get('/:id/path-array', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -235,7 +254,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.getContext(request.user.id, request.params.id);
       if (!context) {
@@ -255,7 +274,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Update context
   // Note: The prefix for this group is '/', so this becomes PUT /:id
   fastify.put('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -275,7 +294,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const context = await fastify.contextManager.updateContext(
         request.user.id,
@@ -300,7 +319,7 @@ export default async function lifecycleRoutes(fastify, options) {
   // Delete context
   // Note: The prefix for this group is '/', so this becomes DELETE /:id
   fastify.delete('/:id', {
-    onRequest: [fastify.authenticate],
+    onRequest: [fastify.authenticate, resolveContextAddress],
     schema: {
       params: {
         type: 'object',
@@ -311,7 +330,7 @@ export default async function lifecycleRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     try {
       const success = await fastify.contextManager.removeContext(request.user.id, request.params.id);
       if (!success) {

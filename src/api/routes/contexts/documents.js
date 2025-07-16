@@ -2,6 +2,7 @@
 
 import ResponseObject from '../../ResponseObject.js';
 import { validateUser } from '../../auth/strategies.js';
+import { resolveContextAddress } from '../../middleware/address-resolver.js';
 
 export default async function documentRoutes(fastify, options) {
 
@@ -160,7 +161,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -205,7 +206,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -253,7 +254,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -303,7 +304,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
     const docId = request.params.docId;
 
@@ -361,7 +362,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
     const abstraction = request.params.abstraction;
 
@@ -415,7 +416,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
     const docId = request.params.docId;
 
@@ -462,7 +463,7 @@ export default async function documentRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
     const { algo, hash } = request.params;
 

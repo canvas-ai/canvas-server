@@ -76,6 +76,30 @@ const DEFAULT_WORKSPACE_CONFIG = {
  */
 
 /**
+ * Parse simple workspace identifier in format user.name/workspace.name
+ * @param {string} workspaceIdentifier - Simple workspace identifier
+ * @returns {Object|null} Parsed identifier or null if invalid
+ */
+function parseSimpleWorkspaceIdentifier(workspaceIdentifier) {
+    if (!workspaceIdentifier || typeof workspaceIdentifier !== 'string') {
+        return null;
+    }
+
+    if (workspaceIdentifier.includes('/')) {
+        const parts = workspaceIdentifier.split('/');
+        if (parts.length === 2 && parts[0] && parts[1]) {
+            return {
+                userIdentifier: parts[0].trim(),
+                workspaceIdentifier: parts[1].trim(),
+                full: workspaceIdentifier
+            };
+        }
+    }
+
+    return null; // Not a user/workspace format
+}
+
+/**
  * Parse workspace reference in format [user_identifier]@[host]:[workspace_slug][/optional_path...]
  * @param {string} workspaceRef - Workspace reference string
  * @returns {Object|null} Parsed reference or null if invalid
@@ -249,6 +273,15 @@ class WorkspaceManager extends EventEmitter {
      */
     parseWorkspaceReference(workspaceRef) {
         return parseWorkspaceReference(workspaceRef);
+    }
+
+    /**
+     * Parse simple workspace identifier in format user.name/workspace.name
+     * @param {string} workspaceIdentifier - Simple workspace identifier
+     * @returns {Object|null} Parsed identifier or null if invalid
+     */
+    parseSimpleWorkspaceIdentifier(workspaceIdentifier) {
+        return parseSimpleWorkspaceIdentifier(workspaceIdentifier);
     }
 
     /**
@@ -881,6 +914,50 @@ class WorkspaceManager extends EventEmitter {
 
         const baseRef = this.constructWorkspaceReference(parsedRef.userIdentifier, parsedRef.workspaceSlug, parsedRef.host);
         return this.#referenceIndex.get(baseRef) || null;
+    }
+
+    /**
+     * Resolves a workspace ID from a simple workspace identifier
+     * @param {string} workspaceIdentifier - Simple identifier in format user.name/workspace.name
+     * @returns {Promise<string|null>} The workspace ID if found, null otherwise
+     */
+    async resolveWorkspaceIdFromSimpleIdentifier(workspaceIdentifier) {
+        const parsed = this.parseSimpleWorkspaceIdentifier(workspaceIdentifier);
+        if (!parsed) {
+            return null;
+        }
+
+        // First resolve the user identifier to a user ID
+        const userId = await this.#userManager.resolveToUserId(parsed.userIdentifier);
+        if (!userId) {
+            return null;
+        }
+
+        // Then try to resolve the workspace by name
+        return this.resolveWorkspaceId(userId, parsed.workspaceIdentifier);
+    }
+
+    /**
+     * Construct a simple resource address from workspace data
+     * @param {Object} workspace - Workspace object with owner and name
+     * @returns {Promise<string|null>} Resource address in format user.name/workspace.name
+     */
+    async constructResourceAddress(workspace) {
+        if (!workspace || !workspace.owner || !workspace.name) {
+            return null;
+        }
+
+        try {
+            // Get user info to construct the address
+            const user = await this.#userManager.getUser(workspace.owner);
+            if (!user || !user.name) {
+                return null;
+            }
+
+            return `${user.name}/${workspace.name}`;
+        } catch (error) {
+            return null;
+        }
     }
 
     /**

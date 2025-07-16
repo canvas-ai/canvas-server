@@ -3,6 +3,7 @@
 import ResponseObject from '../../ResponseObject.js';
 import { requireWorkspaceRead, requireWorkspaceWrite, requireWorkspaceAdmin } from '../../middleware/workspace-acl.js';
 import { validateUser } from '../../auth/strategies.js';
+import { resolveWorkspaceAddress } from '../../middleware/address-resolver.js';
 
 /**
  * Main workspace routes handler for the API
@@ -25,16 +26,28 @@ export default async function workspaceRoutes(fastify, options) {
   };
 
   // Register sub-routes
-  fastify.register(import('./documents.js'), { prefix: '/:id/documents' });
-  fastify.register(import('./tree.js'), { prefix: '/:id/tree' });
-  fastify.register(import('./lifecycle.js'), { prefix: '/:id' });
-  fastify.register(import('./tokens.js'), { prefix: '/:id/tokens' });
+  fastify.register(import('./documents.js'), {
+    prefix: '/:id/documents',
+    onRequest: [resolveWorkspaceAddress]
+  });
+  fastify.register(import('./tree.js'), {
+    prefix: '/:id/tree',
+    onRequest: [resolveWorkspaceAddress]
+  });
+  fastify.register(import('./lifecycle.js'), {
+    prefix: '/:id',
+    onRequest: [resolveWorkspaceAddress]
+  });
+  fastify.register(import('./tokens.js'), {
+    prefix: '/:id/tokens',
+    onRequest: [resolveWorkspaceAddress]
+  });
 
   // List all workspaces
   fastify.get('/', {
     onRequest: [fastify.authenticate]
   }, async (request, reply) => {
-    
+
     try {
       // Validate user is authenticated properly
       if (!validateUser(request.user, ['id', 'email'])) {
@@ -105,7 +118,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Get workspace details
   fastify.get('/:id', {
-    onRequest: [fastify.authenticate, requireWorkspaceRead()],
+    onRequest: [fastify.authenticate, resolveWorkspaceAddress, requireWorkspaceRead()],
     schema: {
       params: {
         type: 'object',
@@ -121,17 +134,31 @@ export default async function workspaceRoutes(fastify, options) {
       const workspace = request.workspace;
       const access = request.workspaceAccess;
 
-      const responseObject = new ResponseObject().found(
-        {
-          workspace: workspace.toJSON(),
-          access: {
-            permissions: access.permissions,
-            isOwner: access.isOwner,
-            description: access.description
+      const response = {
+        workspace: workspace.toJSON(),
+        access: {
+          permissions: access.permissions,
+          isOwner: access.isOwner,
+          description: access.description
+        }
+      };
+
+      // Include resource address if it was resolved from user/resource format
+      if (request.originalAddress) {
+        response.resourceAddress = request.originalAddress;
+      } else {
+        // Try to construct resource address from workspace data
+        try {
+          const resourceAddress = await fastify.workspaceManager.constructResourceAddress(workspace);
+          if (resourceAddress) {
+            response.resourceAddress = resourceAddress;
           }
-        },
-        'Workspace retrieved successfully'
-      );
+        } catch (error) {
+          // Ignore errors in address construction
+        }
+      }
+
+      const responseObject = new ResponseObject().found(response, 'Workspace retrieved successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -142,7 +169,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Update workspace
   fastify.patch('/:id', {
-    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
+    onRequest: [fastify.authenticate, resolveWorkspaceAddress, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',
@@ -198,7 +225,7 @@ export default async function workspaceRoutes(fastify, options) {
 
   // Delete workspace
   fastify.delete('/:id', {
-    onRequest: [fastify.authenticate, requireWorkspaceAdmin()],
+    onRequest: [fastify.authenticate, resolveWorkspaceAddress, requireWorkspaceAdmin()],
     schema: {
       params: {
         type: 'object',

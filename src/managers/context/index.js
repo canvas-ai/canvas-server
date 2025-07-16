@@ -503,14 +503,69 @@ class ContextManager extends EventEmitter {
         if (idStr.includes('/')) {
             const parts = idStr.split('/');
             if (parts.length === 2 && parts[0] && parts[1]) {
-                // Potentially validate email format for parts[0] if needed
+                // Simple user/resource format: user.name/context.name or user.id/context.id
                 return { ownerUserId: parts[0], contextId: this.#sanitizeContextId(parts[1]) };
             } else {
-                throw new Error(`Invalid shared context identifier format: ${idStr}. Expected 'user@email.com/contextId'.`);
+                throw new Error(`Invalid context identifier format: ${idStr}. Expected 'user.name/context.name' or simple 'contextId'.`);
             }
         }
         // If no '/', it's a simple contextId, owner is the defaultUserId (usually the accessing user)
         return { ownerUserId: defaultUserId, contextId: this.#sanitizeContextId(idStr) };
+    }
+
+        /**
+     * Resolves a context ID from a simple context identifier
+     * @param {string} contextIdentifier - Simple identifier in format user.name/context.name
+     * @returns {Promise<string|null>} The context ID if found, null otherwise
+     */
+    async resolveContextIdFromSimpleIdentifier(contextIdentifier) {
+        try {
+            const { ownerUserId, contextId } = this.#parseContextIdentifier(contextIdentifier, null);
+
+            // If no ownerUserId was parsed (simple contextId), return null as this method is for user/context format
+            if (!ownerUserId) {
+                return null;
+            }
+
+            // Resolve the user identifier to a user ID if needed
+            const resolvedUserId = await this.#workspaceManager.userManager.resolveToUserId(ownerUserId);
+            if (!resolvedUserId) {
+                return null;
+            }
+
+            // Check if context exists
+            const contextKey = this.#constructContextKey(resolvedUserId, contextId);
+            if (this.#contexts.has(contextKey) || this.#indexStore.has(contextKey)) {
+                return contextId;
+            }
+
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Construct a simple resource address from context data
+     * @param {Object} context - Context object with userId and id
+     * @returns {Promise<string|null>} Resource address in format user.name/context.id
+     */
+    async constructResourceAddress(context) {
+        if (!context || !context.userId || !context.id) {
+            return null;
+        }
+
+        try {
+            // Get user info to construct the address
+            const user = await this.#workspaceManager.userManager.getUser(context.userId);
+            if (!user || !user.name) {
+                return null;
+            }
+
+            return `${user.name}/${context.id}`;
+        } catch (error) {
+            return null;
+        }
     }
 
     async grantContextAccess(requestingUserId, targetContextIdentifier, sharedWithUserId, accessLevel) {
