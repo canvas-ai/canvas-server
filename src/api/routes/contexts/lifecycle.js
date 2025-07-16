@@ -29,7 +29,8 @@ export default async function lifecycleRoutes(fastify, options) {
       const contexts = await fastify.contextManager.listUserContexts(request.user.id);
 
       // Return consistent ResponseObject format
-      return response.found(contexts, 'Contexts retrieved successfully', 200, contexts.length);
+      const response = new ResponseObject();
+      return reply.code(200).send(response.found(contexts, 'Contexts retrieved successfully', 200, contexts.length).getResponse());
 
     } catch (error) {
       fastify.log.error(error);

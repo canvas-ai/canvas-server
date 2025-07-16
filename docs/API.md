@@ -1,5 +1,7 @@
 # REST API
 
+> **📖 See [API Access Design](./API-ACCESS-DESIGN.md) for comprehensive authentication patterns, resource addressing, and access control documentation.**
+
 ## Main entry points
 
 - `/auth`: Authentication and user management routes

@@ -58,7 +58,8 @@ export default async function workspaceRoutes(fastify, options) {
       const workspaces = await fastify.workspaceManager.listUserWorkspaces(request.user.id);
 
       // Return consistent ResponseObject format
-      return response.found(workspaces, 'Workspaces retrieved successfully', 200, workspaces.length);
+      const response = new ResponseObject();
+      return reply.code(200).send(response.found(workspaces, 'Workspaces retrieved successfully', 200, workspaces.length).getResponse());
 
     } catch (error) {
       fastify.log.error(error);

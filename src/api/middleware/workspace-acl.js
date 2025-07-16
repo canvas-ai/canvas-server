@@ -151,14 +151,14 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read') {
  */
 async function tryOwnerAccess(workspaceManager, userId, workspaceIdentifier) {
   try {
-    // Check if identifier is a workspace ID (12 characters, alphanumeric) or name
-    // Workspace IDs are generated UUIDs that are exactly 12 characters
-    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+    // Check if identifier is a workspace ID (UUID format) or name
+    // Workspace IDs are UUIDs like 7c84589b-9268-45e8-9b7c-85c29adc9bca
+    const isWorkspaceId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceIdentifier);
 
     let workspace;
     if (isWorkspaceId) {
       // Try to get workspace by ID
-      workspace = await workspaceManager.getWorkspaceById(workspaceIdentifier, userId);
+      workspace = await workspaceManager.getWorkspace(userId, workspaceIdentifier, userId);
     } else {
       // Try to get workspace by name
       workspace = await workspaceManager.getWorkspaceByName(userId, workspaceIdentifier, userId);
@@ -234,9 +234,9 @@ async function tryTokenAccess(workspaceManager, workspaceIdentifier, token, requ
  */
 async function findWorkspaceByTokenHash(workspaceManager, workspaceIdentifier, tokenHash) {
   try {
-    // Check if identifier is a workspace ID (12 chars) or name
-    // Workspace IDs are generated UUIDs that are exactly 12 characters
-    const isWorkspaceId = workspaceIdentifier.length === 12 && /^[a-zA-Z0-9]+$/.test(workspaceIdentifier);
+    // Check if identifier is a workspace ID (UUID format) or name
+    // Workspace IDs are UUIDs like 7c84589b-9268-45e8-9b7c-85c29adc9bca
+    const isWorkspaceId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceIdentifier);
 
     if (isWorkspaceId) {
       // Direct lookup by workspace ID
