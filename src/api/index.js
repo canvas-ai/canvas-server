@@ -26,6 +26,7 @@ import contextRoutes from './routes/contexts/index.js';
 import pubRoutes from './routes/pub/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
+import adminRoutes from './routes/admin/index.js';
 import { mcpPlugin } from './mcp/index.js';
 
 // WebSocket handlers
@@ -238,6 +239,7 @@ export async function createServer(options = {}) {
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
   server.register(pubRoutes, { prefix: '/rest/v2/pub' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
+  server.register(adminRoutes, { prefix: '/rest/v2/admin' });
   server.register(mcpPlugin); // TODO: Draft/test only!!!
 
   // Global 404 handler
