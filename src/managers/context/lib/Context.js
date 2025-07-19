@@ -59,7 +59,14 @@ class Context extends EventEmitter {
     #pendingUrl;
 
     constructor(url = DEFAULT_BASE_URL, options = {}) {
-        super();
+        // Enable wildcard events for EventEmitter2 so ContextManager can listen with **
+        super({
+            wildcard: true,
+            delimiter: '.',
+            newListener: false,
+            maxListeners: 50,
+            ...(options.eventEmitterOptions || {})
+        });
 
         // Context properties
         this.#id = options.id || uuidv4(); // TODO: Use human-typeable 6-char ULID

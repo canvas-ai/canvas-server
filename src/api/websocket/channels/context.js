@@ -1,6 +1,6 @@
 import { createDebug } from '../../../utils/log/index.js';
 
-const debug = createDebug('canvas-server:websocket:context');
+const debug = createDebug('websocket:context');
 
 /**
  * Push-only WebSocket bridge for context events.

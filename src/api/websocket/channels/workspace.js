@@ -1,7 +1,7 @@
 import { createDebug } from '../../../utils/log/index.js';
 import crypto from 'crypto';
 
-const debug = createDebug('canvas-server:websocket:workspace');
+const debug = createDebug('websocket:workspace');
 
 /**
  * Register workspace-update websocket forwarding for a specific socket.

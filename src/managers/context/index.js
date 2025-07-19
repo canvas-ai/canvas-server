@@ -6,7 +6,7 @@ import EventEmitter from 'eventemitter2';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('context-manager');
+const debug = createDebug('context-manager:index');
 
 // Includes
 import Context from './lib/Context.js';
@@ -184,13 +184,13 @@ class ContextManager extends EventEmitter {
             let contextInstance = null;
             // Check in-memory cache first
             if (this.#contexts.has(contextKey)) {
-                debug(`Returning cached Context instance for ${contextKey}`);
+                debug(`📋 ContextManager: Returning cached Context instance for ${contextKey}`);
                 contextInstance = this.#contexts.get(contextKey);
             } else {
                 // Try to load from store
                 const storedContextData = this.#indexStore.get(contextKey);
                 if (storedContextData) {
-                    debug(`Context with key "${contextKey}" found in store, loading into memory.`);
+                    debug(`📋 ContextManager: Context with key "${contextKey}" found in store, loading into memory.`);
                     if (storedContextData.userId !== ownerUserId) {
                         // This should ideally not happen if contextKey is correct, but good for sanity.
                         throw new Error(`Mismatch in owner user ID. Expected ${ownerUserId}, found ${storedContextData.userId} in stored data for key ${contextKey}`);
@@ -230,6 +230,8 @@ class ContextManager extends EventEmitter {
                         const wildcardForwarder = function (payload = {}) {
                             const eventName = this.event;
                             const enriched = { ...payload, contextId: loadedContext.id };
+                            debug(`📋 ContextManager: 🎯 Forwarding event "${eventName}" from loaded context ${loadedContext.id}`);
+                            debug(`📋 ContextManager: 🎯 Event payload:`, JSON.stringify(enriched, null, 2));
                             manager.emit(eventName, enriched);
                             debug(`📋 ContextManager: ➡️  forwarded ${eventName} for loaded context ${loadedContext.id}`);
                         };

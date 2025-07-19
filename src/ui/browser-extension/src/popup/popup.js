@@ -59,6 +59,45 @@ document.addEventListener('DOMContentLoaded', async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Popup received message:', message);
 
+  // Handle background events from service worker
+  if (message.type === 'BACKGROUND_EVENT') {
+    switch (message.eventType) {
+      case 'tabs.refresh':
+        console.log('Refreshing tabs due to context change');
+        loadTabs();
+        break;
+
+      case 'context.changed':
+        console.log('Context changed:', message.data);
+        // Update context display
+        if (message.data.contextId && message.data.url) {
+          contextId.textContent = message.data.contextId;
+          contextUrl.textContent = message.data.url;
+        }
+        break;
+
+      case 'context.url.set':
+        console.log('Context URL set:', message.data);
+        // Update context display when URL changes via CLI
+        if (message.data.contextId && message.data.url) {
+          contextId.textContent = message.data.contextId;
+          contextUrl.textContent = message.data.url;
+        }
+        // Refresh tabs to show updated context
+        loadTabs();
+        break;
+
+      case 'websocket.context.joined':
+        console.log('Joined context:', message.data);
+        break;
+
+      default:
+        console.log('Unknown background event:', message.eventType, message.data);
+    }
+    return;
+  }
+
+  // Handle direct message types (legacy)
   switch (message.type) {
     case 'tabs.refresh':
       console.log('Refreshing tabs due to context change');
@@ -74,9 +113,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       break;
 
+    case 'context.url.set':
+      console.log('Context URL set:', message.data);
+      // Update context display when URL changes via CLI
+      if (message.data.contextId && message.data.url) {
+        contextId.textContent = message.data.contextId;
+        contextUrl.textContent = message.data.url;
+      }
+      // Refresh tabs to show updated context
+      loadTabs();
+      break;
+
     case 'websocket.context.joined':
       console.log('Joined context:', message.data);
       break;
+
+    default:
+      console.log('Unknown message type:', message.type, message.data);
   }
 });
 

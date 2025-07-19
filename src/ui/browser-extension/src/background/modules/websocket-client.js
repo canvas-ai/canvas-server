@@ -1,6 +1,8 @@
 // WebSocket client module for Canvas Extension
 // Handles real-time communication with Canvas server via socket.io
 
+import { io } from 'socket.io-client';
+
 export class WebSocketClient {
   constructor() {
     this.socket = null;
@@ -13,9 +15,6 @@ export class WebSocketClient {
     // Reconnection state
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
-    this.reconnectDelay = 1000; // Start with 1 second
-    this.maxReconnectDelay = 30000; // Max 30 seconds
-    this.reconnectTimer = null;
     this.shouldReconnect = true;
 
     // Event handlers
@@ -27,7 +26,7 @@ export class WebSocketClient {
     console.log('WebSocketClient initialized');
   }
 
-  // Initialize WebSocket connection
+  // Initialize WebSocket connection using proper socket.io client
   async connect(serverUrl, apiToken, contextId = null) {
     try {
       console.log('WebSocketClient: Starting connection to', serverUrl);
@@ -49,183 +48,108 @@ export class WebSocketClient {
     }
   }
 
-  // Internal connection attempt with socket.io protocol
+  // Internal connection attempt with proper socket.io client
   async _attemptConnection() {
     return new Promise((resolve, reject) => {
       try {
         this.connectionState = 'connecting';
         this.emit('connection.state', { state: 'connecting' });
 
-        // Build proper WebSocket URL for socket.io
-        // The server uses fastify-socket.io which expects the standard socket.io handshake
-        const wsUrl = this.serverUrl.replace(/^http/, 'ws') + '/socket.io/?EIO=4&transport=websocket';
-        console.log('WebSocketClient: Connecting to WebSocket URL:', wsUrl);
+        console.log('WebSocketClient: Connecting with socket.io client to:', this.serverUrl);
 
-        // Create WebSocket connection
-        this.socket = new WebSocket(wsUrl);
+        // Create socket.io connection with authentication
+        this.socket = io(this.serverUrl, {
+          auth: {
+            token: this.apiToken
+          },
+          autoConnect: true,
+          reconnection: false, // We'll handle reconnection manually
+          timeout: 10000,
+          transports: ['websocket']
+        });
 
-        // Set connection timeout
-        const connectionTimeout = setTimeout(() => {
-          console.error('WebSocketClient: Connection timeout');
-          this.socket?.close();
-          reject(new Error('Connection timeout'));
-        }, 10000);
-
-        this.socket.onopen = () => {
-          clearTimeout(connectionTimeout);
-          console.log('WebSocketClient: WebSocket connected');
+        // Connection success
+        this.socket.on('connect', () => {
+          console.log('WebSocketClient: Socket.io connected successfully');
           this.connected = true;
           this.connectionState = 'connected';
           this.reconnectAttempts = 0; // Reset on successful connection
 
           this.emit('connection.state', { state: 'connected' });
-        };
+        });
 
-        this.socket.onmessage = (event) => {
-          this._handleMessage(event.data);
-        };
+        // Authentication success
+        this.socket.on('authenticated', (payload) => {
+          console.log('WebSocketClient: Authenticated successfully:', payload);
+          this.authenticated = true;
+          this.connectionState = 'authenticated';
 
-        this.socket.onclose = (event) => {
-          clearTimeout(connectionTimeout);
-          console.log('WebSocketClient: WebSocket closed', event.code, event.reason);
-          this._handleDisconnection();
+          this.emit('authenticated', payload);
+          this.emit('connection.state', { state: 'authenticated' });
 
-          if (event.code === 1000) {
-            // Normal closure
-            resolve(false);
-          } else {
-            // Abnormal closure - might want to reconnect
-            if (this.shouldReconnect) {
-              this._scheduleReconnect();
-            }
-            resolve(false);
+          // Join context channel if we have a context
+          if (this.contextId) {
+            this.joinContext(this.contextId);
           }
-        };
 
-        this.socket.onerror = (error) => {
-          clearTimeout(connectionTimeout);
-          console.error('WebSocketClient: WebSocket error:', error);
-          this.connectionState = 'error';
-          this.emit('connection.error', { error: 'WebSocket connection error' });
-          reject(error);
-        };
-
-        // Resolve when authenticated
-        this.once('authenticated', () => {
           resolve(true);
         });
 
+        // Authentication error
+        this.socket.on('authentication_error', (error) => {
+          console.error('WebSocketClient: Authentication failed:', error);
+          this.connectionState = 'error';
+          this.emit('connection.error', { error: 'Authentication failed' });
+          reject(new Error('Authentication failed'));
+        });
+
+        // Document events (real-time tab sync)
+        this.socket.on('document.inserted', (payload) => this._handleDocumentEvent('document.inserted', payload));
+        this.socket.on('document.updated', (payload) => this._handleDocumentEvent('document.updated', payload));
+        this.socket.on('document.removed', (payload) => this._handleDocumentEvent('document.removed', payload));
+        this.socket.on('document.deleted', (payload) => this._handleDocumentEvent('document.deleted', payload));
+        this.socket.on('document.removed.batch', (payload) => this._handleDocumentEvent('document.removed.batch', payload));
+        this.socket.on('document.deleted.batch', (payload) => this._handleDocumentEvent('document.deleted.batch', payload));
+
+        // Context events
+        this.socket.on('context.created', (payload) => this._handleContextEvent('context.created', payload));
+        this.socket.on('context.updated', (payload) => this._handleContextEvent('context.updated', payload));
+        this.socket.on('context.deleted', (payload) => this._handleContextEvent('context.deleted', payload));
+        this.socket.on('context.url.set', (payload) => this._handleContextEvent('context.url.set', payload));
+
+        // Connection events
+        this.socket.on('disconnect', (reason) => {
+          console.log('WebSocketClient: Socket.io disconnected:', reason);
+          this._handleDisconnection();
+
+          if (reason === 'io server disconnect') {
+            // Server forced disconnect - don't reconnect automatically
+            resolve(false);
+          } else if (this.shouldReconnect) {
+            // Client disconnect or network issues - attempt reconnect
+            this._scheduleReconnect();
+            resolve(false);
+          } else {
+            resolve(false);
+          }
+        });
+
+        // Connection errors
+        this.socket.on('connect_error', (error) => {
+          console.error('WebSocketClient: Connection error:', error);
+          this.connectionState = 'error';
+          this.emit('connection.error', { error: error.message });
+          reject(error);
+        });
+
+        // Start connection
+        this.socket.connect();
+
       } catch (error) {
-        console.error('WebSocketClient: Failed to create WebSocket:', error);
+        console.error('WebSocketClient: Failed to create socket.io connection:', error);
         reject(error);
       }
     });
-  }
-
-  // Handle incoming messages (socket.io protocol)
-  _handleMessage(data) {
-    try {
-      console.log('WebSocketClient: Received message:', data);
-
-      // Handle socket.io protocol packets
-      if (data === '0') {
-        // Initial connect - send auth as handshake auth parameter would be better
-        // But since we're using raw WebSocket, we'll authenticate after connection
-        console.log('WebSocketClient: Received initial connect, sending auth...');
-        // Send authentication using socket.io event format
-        this._sendMessage('42' + JSON.stringify(['authenticate', {
-          token: this.apiToken
-        }]));
-        return;
-      }
-
-      if (data === '40') {
-        // Connected to default namespace
-        console.log('WebSocketClient: Connected to namespace');
-        return;
-      }
-
-      if (data.startsWith('42')) {
-        // Event packet
-        const eventData = data.substring(2);
-        const parsed = JSON.parse(eventData);
-
-        if (Array.isArray(parsed) && parsed.length >= 2) {
-          const [eventName, payload] = parsed;
-          this._handleEvent(eventName, payload);
-        }
-        return;
-      }
-
-      if (data === '3') {
-        // Heartbeat pong
-        console.log('WebSocketClient: Received pong');
-        return;
-      }
-
-      // Try to parse as JSON event for fallback
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed.type && parsed.data) {
-          this._handleEvent(parsed.type, parsed.data);
-        }
-      } catch (parseError) {
-        console.warn('WebSocketClient: Could not parse message as JSON:', data);
-      }
-
-    } catch (error) {
-      console.error('WebSocketClient: Failed to parse message:', error, data);
-    }
-  }
-
-  // Handle specific events
-  _handleEvent(eventName, payload) {
-    console.log('WebSocketClient: Handling event:', eventName, payload);
-
-    switch (eventName) {
-      case 'authenticated':
-        this._handleAuthenticated(payload);
-        break;
-
-      case 'document.inserted':
-      case 'document.updated':
-      case 'document.removed':
-      case 'document.deleted':
-      case 'document.removed.batch':
-      case 'document.deleted.batch':
-        this._handleDocumentEvent(eventName, payload);
-        break;
-
-      case 'context.created':
-      case 'context.updated':
-      case 'context.deleted':
-      case 'context.url.set':
-        this._handleContextEvent(eventName, payload);
-        break;
-
-      case 'pong':
-        console.log('WebSocketClient: Received pong');
-        break;
-
-      default:
-        console.log('WebSocketClient: Unknown event:', eventName, payload);
-        this.emit(eventName, payload);
-    }
-  }
-
-  // Handle authentication success
-  _handleAuthenticated(payload) {
-    console.log('WebSocketClient: Authenticated successfully:', payload);
-    this.authenticated = true;
-    this.connectionState = 'authenticated';
-
-    this.emit('authenticated', payload);
-    this.emit('connection.state', { state: 'authenticated' });
-
-    // Join context channel if we have a context
-    if (this.contextId) {
-      this.joinContext(this.contextId);
-    }
   }
 
   // Handle document events (tab sync)
@@ -271,27 +195,25 @@ export class WebSocketClient {
     this.emit('disconnected');
   }
 
-  // Send message to server
-  _sendMessage(message) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      console.log('WebSocketClient: Sending message:', message);
-      this.socket.send(message);
+  // Send event to server using socket.io
+  send(eventName, data = {}) {
+    if (this.socket && this.socket.connected) {
+      console.log('WebSocketClient: Sending event:', eventName, data);
+      this.socket.emit(eventName, data);
       return true;
     } else {
-      console.warn('WebSocketClient: Cannot send message - socket not ready');
+      console.warn('WebSocketClient: Cannot send event - socket not connected');
       return false;
     }
   }
 
-  // Send event to server (socket.io format)
-  send(eventName, data = {}) {
-    const message = '42' + JSON.stringify([eventName, data]);
-    return this._sendMessage(message);
-  }
-
-  // Send ping (socket.io heartbeat)
+  // Send ping using socket.io
   ping() {
-    return this._sendMessage('2'); // socket.io ping packet
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('ping');
+      return true;
+    }
+    return false;
   }
 
   // Join context channel
@@ -301,7 +223,7 @@ export class WebSocketClient {
     this.contextId = contextId;
 
     if (this.authenticated) {
-      // Subscribe to context events
+      // Subscribe to context events using socket.io
       const success = this.send('subscribe', {
         channel: `context:${contextId}`,
         contextId: contextId
@@ -355,9 +277,9 @@ export class WebSocketClient {
       this.reconnectTimer = null;
     }
 
-    // Close socket
+    // Disconnect socket.io
     if (this.socket) {
-      this.socket.close(1000, 'Normal closure');
+      this.socket.disconnect();
       this.socket = null;
     }
 
@@ -377,8 +299,8 @@ export class WebSocketClient {
 
     this.reconnectAttempts++;
     const delay = Math.min(
-      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-      this.maxReconnectDelay
+      1000 * Math.pow(2, this.reconnectAttempts - 1),
+      30000
     );
 
     console.log(`WebSocketClient: Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);

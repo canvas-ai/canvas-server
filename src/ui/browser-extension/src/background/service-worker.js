@@ -150,6 +150,14 @@ function setupWebSocketEventHandlers() {
     broadcastToPopup('context.changed', data);
   });
 
+  // Context URL set events (from CLI commands like 'context set /path')
+  webSocketClient.on('context.url.set', (data) => {
+    console.log('Context URL set via WebSocket:', data);
+    // Refresh tabs when context URL changes
+    refreshTabLists();
+    broadcastToPopup('context.url.set', data);
+  });
+
   // Document events (real-time tab sync)
   webSocketClient.on('tab.event', async (data) => {
     console.log('Received tab event via WebSocket:', data.type, data);
@@ -221,6 +229,15 @@ async function handleDocumentInserted(eventData, syncSettings) {
 
   for (const document of documents) {
     if (document.schema === 'data/abstraction/tab' && document.data?.url) {
+      // Always check if this tab came from the same browser instance to avoid duplicates
+      const browserIdentity = await browserStorage.getBrowserIdentity();
+      const hasOurFeature = document.featureArray?.includes(`tag/${browserIdentity}`);
+
+      if (hasOurFeature) {
+        console.log('Service Worker: Skipping tab from same browser instance to avoid duplicate opening');
+        continue;
+      }
+
       // Check if tab is already open
       const existingTabs = await tabManager.findDuplicateTabs(document.data.url);
 

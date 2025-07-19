@@ -513,6 +513,12 @@ class WorkspaceManager extends EventEmitter {
             const workspace = new Workspace({
                 rootPath: entry.rootPath,
                 configStore: conf,
+                eventEmitterOptions: {
+                    wildcard: true,
+                    delimiter: '.',
+                    newListener: false,
+                    maxListeners: 50
+                }
             });
 
             this.#workspaces.set(workspaceId, workspace);
@@ -1015,6 +1021,12 @@ class WorkspaceManager extends EventEmitter {
             const workspace = new Workspace({
                 rootPath: entry.rootPath,
                 configStore: conf,
+                eventEmitterOptions: {
+                    wildcard: true,
+                    delimiter: '.',
+                    newListener: false,
+                    maxListeners: 50
+                }
             });
 
             this.#workspaces.set(workspaceId, workspace);
