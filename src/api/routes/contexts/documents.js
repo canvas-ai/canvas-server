@@ -227,7 +227,7 @@ export default async function documentRoutes(fastify, options) {
       // Let the Context.deleteDocumentArrayFromDb method handle the ID validation and conversion
       const result = await context.deleteDocumentArrayFromDb(request.user.id, documentIdArray);
 
-      const response = new ResponseObject().deleted('Documents deleted from database successfully', result);
+      const response = new ResponseObject().deleted(result, 'Documents deleted from database successfully');
         return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -444,6 +444,53 @@ export default async function documentRoutes(fastify, options) {
       }
       const response = new ResponseObject().error('Failed to get document by ID');
         return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Delete single document by ID
+  // Path: /:docId (relative to /:id/documents)
+  fastify.delete('/:docId', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['docId'],
+        properties: {
+          docId: { type: ['string', 'number'] }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+    const docId = request.params.docId;
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Convert docId to number if it's a string number
+      const documentId = parseInt(docId, 10);
+      if (isNaN(documentId)) {
+        const response = new ResponseObject().badRequest(`Invalid document ID: ${docId}. Must be a number.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Delete the document from database (direct deletion)
+      const result = await context.deleteDocumentFromDb(request.user.id, documentId);
+
+      const response = new ResponseObject().deleted(result, 'Document deleted from database successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      if (error.message.startsWith('Access denied')) {
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to delete document from database');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 

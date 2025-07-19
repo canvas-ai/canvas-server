@@ -126,6 +126,49 @@ src/ui/browser-extension/
 - **Tab Manager**: Browser tab operations and document conversion
 - **Sync Engine**: Coordination between browser and Canvas
 
+## Architecture Diagram 
+
+graph TB
+    subgraph "Browser Extension"
+        UI["Popup UI<br/>📱 Tabbed Interface"]
+        SW["Service Worker<br/>⚙️ Background Process"]
+        TM["Tab Manager<br/>📑 Browser Tabs"]
+        SE["Sync Engine<br/>🔄 Core Logic"]
+        WS["WebSocket Client<br/>🌐 Real-time Conn"]
+        API["API Client<br/>📡 REST Calls"]
+        BS["Browser Storage<br/>💾 Settings & State"]
+    end
+    
+    subgraph "Canvas Server"
+        WSS["WebSocket Server<br/>📨 socket.io"]
+        REST["REST API<br/>📋 /rest/v2"]
+        CM["Context Manager<br/>📂 Manages Contexts"]
+        DB["Database<br/>🗄️ LMDB + Bitmaps"]
+    end
+    
+    subgraph "Browser"
+        TABS["Browser Tabs<br/>🌐 Actual Tabs"]
+    end
+    
+    UI -->|"Tab Actions<br/>(sync, open, close)"| SW
+    SW --> SE
+    SE --> TM
+    SE --> WS
+    SE --> API
+    SE --> BS
+    
+    TM <-->|"Create/Close/Track"| TABS
+    WS <-->|"Real-time Events<br/>document.inserted<br/>document.removed"| WSS
+    API <-->|"HTTP Requests<br/>GET/POST/DELETE"| REST
+    
+    WSS --> CM
+    REST --> CM
+    CM --> DB
+    
+    style SE fill:#e1f5fe
+    style WS fill:#f3e5f5
+    style CM fill:#fff3e0
+
 ## Development
 
 ### File Structure

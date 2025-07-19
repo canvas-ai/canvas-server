@@ -142,6 +142,33 @@ export async function createServer(options = {}) {
     maxAge: 86400 // 24 hours
   });
 
+  // Add security headers including CSP for browser extension compatibility
+  server.addHook('onSend', async (request, reply, payload) => {
+    // Set CSP headers that are compatible with browser extensions and WebSocket connections
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Allow inline scripts for socket.io
+      "style-src 'self' 'unsafe-inline'", // Allow inline styles
+      "connect-src 'self' ws: wss: http: https:", // Allow WebSocket and HTTP connections
+      "img-src 'self' data: blob:", // Allow images from various sources
+      "font-src 'self' data:", // Allow fonts
+      "frame-src 'self'", // Allow frames from same origin
+      "worker-src 'self' blob:", // Allow web workers
+      "object-src 'none'", // Disable object/embed elements
+      "base-uri 'self'" // Restrict base tag
+    ].join('; ');
+
+    reply.header('Content-Security-Policy', cspDirectives);
+
+    // Additional security headers
+    reply.header('X-Frame-Options', 'SAMEORIGIN');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-XSS-Protection', '1; mode=block');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    return payload;
+  });
+
   await server.register(fastifyMultipart, {
     limits: {
       fileSize: options.maxFileSize || 10485760 // 10MB default

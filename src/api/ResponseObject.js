@@ -53,10 +53,11 @@ export default class ResponseObject {
     }
 
     // Delete: Successful deletion of a resource
-    deleted(message = 'Resource deleted successfully', statusCode = 200, count = null) {
+    deleted(payload, message = 'Resource deleted successfully', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
+        this.payload = payload;
         this.count = count;
         return this;
     }

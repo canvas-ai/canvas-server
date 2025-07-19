@@ -187,7 +187,7 @@ export class CanvasApiClient {
 
   async insertDocument(contextId, document, featureArray = []) {
     const data = {
-      document,
+      documents: document,  // Server expects "documents" (can be single object)
       featureArray
     };
     return await this.post(`/contexts/${contextId}/documents`, data);

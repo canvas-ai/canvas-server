@@ -401,6 +401,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
+        debug(`📋 Context: Emitting context.url.set event for context ${this.#id}, new URL: ${this.#url}`);
         this.emit('context.url.set', { id: this.#id, url: this.#url });
 
         // Save changes to index
@@ -601,6 +602,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
+        debug(`📋 Context: Emitting document.inserted event for context ${this.#id}, documentId: ${documentId}`);
+        debug(`📋 Context: Event payload:`, JSON.stringify(documentEventPayload, null, 2));
         this.emit('document.inserted', documentEventPayload);
         this.emit('context.updated', {
             id: this.#id,
@@ -685,7 +688,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        debug('#insertDocumentArray: Emitting document.inserted event with payload:', JSON.stringify(documentEventPayload, null, 2));
+        debug(`📋 Context: Emitting document.inserted event for context ${this.#id}, documentIds: ${JSON.stringify(documentIds)}`);
+        debug(`📋 Context: Event payload:`, JSON.stringify(documentEventPayload, null, 2));
         this.emit('document.inserted', documentEventPayload);
         return result;
     }

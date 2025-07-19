@@ -6,6 +6,7 @@ import { apiClient } from './modules/api-client.js';
 import { webSocketClient } from './modules/websocket-client.js';
 import { tabManager } from './modules/tab-manager.js';
 import { syncEngine } from './modules/sync-engine.js';
+import { contextIntegration } from './modules/context-integration.js';
 
 console.log('Canvas Extension Service Worker loaded');
 
@@ -29,7 +30,7 @@ async function initializeExtension() {
   try {
     console.log('Initializing Canvas Extension...');
 
-        // Load connection settings
+    // Load connection settings
     const connectionSettings = await browserStorage.getConnectionSettings();
     console.log('Service Worker Init: Loaded connection settings:', connectionSettings);
 
@@ -57,6 +58,9 @@ async function initializeExtension() {
           await browserStorage.setConnectionSettings({ connected: false });
         } else {
           console.log('Saved connection is valid');
+
+          // Initialize WebSocket connection
+          await initializeWebSocket();
         }
       }
     }
@@ -71,13 +75,247 @@ async function initializeExtension() {
   }
 }
 
-// Initialize on service worker startup
-initializeExtension();
+// Initialize WebSocket connection
+async function initializeWebSocket() {
+  try {
+    console.log('Initializing WebSocket connection...');
+
+    const connectionSettings = await browserStorage.getConnectionSettings();
+    const currentContext = await browserStorage.getCurrentContext();
+
+    if (!connectionSettings.connected || !connectionSettings.apiToken) {
+      console.log('Skipping WebSocket - not connected or no API token');
+      return false;
+    }
+
+    if (!currentContext?.id) {
+      console.log('Skipping WebSocket - no context bound');
+      return false;
+    }
+
+    // Setup WebSocket event handlers
+    setupWebSocketEventHandlers();
+
+    // Initialize context integration
+    await contextIntegration.initialize();
+
+    // Connect to WebSocket
+    const success = await webSocketClient.connect(
+      connectionSettings.serverUrl,
+      connectionSettings.apiToken,
+      currentContext.id
+    );
+
+    if (success) {
+      console.log('WebSocket connection established successfully');
+      return true;
+    } else {
+      console.warn('WebSocket connection failed');
+      return false;
+    }
+  } catch (error) {
+    console.error('Failed to initialize WebSocket:', error);
+    return false;
+  }
+}
+
+// Setup WebSocket event handlers for real-time sync
+function setupWebSocketEventHandlers() {
+  console.log('Setting up WebSocket event handlers...');
+
+  // Connection state changes
+  webSocketClient.on('connection.state', (data) => {
+    console.log('WebSocket connection state changed:', data.state);
+
+    // Broadcast state to popup if open
+    broadcastToPopup('websocket.state', data);
+  });
+
+  // Authentication success
+  webSocketClient.on('authenticated', (data) => {
+    console.log('WebSocket authenticated:', data);
+    broadcastToPopup('websocket.authenticated', data);
+  });
+
+  // Context events
+  webSocketClient.on('context.joined', (data) => {
+    console.log('Joined WebSocket context:', data.contextId);
+    broadcastToPopup('websocket.context.joined', data);
+  });
+
+  webSocketClient.on('context.changed', (data) => {
+    console.log('Context changed via WebSocket:', data);
+    // Refresh tabs when context changes
+    refreshTabLists();
+    broadcastToPopup('context.changed', data);
+  });
+
+  // Document events (real-time tab sync)
+  webSocketClient.on('tab.event', async (data) => {
+    console.log('Received tab event via WebSocket:', data.type, data);
+    await handleRealtimeTabEvent(data);
+  });
+
+  // Connection errors
+  webSocketClient.on('connection.error', (data) => {
+    console.error('WebSocket connection error:', data.error);
+    broadcastToPopup('websocket.error', data);
+  });
+
+  // Disconnection
+  webSocketClient.on('disconnected', () => {
+    console.log('WebSocket disconnected');
+    broadcastToPopup('websocket.disconnected', {});
+  });
+}
+
+// Handle real-time tab events from WebSocket
+async function handleRealtimeTabEvent(eventData) {
+  try {
+    console.log('Processing real-time tab event:', eventData.type);
+
+    const syncSettings = await browserStorage.getSyncSettings();
+
+    switch (eventData.type) {
+      case 'document.inserted':
+        await handleDocumentInserted(eventData, syncSettings);
+        break;
+
+      case 'document.updated':
+        await handleDocumentUpdated(eventData, syncSettings);
+        break;
+
+      case 'document.removed':
+      case 'document.removed.batch':
+        await handleDocumentRemoved(eventData, syncSettings);
+        break;
+
+      case 'document.deleted':
+      case 'document.deleted.batch':
+        await handleDocumentDeleted(eventData, syncSettings);
+        break;
+
+      default:
+        console.log('Unknown tab event type:', eventData.type);
+    }
+
+    // Refresh popup tab lists
+    refreshTabLists();
+
+  } catch (error) {
+    console.error('Failed to handle real-time tab event:', error);
+  }
+}
+
+// Handle document inserted (new tab synced from another client)
+async function handleDocumentInserted(eventData, syncSettings) {
+  console.log('Handling document inserted:', eventData);
+
+  // Only handle if auto-open is enabled
+  if (!syncSettings.autoOpenNewTabs) {
+    console.log('Auto-open disabled, skipping document insertion');
+    return;
+  }
+
+  const documents = eventData.documents || [eventData.document];
+
+  for (const document of documents) {
+    if (document.schema === 'data/abstraction/tab' && document.data?.url) {
+      // Check if tab is already open
+      const existingTabs = await tabManager.findDuplicateTabs(document.data.url);
+
+      if (existingTabs.length === 0) {
+        console.log('Opening new tab from Canvas:', document.data.title);
+        await tabManager.openCanvasDocument(document, { active: false });
+      } else {
+        console.log('Tab already open, skipping:', document.data.url);
+      }
+    }
+  }
+}
+
+// Handle document updated
+async function handleDocumentUpdated(eventData, syncSettings) {
+  console.log('Handling document updated:', eventData);
+  // For now, just log - we could update tab titles/URLs in the future
+}
+
+// Handle document removed from context
+async function handleDocumentRemoved(eventData, syncSettings) {
+  console.log('Handling document removed:', eventData);
+
+  // Only handle if auto-close is enabled
+  if (!syncSettings.autoCloseRemovedTabs) {
+    console.log('Auto-close disabled, skipping document removal');
+    return;
+  }
+
+  const documentIds = eventData.documentIds || [eventData.documentId];
+
+  for (const documentId of documentIds) {
+    // Find and close matching tabs (need to match by URL since we don't store document IDs in tabs)
+    // This is a limitation - we'd need to enhance tab tracking to store document IDs
+    console.log('Would close tab for removed document:', documentId);
+  }
+}
+
+// Handle document deleted from database
+async function handleDocumentDeleted(eventData, syncSettings) {
+  console.log('Handling document deleted:', eventData);
+
+  // Same as removed for now
+  await handleDocumentRemoved(eventData, syncSettings);
+}
+
+// Broadcast message to popup
+function broadcastToPopup(type, data) {
+  // Chrome extensions can send messages to popup if it's open
+  try {
+    chrome.runtime.sendMessage({
+      type: 'BACKGROUND_EVENT',
+      eventType: type,
+      data: data
+    }).catch(() => {
+      // Popup might not be open, ignore errors
+    });
+  } catch (error) {
+    // Ignore - popup not open
+  }
+}
+
+// Refresh tab lists (notify popup)
+function refreshTabLists() {
+  broadcastToPopup('tabs.refresh', {});
+}
 
 // Tab event listeners for synchronization
 chrome.tabs.onCreated.addListener(async (tab) => {
   console.log('Tab created:', tab.id, tab.url);
-  // Handle new tab creation
+
+  // Check if auto-sync is enabled and we're connected
+  const syncSettings = await browserStorage.getSyncSettings();
+  const connectionSettings = await browserStorage.getConnectionSettings();
+
+  if (syncSettings.autoSyncNewTabs && connectionSettings.connected) {
+    // Wait a bit for tab to load, then check if it should be synced
+    setTimeout(async () => {
+      try {
+        const updatedTab = await tabManager.getTab(tab.id);
+        if (updatedTab && tabManager.shouldSyncTab(updatedTab)) {
+          console.log('Auto-syncing new tab:', updatedTab.title);
+
+          const currentContext = await browserStorage.getCurrentContext();
+          const browserIdentity = await browserStorage.getBrowserIdentity();
+
+          if (currentContext?.id) {
+            await tabManager.syncTabToCanvas(updatedTab, apiClient, currentContext.id, browserIdentity);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to auto-sync new tab:', error);
+      }
+    }, 2000); // Wait 2 seconds for tab to load
+  }
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -89,7 +327,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
   console.log('Tab removed:', tabId);
-  // Handle tab removal
+
+  // Clean up tracking
+  tabManager.unmarkTabAsSynced(tabId);
 });
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
@@ -149,6 +389,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_TABS':
       // Get browser tabs or canvas tabs
       handleGetTabs(message.data, sendResponse);
+      return true;
+
+    case 'GET_ALL_TABS':
+      // Get all browser tabs (both synced and unsynced)
+      handleGetAllTabs(message.data, sendResponse);
       return true;
 
     case 'GET_CANVAS_DOCUMENTS':
@@ -299,6 +544,13 @@ async function handleConnect(data, sendResponse) {
       await browserStorage.set(browserStorage.KEYS.BROWSER_IDENTITY, data.browserIdentity);
     }
 
+    // Initialize WebSocket connection if we have a context
+    const currentContext = await browserStorage.getCurrentContext();
+    if (currentContext?.id) {
+      console.log('Initializing WebSocket connection after connect...');
+      await initializeWebSocket();
+    }
+
     console.log('Connection saved successfully');
 
     sendResponse({
@@ -420,9 +672,9 @@ async function handleGetTabs(data, sendResponse) {
     console.log('Getting tabs with type:', data?.type);
 
     if (data?.type === 'browser') {
-      // Get browser tabs that should be synced
-      const tabs = await tabManager.getSyncableTabs();
-      console.log('Syncable browser tabs:', tabs.length);
+      // Get browser tabs that are unsynced (should be synced but aren't yet)
+      const tabs = await tabManager.getUnsyncedTabs();
+      console.log('Unsynced browser tabs:', tabs.length);
 
       sendResponse({
         success: true,
@@ -450,7 +702,28 @@ async function handleGetTabs(data, sendResponse) {
   }
 }
 
+async function handleGetAllTabs(data, sendResponse) {
+  try {
+    console.log('Getting all browser tabs...');
 
+    // Get all browser tabs
+    const tabs = await tabManager.getAllTabs();
+    console.log('All browser tabs:', tabs.length);
+
+    sendResponse({
+      success: true,
+      tabs: tabs,
+      type: 'browser'
+    });
+  } catch (error) {
+    console.error('Failed to get all tabs:', error);
+    sendResponse({
+      success: false,
+      tabs: [],
+      error: error.message
+    });
+  }
+}
 
 async function handleOpenTab(data, sendResponse) {
   try {
@@ -525,8 +798,24 @@ async function handleBindContext(data, sendResponse) {
 
     console.log('Binding to context:', context);
 
+    // Get old context for context switching
+    const oldContext = await browserStorage.getCurrentContext();
+    const oldContextId = oldContext?.id;
+
     // Save context to storage
     await browserStorage.setCurrentContext(context);
+
+    // Notify context integration of context switch
+    if (contextIntegration.isInitialized) {
+      await contextIntegration.switchContext(context.id);
+    }
+
+    // Initialize WebSocket connection now that we have a context
+    const connectionSettings = await browserStorage.getConnectionSettings();
+    if (connectionSettings.connected && connectionSettings.apiToken) {
+      console.log('Initializing WebSocket connection after context bind...');
+      await initializeWebSocket();
+    }
 
     console.log('Context bound successfully:', context.id);
 
@@ -662,19 +951,15 @@ async function handleGetCanvasDocuments(data, sendResponse) {
 
 async function handleSyncTab(data, sendResponse) {
   try {
-    const { tabId, contextId } = data;
+    const { tab, contextId } = data;
 
-    if (!tabId) {
-      throw new Error('Tab ID is required');
-    }
-
-    // Get the tab
-    const tab = await tabManager.getTab(tabId);
     if (!tab) {
-      throw new Error('Tab not found');
+      throw new Error('Tab object is required');
     }
 
-        // Get current context if not provided
+    console.log('Syncing tab to Canvas:', tab);
+
+    // Get current context if not provided
     let targetContextId = contextId;
     if (!targetContextId) {
       const currentContext = await browserStorage.getCurrentContext();
@@ -713,6 +998,7 @@ async function handleSyncTab(data, sendResponse) {
     // Sync the tab
     const result = await tabManager.syncTabToCanvas(tab, apiClient, targetContextId, browserIdentity);
 
+    console.log('Tab sync result:', result);
     sendResponse(result);
   } catch (error) {
     console.error('Failed to sync tab:', error);
@@ -851,3 +1137,6 @@ async function handleRemoveCanvasDocument(data, sendResponse) {
     });
   }
 }
+
+// Initialize extension on service worker startup
+initializeExtension();

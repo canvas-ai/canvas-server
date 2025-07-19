@@ -4,8 +4,8 @@
   "description": "Canvas Browser Extension for seamless tab synchronization",
   "type": "module",
   "scripts": {
-    "dev": "cross-env NODE_ENV='dev' node build.mjs",
     "build": "cross-env NODE_ENV='production' node build.mjs",
+    "build:dev": "cross-env NODE_ENV='dev' node build.mjs",
     "clean": "rimraf build packages"
   },
   "keywords": [

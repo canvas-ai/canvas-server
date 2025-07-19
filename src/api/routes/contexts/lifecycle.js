@@ -339,7 +339,7 @@ export default async function lifecycleRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().deleted('Context deleted successfully');
+      const response = new ResponseObject().deleted(null, 'Context deleted successfully');
         return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);

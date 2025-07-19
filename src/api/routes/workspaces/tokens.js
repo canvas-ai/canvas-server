@@ -282,7 +282,7 @@ export default async function workspaceTokenRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().deleted('Workspace sharing token revoked successfully');
+      const responseObject = new ResponseObject().deleted(null, 'Workspace sharing token revoked successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
 
     } catch (error) {

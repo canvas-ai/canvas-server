@@ -474,6 +474,8 @@ class ContextManager extends EventEmitter {
             const wildcardForwarder = function (payload = {}) {
                 const eventName = this.event; // EventEmitter2 provides the emitted event name
                 const enriched = { ...payload, contextId: context.id };
+                debug(`📋 ContextManager: 🎯 Forwarding event "${eventName}" from context ${context.id}`);
+                debug(`📋 ContextManager: 🎯 Event payload:`, JSON.stringify(enriched, null, 2));
                 manager.emit(eventName, enriched);
                 debug(`📋 ContextManager: ➡️  forwarded ${eventName} for context ${context.id}`);
             };

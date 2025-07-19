@@ -265,7 +265,7 @@ export default async function workspaceRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().deleted('Workspace deleted successfully');
+      const responseObject = new ResponseObject().deleted(null, 'Workspace deleted successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

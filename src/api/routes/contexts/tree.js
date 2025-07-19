@@ -22,7 +22,7 @@ export default async function treeRoutes(fastify, options) {
       // params.id is implicitly available
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -76,7 +76,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -134,7 +134,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -159,7 +159,7 @@ export default async function treeRoutes(fastify, options) {
         const response = new ResponseObject().error('Failed to remove tree path from workspace.');
         return reply.code(response.statusCode).send(response.getResponse());
       }
-      const response = new ResponseObject().deleted('Tree path removed successfully', { success: true });
+      const response = new ResponseObject().deleted({ success: true }, 'Tree path removed successfully');
         return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Remove path error for context ${contextId}: ${error.message}`);
@@ -189,7 +189,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -245,7 +245,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -299,7 +299,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
@@ -349,7 +349,7 @@ export default async function treeRoutes(fastify, options) {
       }
     }
   }, async (request, reply) => {
-    
+
     const contextId = request.params.id;
 
     try {
