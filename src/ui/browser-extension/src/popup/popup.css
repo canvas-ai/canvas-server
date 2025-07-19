@@ -79,14 +79,15 @@ body {
 }
 
 .context-id {
-  font-size: 11px;
-  font-weight: 600;
-  color: #0066cc;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6c757d;
 }
 
 .context-url {
-  font-size: 10px;
-  color: #6c757d;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0066cc;
 }
 
 .settings-btn {
