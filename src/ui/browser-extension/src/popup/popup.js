@@ -6,7 +6,7 @@ import FuzzySearch from './fuse.js';
 
 // DOM elements
 let connectionStatus, connectionText, contextInfo, contextId, contextUrl;
-let searchInput, autoSyncNew, autoOpenNew, showSyncedTabs;
+let searchInput, autoSyncNew, autoOpenNew, showSyncedTabs, showAllCanvasTabs;
 let browserToCanvasList, canvasToBrowserList;
 let syncAllBtn, closeAllBtn, openAllBtn, settingsBtn;
 let browserBulkActions, canvasBulkActions;
@@ -23,6 +23,7 @@ let canvasTabs = [];
 let allBrowserTabs = []; // All tabs including synced ones
 let syncedTabIds = new Set(); // Track which tabs are already synced
 let showingSyncedTabs = false; // Track checkbox state
+let showingAllCanvasTabs = false; // Track show all Canvas tabs checkbox state
 let selectedBrowserTabs = new Set();
 let selectedCanvasTabs = new Set();
 let currentTab = 'browser-to-canvas';
@@ -146,6 +147,7 @@ function initializeElements() {
   autoSyncNew = document.getElementById('autoSyncNew');
   autoOpenNew = document.getElementById('autoOpenNew');
   showSyncedTabs = document.getElementById('showSyncedTabs');
+  showAllCanvasTabs = document.getElementById('showAllCanvasTabs');
   settingsBtn = document.getElementById('settingsBtn');
 
   // Tab navigation
@@ -190,6 +192,7 @@ function setupEventListeners() {
   autoSyncNew.addEventListener('change', handleSyncSettingChange);
   autoOpenNew.addEventListener('change', handleSyncSettingChange);
   showSyncedTabs.addEventListener('change', handleShowSyncedChange);
+  showAllCanvasTabs.addEventListener('change', handleShowAllCanvasChange);
 
   // Action buttons
   syncAllBtn.addEventListener('click', () => handleSyncAll());
@@ -274,11 +277,18 @@ async function loadInitialData() {
     currentConnection = response;
     updateConnectionStatus(response);
 
+    // Initialize checkbox states to ensure proper defaults
+    showSyncedTabs.checked = false; // Default to showing only unsynced tabs
+    showingSyncedTabs = false;
+
     // Initialize section header based on checkbox state
     const sectionHeader = document.querySelector('#browser-to-canvas .section-header h3');
     if (sectionHeader) {
       sectionHeader.textContent = showingSyncedTabs ? 'Browser Tabs' : 'Unsynced Browser Tabs';
     }
+
+    // Initialize Canvas section header based on checkbox state
+    showingAllCanvasTabs = showAllCanvasTabs?.checked || false;
 
     // Load tabs if connected (or always load for debugging)
     console.log('Loading tabs...');
@@ -317,6 +327,57 @@ function updateConnectionStatus(connection) {
   }
 }
 
+// Filter out internal browser tabs that should never be shown or interacted with
+function isInternalTab(tab) {
+  if (!tab || !tab.url) return true;
+
+  const excludedProtocols = [
+    'chrome://',
+    'chrome-extension://',
+    'chrome-search://',
+    'chrome-devtools://',
+    'moz-extension://',
+    'edge://',
+    'opera://',
+    'brave://',
+    'about:',
+    'file://',
+    'data:',
+    'blob:',
+    'javascript:',
+    'view-source:',
+    'wyciwyg://',
+    'resource://'
+  ];
+
+  const excludedUrls = [
+    'chrome://newtab/',
+    'chrome://new-tab-page/',
+    'about:newtab',
+    'about:blank',
+    'edge://newtab/',
+    'opera://startpage/'
+  ];
+
+  // Check protocols
+  for (const protocol of excludedProtocols) {
+    if (tab.url.startsWith(protocol)) {
+      console.log(`🚫 Filtering internal tab (${protocol}): ${tab.title}`);
+      return true;
+    }
+  }
+
+  // Check specific URLs
+  for (const url of excludedUrls) {
+    if (tab.url === url) {
+      console.log(`🚫 Filtering internal tab (${url}): ${tab.title}`);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function loadTabs() {
   try {
     console.log('Loading tabs...');
@@ -327,8 +388,14 @@ async function loadTabs() {
     console.log('All browser tabs response:', allTabsResponse);
 
     if (allTabsResponse.success) {
-      allBrowserTabs = allTabsResponse.tabs || [];
-      console.log('All browser tabs loaded:', allBrowserTabs.length);
+      const rawTabs = allTabsResponse.tabs || [];
+
+      // Filter out discarded tabs and internal tabs - user doesn't want to see them anywhere
+      allBrowserTabs = rawTabs.filter(tab => !tab.discarded && !isInternalTab(tab));
+      const discardedCount = rawTabs.filter(tab => tab.discarded).length;
+      const internalCount = rawTabs.filter(tab => !tab.discarded && isInternalTab(tab)).length;
+
+      console.log(`All browser tabs loaded: ${allBrowserTabs.length} usable, ${discardedCount} discarded, ${internalCount} internal (filtered out)`);
 
       // Get synced tab URLs from Canvas documents to identify which tabs are synced
       if (currentConnection.connected && currentConnection.context) {
@@ -392,21 +459,63 @@ async function loadTabs() {
 
 function updateBrowserTabsFilter() {
   if (showingSyncedTabs) {
-    // Show all tabs
+    // Show all tabs (both synced and unsynced)
     browserTabs = [...allBrowserTabs];
+    console.log(`Browser tabs filter: Showing ALL tabs (${browserTabs.length} total)`);
   } else {
     // Show only unsynced tabs
     browserTabs = allBrowserTabs.filter(tab => !syncedTabIds.has(tab.id));
+    const syncedCount = allBrowserTabs.length - browserTabs.length;
+    console.log(`Browser tabs filter: Showing UNSYNCED only (${browserTabs.length} unsynced, ${syncedCount} synced hidden)`);
   }
-  console.log(`Filtered browser tabs: ${browserTabs.length} of ${allBrowserTabs.length} total`);
+}
+
+function getFilteredCanvasTabs() {
+  if (showingAllCanvasTabs) {
+    // Show all Canvas tabs
+    return canvasTabs;
+  } else {
+    // Show only Canvas tabs that are NOT already open in browser
+    const openUrls = new Set(allBrowserTabs.map(tab => tab.url));
+    const filteredTabs = canvasTabs.filter(doc => {
+      const url = doc.data?.url;
+      return url && !openUrls.has(url);
+    });
+    console.log(`Filtered Canvas tabs: ${filteredTabs.length} of ${canvasTabs.length} total (hiding tabs already open in browser)`);
+    return filteredTabs;
+  }
 }
 
 async function loadSyncSettings() {
   try {
-    // TODO: Load sync settings from background
-    console.log('TODO: Load sync settings');
+    console.log('Loading sync settings from background...');
+
+    // Get sync settings from background service worker
+    const response = await sendMessageToBackground('GET_SYNC_SETTINGS');
+    console.log('Loaded sync settings:', response);
+
+    if (response.success) {
+      const settings = response.settings;
+
+      // Update checkbox states to match saved settings
+      autoSyncNew.checked = settings.autoSyncNewTabs || false;
+      autoOpenNew.checked = settings.autoOpenNewTabs || false;
+
+      console.log('Applied sync settings to UI:', {
+        autoSyncNewTabs: autoSyncNew.checked,
+        autoOpenNewTabs: autoOpenNew.checked
+      });
+    } else {
+      console.warn('Failed to load sync settings:', response.error);
+      // Set defaults
+      autoSyncNew.checked = false;
+      autoOpenNew.checked = false;
+    }
   } catch (error) {
     console.error('Failed to load sync settings:', error);
+    // Set defaults on error
+    autoSyncNew.checked = false;
+    autoOpenNew.checked = false;
   }
 }
 
@@ -414,8 +523,10 @@ function renderBrowserTabs() {
   console.log('Rendering browser tabs, count:', browserTabs.length);
 
   if (browserTabs.length === 0) {
-    const emptyMessage = showingSyncedTabs ? 'No browser tabs found' : 'No syncable tabs found';
-    browserToCanvasList.innerHTML = `<div class="empty-state">${emptyMessage}<br><small>Check console for filtering details</small></div>`;
+    const emptyMessage = showingSyncedTabs
+      ? 'No browser tabs found'
+      : 'All tabs are already synced!<br><small>Check "Show Synced" to see all tabs</small>';
+    browserToCanvasList.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
     return;
   }
 
@@ -451,12 +562,17 @@ function renderBrowserTabs() {
 }
 
 function renderCanvasTabs() {
-  if (canvasTabs.length === 0) {
-    canvasToBrowserList.innerHTML = '<div class="empty-state">No context tabs to open</div>';
+  const filteredCanvasTabs = getFilteredCanvasTabs();
+
+  if (filteredCanvasTabs.length === 0) {
+    const emptyMessage = showingAllCanvasTabs ?
+      'No context tabs found' :
+      'No new context tabs to open<br><small>All context tabs are already open in browser</small>';
+    canvasToBrowserList.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
     return;
   }
 
-  canvasToBrowserList.innerHTML = canvasTabs.map(tab => `
+  canvasToBrowserList.innerHTML = filteredCanvasTabs.map(tab => `
     <div class="tab-item" data-document-id="${tab.id}">
       <label class="tab-checkbox">
         <input type="checkbox" data-document-id="${tab.id}">
@@ -475,10 +591,7 @@ function renderCanvasTabs() {
     </div>
   `).join('');
 
-  // Setup checkbox listeners
-  canvasToBrowserList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-    checkbox.addEventListener('change', handleCanvasTabSelection);
-  });
+  updateBulkActionVisibility();
 }
 
 // Event handlers
@@ -713,9 +826,10 @@ function initializeFuseInstances() {
   }
 
   // Initialize Canvas documents fuzzy search
-  if (canvasTabs && canvasTabs.length > 0) {
-    canvasTabsFuse = new FuzzySearch(canvasTabs, fuseConfig);
-    console.log('Canvas tabs FuzzySearch instance created with', canvasTabs.length, 'items');
+  const filteredCanvasTabs = getFilteredCanvasTabs();
+  if (filteredCanvasTabs && filteredCanvasTabs.length > 0) {
+    canvasTabsFuse = new FuzzySearch(filteredCanvasTabs, fuseConfig);
+    console.log('Canvas tabs FuzzySearch instance created with', filteredCanvasTabs.length, 'items');
   } else {
     canvasTabsFuse = null;
   }
@@ -731,9 +845,47 @@ function filterTabItems(container, query, type) {
   }
 }
 
-function handleSyncSettingChange(event) {
-  // TODO: Save sync settings to background
-  console.log('TODO: Save sync setting:', event.target.id, event.target.checked);
+async function handleSyncSettingChange(event) {
+  try {
+    const settingName = event.target.id;
+    const settingValue = event.target.checked;
+
+    console.log('Sync setting changed:', settingName, '=', settingValue);
+
+    // Map checkbox IDs to setting names
+    const settingMap = {
+      'autoSyncNew': 'autoSyncNewTabs',
+      'autoOpenNew': 'autoOpenNewTabs'
+    };
+
+    const actualSettingName = settingMap[settingName];
+    if (!actualSettingName) {
+      console.warn('Unknown sync setting:', settingName);
+      return;
+    }
+
+    // Create partial settings object
+    const settingsUpdate = {
+      [actualSettingName]: settingValue
+    };
+
+    console.log('Saving sync setting update:', settingsUpdate);
+
+    // Save to background service worker
+    const response = await sendMessageToBackground('SET_SYNC_SETTINGS', settingsUpdate);
+
+    if (response.success) {
+      console.log('Sync setting saved successfully:', actualSettingName, '=', settingValue);
+    } else {
+      console.error('Failed to save sync setting:', response.error);
+      // Revert checkbox state on failure
+      event.target.checked = !settingValue;
+    }
+  } catch (error) {
+    console.error('Failed to save sync setting:', error);
+    // Revert checkbox state on failure
+    event.target.checked = !event.target.checked;
+  }
 }
 
 function handleShowSyncedChange(event) {
@@ -746,8 +898,20 @@ function handleShowSyncedChange(event) {
     sectionHeader.textContent = showingSyncedTabs ? 'Browser Tabs' : 'Unsynced Browser Tabs';
   }
 
-  // Re-render browser tabs with new filter
+  // Update filter and re-render browser tabs
+  updateBrowserTabsFilter();
   renderBrowserTabs();
+}
+
+function handleShowAllCanvasChange(event) {
+  showingAllCanvasTabs = event.target.checked;
+  console.log('Show all Canvas tabs toggled:', showingAllCanvasTabs);
+
+  // Re-render Canvas tabs with new filter
+  renderCanvasTabs();
+
+  // Reinitialize fuzzy search with filtered data
+  initializeFuseInstances();
 }
 
 function handleBrowserTabSelection(event) {
@@ -1046,16 +1210,43 @@ function escapeHtml(text) {
 // Bulk action handlers
 async function handleSyncAll() {
   try {
-    console.log('Syncing all browser tabs');
+    console.log('🔧 handleSyncAll: Starting sync all operation');
 
-    if (browserTabs.length === 0) {
-      console.log('No browser tabs to sync');
+    // Use ALL browser tabs, not just the currently filtered ones
+    const allSyncableTabs = allBrowserTabs.filter(tab => {
+      // Only sync tabs that aren't already synced and are syncable
+      return !syncedTabIds.has(tab.id);
+    });
+
+    console.log('🔧 handleSyncAll: Tab filtering results:', {
+      totalBrowserTabs: allBrowserTabs.length,
+      syncedTabIds: Array.from(syncedTabIds),
+      unsyncedTabs: allSyncableTabs.length
+    });
+
+    console.log('🔧 handleSyncAll: Sample tab data:', allBrowserTabs.slice(0, 2).map(tab => ({
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+      status: tab.status,
+      discarded: tab.discarded,
+      windowId: tab.windowId,
+      active: tab.active
+    })));
+
+    if (allSyncableTabs.length === 0) {
+      console.log('❌ handleSyncAll: No browser tabs to sync');
       return;
     }
 
-    const tabIds = browserTabs.map(tab => tab.id);
+    console.log(`🔧 handleSyncAll: Syncing ${allSyncableTabs.length} unsynced browser tabs out of ${allBrowserTabs.length} total`);
+    console.log('🔧 handleSyncAll: Tab details:', allSyncableTabs.map(tab => ({ id: tab.id, title: tab.title, url: tab.url })));
+
+    const tabIds = allSyncableTabs.map(tab => tab.id);
+    console.log('🔧 handleSyncAll: Sending message to background with tabIds:', tabIds);
+
     const response = await sendMessageToBackground('SYNC_MULTIPLE_TABS', { tabIds });
-    console.log('Sync all response:', response);
+    console.log('🔧 handleSyncAll: Received response from background:', response);
 
     if (response.success) {
       console.log(`Synced ${response.successful}/${response.total} tabs`);
@@ -1092,16 +1283,35 @@ async function handleOpenAll() {
   try {
     console.log('Opening all Canvas tabs');
 
-    if (canvasTabs.length === 0) {
+    const filteredCanvasTabs = getFilteredCanvasTabs();
+
+    if (filteredCanvasTabs.length === 0) {
       console.log('No Canvas tabs to open');
       return;
     }
 
-    for (const document of canvasTabs) {
-      await sendMessageToBackground('OPEN_CANVAS_DOCUMENT', { document });
+    console.log(`Opening ${filteredCanvasTabs.length} Canvas tabs`);
+
+    // Open tabs with better error handling
+    let opened = 0;
+    let failed = 0;
+
+    for (const document of filteredCanvasTabs) {
+      try {
+        const response = await sendMessageToBackground('OPEN_CANVAS_DOCUMENT', { document });
+        if (response.success) {
+          opened++;
+        } else {
+          failed++;
+          console.error(`Failed to open tab: ${document.data?.title}`, response.error);
+        }
+      } catch (error) {
+        failed++;
+        console.error(`Error opening tab: ${document.data?.title}`, error);
+      }
     }
 
-    console.log('All Canvas tabs opened');
+    console.log(`Opened ${opened} tabs, ${failed} failed`);
     await loadTabs(); // Refresh lists
   } catch (error) {
     console.error('Failed to open all Canvas tabs:', error);

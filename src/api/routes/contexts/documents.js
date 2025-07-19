@@ -135,6 +135,61 @@ export default async function documentRoutes(fastify, options) {
     }
   });
 
+  // Batch insert documents into context
+  // Path: /batch (relative to /:id/documents)
+  fastify.post('/batch', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['documents'],
+        properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' }
+          },
+          documents: {
+            type: 'array',
+            items: { type: 'object' },
+            minItems: 1
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound('Context not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const { featureArray = [], documents } = request.body;
+
+      if (!Array.isArray(documents) || documents.length === 0) {
+        const response = new ResponseObject().badRequest('Documents must be a non-empty array');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      console.log(`🔧 Batch insert: Processing ${documents.length} documents for context ${contextId}`);
+
+      const result = await context.insertDocumentArray(request.user.id, documents, featureArray);
+
+      const response = new ResponseObject().created(result, `${documents.length} documents inserted successfully`);
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      if (error.message.startsWith('Access denied')) {
+        const response = new ResponseObject().forbidden(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to batch insert documents');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
   // Update documents in context
   // Path: / (relative to /:id/documents)
   fastify.put('/', {

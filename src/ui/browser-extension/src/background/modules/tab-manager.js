@@ -5,6 +5,7 @@ export class TabManager {
   constructor() {
     this.trackedTabs = new Map(); // tabId -> tab data
     this.syncedTabs = new Set(); // tabIds that are synced to Canvas
+    this.pendingCanvasTabs = new Set(); // URLs of tabs being opened from Canvas (to prevent auto-sync race conditions)
   }
 
   // Convert browser tab to Canvas document format (based on PAYLOAD.md format)
@@ -84,11 +85,29 @@ export class TabManager {
 
   // Check if tab should be synced (exclude internal pages)
   shouldSyncTab(tab) {
-    if (!tab || !tab.url || !tab.title) return false;
+    console.log(`🔧 shouldSyncTab: Checking tab:`, {
+      id: tab?.id,
+      url: tab?.url,
+      title: tab?.title,
+      status: tab?.status,
+      discarded: tab?.discarded
+    });
+
+    if (!tab || !tab.url || !tab.title) {
+      console.log(`❌ shouldSyncTab: Tab missing basic fields:`, {
+        hasTab: !!tab,
+        hasUrl: !!tab?.url,
+        hasTitle: !!tab?.title
+      });
+      return false;
+    }
 
     // Allow tabs that are complete or loading (but not discarded)
-    if (tab.status && tab.status === 'unloaded') return false;
-    if (tab.discarded === true) return false;
+    // Note: 'unloaded' tabs are still syncable - Chrome just unloaded them to save memory
+    if (tab.discarded === true) {
+      console.log(`❌ shouldSyncTab: Tab is discarded`);
+      return false;
+    }
 
     // Exclude internal browser pages and extension pages
     const excludedProtocols = [
@@ -129,6 +148,7 @@ export class TabManager {
     // Check protocols
     for (const protocol of excludedProtocols) {
       if (tab.url.startsWith(protocol)) {
+        console.log(`❌ shouldSyncTab: Excluded protocol: ${protocol}`);
         return false;
       }
     }
@@ -136,6 +156,7 @@ export class TabManager {
     // Check specific URLs
     for (const url of excludedUrls) {
       if (tab.url === url) {
+        console.log(`❌ shouldSyncTab: Excluded URL: ${url}`);
         return false;
       }
     }
@@ -143,12 +164,20 @@ export class TabManager {
     // Check titles (for pages that might have blank/new tab titles)
     for (const title of excludedTitles) {
       if (tab.title === title) {
+        console.log(`❌ shouldSyncTab: Excluded title: ${title}`);
         return false;
       }
     }
 
     // Must have http or https protocol for valid web pages
-    return tab.url.startsWith('http://') || tab.url.startsWith('https://');
+    const isValidProtocol = tab.url.startsWith('http://') || tab.url.startsWith('https://');
+    if (!isValidProtocol) {
+      console.log(`❌ shouldSyncTab: Invalid protocol for URL: ${tab.url}`);
+      return false;
+    }
+
+    console.log(`✅ shouldSyncTab: Tab is syncable: ${tab.title} (${tab.url})`);
+    return true;
   }
 
   // Get all browser tabs
@@ -205,6 +234,21 @@ export class TabManager {
   // Check if tab is synced
   isTabSynced(tabId) {
     return this.syncedTabs.has(tabId);
+  }
+
+  // Check if URL is pending from Canvas (to prevent auto-sync)
+  isUrlPendingFromCanvas(url) {
+    return this.pendingCanvasTabs.has(url);
+  }
+
+  // Mark URL as pending from Canvas
+  markUrlAsPendingFromCanvas(url) {
+    this.pendingCanvasTabs.add(url);
+  }
+
+  // Unmark URL as pending from Canvas
+  unmarkUrlAsPendingFromCanvas(url) {
+    this.pendingCanvasTabs.delete(url);
   }
 
   // Get tab by ID
@@ -378,14 +422,31 @@ export class TabManager {
   // Sync a browser tab to Canvas
   async syncTabToCanvas(tab, apiClient, contextId, browserIdentity) {
     try {
+      console.log(`🔧 TabManager.syncTabToCanvas: Starting sync for tab: ${tab.title} (${tab.url})`);
+
       if (!this.shouldSyncTab(tab)) {
+        console.warn(`⚠️ TabManager.syncTabToCanvas: Tab is not syncable: ${tab.title}`);
         throw new Error('Tab is not syncable');
       }
 
-      console.log(`Syncing tab to Canvas: ${tab.title} (${tab.url})`);
+      console.log(`🔧 TabManager.syncTabToCanvas: Tab is syncable, proceeding with sync`);
 
       // Convert tab to Canvas document format
       const document = this.convertTabToDocument(tab, browserIdentity);
+      console.log(`🔧 TabManager.syncTabToCanvas: Converted to document:`, {
+        schema: document.schema,
+        url: document.data.url,
+        title: document.data.title,
+        featureArrayLength: document.featureArray?.length
+      });
+
+      console.log(`🔧 TabManager.syncTabToCanvas: Making API call to insertDocument...`);
+      console.log(`🔧 TabManager.syncTabToCanvas: API client details:`, {
+        hasApiClient: !!apiClient,
+        hasInsertMethod: typeof apiClient?.insertDocument === 'function',
+        apiToken: apiClient?.apiToken ? 'present' : 'missing',
+        serverUrl: apiClient?.serverUrl || 'missing'
+      });
 
       // Send to Canvas API (use insertDocument with feature array)
       const response = await apiClient.insertDocument(
@@ -393,6 +454,8 @@ export class TabManager {
         document,
         document.featureArray
       );
+
+      console.log(`🔧 TabManager.syncTabToCanvas: API response:`, response);
 
       if (response.status === 'success') {
         // Mark tab as synced
@@ -425,36 +488,47 @@ export class TabManager {
 
       console.log(`Opening Canvas document: ${canvasDoc.data.title} (${canvasDoc.data.url})`);
 
-      // Check if tab is already open
-      const existingTabs = await this.findDuplicateTabs(canvasDoc.data.url);
-      if (existingTabs.length > 0 && !options.allowDuplicates) {
-        // Focus existing tab instead
-        const existingTab = existingTabs[0];
-        await chrome.tabs.update(existingTab.id, { active: true });
-        await chrome.windows.update(existingTab.windowId, { focused: true });
+      // Mark URL as pending from Canvas to prevent auto-sync race conditions
+      this.markUrlAsPendingFromCanvas(canvasDoc.data.url);
 
+      try {
+        // Check if tab is already open
+        const existingTabs = await this.findDuplicateTabs(canvasDoc.data.url);
+        if (existingTabs.length > 0 && !options.allowDuplicates) {
+          // Focus existing tab instead
+          const existingTab = existingTabs[0];
+          await chrome.tabs.update(existingTab.id, { active: true });
+          await chrome.windows.update(existingTab.windowId, { focused: true });
+
+          // Mark as synced and remove from pending
+          this.markTabAsSynced(existingTab.id, canvasDoc.id);
+
+          return {
+            success: true,
+            tab: existingTab,
+            message: 'Focused existing tab'
+          };
+        }
+
+        // Open new tab
+        const tab = await this.openTab(canvasDoc.data.url, {
+          active: options.active !== false,
+          pinned: canvasDoc.data.pinned || false
+        });
+
+        // Mark as synced immediately to prevent auto-sync
+        this.markTabAsSynced(tab.id, canvasDoc.id);
+
+        console.log(`Canvas document opened successfully: ${canvasDoc.data.title}`);
         return {
           success: true,
-          tab: existingTab,
-          message: 'Focused existing tab'
+          tab,
+          message: 'Canvas document opened'
         };
+      } finally {
+        // Always clean up pending state
+        this.unmarkUrlAsPendingFromCanvas(canvasDoc.data.url);
       }
-
-      // Open new tab
-      const tab = await this.openTab(canvasDoc.data.url, {
-        active: options.active !== false,
-        pinned: canvasDoc.data.pinned || false
-      });
-
-      // Mark as synced
-      this.markTabAsSynced(tab.id, canvasDoc.id);
-
-      console.log(`Canvas document opened successfully: ${canvasDoc.data.title}`);
-      return {
-        success: true,
-        tab,
-        message: 'Canvas document opened'
-      };
     } catch (error) {
       console.error('Failed to open Canvas document:', error);
       return {
@@ -466,18 +540,109 @@ export class TabManager {
 
   // Bulk sync multiple tabs
   async syncMultipleTabs(tabs, apiClient, contextId, browserIdentity) {
+    console.log(`🔧 TabManager.syncMultipleTabs: Starting batch sync of ${tabs.length} tabs to context ${contextId}`);
+    console.log('🔧 TabManager.syncMultipleTabs: API client status:', {
+      hasApiClient: !!apiClient,
+      hasToken: !!apiClient?.apiToken,
+      hasUrl: !!apiClient?.serverUrl
+    });
+
+    try {
+      // Filter out non-syncable tabs
+      const syncableTabs = tabs.filter(tab => {
+        const canSync = this.shouldSyncTab(tab);
+        if (!canSync) {
+          console.warn(`⚠️ TabManager.syncMultipleTabs: Tab is not syncable: ${tab.title}`);
+        }
+        return canSync;
+      });
+
+      if (syncableTabs.length === 0) {
+        console.warn('❌ TabManager.syncMultipleTabs: No syncable tabs found');
+        return {
+          success: false,
+          total: tabs.length,
+          successful: 0,
+          failed: tabs.length,
+          error: 'No syncable tabs found'
+        };
+      }
+
+      console.log(`🔧 TabManager.syncMultipleTabs: Converting ${syncableTabs.length} syncable tabs to documents`);
+
+      // Convert all tabs to documents
+      const documents = syncableTabs.map(tab => this.convertTabToDocument(tab, browserIdentity));
+
+      // Use batch API for better performance
+      console.log(`🔧 TabManager.syncMultipleTabs: Making batch API call with ${documents.length} documents`);
+
+      const response = await apiClient.insertDocuments(
+        contextId,
+        documents,
+        documents[0]?.featureArray || [] // All tabs should have same feature array
+      );
+
+      console.log(`🔧 TabManager.syncMultipleTabs: Batch API response:`, response);
+
+      if (response.status === 'success') {
+        // Mark all tabs as synced
+        const documentIds = Array.isArray(response.payload) ? response.payload : [response.payload];
+        syncableTabs.forEach((tab, index) => {
+          const documentId = documentIds[index] || documentIds[0]; // Fallback to first ID if array mismatch
+          this.markTabAsSynced(tab.id, documentId);
+          console.log(`✅ TabManager.syncMultipleTabs: Marked tab ${tab.id} as synced with document ${documentId}`);
+        });
+
+        console.log(`✅ TabManager.syncMultipleTabs: Batch sync completed successfully: ${syncableTabs.length} tabs synced`);
+
+        return {
+          success: true,
+          total: tabs.length,
+          successful: syncableTabs.length,
+          failed: tabs.length - syncableTabs.length,
+          documentIds
+        };
+      } else {
+        throw new Error(response.message || 'Batch sync failed');
+      }
+
+    } catch (error) {
+      console.error(`❌ TabManager.syncMultipleTabs: Batch sync failed:`, error);
+
+      // Fallback to individual sync if batch fails
+      console.log('🔄 TabManager.syncMultipleTabs: Falling back to individual sync...');
+      return await this.syncMultipleTabsIndividually(tabs, apiClient, contextId, browserIdentity);
+    }
+  }
+
+  // Fallback method for individual tab syncing
+  async syncMultipleTabsIndividually(tabs, apiClient, contextId, browserIdentity) {
+    console.log(`🔄 TabManager.syncMultipleTabsIndividually: Starting individual sync of ${tabs.length} tabs`);
+
     const results = [];
 
-    for (const tab of tabs) {
-      const result = await this.syncTabToCanvas(tab, apiClient, contextId, browserIdentity);
-      results.push({
-        tab,
-        result
-      });
+    for (let i = 0; i < tabs.length; i++) {
+      const tab = tabs[i];
+      console.log(`🔧 TabManager.syncMultipleTabsIndividually: Syncing tab ${i + 1}/${tabs.length}: ${tab.title}`);
+
+      try {
+        const result = await this.syncTabToCanvas(tab, apiClient, contextId, browserIdentity);
+        console.log(`🔧 TabManager.syncMultipleTabsIndividually: Tab ${i + 1} result:`, result);
+        results.push({
+          tab,
+          result
+        });
+      } catch (error) {
+        console.error(`❌ TabManager.syncMultipleTabsIndividually: Tab ${i + 1} failed:`, error);
+        results.push({
+          tab,
+          result: { success: false, error: error.message }
+        });
+      }
     }
 
     const successful = results.filter(r => r.result.success).length;
-    console.log(`Bulk sync completed: ${successful}/${tabs.length} tabs synced`);
+    console.log(`✅ TabManager.syncMultipleTabsIndividually: Individual sync completed: ${successful}/${tabs.length} tabs synced`);
 
     return {
       success: successful > 0,

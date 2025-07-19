@@ -319,6 +319,18 @@ chrome.tabs.onCreated.addListener(async (tab) => {
       try {
         const updatedTab = await tabManager.getTab(tab.id);
         if (updatedTab && tabManager.shouldSyncTab(updatedTab)) {
+          // CRITICAL: Check if tab is already synced to prevent cascading sync loops
+          if (tabManager.isTabSynced(updatedTab.id)) {
+            console.log('Tab already synced (opened from Canvas), skipping auto-sync:', updatedTab.title);
+            return;
+          }
+
+          // CRITICAL: Check if URL is pending from Canvas to prevent race conditions
+          if (tabManager.isUrlPendingFromCanvas(updatedTab.url)) {
+            console.log('Tab URL is pending from Canvas document, skipping auto-sync:', updatedTab.title);
+            return;
+          }
+
           console.log('Auto-syncing new tab:', updatedTab.title);
 
           const currentContext = await browserStorage.getCurrentContext();
@@ -401,6 +413,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'SAVE_SETTINGS':
       // Save all extension settings
       handleSaveSettings(message.data, sendResponse);
+      return true;
+
+    case 'GET_SYNC_SETTINGS':
+      // Get sync settings only
+      handleGetSyncSettings(sendResponse);
+      return true;
+
+    case 'SET_SYNC_SETTINGS':
+      // Set sync settings only
+      handleSetSyncSettings(message.data, sendResponse);
       return true;
 
     case 'GET_TABS':
@@ -906,6 +928,55 @@ async function handleSaveSettings(data, sendResponse) {
   }
 }
 
+async function handleGetSyncSettings(sendResponse) {
+  try {
+    console.log('Getting sync settings from storage...');
+
+    // Get sync settings from storage
+    const syncSettings = await browserStorage.getSyncSettings();
+
+    console.log('Sync settings:', syncSettings);
+
+    sendResponse({
+      success: true,
+      settings: syncSettings
+    });
+  } catch (error) {
+    console.error('Failed to get sync settings:', error);
+    sendResponse({
+      success: false,
+      settings: null,
+      error: error.message
+    });
+  }
+}
+
+async function handleSetSyncSettings(data, sendResponse) {
+  try {
+    console.log('Setting sync settings:', data);
+
+    // Save sync settings to storage (data is the partial settings object)
+    await browserStorage.setSyncSettings(data);
+
+    // Verify settings were saved
+    const verifySettings = await browserStorage.getSyncSettings();
+    console.log('Sync settings saved and verified:', verifySettings);
+
+    sendResponse({
+      success: true,
+      message: 'Sync settings saved successfully',
+      settings: verifySettings
+    });
+  } catch (error) {
+    console.error('Failed to set sync settings:', error);
+    sendResponse({
+      success: false,
+      error: error.message,
+      message: 'Failed to set sync settings'
+    });
+  }
+}
+
 async function handleGetCanvasDocuments(data, sendResponse) {
   try {
     console.log('Getting Canvas documents for context:', data?.contextId);
@@ -1028,11 +1099,16 @@ async function handleSyncTab(data, sendResponse) {
 
 async function handleSyncMultipleTabs(data, sendResponse) {
   try {
+    console.log('🔧 handleSyncMultipleTabs called with data:', data);
+
     const { tabIds, contextId } = data;
 
     if (!tabIds || !Array.isArray(tabIds)) {
+      console.error('❌ Tab IDs validation failed:', { tabIds, isArray: Array.isArray(tabIds) });
       throw new Error('Tab IDs array is required');
     }
+
+    console.log(`🔧 Processing ${tabIds.length} tab IDs:`, tabIds);
 
     // Get the tabs
     const tabs = [];
@@ -1040,34 +1116,58 @@ async function handleSyncMultipleTabs(data, sendResponse) {
       const tab = await tabManager.getTab(tabId);
       if (tab) {
         tabs.push(tab);
+        console.log(`✅ Found tab ${tabId}: ${tab.title}`, {
+          id: tab.id,
+          url: tab.url,
+          title: tab.title,
+          status: tab.status,
+          discarded: tab.discarded,
+          windowId: tab.windowId
+        });
+      } else {
+        console.warn(`⚠️ Tab ${tabId} not found`);
       }
     }
 
     if (tabs.length === 0) {
+      console.error('❌ No valid tabs found after lookup');
       throw new Error('No valid tabs found');
     }
+
+    console.log(`🔧 Found ${tabs.length} valid tabs to sync`);
 
     // Get current context if not provided
     let targetContextId = contextId;
     if (!targetContextId) {
       const currentContext = await browserStorage.getCurrentContext();
       if (!currentContext?.id) {
+        console.error('❌ No context selected');
         throw new Error('No context selected');
       }
       targetContextId = currentContext.id;
     }
 
+    console.log(`🔧 Target context ID: ${targetContextId}`);
+
     // Get connection settings
     const connectionSettings = await browserStorage.getConnectionSettings();
+    console.log('🔧 Connection settings:', connectionSettings);
+
     if (!connectionSettings.connected || !connectionSettings.apiToken) {
+      console.error('❌ Not connected to Canvas server:', {
+        connected: connectionSettings.connected,
+        hasToken: !!connectionSettings.apiToken
+      });
       throw new Error('Not connected to Canvas server');
     }
 
     // Get browser identity
     const browserIdentity = await browserStorage.getBrowserIdentity();
+    console.log('🔧 Browser identity:', browserIdentity);
 
     // Initialize API client if needed
     if (!apiClient.apiToken) {
+      console.log('🔧 Initializing API client...');
       apiClient.initialize(
         connectionSettings.serverUrl,
         connectionSettings.apiBasePath,
@@ -1075,12 +1175,15 @@ async function handleSyncMultipleTabs(data, sendResponse) {
       );
     }
 
+    console.log('🔧 Calling tabManager.syncMultipleTabs...');
+
     // Sync multiple tabs
     const result = await tabManager.syncMultipleTabs(tabs, apiClient, targetContextId, browserIdentity);
 
+    console.log('✅ tabManager.syncMultipleTabs completed with result:', result);
     sendResponse(result);
   } catch (error) {
-    console.error('Failed to sync multiple tabs:', error);
+    console.error('❌ handleSyncMultipleTabs failed:', error);
     sendResponse({
       success: false,
       error: error.message

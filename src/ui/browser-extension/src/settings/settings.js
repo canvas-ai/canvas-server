@@ -98,8 +98,14 @@ async function loadSettings() {
     const response = await sendMessageToBackground('GET_CONNECTION_STATUS');
     console.log('Loaded settings response:', response);
 
+    // Get sync settings separately
+    const syncResponse = await sendMessageToBackground('GET_SYNC_SETTINGS');
+    console.log('Loaded sync settings response:', syncResponse);
+
     // Use actual saved settings, with defaults only as fallback
     const savedConnectionSettings = response.settings || {};
+    const savedSyncSettings = syncResponse.success ? syncResponse.settings : {};
+
     settings = {
       connectionSettings: {
         serverUrl: savedConnectionSettings.serverUrl || 'http://127.0.0.1:8001',
@@ -108,11 +114,11 @@ async function loadSettings() {
         connected: savedConnectionSettings.connected || false
       },
       syncSettings: {
-        autoSyncNewTabs: false,
-        autoOpenNewTabs: false,
-        autoCloseRemovedTabs: false,
-        syncOnlyThisBrowser: false,
-        contextChangeBehavior: 'keep-open-new'
+        autoSyncNewTabs: savedSyncSettings.autoSyncNewTabs || false,
+        autoOpenNewTabs: savedSyncSettings.autoOpenNewTabs || false,
+        autoCloseRemovedTabs: savedSyncSettings.autoCloseRemovedTabs || false,
+        syncOnlyThisBrowser: savedSyncSettings.syncOnlyThisBrowser || false,
+        contextChangeBehavior: savedSyncSettings.contextChangeBehavior || 'keep-open-new'
       },
       browserIdentity: '',
       currentContext: response.context || null
@@ -497,8 +503,6 @@ async function handleCreateContext() {
     setButtonLoading(createContextBtn, false);
   }
 }
-
-
 
 async function handleSaveSettings() {
   try {
