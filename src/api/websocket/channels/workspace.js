@@ -129,7 +129,7 @@ async function validateWorkspaceAccess(socket, workspaceIdentifier) {
       // Search for workspace by ID across all users
       for (const [indexKey, entry] of Object.entries(allWorkspaces)) {
         const parsed = (() => {
-          const parts = indexKey.split('::');
+          const parts = indexKey.split('/');
           return parts.length === 2 ? { userId: parts[0], workspaceId: parts[1] } : null;
         })();
 
