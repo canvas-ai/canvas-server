@@ -17,6 +17,7 @@ Sync Settings / popup toggles:
 - Save newly opened tabs: toggle [auto/manual] (make sure we save only valid pages, so no "newtab", blank or internal pages
 - Open newly added tabs from context: toggle [auto/manual]
 - Close removed tabs: toggle [auto/manual]
+- Sync only tabs for the current browser id [yes/no], will add 'client/app/id/browser-id' to the feature array GET query
 - On Context Change:
   - Close current and open new
   - Save & close current, open new
@@ -29,7 +30,7 @@ Sync Settings / popup toggles:
 
 ### Popup header (above tabs)
 
-- Extension logo (from /assets)
+- Extension logo (from /assets/icons)
 - Connection status (green/red dot)
 - Bound context (context.id) context.url
 
@@ -100,6 +101,7 @@ Actions possible for selections / all items
 ## WebSockets:
 
 - data events related to 'data/abstraction/tab' data.schema and the current context (inserted, updated, removed, deleted)
+- extension is always bound to a canvas-server context, hence should only listen on the context channel
 - context url changes, at which point we should re-fetch all tabs from canvas-server and process them accordingly, updating all our internal indexes if necessary
 - Auto-retry with exponential backoff, show "connecting…" in popup
 - Re-fetch context if reconnect successful
@@ -112,10 +114,35 @@ If sync-new is enabled, push new tab (non-internal, loaded) to canvas-server
 - Use Manifest V3
 - Use background service workers, not persistent background pages
 - Use chrome.storage.local for settings
+- Payload sample in PAYLOAD.md
+- featureArray should contain ['data/abstraction/tab', 'client/app/firefox'] or client/app/chrome depending on the browser
+- If a custom identifier is set
 
 ## Tab Identification
 
 - Track synced tabs using tabId + url or a hash of url+title to avoid false duplicates
+- Storing tabs should always populate the featureArray as follows:
+  - ['data/abstraction/tab']
+  - We should always add client/app/firefox or client/app/chrome etc
+  - We should always add 'tag/user-defined-instance-id'
+  - On retrieval, we should only use 'data/abstraction/tab' unless "Sync only tabs for the current browser id" is set
+- We should store the following details in canvas-server
+```
+  return {
+    id: tab.id,
+    index: tab.index,
+    highlighted: tab.highlighted,
+    active: tab.active,
+    pinned: tab.pinned,
+    discarded: true, // tab.discarded,
+    incognito: tab.incognito,
+    audible: tab.audible,
+    mutedInfo: tab.mutedInfo,
+    url: tab.url,
+    title: tab.title,
+    favIconUrl: tab.favIconUrl
+  }
+```
 
 ## Fuzzy Search
 
