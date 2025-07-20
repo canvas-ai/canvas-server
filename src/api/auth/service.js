@@ -38,7 +38,7 @@ class AuthService {
    * @private
    */
   #ensureAuthConfig() {
-    const configPath = path.join(process.cwd(), 'server/config/auth.json');
+    const configPath = path.join(process.cwd(), 'server/config/auth.json'); // TODO: Move to a common config module
 
     // Create default auth configuration if it doesn't exist
     if (!fs.existsSync(configPath)) {
@@ -58,7 +58,13 @@ class AuthService {
           },
           imap: {
             enabled: false,
-            domains: {},
+            domains: {
+              "acmedomain.tld": {
+                "host": "mail.acmedomain.tld",
+                "port": "465",
+                "secure": true
+              }
+            },
             defaultUserType: 'user',
             defaultStatus: 'active'
           }
