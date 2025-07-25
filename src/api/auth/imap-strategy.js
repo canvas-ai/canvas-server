@@ -258,11 +258,18 @@ class ImapAuthStrategy {
     // Replace dots and underscores with hyphens for consistency
     username = username.replace(/[._]/g, '-');
 
-    // Remove consecutive hyphens
-    username = username.replace(/-+/g, '-');
+    // Remove consecutive hyphens (safe from ReDoS)
+    while (username.includes('--')) {
+      username = username.replace(/--/g, '-');
+    }
 
-    // Remove leading and trailing hyphens
-    username = username.replace(/^-+|-+$/g, '');
+    // Remove leading and trailing hyphens (safe from ReDoS)
+    while (username.startsWith('-')) {
+      username = username.slice(1);
+    }
+    while (username.endsWith('-')) {
+      username = username.slice(0, -1);
+    }
 
     // Ensure minimum length
     if (username.length < 3) {
