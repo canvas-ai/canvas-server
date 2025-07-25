@@ -1,25 +1,41 @@
 import { ulid } from 'ulid';
 import { v4 as uuidv4 } from 'uuid';
+import { customAlphabet } from 'nanoid';
 
 /**
  * Generate a UUID
- * @param {string} [prefix] - Prefix for the UUID
  * @param {number} [length] - Length of the UUID
+ * @param {string} [prefix] - Prefix for the UUID
+ * @param {string} [delimiter='-'] - Delimiter between prefix and UUID
  * @returns {string} UUID
  */
-function generateUUID(prefix = '', length = 12, delimiter = '-') {
-    const id = uuidv4().replace(/-/g, '').slice(0, length);
+function generateUUID(length, prefix, delimiter = '-') {
+    const id = (length) ? uuidv4().replace(/-/g, '').slice(0, length) : uuidv4();
     return (prefix ? `${prefix}${delimiter}${id}` : id);
 }
 
 /**
  * Generate a ULID
+ * @param {number} [length=12] - Length of the ULID
  * @param {string} [prefix] - Prefix for the ULID
- * @param {number} [length] - Length of the ULID
+ * @param {string} [delimiter='-'] - Delimiter between prefix and ULID
  * @returns {string} ULID
  */
-function generateULID(prefix = '', length = 12, delimiter = '-') {
+function generateULID(length = 12, prefix, delimiter = '-') {
     const id = ulid().replace(/-/g, '').slice(0, length).toLowerCase();
+    return (prefix ? `${prefix}${delimiter}${id}` : id);
+}
+
+/**
+ * Generate a nanoid
+ * @param {number} [length=12] - Length of the nanoid
+ * @param {string} [prefix] - Prefix for the nanoid
+ * @param {string} [delimiter='-'] - Delimiter between prefix and nanoid
+ * @returns {string} nanoid
+ */
+function generateNanoid(length = 12, prefix, delimiter = '-') {
+    const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', length);
+    const id = nanoid();
     return (prefix ? `${prefix}${delimiter}${id}` : id);
 }
 
@@ -37,5 +53,6 @@ function generateIndexKey(module, key, delimiter = '/') {
 export {
     generateULID,
     generateUUID,
+    generateNanoid,
     generateIndexKey
 };

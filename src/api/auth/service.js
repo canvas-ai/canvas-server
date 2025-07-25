@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
 import { env } from '../../env.js';
 
 // Import jim from Server.js
@@ -32,10 +34,61 @@ class AuthService {
   }
 
   /**
+   * Ensure auth configuration exists with default values
+   * @private
+   */
+  #ensureAuthConfig() {
+    const configPath = path.join(process.cwd(), 'server/config/auth.json'); // TODO: Move to a common config module
+
+    // Create default auth configuration if it doesn't exist
+    if (!fs.existsSync(configPath)) {
+      console.log('[AuthService] Auth configuration file not found, creating default configuration...');
+
+      // Ensure the config directory exists
+      const configDir = path.dirname(configPath);
+      if (!fs.existsSync(configDir)) {
+        fs.mkdirSync(configDir, { recursive: true });
+      }
+
+      // Create default configuration with all supported strategies
+      const defaultConfig = {
+        strategies: {
+          local: {
+            enabled: true
+          },
+          imap: {
+            enabled: false,
+            domains: {
+              "acmedomain.tld": {
+                "host": "mail.acmedomain.tld",
+                "port": "465",
+                "secure": true
+              }
+            },
+            defaultUserType: 'user',
+            defaultStatus: 'active'
+          }
+          // Future strategies like OAuth can be added here
+          // oauth: {
+          //   enabled: false,
+          //   providers: {}
+          // }
+        }
+      };
+
+      fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
+      console.log('[AuthService] Default auth configuration created at:', configPath);
+    }
+  }
+
+  /**
    * Initialize the auth service
    */
   async initialize() {
     if (this.#initialized) return;
+
+    // Ensure auth configuration exists with defaults
+    this.#ensureAuthConfig();
 
     // Initialize storage for tokens and passwords using jim
     this.#tokensStore = jim.createIndex('tokens');
@@ -472,6 +525,7 @@ class AuthService {
           valid: true,
           user: {
             id: user.id,
+            name: user.name || user.email,
             email: user.email,
             userType: user.userType || 'user',
             status: user.status || 'active'
@@ -513,6 +567,7 @@ class AuthService {
           valid: true,
           user: {
             id: user.id,
+            name: user.name || user.email,
             email: user.email,
             userType: user.userType || 'user',
             status: user.status || 'active'

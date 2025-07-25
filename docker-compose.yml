@@ -23,8 +23,8 @@ services:
       CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
       CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
       CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
-      JWT_SECRET: ${JWT_SECRET:-$(openssl rand -base64 16)}
-      TOKEN_EXPIRY: ${TOKEN_EXPIRY:-7d}
+      CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 16)}
+      CANVAS_JWT_TOKEN_EXPIRY: ${CANVAS_JWT_TOKEN_EXPIRY:-7d}
     volumes:
       - ${CANVAS_SERVER_HOME:-./server}:/opt/canvas-server/server
       - ${CANVAS_USER_HOME:-./users}:/opt/canvas-server/users

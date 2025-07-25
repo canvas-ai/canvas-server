@@ -1,3 +1,8 @@
+'use strict';
+
+import crypto from 'crypto';
+
+// This is a new file I'm creating to standardize our API responses.
 export default class ResponseObject {
     constructor() {
         this.status = 'error'; // Default to error to ensure explicit success setting
@@ -48,10 +53,11 @@ export default class ResponseObject {
     }
 
     // Delete: Successful deletion of a resource
-    deleted(message = 'Resource deleted successfully', statusCode = 200, count = null) {
+    deleted(payload, message = 'Resource deleted successfully', statusCode = 200, count = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
+        this.payload = payload;
         this.count = count;
         return this;
     }

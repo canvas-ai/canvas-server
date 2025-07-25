@@ -30,10 +30,10 @@ class ImapAuthStrategy {
     if (this.#initialized) return;
 
     try {
-      // Load auth configuration
+      // Load auth configuration (created by AuthService if needed)
       const configPath = path.join(process.cwd(), 'server/config/auth.json');
       if (!fs.existsSync(configPath)) {
-        throw new ImapConfigError('Auth configuration file not found');
+        throw new ImapConfigError('Auth configuration file not found - AuthService should have created it');
       }
 
       const configData = fs.readFileSync(configPath, 'utf8');
@@ -201,13 +201,13 @@ class ImapAuthStrategy {
     // Create new user
     const userData = {
       id: authResult.email,
+      name: this.#generateUsernameFromEmail(authResult.email), // Generate proper username
       email: authResult.email,
       userType: imapSettings.defaultUserType || 'user',
       status: imapSettings.defaultStatus || 'active',
       authMethod: 'imap',
       // imapDomain: authResult.domain, // Not used yet
       // imapServer: authResult.imapServer, // Not used yet
-      //name: authResult.email.split('@')[0], // Use email prefix as default name
       created: new Date().toISOString(),
       updated: new Date().toISOString()
     };
@@ -240,6 +240,61 @@ class ImapAuthStrategy {
       name: config.name || domain,
       requireAppPassword: config.requireAppPassword || false
     }));
+  }
+
+  /**
+   * Generate a GitHub-style username from an email address
+   * @param {string} email - Email address
+   * @returns {string} - Valid username
+   * @private
+   */
+  #generateUsernameFromEmail(email) {
+    // Extract the local part (before @)
+    let username = email.split('@')[0].toLowerCase();
+
+    // Remove special characters, keep only letters, numbers, dots, underscores, hyphens
+    username = username.replace(/[^a-z0-9._-]/g, '');
+
+    // Replace dots and underscores with hyphens for consistency
+    username = username.replace(/[._]/g, '-');
+
+    // Remove consecutive hyphens (safe from ReDoS)
+    while (username.includes('--')) {
+      username = username.replace(/--/g, '-');
+    }
+
+    // Remove leading and trailing hyphens (safe from ReDoS)
+    while (username.startsWith('-')) {
+      username = username.slice(1);
+    }
+    while (username.endsWith('-')) {
+      username = username.slice(0, -1);
+    }
+
+    // Ensure minimum length
+    if (username.length < 3) {
+      username = username + '123';
+    }
+
+    // Ensure maximum length
+    if (username.length > 39) {
+      username = username.substring(0, 39);
+      // Remove trailing hyphens if we cut in the middle
+      username = username.replace(/-+$/, '');
+    }
+
+    // Check for reserved names and append number if needed
+    const reservedNames = [
+      'admin', 'administrator', 'root', 'system', 'support', 'help',
+      'api', 'www', 'mail', 'ftp', 'localhost', 'test', 'demo',
+      'canvas', 'universe', 'workspace', 'context', 'user', 'users'
+    ];
+
+    if (reservedNames.includes(username)) {
+      username = username + '1';
+    }
+
+    return username;
   }
 }
 

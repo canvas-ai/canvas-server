@@ -59,7 +59,14 @@ class Context extends EventEmitter {
     #pendingUrl;
 
     constructor(url = DEFAULT_BASE_URL, options = {}) {
-        super();
+        // Enable wildcard events for EventEmitter2 so ContextManager can listen with **
+        super({
+            wildcard: true,
+            delimiter: '.',
+            newListener: false,
+            maxListeners: 50,
+            ...(options.eventEmitterOptions || {})
+        });
 
         // Context properties
         this.#id = options.id || uuidv4(); // TODO: Use human-typeable 6-char ULID
@@ -124,19 +131,19 @@ class Context extends EventEmitter {
                 this.#path = baseUrl.path;
                 this.#pathArray = baseUrl.pathArray;
             } else {
-                // If no workspaceId in URL, use current workspace
+                // If no workspaceId in URL, use current workspace name
                 if (!parsedUrl.workspaceId) {
-                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
-                } else if (parsedUrl.workspaceId === this.#workspace.id) {
+                } else if (parsedUrl.workspaceId === this.#workspace.name) {
                     // Same workspace, use as-is
                     this.#url = parsedUrl.url;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
                 } else {
                     // Different workspace, store as pending for later switching
-                    this.#url = `${this.#workspace.id}://${parsedUrl.path.replace(/^\//, '')}`;
+                    this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
                     this.#pendingUrl = url;
@@ -182,6 +189,7 @@ class Context extends EventEmitter {
     get pathArray() { return this.#pathArray; }
     get workspace() { return this.#workspace; }
     get workspaceId() { return this.#workspace.id; }
+    get workspaceName() { return this.#workspace.name; }
     get tree() { return this.#tree.toJSON(); }
     get color() { return this.#color; }
     get pendingUrl() { return this.#pendingUrl; }
@@ -378,12 +386,12 @@ class Context extends EventEmitter {
             }
         }
 
-        // Determine target workspace ID
-        const targetWorkspaceId = parsed.workspaceId || this.#workspace.id;
+        // Determine target workspace name
+        const targetWorkspaceName = parsed.workspaceId || this.#workspace.name;
 
-        // If the workspace ID is different, switch to the new workspace
-        if (targetWorkspaceId !== this.#workspace.id) {
-            await this.#switchWorkspace(targetWorkspaceId);
+        // If the workspace name is different, switch to the new workspace
+        if (targetWorkspaceName !== this.#workspace.name) {
+            await this.#switchWorkspace(targetWorkspaceName);
         }
 
         // Create the URL path in the current workspace
@@ -392,7 +400,7 @@ class Context extends EventEmitter {
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
         // Update the internal URL state
-        this.#url = `${this.#workspace.id}://${parsed.path.replace(/^\//, '')}`;
+        this.#url = `${this.#workspace.name}://${parsed.path.replace(/^\//, '')}`;
         this.#path = parsed.path;
         this.#pathArray = parsed.pathArray;
 
@@ -400,6 +408,7 @@ class Context extends EventEmitter {
         this.#updatedAt = new Date().toISOString();
 
         // Emit the change event
+        debug(`📋 Context: Emitting context.url.set event for context ${this.#id}, new URL: ${this.#url}`);
         this.emit('context.url.set', { id: this.#id, url: this.#url });
 
         // Save changes to index
@@ -421,7 +430,7 @@ class Context extends EventEmitter {
                 throw new Error(`Invalid base URL format: ${newBaseUrl}`);
             }
             // Ensure the new base URL is within the same workspace
-            if (parsedNewBase.workspaceId && parsedNewBase.workspaceId !== this.#workspace.id) {
+            if (parsedNewBase.workspaceId && parsedNewBase.workspaceId !== this.#workspace.name) {
                 throw new Error(`Cannot set base URL to a different workspace: ${newBaseUrl}`);
             }
 
@@ -429,7 +438,7 @@ class Context extends EventEmitter {
             if (this.#url) {
                 const currentParsed = new Url(this.#url);
                 // Only check path if the current URL is actually in the same workspace
-                if ((!currentParsed.workspaceId || currentParsed.workspaceId === this.#workspace.id) &&
+                if ((!currentParsed.workspaceId || currentParsed.workspaceId === this.#workspace.name) &&
                     !currentParsed.path.startsWith(parsedNewBase.path)) {
                     throw new Error(
                         `Current URL "${this.#url}" is outside the proposed new base URL "${newBaseUrl}". Please navigate within the new base URL before setting it.`,
@@ -494,21 +503,21 @@ class Context extends EventEmitter {
         return Promise.resolve(this);
     }
 
-    async #switchWorkspace(workspaceId) {
+    async #switchWorkspace(workspaceName) {
         if (this.#isLocked) {
             throw new Error('Context is locked');
         }
 
-        const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceId, this.#userId);
+        const hasWs = await this.#workspaceManager.hasWorkspace(this.#userId, workspaceName, this.#userId);
         if (!hasWs) {
-            throw new Error(`Workspace "${workspaceId}" not found`);
+            throw new Error(`Workspace "${workspaceName}" not found`);
         }
 
         try {
             // Clean up event forwarding from the old workspace
             this.#cleanupWorkspaceEventForwarding();
 
-            const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceId, this.#userId);
+            const newWorkspaceInstance = await this.#workspaceManager.getWorkspace(this.#userId, workspaceName, this.#userId);
             this.#workspace = newWorkspaceInstance;
             this.#db = this.#workspace.db;
             this.#tree = this.#workspace.tree;
@@ -517,7 +526,7 @@ class Context extends EventEmitter {
             // Set up event forwarding for the new workspace
             this.#setupWorkspaceEventForwarding();
 
-            debug(`Context "${this.#id}" successfully switched to workspace "${workspaceId}"`);
+            debug(`Context "${this.#id}" successfully switched to workspace "${workspaceName}"`);
         } catch (error) {
             throw new Error(`Failed to switch workspace: ${error.message}`);
         }
@@ -600,6 +609,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
+        debug(`📋 Context: Emitting document.inserted event for context ${this.#id}, documentId: ${documentId}`);
+        debug(`📋 Context: Event payload:`, JSON.stringify(documentEventPayload, null, 2));
         this.emit('document.inserted', documentEventPayload);
         this.emit('context.updated', {
             id: this.#id,
@@ -684,7 +695,8 @@ class Context extends EventEmitter {
             timestamp: new Date().toISOString()
         };
 
-        debug('#insertDocumentArray: Emitting document.inserted event with payload:', JSON.stringify(documentEventPayload, null, 2));
+        debug(`📋 Context: Emitting document.inserted event for context ${this.#id}, documentIds: ${JSON.stringify(documentIds)}`);
+        debug(`📋 Context: Event payload:`, JSON.stringify(documentEventPayload, null, 2));
         this.emit('document.inserted', documentEventPayload);
         return result;
     }
@@ -1173,6 +1185,7 @@ class Context extends EventEmitter {
             path: this.#path,
             pathArray: this.#pathArray,
             workspaceId: this.#workspace?.id,
+            workspaceName: this.#workspace?.name,
             color: this.#color,
             acl: this.#acl,
             createdAt: this.#createdAt,

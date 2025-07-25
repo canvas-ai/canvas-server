@@ -23,9 +23,10 @@ import {
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
 import contextRoutes from './routes/contexts/index.js';
-import userRoutes from './routes/users/index.js';
+import pubRoutes from './routes/pub/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
+import adminRoutes from './routes/admin/index.js';
 import { mcpPlugin } from './mcp/index.js';
 
 // WebSocket handlers
@@ -67,7 +68,7 @@ export async function createServer(options = {}) {
 
   // Register fastify-jwt FIRST - needed for request.jwtVerify
   await server.register(fastifyJwt, {
-    secret: env.auth.jwtSecret || 'change-this-secret-in-production',
+    secret: env.auth.jwtSecret,
     sign: {
       expiresIn: '1d'
     },
@@ -75,8 +76,56 @@ export async function createServer(options = {}) {
     decorateRequest: false
   });
 
-  // Remove fastify-auth registration if ONLY used for the main authenticate hook
-  // await server.register(fastifyAuth);
+  // Decorate server with our custom verification strategies
+  server.decorate('verifyJWT', verifyJWT);
+  server.decorate('verifyApiToken', verifyApiToken);
+
+  // Register fastify-auth, which will allow us to chain strategies
+  await server.register(fastifyAuth);
+
+  // Define the 'authenticate' decorator using the chained strategies.
+  // @fastify/auth will try them in order until one succeeds.
+  server.decorate('authenticate', server.auth([
+    server.verifyJWT,
+    server.verifyApiToken
+  ], { relation: 'or' }));
+
+  // Create a custom authentication decorator that handles errors properly
+  server.decorate('authenticateCustom', async (request, reply) => {
+    try {
+      // Try JWT first
+      await server.verifyJWT(request, reply);
+      return; // Success
+    } catch (jwtError) {
+      console.log(`[Auth/Custom] JWT failed: ${jwtError.message}`);
+
+      try {
+        // Try API token if JWT fails
+        await server.verifyApiToken(request, reply);
+        return; // Success
+      } catch (apiError) {
+        console.log(`[Auth/Custom] API token failed: ${apiError.message}`);
+
+        // Both failed - send error response and close connection
+        const statusCode = apiError.statusCode || 401;
+        reply.header('Connection', 'close');
+
+        const response = new ResponseObject();
+        response.error(apiError.message || 'Authentication failed', [apiError], statusCode);
+        reply.code(statusCode).send(response.getResponse());
+
+        // Force close the connection after sending the response
+        setImmediate(() => {
+          console.log('Forcing connection close after authentication failure');
+          if (reply.raw.socket && !reply.raw.socket.destroyed) {
+            reply.raw.socket.end();
+          }
+        });
+
+        return; // Don't throw - we've handled the error
+      }
+    }
+  });
 
   // Make managers available
   if (options.userManager) server.decorate('userManager', options.userManager);
@@ -92,6 +141,33 @@ export async function createServer(options = {}) {
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-App-Name', 'X-Selected-Session'],
     exposedHeaders: ['Authorization', 'Content-Type'],
     maxAge: 86400 // 24 hours
+  });
+
+  // Add security headers including CSP for browser extension compatibility
+  server.addHook('onSend', async (request, reply, payload) => {
+    // Set CSP headers that are compatible with browser extensions and WebSocket connections
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Allow inline scripts for socket.io
+      "style-src 'self' 'unsafe-inline'", // Allow inline styles
+      "connect-src 'self' ws: wss: http: https:", // Allow WebSocket and HTTP connections
+      "img-src 'self' data: blob:", // Allow images from various sources
+      "font-src 'self' data:", // Allow fonts
+      "frame-src 'self'", // Allow frames from same origin
+      "worker-src 'self' blob:", // Allow web workers
+      "object-src 'none'", // Disable object/embed elements
+      "base-uri 'self'" // Restrict base tag
+    ].join('; ');
+
+    reply.header('Content-Security-Policy', cspDirectives);
+
+    // Additional security headers
+    reply.header('X-Frame-Options', 'SAMEORIGIN');
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-XSS-Protection', '1; mode=block');
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    return payload;
   });
 
   await server.register(fastifyMultipart, {
@@ -154,152 +230,16 @@ export async function createServer(options = {}) {
     prefix: '/',
   });
 
-  // Define MANUAL authentication decorator
-  server.decorate('authenticate', async function(request, reply) {
-    try {
-      console.log(`[Auth Manual] Processing auth for ${request.method} ${request.url}`);
-      const authHeader = request.headers.authorization;
-
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        console.log('[Auth Manual] No Bearer token or invalid format');
-        throw new AuthError('Bearer token required');
-      }
-
-      const token = authHeader.split(' ')[1];
-      if (!token) {
-        console.log('[Auth Manual] Empty token');
-        throw new AuthError('Token is empty');
-      }
-
-      let user = null;
-
-      // Check for API token first
-      if (token.startsWith('canvas-')) {
-        console.log(`[Auth Manual/API] Verifying API token: ${token.substring(0, 10)}...`);
-        const authService = request.server.authService;
-        const userManager = request.server.userManager;
-        if (!authService || !userManager) throw new Error('Auth service or user manager not initialized');
-
-        let tokenResult;
-        try {
-          tokenResult = await authService.verifyApiToken(token);
-        } catch (tokenError) {
-          console.error(`[Auth Manual/API] Token verification error: ${tokenError.message}`);
-          throw new AuthError(`API token verification failed: ${tokenError.message}`);
-        }
-
-        if (!tokenResult) {
-          console.error('[Auth Manual/API] Invalid API token - verification returned null');
-          throw new AuthError('Invalid API token');
-        }
-
-        let dbUser;
-        try {
-          dbUser = await userManager.getUserById(tokenResult.userId);
-        } catch (userError) {
-          console.error(`[Auth Manual/API] Error retrieving user: ${userError.message}`);
-          throw new Error(`Error retrieving user: ${userError.message}`); // Internal error potentially
-        }
-
-        if (!dbUser) {
-          console.error(`[Auth Manual/API] User not found for token userId: ${tokenResult.userId}`);
-          throw new AuthError('User not found for this API token');
-        }
-        if (dbUser.status !== 'active') {
-           console.error(`[Auth Manual/API] User account not active: ${dbUser.status}`);
-           throw new AuthError('User account is not active');
-        }
-
-        user = {
-          id: dbUser.id,
-          email: dbUser.email ? dbUser.email.toLowerCase() : null,
-          userType: dbUser.userType || 'user',
-          status: dbUser.status || 'active'
-        };
-        request.isApiTokenAuth = true; // Keep flag if needed elsewhere
-        request.token = tokenResult.tokenId;
-        console.log(`[Auth Manual/API] Authentication successful for user: ${user.id}`);
-
-      } else {
-        // Assume JWT
-        console.log('[Auth Manual/JWT] Verifying JWT token...');
-        const userManager = request.server.userManager;
-        if (!userManager) throw new Error('User manager not initialized');
-
-        let decoded;
-        try {
-          // request.jwtVerify() is available from @fastify/jwt
-          decoded = await request.jwtVerify();
-        } catch (jwtError) {
-          console.error(`[Auth Manual/JWT] JWT verification failed: ${jwtError.message}`);
-          throw new AuthError(`JWT verification failed: ${jwtError.message}`);
-        }
-
-        let dbUser;
-        try {
-          dbUser = await userManager.getUserById(decoded.sub);
-        } catch (userError) {
-          console.error(`[Auth Manual/JWT] Error retrieving user: ${userError.message}`);
-          throw new Error(`Error retrieving user: ${userError.message}`); // Internal error potentially
-        }
-
-        if (!dbUser) {
-          console.error(`[Auth Manual/JWT] User not found: ${decoded.sub}`);
-          throw new AuthError(`User not found: ${decoded.sub}`);
-        }
-        if (dbUser.status !== 'active') {
-          console.log(`[Auth Manual/JWT] User ${dbUser.id} not active (${dbUser.status})`);
-          throw new AuthError('User account is not active');
-        }
-        // Optional: Check token version if needed (logic from verifyJWT)
-        if (decoded.ver && (dbUser.updated || dbUser.created)) {
-          const userVersion = dbUser.updated || dbUser.created;
-          if (decoded.ver !== userVersion) {
-            console.log(`[Auth Manual/JWT] Token version mismatch: ${decoded.ver} vs ${userVersion}`);
-            throw new AuthError('Token is invalid - user data has changed');
-          }
-        }
-
-        user = {
-          id: dbUser.id,
-          email: dbUser.email ? dbUser.email.toLowerCase() : null,
-          userType: dbUser.userType || 'user',
-          status: dbUser.status || 'active'
-        };
-        request.isJwtAuth = true; // Keep flag if needed elsewhere
-        console.log(`[Auth Manual/JWT] Authentication successful for user: ${user.id}`);
-      }
-
-      // If we successfully got a user object
-      if (user && user.id) {
-        request.user = user; // Set the user object on the request
-      } else {
-        // This case should ideally be caught by specific errors above
-        console.error('[Auth Manual] Auth succeeded but failed to produce valid user object.');
-        throw new AuthError('Authentication succeeded but user data is invalid');
-      }
-
-    } catch (error) {
-      console.log(`[Auth Manual] Authentication failed: ${error.message}`);
-      if (!reply.sent) {
-        // Use status code from AuthError if available, otherwise default to 401
-        const statusCode = error.statusCode || 401;
-        const response = new ResponseObject().error(error.message || 'Authentication required', null, statusCode);
-        reply.code(response.statusCode).send(response.getResponse());
-      }
-      // Throw the error to stop the request lifecycle via Fastify's error handling
-      throw error;
-    }
-  });
-
   await authService.initialize();
+
   // Register routes
   server.register(pingRoute);
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
-  server.register(userRoutes, { prefix: '/rest/v2/users' });
+  server.register(pubRoutes, { prefix: '/rest/v2/pub' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
+  server.register(adminRoutes, { prefix: '/rest/v2/admin' });
   server.register(mcpPlugin); // TODO: Draft/test only!!!
 
   // Global 404 handler
@@ -315,20 +255,45 @@ export async function createServer(options = {}) {
     reply.sendFile('index.html');
   });
 
-  // Global error handler
+    // Global error handler
   server.setErrorHandler((error, request, reply) => {
-    server.log.error(error);
+    server.log.error('Global error handler called:', error);
+    console.log('Global error handler called:', error.message, 'statusCode:', error.statusCode);
 
     // Only send error response if a response hasn't been sent yet
     if (!reply.sent) {
-      // Send appropriate error response
       const statusCode = error.statusCode || 500;
-      const response = new ResponseObject().error(
-        error.message || 'Something went wrong',
-        null,
-        statusCode
-      );
-      reply.code(response.statusCode).send(response.getResponse());
+
+      // For authentication errors (401), close the connection to prevent resource exhaustion
+      if (statusCode === 401) {
+        // Set Connection: close header to signal connection should be closed
+        reply.header('Connection', 'close');
+        server.log.info('Authentication failed - closing connection');
+        console.log('Authentication failed - closing connection');
+
+                // Create and send the error response
+        const response = new ResponseObject();
+        response.error(error.message || 'Authentication failed', null, statusCode);
+
+        // Send the response and close the connection immediately after
+        reply.code(statusCode).send(response.getResponse());
+
+        // Force close the connection after sending the response
+        setImmediate(() => {
+          server.log.info('Forcing connection close after authentication failure');
+          console.log('Forcing connection close after authentication failure');
+          if (reply.raw.socket && !reply.raw.socket.destroyed) {
+            reply.raw.socket.end();
+          }
+        });
+      } else {
+        // Use the generic error method from our ResponseObject for non-auth errors
+        const response = new ResponseObject();
+        response.error(error.message || 'Something went wrong', [error], statusCode);
+        reply.code(response.statusCode).send(response.getResponse());
+      }
+    } else {
+      console.log('Reply already sent - not handling error');
     }
   });
 

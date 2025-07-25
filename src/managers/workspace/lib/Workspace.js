@@ -19,6 +19,33 @@ import {
 
 /**
  * Canvas Workspace
+ *
+ * PROPOSED: Token-Based ACL Schema
+ * Instead of storing user emails, store token hashes with permissions:
+ *
+ * "acl": {
+ *   "tokens": {
+ *     "sha256:abc123...": {
+ *       "permissions": ["read", "write"],
+ *       "description": "John's home laptop",
+ *       "createdAt": "2024-01-01T00:00:00Z",
+ *       "expiresAt": null
+ *     },
+ *     "sha256:def456...": {
+ *       "permissions": ["read"],
+ *       "description": "Family member token",
+ *       "createdAt": "2024-01-01T00:00:00Z",
+ *       "expiresAt": "2025-01-01T00:00:00Z"
+ *     }
+ *   }
+ * }
+ *
+ * Benefits:
+ * - Workspace is truly portable (no server user dependency)
+ * - Tokens travel with clients, not workspace
+ * - Fine-grained permissions per token
+ * - Can revoke/rotate individual tokens
+ * - Self-contained ACL within workspace.json
  */
 
 class Workspace extends EventEmitter {
@@ -73,9 +100,10 @@ class Workspace extends EventEmitter {
 
     // Persisted Configuration Getters (from configStore)
     get id() { return this.#configStore?.get('id'); }
-    get label() { return this.#configStore?.get('label', this.id); }
+    get name() { return this.#configStore?.get('name'); }
+    get label() { return this.#configStore?.get('label', this.name || this.id); }
     get icon() { return this.#configStore?.get('icon'); }
-    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.id}`); }
+    get description() { return this.#configStore?.get('description', `Canvas Workspace for ${this.name || this.id}`); }
     get color() { return this.#configStore?.get('color'); }
     get type() { return this.#configStore?.get('type', 'workspace'); }
     get owner() { return this.#configStore?.get('owner'); } // User ULID
@@ -150,6 +178,19 @@ class Workspace extends EventEmitter {
             return false;
         }
         return this.#updateConfig('label', String(label));
+    }
+
+    async setName(name) {
+        if (!name) {
+            console.warn(`Invalid name for workspace ${this.id}. Must be a non-empty string.`);
+            return false;
+        }
+        // Name should be slug-like (lowercase, alphanumeric, dashes, underscores)
+        const sanitizedName = name.toLowerCase().replace(/[^a-z0-9-_]/g, '');
+        if (sanitizedName !== name) {
+            console.warn(`Name "${name}" was sanitized to "${sanitizedName}" for workspace ${this.id}`);
+        }
+        return this.#updateConfig('name', sanitizedName);
     }
 
     async setMetadata(metadata) {
@@ -719,6 +760,7 @@ class Workspace extends EventEmitter {
             configPath: this.configPath,
             status: this.status,
             isActive: this.isActive,
+            name: this.name,
         };
     }
 
@@ -746,7 +788,7 @@ class Workspace extends EventEmitter {
                 // return true; // No change, but operation is successful in intent
             }
             this.#configStore.set(key, value);
-            this.#configStore.set('updated', new Date().toISOString());
+            this.#configStore.set('updatedAt', new Date().toISOString());
             // It might be good to emit an event specific to this workspace instance
             this.emit(`${key}.changed`, { id: this.id, [key]: value });
             debug(`Workspace "${this.id}" config updated: { ${key}: ${value} }. Old value: ${oldValue}`);

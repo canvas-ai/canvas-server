@@ -34,7 +34,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -95,7 +95,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -146,7 +146,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -204,7 +204,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -260,7 +260,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -306,7 +306,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -324,7 +324,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().deleted('Documents deleted successfully');
+      const responseObject = new ResponseObject().deleted(null, 'Documents deleted successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -354,7 +354,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -372,7 +372,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const responseObject = new ResponseObject().deleted('Documents removed successfully');
+      const responseObject = new ResponseObject().deleted(null, 'Documents removed successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -398,7 +398,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
   }, async (request, reply) => {
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );
@@ -445,7 +445,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
 
     try {
       const workspace = await fastify.workspaceManager.getWorkspace(
-        request.user.email,
+        request.user.id,
         request.params.id,
         request.user.id
       );

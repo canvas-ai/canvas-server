@@ -6,7 +6,7 @@ import EventEmitter from 'eventemitter2';
 
 // Logging
 import logger, { createDebug } from '../../utils/log/index.js';
-const debug = createDebug('context-manager');
+const debug = createDebug('context-manager:index');
 
 // Includes
 import Context from './lib/Context.js';
@@ -184,13 +184,13 @@ class ContextManager extends EventEmitter {
             let contextInstance = null;
             // Check in-memory cache first
             if (this.#contexts.has(contextKey)) {
-                debug(`Returning cached Context instance for ${contextKey}`);
+                debug(`📋 ContextManager: Returning cached Context instance for ${contextKey}`);
                 contextInstance = this.#contexts.get(contextKey);
             } else {
                 // Try to load from store
                 const storedContextData = this.#indexStore.get(contextKey);
                 if (storedContextData) {
-                    debug(`Context with key "${contextKey}" found in store, loading into memory.`);
+                    debug(`📋 ContextManager: Context with key "${contextKey}" found in store, loading into memory.`);
                     if (storedContextData.userId !== ownerUserId) {
                         // This should ideally not happen if contextKey is correct, but good for sanity.
                         throw new Error(`Mismatch in owner user ID. Expected ${ownerUserId}, found ${storedContextData.userId} in stored data for key ${contextKey}`);
@@ -230,6 +230,8 @@ class ContextManager extends EventEmitter {
                         const wildcardForwarder = function (payload = {}) {
                             const eventName = this.event;
                             const enriched = { ...payload, contextId: loadedContext.id };
+                            debug(`📋 ContextManager: 🎯 Forwarding event "${eventName}" from loaded context ${loadedContext.id}`);
+                            debug(`📋 ContextManager: 🎯 Event payload:`, JSON.stringify(enriched, null, 2));
                             manager.emit(eventName, enriched);
                             debug(`📋 ContextManager: ➡️  forwarded ${eventName} for loaded context ${loadedContext.id}`);
                         };
@@ -302,7 +304,19 @@ class ContextManager extends EventEmitter {
             const ownedPrefix = `${accessingUserId}/`;
             for (const [key, contextInstance] of this.#contexts) {
                 if (key.startsWith(ownedPrefix)) {
-                    userContextsArray.push(contextInstance.toJSON());
+                    // Resolve owner ID to user email
+                    try {
+                        const ownerUser = await this.#workspaceManager.userManager.getUser(contextInstance.userId);
+                        const contextWithOwnerEmail = {
+                            ...contextInstance.toJSON(),
+                            ownerEmail: ownerUser.email
+                        };
+                        userContextsArray.push(contextWithOwnerEmail);
+                    } catch (error) {
+                        debug(`Failed to resolve owner email for in-memory context ${contextInstance.id}: ${error.message}`);
+                        // Fallback to original entry if user resolution fails
+                        userContextsArray.push(contextInstance.toJSON());
+                    }
                     processedKeys.add(key);
                 }
             }
@@ -323,7 +337,19 @@ class ContextManager extends EventEmitter {
 
                     // Check if it's an owned context (not already in memory)
                     if (key.startsWith(ownedPrefix)) {
-                        userContextsArray.push(storedContextData);
+                        // Resolve owner ID to user email
+                        try {
+                            const ownerUser = await this.#workspaceManager.userManager.getUser(storedContextData.userId);
+                            const contextWithOwnerEmail = {
+                                ...storedContextData,
+                                ownerEmail: ownerUser.email
+                            };
+                            userContextsArray.push(contextWithOwnerEmail);
+                        } catch (error) {
+                            debug(`Failed to resolve owner email for context ${storedContextData.id}: ${error.message}`);
+                            // Fallback to original entry if user resolution fails
+                            userContextsArray.push(storedContextData);
+                        }
                         processedKeys.add(key);
                     } else {
                         // 3. Check if it's a context shared with the accessingUserId
@@ -333,11 +359,24 @@ class ContextManager extends EventEmitter {
                             // The accessingUserId has some level of access to this context.
                             // We can add a flag or modify the data slightly if needed to indicate it's a shared context.
                             // For now, just add the raw data.
-                            userContextsArray.push({
-                                ...storedContextData,
-                                isShared: true, // Indicate that this context is accessed via a share
-                                sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
-                            });
+                            try {
+                                const ownerUser = await this.#workspaceManager.userManager.getUser(storedContextData.userId);
+                                const contextWithOwnerEmail = {
+                                    ...storedContextData,
+                                    ownerEmail: ownerUser.email,
+                                    isShared: true, // Indicate that this context is accessed via a share
+                                    sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
+                                };
+                                userContextsArray.push(contextWithOwnerEmail);
+                            } catch (error) {
+                                debug(`Failed to resolve owner email for shared context ${storedContextData.id}: ${error.message}`);
+                                // Fallback to original entry if user resolution fails
+                                userContextsArray.push({
+                                    ...storedContextData,
+                                    isShared: true, // Indicate that this context is accessed via a share
+                                    sharedVia: storedContextData.acl[accessingUserId] // Optionally show the permission level
+                                });
+                            }
                             processedKeys.add(key); // Mark as processed to avoid duplicates if logic changes
                         }
                     }
@@ -376,25 +415,34 @@ class ContextManager extends EventEmitter {
 
         try {
             const contextKey = this.#constructContextKey(userId, contextId);
+            let contextWasRemoved = false;
 
             if (this.#contexts.has(contextKey)) {
                 const context = this.#contexts.get(contextKey);
                 await context.destroy();
                 this.#contexts.delete(contextKey);
+                contextWasRemoved = true;
             }
 
             // Remove from index store if exists (which should be the case)
             if (this.#indexStore.has(contextKey)) {
                 this.#indexStore.delete(contextKey);
+                contextWasRemoved = true;
             }
 
-            this.emit('context.deleted', {
-                contextKey: contextKey,
-                userId: userId,
-                contextId: contextId.toString()
-            });
-            debug(`Context ${contextKey} removed.`);
-            return true;
+            // Only emit event and log if something was actually removed
+            if (contextWasRemoved) {
+                this.emit('context.deleted', {
+                    contextKey: contextKey,
+                    userId: userId,
+                    contextId: contextId.toString()
+                });
+                debug(`Context ${contextKey} removed.`);
+                return true;
+            } else {
+                debug(`Context ${contextKey} not found, nothing to remove.`);
+                return false;
+            }
         } catch (error) {
             debug(`Error removing context for user ${userId}: ${error.message}`);
             return false;
@@ -428,6 +476,8 @@ class ContextManager extends EventEmitter {
             const wildcardForwarder = function (payload = {}) {
                 const eventName = this.event; // EventEmitter2 provides the emitted event name
                 const enriched = { ...payload, contextId: context.id };
+                debug(`📋 ContextManager: 🎯 Forwarding event "${eventName}" from context ${context.id}`);
+                debug(`📋 ContextManager: 🎯 Event payload:`, JSON.stringify(enriched, null, 2));
                 manager.emit(eventName, enriched);
                 debug(`📋 ContextManager: ➡️  forwarded ${eventName} for context ${context.id}`);
             };
@@ -466,14 +516,69 @@ class ContextManager extends EventEmitter {
         if (idStr.includes('/')) {
             const parts = idStr.split('/');
             if (parts.length === 2 && parts[0] && parts[1]) {
-                // Potentially validate email format for parts[0] if needed
+                // Simple user/resource format: user.name/context.name or user.id/context.id
                 return { ownerUserId: parts[0], contextId: this.#sanitizeContextId(parts[1]) };
             } else {
-                throw new Error(`Invalid shared context identifier format: ${idStr}. Expected 'user@email.com/contextId'.`);
+                throw new Error(`Invalid context identifier format: ${idStr}. Expected 'user.name/context.name' or simple 'contextId'.`);
             }
         }
         // If no '/', it's a simple contextId, owner is the defaultUserId (usually the accessing user)
         return { ownerUserId: defaultUserId, contextId: this.#sanitizeContextId(idStr) };
+    }
+
+        /**
+     * Resolves a context ID from a simple context identifier
+     * @param {string} contextIdentifier - Simple identifier in format user.name/context.name
+     * @returns {Promise<string|null>} The context ID if found, null otherwise
+     */
+    async resolveContextIdFromSimpleIdentifier(contextIdentifier) {
+        try {
+            const { ownerUserId, contextId } = this.#parseContextIdentifier(contextIdentifier, null);
+
+            // If no ownerUserId was parsed (simple contextId), return null as this method is for user/context format
+            if (!ownerUserId) {
+                return null;
+            }
+
+            // Resolve the user identifier to a user ID if needed
+            const resolvedUserId = await this.#workspaceManager.userManager.resolveToUserId(ownerUserId);
+            if (!resolvedUserId) {
+                return null;
+            }
+
+            // Check if context exists
+            const contextKey = this.#constructContextKey(resolvedUserId, contextId);
+            if (this.#contexts.has(contextKey) || this.#indexStore.has(contextKey)) {
+                return contextId;
+            }
+
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Construct a simple resource address from context data
+     * @param {Object} context - Context object with userId and id
+     * @returns {Promise<string|null>} Resource address in format user.name/context.id
+     */
+    async constructResourceAddress(context) {
+        if (!context || !context.userId || !context.id) {
+            return null;
+        }
+
+        try {
+            // Get user info to construct the address
+            const user = await this.#workspaceManager.userManager.getUser(context.userId);
+            if (!user || !user.name) {
+                return null;
+            }
+
+            return `${user.name}/${context.id}`;
+        } catch (error) {
+            return null;
+        }
     }
 
     async grantContextAccess(requestingUserId, targetContextIdentifier, sharedWithUserId, accessLevel) {

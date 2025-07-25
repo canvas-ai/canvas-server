@@ -18,7 +18,7 @@ const DEFAULT_PATH = '/';
 class Url {
     #raw;
     #url;
-    #workspaceId;
+    #workspaceName;
     #path;
     #pathArray;
     #valid = false;
@@ -34,8 +34,12 @@ class Url {
     get url() {
         return this.#url;
     } // Full URL string
+    get workspaceName() {
+        return this.#workspaceName;
+    }
     get workspaceId() {
-        return this.#workspaceId;
+        // Keep backward compatibility - return workspaceName
+        return this.#workspaceName;
     }
     get path() {
         return this.#path;
@@ -58,8 +62,8 @@ class Url {
             // Clean and normalize the URL
             const cleanedUrl = this.cleanUrl(url);
 
-            // Set the workspace ID
-            this.#workspaceId = this.parseWorkspace(cleanedUrl);
+            // Set the workspace name
+            this.#workspaceName = this.parseWorkspace(cleanedUrl);
 
             // Set the URL path
             this.#path = this.parsePath(cleanedUrl);
@@ -74,7 +78,7 @@ class Url {
         } catch (error) {
             this.#valid = false;
             this.#url = null;
-            this.#workspaceId = null;
+            this.#workspaceName = null;
             this.#path = DEFAULT_PATH;
             this.#pathArray = [];
 
@@ -115,10 +119,10 @@ class Url {
             let workspacePart = cleaned.substring(0, colonSlashIndex);
             let pathPart = cleaned.substring(colonSlashIndex + 3);
 
-                                    // Clean workspace part - only allow alphanumeric and underscores
+            // Clean workspace part - only allow alphanumeric and underscores
             workspacePart = workspacePart.replace(/[^a-zA-Z0-9_]/g, '');
 
-            // If workspace becomes empty after cleaning, return just the path
+            // If workspace name becomes empty after cleaning, return just the path
             if (!workspacePart) {
                 return this.cleanPath(pathPart) || '/';
             }
@@ -166,8 +170,8 @@ class Url {
 
     // Format the URL based on the parsed components
     formatUrl() {
-        if (this.#workspaceId) {
-            return `${this.#workspaceId}://${this.#path.replace(/^\//, '')}`;
+        if (this.#workspaceName) {
+            return `${this.#workspaceName}://${this.#path.replace(/^\//, '')}`;
         } else {
             return this.#path;
         }
@@ -189,7 +193,7 @@ class Url {
 
     // Parse the path portion of the url
     parsePath(url) {
-        // Handle workspace format: workspace://path
+        // Handle workspace format: workspace-name://path
         const workspaceRegex = /^([a-zA-Z0-9_]+):\/\/(.*)$/;
         const workspaceMatch = url.match(workspaceRegex);
 

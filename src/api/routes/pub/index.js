@@ -1,13 +1,14 @@
 'use strict';
 
 import ResponseObject from '../../ResponseObject.js'; // Assuming ResponseObject is in a relative path
+import validator from 'validator';
 
 /**
- * User-specific routes, including shared context access.
+ * Public/shared resource routes for accessing contexts and documents shared by other users.
  * @param {FastifyInstance} fastify - Fastify instance
  * @param {Object} options - Plugin options
  */
-export default async function userRoutes(fastify, options) {
+export default async function pubRoutes(fastify, options) {
   /**
    * Helper function to validate user is authenticated and has an id
    * @param {Object} request - Fastify request
@@ -36,6 +37,38 @@ export default async function userRoutes(fastify, options) {
     return true;
   };
 
+  /**
+   * Helper function to check if targetUserId is an email and redirect to user ID if needed
+   * @param {Object} request - Fastify request
+   * @param {Object} reply - Fastify reply
+   * @param {string} targetUserId - The targetUserId parameter from the route
+   * @returns {Promise<string|null>} The resolved user ID if email was found, null if not an email or user not found
+   */
+  const resolveUserIdFromEmail = async (request, reply, targetUserId) => {
+    // Check if targetUserId looks like an email
+    if (!validator.isEmail(targetUserId)) {
+      return null; // Not an email, return null to continue with original targetUserId
+    }
+
+    try {
+      // Try to find user by email
+      const user = await fastify.userManager.getUserByEmail(targetUserId);
+      if (user && user.id) {
+        // Redirect to the user ID-based URL
+        const originalUrl = request.url;
+        const newUrl = originalUrl.replace(`/${targetUserId}/`, `/${user.id}/`);
+
+        fastify.log.info(`Redirecting email-based URL to user ID: ${originalUrl} -> ${newUrl}`);
+        return reply.redirect(301, newUrl);
+      }
+    } catch (error) {
+      // User not found by email, continue with original targetUserId
+      fastify.log.debug(`User not found by email: ${targetUserId}`);
+    }
+
+    return null; // No redirect needed
+  };
+
   // Get a specific context (owned by targetUserId, accessed by request.user.id)
   fastify.get('/:targetUserId/contexts/:contextId', {
     onRequest: [fastify.authenticate],
@@ -54,6 +87,12 @@ export default async function userRoutes(fastify, options) {
       return;
     }
 
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
+    }
+
     try {
       const accessingUserId = request.user.id;
       const ownerUserId = request.params.targetUserId;
@@ -68,7 +107,7 @@ export default async function userRoutes(fastify, options) {
       }
 
       const responseObject = new ResponseObject().found(
-        { context: context.toJSON() },
+        context.toJSON(),
         'Context retrieved successfully'
       );
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -111,6 +150,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if ownerUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.ownerUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     const requestingUserId = request.user.id;
@@ -164,6 +209,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if ownerUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.ownerUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     const requestingUserId = request.user.id;
@@ -228,6 +279,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     try {
@@ -296,6 +353,12 @@ export default async function userRoutes(fastify, options) {
       return;
     }
 
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
+    }
+
     try {
       const accessingUserId = request.user.id;
       const ownerUserId = request.params.targetUserId;
@@ -362,6 +425,12 @@ export default async function userRoutes(fastify, options) {
       return;
     }
 
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
+    }
+
     try {
       const accessingUserId = request.user.id;
       const ownerUserId = request.params.targetUserId;
@@ -422,6 +491,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     try {
@@ -491,6 +566,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     try {
@@ -570,6 +651,12 @@ export default async function userRoutes(fastify, options) {
   }, async (request, reply) => {
     if (!validateUserWithResponse(request, reply)) {
       return;
+    }
+
+    // Check if targetUserId is an email and redirect if needed
+    const redirectResult = await resolveUserIdFromEmail(request, reply, request.params.targetUserId);
+    if (redirectResult) {
+      return redirectResult; // Redirect has been sent
     }
 
     try {

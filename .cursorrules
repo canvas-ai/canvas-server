@@ -40,8 +40,7 @@ Context layers filter different data based on where they are placed within the c
 - We use ES6 vanilla JavaScript and may use TypeScript in the future
 - We use bash and powershell for scripting
 - We use Node.js v20 LTS for the server runtime
-- We use LMDB for the main server db backend `/server/db`)
-- We use Canvas-SynapsD for user workspace databases and as the default JSON document store
+- We use LMDB-based canvas-synapsd databases as the default JSON document store for user workspaces
 - User data paths:
   - `/users/john.doe@email.com/universe/` is the default workspace directory for user data
   - `/users/john.doe@email.com/sample-workspace` is the example workspace directory for user

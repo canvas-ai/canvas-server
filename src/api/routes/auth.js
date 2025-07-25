@@ -56,6 +56,21 @@ export default async function authRoutes(fastify, options) {
       }
 
       const { email, password, strategy = 'auto' } = request.body;
+
+      // Ensure IMAP strategy is initialized before login attempt
+      if (strategy === 'imap' || strategy === 'auto') {
+        try {
+          await imapAuthStrategy.initialize();
+        } catch (error) {
+          fastify.log.warn(`IMAP strategy initialization failed: ${error.message}. IMAP login may be unavailable.`);
+          // If strategy is explicitly 'imap', fail fast
+          if (strategy === 'imap') {
+            const response = new ResponseObject().serverError('IMAP authentication is not available.');
+            return reply.code(response.statusCode).send(response.getResponse());
+          }
+        }
+      }
+
       const result = await login(email, password, fastify.userManager, strategy);
 
       // Generate JWT token
@@ -65,8 +80,8 @@ export default async function authRoutes(fastify, options) {
         token,
         user: {
           id: result.user.id,
-          email: result.user.email,
           name: result.user.name || result.user.email,
+          email: result.user.email,
           authMethod: result.authMethod || 'local'
         }
       }, 'Login successful');
@@ -116,8 +131,15 @@ export default async function authRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['email', 'password'],
+        required: ['name', 'email', 'password'],
         properties: {
+          name: {
+            type: 'string',
+            minLength: 3,
+            maxLength: 39,
+            pattern: '^[a-z0-9_-]+$',
+            description: 'Username (3-39 chars, lowercase letters, numbers, underscores, hyphens only)'
+          },
           email: { type: 'string', format: 'email' },
           password: { type: 'string', minLength: 8 }
         }
@@ -135,13 +157,16 @@ export default async function authRoutes(fastify, options) {
       const response = new ResponseObject().created(result.data, 'Registration successful');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
-      fastify.log.error(`[Register Route Error] ${error.message}`, error);
-      if (error.message && error.message.toLowerCase().includes('user already exists')) {
-        const responseObject = new ResponseObject().conflict(error.message);
-        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      fastify.log.error('[Register Route Error]', error.message);
+
+      // Provide specific error messages for username validation
+      if (error.message.includes('User name')) {
+        const response = new ResponseObject().badRequest(error.message);
+        return reply.code(response.statusCode).send(response.getResponse());
       }
-      const responseObject = new ResponseObject().serverError(error.message || 'Registration failed due to an unexpected error');
-      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+
+      const response = new ResponseObject().serverError('Registration failed');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
@@ -436,7 +461,7 @@ export default async function authRoutes(fastify, options) {
 
   // Get current user endpoint
   fastify.get('/me', {
-    onRequest: [fastify.authenticate]
+    onRequest: [fastify.authenticateCustom]
 
   }, async (request, reply) => {
     // Check if reply has already been sent by auth middleware or other mechanism
@@ -514,13 +539,31 @@ export default async function authRoutes(fastify, options) {
 
         if (!userData) {
           fastify.log.error(`[Auth/Me] User not found in database: ${userId}`);
-          const response = new ResponseObject().notFound(`User not found: ${userId}`);
+          const response = new ResponseObject().unauthorized(`Authentication failed - user account no longer exists: ${userId}`);
           return reply.code(response.statusCode).send(response.getResponse());
         }
 
         fastify.log.info(`[Auth/Me] Successfully retrieved user data: ${userData.id}`);
       } catch (dbError) {
         fastify.log.error(`[Auth/Me] Database error: ${dbError.message}`);
+
+        // Handle the specific case where user exists in token but not in database
+        if (dbError.message.includes('User not found in index')) {
+          fastify.log.warn(`[Auth/Me] User ${userId} has valid token but missing from database - clearing authentication`);
+
+          // Return a specific error that the frontend can handle
+          const response = new ResponseObject().unauthorized(
+            'Your session is invalid. Please log in again.',
+            {
+              code: 'USER_NOT_FOUND_IN_DATABASE',
+              userId: userId,
+              action: 'logout'
+            }
+          );
+          return reply.code(response.statusCode).send(response.getResponse());
+        }
+
+        // For other database errors, return a generic server error
         const response = new ResponseObject().serverError('Database error when retrieving user profile');
         return reply.code(response.statusCode).send(response.getResponse());
       }
@@ -534,6 +577,7 @@ export default async function authRoutes(fastify, options) {
       // Return user profile
       const response = new ResponseObject().found({
         id: userData.id,
+        name: userData.name || userData.email,
         email: userData.email,
         userType: userData.userType || 'user',
         status: userData.status || 'active'

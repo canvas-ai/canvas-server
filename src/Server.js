@@ -131,9 +131,15 @@ class Server extends EventEmitter {
     }
 
     async #initializeCoreServices() {
+        this.#userManager = new UserManager({
+            rootPath: env.user.home,
+            indexStore: jim.createIndex('users'),
+        });
+
         this.#workspaceManager = new WorkspaceManager({
             defaultRootPath: env.user.home,
             indexStore: jim.createIndex('workspaces'),
+            userManager: this.#userManager,
         });
 
         this.#contextManager = new ContextManager({
@@ -141,17 +147,12 @@ class Server extends EventEmitter {
             workspaceManager: this.#workspaceManager
         });
 
-        this.#userManager = new UserManager({
-            rootPath: env.user.home,
-            indexStore: jim.createIndex('users'),
-            workspaceManager: this.#workspaceManager,
-            contextManager: this.#contextManager
-        });
+        this.#userManager.setWorkspaceManager(this.#workspaceManager);
+        this.#userManager.setContextManager(this.#contextManager);
 
-        // Initialize managers
-        this.#workspaceManager = await this.#workspaceManager.initialize();
-        this.#contextManager = await this.#contextManager.initialize();
-        this.#userManager = await this.#userManager.initialize();
+        await this.#userManager.initialize();
+        await this.#workspaceManager.initialize();
+        await this.#contextManager.initialize();
     }
 
     async #createAdminUser() {
@@ -183,7 +184,7 @@ class Server extends EventEmitter {
                 // Create new admin user
                 debug(`Creating new admin user ${adminEmail}`);
                 user = await this.#userManager.createUser({
-                    id: adminEmail,
+                    name: this.#generateUsernameFromEmail(adminEmail), // Generate proper username
                     email: adminEmail,
                     userType: 'admin',
                     status: 'active'
@@ -264,6 +265,38 @@ class Server extends EventEmitter {
         await this.stop();
         await this.start();
         return this;
+    }
+
+    /**
+     * Generate a GitHub-style username from an email address
+     * @param {string} email - Email address
+     * @returns {string} - Valid username
+     * @private
+     */
+    #generateUsernameFromEmail(email) {
+        // Extract the local part (before @)
+        let username = email.split('@')[0].toLowerCase();
+
+        // Remove special characters, keep only letters, numbers, dots, underscores, hyphens
+        username = username.replace(/[^a-z0-9._-]/g, '');
+
+        // Replace dots and underscores with hyphens for consistency
+        username = username.replace(/[._]/g, '-');
+
+        // Remove consecutive hyphens
+        username = username.replace(/-+/g, '-');
+
+        // Remove leading and trailing hyphens
+        username = username.replace(/^-+|-+$/g, '');
+
+        // Ensure maximum length
+        if (username.length > 32) {
+            username = username.substring(0, 32);
+            // Remove trailing hyphens if we cut in the middle
+            username = username.replace(/-+$/, '');
+        }
+
+        return username;
     }
 }
 
