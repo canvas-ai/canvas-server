@@ -406,6 +406,11 @@ export default async function documentRoutes(fastify, options) {
       querystring: {
         type: 'object',
         properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
           filterArray: {
             type: 'array',
             items: { type: 'string' }
@@ -428,7 +433,8 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const derivedFeatureArray = [`data/abstraction/${abstraction}`];
+      // Create derived feature array with abstraction path and merge with additional features
+      const derivedFeatureArray = [`data/abstraction/${abstraction}`, ...request.query.featureArray];
       const { filterArray = [], includeServerContext, includeClientContext, limit } = request.query;
       const options = {
         includeServerContext,
