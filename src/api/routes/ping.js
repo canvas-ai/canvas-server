@@ -12,7 +12,7 @@ import ResponseObject from '../ResponseObject.js';
 export default async function pingRoute(fastify, options) {
   // Simple ping endpoint
   fastify.get('/ping', async (request, reply) => {
-    return { pong: 'Hello, world!' };
+    return { pong: 'Hello, world! (' + process.env.npm_package_name + ' v' + process.env.npm_package_version + ')' };
   });
 
   // Debug endpoint to check auth and server decorators
@@ -53,12 +53,10 @@ export default async function pingRoute(fastify, options) {
   }, async (request, reply) => {
     // Basic system info
     const response = new ResponseObject().success({
-      version: process.env.npm_package_version || '1.0.0',
+      appName: process.env.npm_package_name,
+      version: process.env.npm_package_version,
       uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      hostname: os.hostname(),
-      serverMode: env.server.mode,
-      environment: process.env.NODE_ENV || 'development'
+      timestamp: new Date().toISOString()
     }, 'Server status retrieved successfully');
     return reply.code(response.statusCode).send(response.getResponse());
   });
