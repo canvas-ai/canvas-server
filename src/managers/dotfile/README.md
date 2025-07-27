@@ -26,8 +26,8 @@ Default addressing scheme used for all remote resources
 Dotfiles are synced to ~/.canvas/user.name@remote.id/<workspace.name>/dotfiles
 
 We may have
-- corpuser1@canvas.acmeorg/work/dotfiles/ssh
-- corpuser2@canvas.acmeorg/work/dotfiles/ssh
+- corpuser1@canvas.acmeorg:work/dotfiles/ssh
+- corpuser2@canvas.acmeorg:work/dotfiles/ssh
 
 Switching between these 2 dotfiles would then just require
 $ canvas dot activate corpuser1@canvas.acmeorg:work/ssh
@@ -39,9 +39,33 @@ $ dot list
 $ dot init <user@remote:workspace or workspace/path>
 $ dot activate <user@remote:workspace or workspace/path>
 $ dot deactivate <user@remote:workspace or workspace/path>
+$ dot create <user@remote:workspace/path>
 $ dot push <user@remote:workspace or workspace/path>
 $ dot pull <user@remote:workspace or workspace/path>
 $ dot status <user@remote:workspace or workspace/path>
+
+dot user.name@remote.id:workspace init
+dot create 
+
+dot init user@workspace
+    - Remote init
+    - Local git clone to ~/.canvas/user.name/workspace.name/dotfiles/
+dot add ~/.bashrc  user@workspace/bashrc
+    - copy ~/.bashrc to ~/.canvas/user.name/workspace.name/dotfiles/bashrc
+    - Add entry to ~/.canvas/user.name/workspace.name/dotfiles/index.json 
+
+dot list user@workspace
+
+dot activate user@workspace/bashrc
+    - Removes original file | move to backup 
+    - Replace with symplink
+dot cd user@workspace (cd ~/.canvas/user.name/workspace.name/dotfiles)
+
+File-level encryption support
+~/.ssh/id_rsa.gpg -> on apply gets decrypted to ~/.ssh/id_rsa
+
+
+
 
 ```bash
 $ canvas dotfiles | canvas dot list | canvas dot
@@ -67,4 +91,4 @@ $ ws workspace-name dot status optional-dotfile
 
 ## Test commands
 
-$
+
