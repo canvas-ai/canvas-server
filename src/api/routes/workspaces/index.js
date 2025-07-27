@@ -42,6 +42,10 @@ export default async function workspaceRoutes(fastify, options) {
     prefix: '/:id/tokens',
     onRequest: [resolveWorkspaceAddress]
   });
+  fastify.register(import('./dotfiles.js'), {
+    prefix: '/:id/dotfiles',
+    onRequest: [resolveWorkspaceAddress]
+  });
 
   // List all workspaces
   fastify.get('/', {

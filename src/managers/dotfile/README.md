@@ -36,12 +36,12 @@ $ dot activate corpuser2@canvas.acmeorg:work/ssh
 
 
 $ dot list
-$ dot init <user@remote/workspace or workspace/path>
-$ dot activate <workspace or workspace/dotfile>
-$ dot deactivate <workspace or workspace/dotfile>
-$ dot push <workspace or workspace/dotfile>
-$ dot pull <workspace or workspace/dotfile>
-$ dot status <workspace or workspace/dotfile>
+$ dot init <user@remote:workspace or workspace/path>
+$ dot activate <user@remote:workspace or workspace/path>
+$ dot deactivate <user@remote:workspace or workspace/path>
+$ dot push <user@remote:workspace or workspace/path>
+$ dot pull <user@remote:workspace or workspace/path>
+$ dot status <user@remote:workspace or workspace/path>
 
 ```bash
 $ canvas dotfiles | canvas dot list | canvas dot
@@ -64,3 +64,7 @@ $ ws workspace-name dot activate ssh # activates the ssh dot only
 $ ws workspace-name dot deactivate ssh
 $ ws workspace-name dot pull optional-dotfile # update / git fetch updates for all dotfiles of the given workspace
 $ ws workspace-name dot status optional-dotfile
+
+## Test commands
+
+$

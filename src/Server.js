@@ -22,6 +22,7 @@ const debug = createDebug('canvas:server');
 import WorkspaceManager from './managers/workspace/index.js';
 import UserManager from './managers/user/index.js';
 import ContextManager from './managers/context/index.js';
+import DotfileManager from './managers/dotfile/index.js';
 import EventEmitter from 'eventemitter2';
 import { authService } from './api/auth/service.js';
 import { startApiServer } from './api/index.js';
@@ -40,6 +41,7 @@ class Server extends EventEmitter {
     #userManager;
     #workspaceManager;
     #contextManager;
+    #dotfileManager;
 
     // Global services
     #authService;
@@ -122,6 +124,7 @@ class Server extends EventEmitter {
                 userManager: this.#userManager,
                 workspaceManager: this.#workspaceManager,
                 contextManager: this.#contextManager,
+                dotfileManager: this.#dotfileManager,
                 authService: this.#authService
             });
         }
@@ -147,12 +150,17 @@ class Server extends EventEmitter {
             workspaceManager: this.#workspaceManager
         });
 
+        this.#dotfileManager = new DotfileManager({
+            workspaceManager: this.#workspaceManager
+        });
+
         this.#userManager.setWorkspaceManager(this.#workspaceManager);
         this.#userManager.setContextManager(this.#contextManager);
 
         await this.#userManager.initialize();
         await this.#workspaceManager.initialize();
         await this.#contextManager.initialize();
+        await this.#dotfileManager.initialize();
     }
 
     async #createAdminUser() {

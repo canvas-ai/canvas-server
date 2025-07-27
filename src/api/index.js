@@ -131,6 +131,7 @@ export async function createServer(options = {}) {
   if (options.userManager) server.decorate('userManager', options.userManager);
   if (options.workspaceManager) server.decorate('workspaceManager', options.workspaceManager);
   if (options.contextManager) server.decorate('contextManager', options.contextManager);
+  if (options.dotfileManager) server.decorate('dotfileManager', options.dotfileManager);
   if (options.authService) server.decorate('authService', options.authService);
 
   // Register plugins
@@ -317,6 +318,8 @@ export async function startApiServer(options = {}) {
     fastify.decorate('workspaceManager', options.workspaceManager);
   if (!fastify.hasDecorator('contextManager') && options.contextManager)
     fastify.decorate('contextManager', options.contextManager);
+  if (!fastify.hasDecorator('dotfileManager') && options.dotfileManager)
+    fastify.decorate('dotfileManager', options.dotfileManager);
   if (!fastify.hasDecorator('authService') && options.authService)
     fastify.decorate('authService', options.authService);
 
