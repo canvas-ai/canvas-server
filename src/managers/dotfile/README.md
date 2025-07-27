@@ -1,5 +1,21 @@
 # Dotfile manager
 
+## Server
+
+Lets create a simple dotfile manager canvas-server module and the accompanied REST API endpoints to enable per-workspace dotfile storage:
+- On the server, we should use isomorphic-git
+- canvas-server should internally mount the bare git repo at workspace-path/dotfiles.git
+- We should re-use existing auth mechanisms so that a user can use his app or workspace-access api-tokens to authenticate
+- We should only init the repository on-demand
+- The following REST API endpoints should be implemented:
+  - /workspaces/:workspaceId/dotfiles/init - to initiate a repo
+  - /workspaces/:workspaceId/dotfiles/status - to check if a repo is initialized or not
+  - /workspaces/:workspaceId/dotfiles/git/ for direct access using git / canvas-cli
+  - /workspaces/:workspaceId/dotfiles/git/info/refs
+  - /workspaces/:workspaceId/dotfiles/git/git-upload-pack
+  - /workspaces/:workspaceId/dotfiles/git/git-receive-pack
+  Make the HTTP handlers under /workspaces/:workspaceId/dotfiles/git/* just proxy to the bare git repo using isomorphic-git
+
 ## CLI
 
 Addressing scheme
@@ -7,7 +23,17 @@ Addressing scheme
 
 ### dot command/subcommand interface
 
-Dotfiles are synced to ~/.canvas/dotfiles/<workspace_id>/<resource> using nodejs git and users workspace access tokens, server-side they are stored in the workspace dir under a "dotfiles" folder and exportable/importable. 
+Dotfiles are synced to ~/.canvas/user.name@remote.id/<workspace.name>/dotfiles
+
+We may have
+- corpuser1@canvas.acmeorg/work/dotfiles/ssh
+- corpuser2@canvas.acmeorg/work/dotfiles/ssh
+
+Switching between these 2 dotfiles would then just require
+$ canvas dot activate corpuser1@canvas.acmeorg:work/ssh
+or as we are also exporting a "dot" wrapper
+$ dot activate corpuser2@canvas.acmeorg:work/ssh
+
 
 $ dot list
 $ dot init <user@remote/workspace or workspace/path>
@@ -19,10 +45,8 @@ $ dot status <workspace or workspace/dotfile>
 
 ```bash
 $ canvas dotfiles | canvas dot list | canvas dot
-# Returns:
-# user@remote/path, for example
-# user@canvas.local/workspace_name/dotfile
-# user@canvas.work/customer-a/ssh
+Returns:
+- user.name@remote.id:path, for example
 
 $ canvas dot activate user@remote:workspace/path
 $ canvas dot deactivate user@remote:workspace/path
