@@ -54,6 +54,24 @@ This document outlines the security features implemented in Canvas Server and pr
 - **Max Attempts**: 3 attempts per hour (configurable)
 - **Prevents Abuse**: Protects against automated registration
 
+#### Password Reset Protection
+- **Max Attempts**: 3 attempts per hour (configurable)
+- **Prevents Abuse**: Protects against email bombing
+
+#### API Operations Protection
+- **Token Management**: 10 operations per 5 minutes (configurable)
+- **Password Changes**: 10 operations per 5 minutes (configurable)
+- **Prevents Abuse**: Protects against token enumeration
+
+#### Token Operations Protection
+- **Email Verification**: 5 attempts per 5 minutes (configurable)
+- **Password Reset**: 5 attempts per 5 minutes (configurable)
+- **Token Verification**: 5 attempts per 5 minutes (configurable)
+
+#### User Profile Protection
+- **Profile Access**: 30 requests per minute (configurable)
+- **Prevents Abuse**: Protects against profile scraping
+
 ### 4. Input Validation & Sanitization
 
 #### Email Validation
@@ -111,6 +129,22 @@ This document outlines the security features implemented in Canvas Server and pr
         "registration": {
           "maxAttempts": 3,
           "windowMs": 3600000
+        },
+        "passwordReset": {
+          "maxAttempts": 3,
+          "windowMs": 3600000
+        },
+        "apiOperations": {
+          "maxAttempts": 10,
+          "windowMs": 300000
+        },
+        "tokenOperations": {
+          "maxAttempts": 5,
+          "windowMs": 300000
+        },
+        "userProfile": {
+          "maxAttempts": 30,
+          "windowMs": 60000
         }
       }
     }

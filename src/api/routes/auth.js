@@ -211,6 +211,7 @@ export default async function authRoutes(fastify, options) {
   // Update password endpoint
   fastify.put('/password', {
     onRequest: [fastify.authenticate],
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -243,6 +244,7 @@ export default async function authRoutes(fastify, options) {
 
   // Forgot password endpoint
   fastify.post('/forgot-password', {
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -269,6 +271,7 @@ export default async function authRoutes(fastify, options) {
 
   // Reset password endpoint
   fastify.post('/reset-password', {
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -300,6 +303,7 @@ export default async function authRoutes(fastify, options) {
 
   // Request email verification endpoint
   fastify.post('/request-email-verification', {
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -326,6 +330,7 @@ export default async function authRoutes(fastify, options) {
 
   // Verify email token endpoint
   fastify.get('/verify-email/:token', {
+    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -361,8 +366,8 @@ export default async function authRoutes(fastify, options) {
 
   // List API tokens endpoint
   fastify.get('/tokens', {
-    onRequest: [fastify.authenticate]
-
+    onRequest: [fastify.authenticate],
+    preHandler: [createRateLimiter()]
   }, async (request, reply) => {
     try {
       const tokens = await authService.listTokens(request.user.id);
@@ -378,6 +383,7 @@ export default async function authRoutes(fastify, options) {
   // Create API token endpoint
   fastify.post('/tokens', {
     onRequest: [fastify.authenticate],
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -409,6 +415,7 @@ export default async function authRoutes(fastify, options) {
   // Delete API token endpoint
   fastify.delete('/tokens/:tokenId', {
     onRequest: [fastify.authenticate],
+    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -437,6 +444,7 @@ export default async function authRoutes(fastify, options) {
   // Update API token endpoint
   fastify.put('/tokens/:tokenId', {
     onRequest: [fastify.authenticate],
+    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -471,6 +479,7 @@ export default async function authRoutes(fastify, options) {
 
   // Verify token endpoint (no auth required)
   fastify.post('/token/verify', {
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -507,8 +516,8 @@ export default async function authRoutes(fastify, options) {
 
   // Get current user endpoint
   fastify.get('/me', {
-    onRequest: [fastify.authenticateCustom]
-
+    onRequest: [fastify.authenticateCustom],
+    preHandler: [createRateLimiter()]
   }, async (request, reply) => {
     // Check if reply has already been sent by auth middleware or other mechanism
     if (reply.sent) {

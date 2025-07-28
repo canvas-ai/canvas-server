@@ -27,6 +27,26 @@ export function createRateLimiter() {
         config = rateLimitConfig.loginAttempts;
       } else if (request.url.includes('/register')) {
         config = rateLimitConfig.registration;
+      } else if (request.url.includes('/forgot-password') || request.url.includes('/request-email-verification')) {
+        config = rateLimitConfig.passwordReset || {
+          maxAttempts: 3,
+          windowMs: 3600000 // 1 hour
+        };
+      } else if (request.url.includes('/tokens') || request.url.includes('/password')) {
+        config = rateLimitConfig.apiOperations || {
+          maxAttempts: 10,
+          windowMs: 300000 // 5 minutes
+        };
+      } else if (request.url.includes('/verify-email') || request.url.includes('/reset-password') || request.url.includes('/token/verify')) {
+        config = rateLimitConfig.tokenOperations || {
+          maxAttempts: 5,
+          windowMs: 300000 // 5 minutes
+        };
+      } else if (request.url.includes('/me')) {
+        config = rateLimitConfig.userProfile || {
+          maxAttempts: 30,
+          windowMs: 60000 // 1 minute
+        };
       } else {
         return done(); // No rate limiting for other routes
       }
