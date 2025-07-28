@@ -31,17 +31,17 @@ const DEFAULT_HOST = 'canvas.local';
 // - user.email@remote.server.com:shared-workspace/subfolder
 const WORKSPACE_CONFIG_FILENAME = 'workspace.json';
 
+// Lets adhere to the "You aint gonna need it (YAGNI)" principle here
 const WORKSPACE_DIRECTORIES = {
-    db: 'Db',
-    config: 'Config',
-    data: 'Data',
-    cache: 'Cache',
-    home: 'Home',
-    agents: 'Agents',
-    minions: 'Minions',
-    roles: 'Roles',
-    dotfiles: 'Dotfiles',
-    workspaces: 'Workspaces',
+    db: 'db',
+    config: 'config',
+    //data: 'Data',
+    //cache: 'Cache',
+    home: 'home',
+    //agents: 'Agents',
+    //minions: 'Minions',
+    //roles: 'Roles',
+    workspaces: 'workspaces',
 };
 
 const WORKSPACE_STATUS_CODES = {

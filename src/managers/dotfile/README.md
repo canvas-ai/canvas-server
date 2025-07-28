@@ -3,7 +3,6 @@
 ## Server
 
 Lets create a simple dotfile manager canvas-server module and the accompanied REST API endpoints to enable per-workspace dotfile storage:
-- We should use isomorphic-git on the server
 - canvas-server should internally mount the bare git repo at workspace-path/dotfiles.git
 - We should re-use existing auth mechanisms to access the repo so that a user can use his app or workspace-access api-tokens to authenticate
 - We should only init the repository on-demand
