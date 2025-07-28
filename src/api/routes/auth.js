@@ -134,6 +134,7 @@ export default async function authRoutes(fastify, options) {
 
   // Register endpoint
   fastify.post('/register', {
+    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',

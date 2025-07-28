@@ -397,6 +397,34 @@ class AuthService {
   }
 
   /**
+   * Verify email verification token (alias for verifyOneTimeToken)
+   * @param {string} token - Verification token
+   * @param {Object} userManager - User manager instance
+   * @returns {Promise<Object|null>} - Token data if valid
+   */
+  async verifyEmailToken(token, userManager) {
+    const tokenData = await this.verifyOneTimeToken(token, TOKEN_TYPES.VERIFICATION);
+    if (!tokenData) {
+      return null;
+    }
+
+    // Get user and update verification status
+    const user = await userManager.getUserById(tokenData.userId);
+    if (!user) {
+      return null;
+    }
+
+    // Update user verification status
+    await userManager.updateUser(user.id, {
+      status: 'active',
+      emailVerified: true,
+      emailVerifiedAt: new Date().toISOString()
+    });
+
+    return { userId: tokenData.userId, user };
+  }
+
+  /**
    * Create a password reset token
    * @param {string} userId - User ID
    * @param {string} email - User email
