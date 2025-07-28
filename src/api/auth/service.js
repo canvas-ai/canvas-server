@@ -7,6 +7,8 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../../env.js';
+import SecurityUtils from '../utils/security.js';
+import emailService from '../services/email-service.js';
 
 // Import jim from Server.js
 import { jim } from '../../Server.js';
@@ -26,8 +28,9 @@ class AuthService {
   #tokensStore;
   #passwordsStore;
   #initialized = false;
-  #defaultSaltRounds = 10;
+  #defaultSaltRounds = 12; // Increased from 10 for better security
   #tokenCreationLock = new Map();
+  #securityConfig = null;
 
   constructor() {
     // Init happens in initialize() to ensure env is loaded
@@ -90,9 +93,15 @@ class AuthService {
     // Ensure auth configuration exists with defaults
     this.#ensureAuthConfig();
 
+    // Load security configuration
+    this.#securityConfig = SecurityUtils.loadSecurityConfig();
+
     // Initialize storage for tokens and passwords using jim
     this.#tokensStore = jim.createIndex('tokens');
     this.#passwordsStore = jim.createIndex('passwords');
+
+    // Initialize email service
+    await emailService.initialize();
 
     this.#initialized = true;
   }
@@ -430,6 +439,15 @@ class AuthService {
       throw new Error('User ID and password are required');
     }
 
+    // Validate password against security policy
+    const passwordPolicy = this.#securityConfig?.strategies?.local?.passwordPolicy;
+    if (passwordPolicy) {
+      const validation = SecurityUtils.validatePassword(password, passwordPolicy);
+      if (!validation.valid) {
+        throw new Error(`Password validation failed: ${validation.errors.join(', ')}`);
+      }
+    }
+
     const passwordHash = await this.hashPassword(password);
 
     // Store password
@@ -469,8 +487,15 @@ class AuthService {
    * @returns {string} - JWT token
    */
   generateJWT(user, options = {}) {
-    if (!env.auth.jwtSecret) {
+    const jwtSecret = this.#securityConfig?.jwt?.secret || env.auth.jwtSecret;
+    
+    if (!jwtSecret) {
       throw new Error('JWT secret key is not configured');
+    }
+
+    // Check if JWT secret is secure
+    if (!SecurityUtils.isSecureJwtSecret(jwtSecret)) {
+      console.warn('[AuthService] JWT secret is not secure - consider changing it in production');
     }
 
     const payload = {
@@ -484,11 +509,13 @@ class AuthService {
       payload.ver = user.updatedAt || user.createdAt;
     }
 
+    const expiresIn = options.expiresIn || this.#securityConfig?.jwt?.expiresIn || '1d';
+
     return jwt.sign(
       payload,
-      env.auth.jwtSecret,
+      jwtSecret,
       {
-        expiresIn: options.expiresIn || '1d'
+        expiresIn: expiresIn
       }
     );
   }
@@ -536,11 +563,13 @@ class AuthService {
 
       // If it's a JWT token
       else {
-        if (!env.auth.jwtSecret) {
+        const jwtSecret = this.#securityConfig?.jwt?.secret || env.auth.jwtSecret;
+        
+        if (!jwtSecret) {
           return { valid: false, message: 'JWT secret not configured' };
         }
 
-        const decoded = jwt.verify(token, env.auth.jwtSecret);
+        const decoded = jwt.verify(token, jwtSecret);
 
         // Get user from the database
         const userIndex = jim.createIndex('users');

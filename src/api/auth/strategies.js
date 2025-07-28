@@ -2,6 +2,8 @@
 
 import authService from './service.js';
 import imapAuthStrategy from './imap-strategy.js';
+import emailService from '../services/email-service.js';
+import SecurityUtils from '../utils/security.js';
 import createError from '@fastify/error';
 import ResponseObject from '../ResponseObject.js';
 
@@ -412,7 +414,16 @@ export async function login(email, password, userManager, strategy = 'auto') {
     // Check if account is active
     if (user.status !== 'active') {
       console.log(`[Auth/Login] User account not active: ${user.id}, status: ${user.status}`);
-      throw new InvalidCredentialsError('Account is not active');
+      
+      // Check if email verification is required and user is pending
+      const securityConfig = SecurityUtils.loadSecurityConfig();
+      const requireEmailVerification = securityConfig?.strategies?.local?.requireEmailVerification || false;
+      
+      if (requireEmailVerification && user.status === 'pending') {
+        throw new InvalidCredentialsError('Please verify your email address before logging in');
+      } else {
+        throw new InvalidCredentialsError('Account is not active');
+      }
     }
 
     // Ensure users "Universe" workspace is running
@@ -435,21 +446,55 @@ export async function login(email, password, userManager, strategy = 'auto') {
  * @returns {Promise<Object>} - Created user and verification token
  */
 export async function register(userData, userManager) {
+  // Validate input data
+  if (!userData.name || !userData.email || !userData.password) {
+    throw new Error('Name, email, and password are required');
+  }
+
+  // Validate email format
+  if (!SecurityUtils.validateEmail(userData.email)) {
+    throw new Error('Invalid email format');
+  }
+
+  // Sanitize email
+  const sanitizedEmail = SecurityUtils.sanitizeEmail(userData.email);
+
+  // Validate username
+  const usernameValidation = SecurityUtils.validateUsername(userData.name);
+  if (!usernameValidation.valid) {
+    throw new Error(`Username validation failed: ${usernameValidation.errors.join(', ')}`);
+  }
+
+  // Check if email verification is required
+  const securityConfig = SecurityUtils.loadSecurityConfig();
+  const requireEmailVerification = securityConfig?.strategies?.local?.requireEmailVerification || false;
+
+  // Determine initial user status
+  const initialStatus = requireEmailVerification ? 'pending' : 'active';
+
   // Create user
   const user = await userManager.createUser({
     name: userData.name,
-    email: userData.email,
-    // firstName: userData.firstName,
-    // lastName: userData.lastName,
-    userType: 'user', // Default to regular user
-    status: 'active' // For production use this would be set to 'pending' awaiting email verification
+    email: sanitizedEmail,
+    userType: 'user',
+    status: initialStatus,
+    emailVerified: !requireEmailVerification,
+    emailVerifiedAt: requireEmailVerification ? null : new Date().toISOString()
   });
 
   // Set password
   await authService.setPassword(user.id, userData.password);
 
-  // Create verification token
-  const verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+  // Create verification token if email verification is required
+  let verificationToken = null;
+  if (requireEmailVerification) {
+    verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+    
+    // Send verification email
+    await emailService.initialize();
+    const verificationUrl = `${process.env.CANVAS_WEB_URL || 'http://localhost:8001'}/verify-email/${verificationToken.value}`;
+    await emailService.sendVerificationEmail(user.email, verificationUrl, user.name);
+  }
 
   return {
     success: true,
@@ -457,9 +502,12 @@ export async function register(userData, userManager) {
       user: {
         id: user.id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        status: user.status,
+        emailVerified: user.emailVerified
       },
-      token: verificationToken // This is the email verification token
+      token: verificationToken,
+      requireEmailVerification: requireEmailVerification
     }
   };
 }
@@ -493,19 +541,61 @@ export async function verifyEmail(token, userManager) {
 }
 
 /**
+ * Request email verification for a user
+ * @param {string} email - User email
+ * @param {Object} userManager - User manager instance
+ * @returns {Promise<Object>} - Success status
+ */
+export async function requestEmailVerification(email, userManager) {
+  // Sanitize email
+  const sanitizedEmail = SecurityUtils.sanitizeEmail(email);
+  
+  // Get user
+  const user = await userManager.getUserByEmail(sanitizedEmail);
+  if (!user) {
+    // Don't reveal if user exists
+    return { success: true, message: 'If an account exists with this email, you will receive verification instructions.' };
+  }
+
+  // Check if user is already verified
+  if (user.emailVerified) {
+    return { success: true, message: 'Email is already verified.' };
+  }
+
+  // Create new verification token
+  const verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+  
+  // Send verification email
+  await emailService.initialize();
+  const verificationUrl = `${process.env.CANVAS_WEB_URL || 'http://localhost:8001'}/verify-email/${verificationToken.value}`;
+  await emailService.sendVerificationEmail(user.email, verificationUrl, user.name);
+
+  return { success: true, message: 'Verification email sent successfully.' };
+}
+
+/**
  * Request password reset
  * @param {string} email - User email
  * @param {Object} userManager - User manager instance
  * @returns {Promise<Object>} - Reset token
  */
 export async function requestPasswordReset(email, userManager) {
-  const user = await userManager.getUserByEmail(email);
+  // Sanitize email
+  const sanitizedEmail = SecurityUtils.sanitizeEmail(email);
+  
+  const user = await userManager.getUserByEmail(sanitizedEmail);
   if (!user) {
     // Don't reveal if user exists, but don't create token either
     return null;
   }
 
   const resetToken = await authService.createPasswordResetToken(user.id, user.email);
+  
+  // Send password reset email
+  await emailService.initialize();
+  const resetUrl = `${process.env.CANVAS_WEB_URL || 'http://localhost:8001'}/reset-password/${resetToken.value}`;
+  await emailService.sendPasswordResetEmail(user.email, resetUrl, user.name);
+  
   return { email: user.email, resetToken };
 }
 
