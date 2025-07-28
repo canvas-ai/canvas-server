@@ -23,6 +23,7 @@ import {
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
 import contextRoutes from './routes/contexts/index.js';
+import agentRoutes from './routes/agents/index.js';
 import pubRoutes from './routes/pub/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
@@ -238,6 +239,7 @@ export async function createServer(options = {}) {
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
+  server.register(agentRoutes, { prefix: '/rest/v2/agents' });
   server.register(pubRoutes, { prefix: '/rest/v2/pub' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
   server.register(adminRoutes, { prefix: '/rest/v2/admin' });
@@ -320,6 +322,8 @@ export async function startApiServer(options = {}) {
     fastify.decorate('contextManager', options.contextManager);
   if (!fastify.hasDecorator('dotfileManager') && options.dotfileManager)
     fastify.decorate('dotfileManager', options.dotfileManager);
+  if (!fastify.hasDecorator('agentManager') && options.agentManager)
+    fastify.decorate('agentManager', options.agentManager);
   if (!fastify.hasDecorator('authService') && options.authService)
     fastify.decorate('authService', options.authService);
 
