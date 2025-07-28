@@ -212,7 +212,7 @@ export default async function passwordResetRoutes(fastify, options) {
             const hasUpper = /[A-Z]/.test(password);
             const hasLower = /[a-z]/.test(password);
             const hasNumber = /\\d/.test(password);
-            const hasSpecial = /[!@#$%^&*()_+\\-=\\[\\]{};':"\\\\|,.<>\\/?]/.test(password);
+            const hasSpecial = /[!@#$%^&*()_+\\-=[\\]{};':"\\\\|,.<>/?]/.test(password);
             
             return minLength && hasUpper && hasLower && hasNumber && hasSpecial;
         }

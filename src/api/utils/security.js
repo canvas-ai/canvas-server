@@ -54,8 +54,8 @@ export class SecurityUtils {
       errors.push('Password must contain at least one number');
     }
 
-    // Check for special characters
-    if (finalPolicy.requireSpecialChars && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    // Check for special characters (safe regex)
+    if (finalPolicy.requireSpecialChars && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
       errors.push('Password must contain at least one special character');
     }
 
@@ -102,13 +102,63 @@ export class SecurityUtils {
   }
 
   /**
-   * Validate email format
+   * Validate email format (ReDoS-safe)
    * @param {string} email - Email to validate
    * @returns {boolean} - Whether email is valid
    */
   static validateEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    if (!email || typeof email !== 'string') {
+      return false;
+    }
+
+    // Basic length checks to prevent ReDoS
+    if (email.length > 254 || email.length < 5) {
+      return false;
+    }
+
+    // Check for @ symbol and basic structure
+    const atIndex = email.indexOf('@');
+    if (atIndex === -1 || atIndex === 0 || atIndex === email.length - 1) {
+      return false;
+    }
+
+    // Check for domain separator
+    const lastDotIndex = email.lastIndexOf('.');
+    if (lastDotIndex === -1 || lastDotIndex <= atIndex || lastDotIndex === email.length - 1) {
+      return false;
+    }
+
+    // Check local part (before @)
+    const localPart = email.substring(0, atIndex);
+    if (localPart.length > 64 || localPart.length === 0) {
+      return false;
+    }
+
+    // Check domain part (after @)
+    const domainPart = email.substring(atIndex + 1);
+    if (domainPart.length > 253 || domainPart.length === 0) {
+      return false;
+    }
+
+    // Basic character validation (safe regex patterns)
+    const validLocalChars = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/;
+    const validDomainChars = /^[a-zA-Z0-9.-]+$/;
+
+    if (!validLocalChars.test(localPart) || !validDomainChars.test(domainPart)) {
+      return false;
+    }
+
+    // Check for consecutive dots
+    if (localPart.includes('..') || domainPart.includes('..')) {
+      return false;
+    }
+
+    // Check for dots at start/end of local part
+    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -142,7 +192,7 @@ export class SecurityUtils {
       errors.push('Username must be no more than 39 characters long');
     }
 
-    // Only allow lowercase letters, numbers, underscores, hyphens, and dots
+    // Only allow lowercase letters, numbers, underscores, hyphens, and dots (safe regex)
     if (!/^[a-z0-9._-]+$/.test(username)) {
       errors.push('Username can only contain lowercase letters, numbers, underscores, hyphens, and dots');
     }

@@ -57,9 +57,10 @@ This document outlines the security features implemented in Canvas Server and pr
 ### 4. Input Validation & Sanitization
 
 #### Email Validation
-- **Format Validation**: RFC-compliant email format checking
+- **Format Validation**: RFC-compliant email format checking (ReDoS-safe)
 - **Sanitization**: Automatic lowercase conversion and trimming
 - **Domain Validation**: IMAP domain-specific validation
+- **Security**: Uses safe regex patterns to prevent ReDoS attacks
 
 #### Username Validation
 - **Format**: 3-39 characters, lowercase letters, numbers, underscores, hyphens, dots
