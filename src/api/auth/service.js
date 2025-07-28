@@ -7,8 +7,6 @@ import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../../env.js';
-import SecurityUtils from '../utils/security.js';
-import emailService from '../services/email-service.js';
 
 // Import jim from Server.js
 import { jim } from '../../Server.js';
@@ -28,9 +26,8 @@ class AuthService {
   #tokensStore;
   #passwordsStore;
   #initialized = false;
-  #defaultSaltRounds = 12; // Increased from 10 for better security
+  #defaultSaltRounds = 10;
   #tokenCreationLock = new Map();
-  #securityConfig = null;
 
   constructor() {
     // Init happens in initialize() to ensure env is loaded
@@ -93,15 +90,9 @@ class AuthService {
     // Ensure auth configuration exists with defaults
     this.#ensureAuthConfig();
 
-    // Load security configuration
-    this.#securityConfig = SecurityUtils.loadSecurityConfig();
-
     // Initialize storage for tokens and passwords using jim
     this.#tokensStore = jim.createIndex('tokens');
     this.#passwordsStore = jim.createIndex('passwords');
-
-    // Initialize email service
-    await emailService.initialize();
 
     this.#initialized = true;
   }
@@ -397,34 +388,6 @@ class AuthService {
   }
 
   /**
-   * Verify email verification token (alias for verifyOneTimeToken)
-   * @param {string} token - Verification token
-   * @param {Object} userManager - User manager instance
-   * @returns {Promise<Object|null>} - Token data if valid
-   */
-  async verifyEmailToken(token, userManager) {
-    const tokenData = await this.verifyOneTimeToken(token, TOKEN_TYPES.VERIFICATION);
-    if (!tokenData) {
-      return null;
-    }
-
-    // Get user and update verification status
-    const user = await userManager.getUserById(tokenData.userId);
-    if (!user) {
-      return null;
-    }
-
-    // Update user verification status
-    await userManager.updateUser(user.id, {
-      status: 'active',
-      emailVerified: true,
-      emailVerifiedAt: new Date().toISOString()
-    });
-
-    return { userId: tokenData.userId, user };
-  }
-
-  /**
    * Create a password reset token
    * @param {string} userId - User ID
    * @param {string} email - User email
@@ -467,15 +430,6 @@ class AuthService {
       throw new Error('User ID and password are required');
     }
 
-    // Validate password against security policy
-    const passwordPolicy = this.#securityConfig?.strategies?.local?.passwordPolicy;
-    if (passwordPolicy) {
-      const validation = SecurityUtils.validatePassword(password, passwordPolicy);
-      if (!validation.valid) {
-        throw new Error(`Password validation failed: ${validation.errors.join(', ')}`);
-      }
-    }
-
     const passwordHash = await this.hashPassword(password);
 
     // Store password
@@ -515,15 +469,8 @@ class AuthService {
    * @returns {string} - JWT token
    */
   generateJWT(user, options = {}) {
-    const jwtSecret = this.#securityConfig?.jwt?.secret || env.auth.jwtSecret;
-    
-    if (!jwtSecret) {
+    if (!env.auth.jwtSecret) {
       throw new Error('JWT secret key is not configured');
-    }
-
-    // Check if JWT secret is secure
-    if (!SecurityUtils.isSecureJwtSecret(jwtSecret)) {
-      console.warn('[AuthService] JWT secret is not secure - consider changing it in production');
     }
 
     const payload = {
@@ -537,13 +484,11 @@ class AuthService {
       payload.ver = user.updatedAt || user.createdAt;
     }
 
-    const expiresIn = options.expiresIn || this.#securityConfig?.jwt?.expiresIn || '1d';
-
     return jwt.sign(
       payload,
-      jwtSecret,
+      env.auth.jwtSecret,
       {
-        expiresIn: expiresIn
+        expiresIn: options.expiresIn || '1d'
       }
     );
   }
@@ -591,13 +536,11 @@ class AuthService {
 
       // If it's a JWT token
       else {
-        const jwtSecret = this.#securityConfig?.jwt?.secret || env.auth.jwtSecret;
-        
-        if (!jwtSecret) {
+        if (!env.auth.jwtSecret) {
           return { valid: false, message: 'JWT secret not configured' };
         }
 
-        const decoded = jwt.verify(token, jwtSecret);
+        const decoded = jwt.verify(token, env.auth.jwtSecret);
 
         // Get user from the database
         const userIndex = jim.createIndex('users');

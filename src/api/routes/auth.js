@@ -1,8 +1,6 @@
 'use strict';
 
-import { authService, imapAuthStrategy, login, register, verifyEmail, requestEmailVerification, requestPasswordReset, resetPassword, validateUser } from '../auth/strategies.js';
-import SecurityUtils from '../utils/security.js';
-import { createRateLimiter, clearRateLimit } from '../middleware/rate-limiter.js';
+import { authService, imapAuthStrategy, login, register, verifyEmail, requestPasswordReset, resetPassword, validateUser } from '../auth/strategies.js';
 import ResponseObject from '../ResponseObject.js';
 
 /**
@@ -37,7 +35,6 @@ export default async function authRoutes(fastify, options) {
 
   // Login endpoint
   fastify.post('/login', {
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -75,9 +72,6 @@ export default async function authRoutes(fastify, options) {
       }
 
       const result = await login(email, password, fastify.userManager, strategy);
-
-      // Clear rate limit on successful login
-      clearRateLimit(request);
 
       // Generate JWT token
       const token = authService.generateJWT(result.user);
@@ -134,7 +128,6 @@ export default async function authRoutes(fastify, options) {
 
   // Register endpoint
   fastify.post('/register', {
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -144,43 +137,16 @@ export default async function authRoutes(fastify, options) {
             type: 'string',
             minLength: 3,
             maxLength: 39,
-            pattern: '^[a-z0-9._-]+$',
-            description: 'Username (3-39 chars, lowercase letters, numbers, underscores, hyphens, dots only)'
+            pattern: '^[a-z0-9_-]+$',
+            description: 'Username (3-39 chars, lowercase letters, numbers, underscores, hyphens only)'
           },
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 12 }
+          password: { type: 'string', minLength: 8 }
         }
       }
     }
   }, async (request, reply) => {
     try {
-      // Validate input data
-      const { name, email, password } = request.body;
-
-      // Validate email format
-      if (!SecurityUtils.validateEmail(email)) {
-        const response = new ResponseObject().badRequest('Invalid email format');
-        return reply.code(response.statusCode).send(response.getResponse());
-      }
-
-      // Validate username
-      const usernameValidation = SecurityUtils.validateUsername(name);
-      if (!usernameValidation.valid) {
-        const response = new ResponseObject().badRequest(`Username validation failed: ${usernameValidation.errors.join(', ')}`);
-        return reply.code(response.statusCode).send(response.getResponse());
-      }
-
-      // Validate password
-      const securityConfig = SecurityUtils.loadSecurityConfig();
-      const passwordPolicy = securityConfig?.strategies?.local?.passwordPolicy;
-      if (passwordPolicy) {
-        const passwordValidation = SecurityUtils.validatePassword(password, passwordPolicy);
-        if (!passwordValidation.valid) {
-          const response = new ResponseObject().badRequest(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
-          return reply.code(response.statusCode).send(response.getResponse());
-        }
-      }
-
       const result = await register(request.body, fastify.userManager);
 
       if (!result.success) {
@@ -188,17 +154,13 @@ export default async function authRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const message = result.data.requireEmailVerification 
-        ? 'Registration successful. Please check your email to verify your account.'
-        : 'Registration successful';
-
-      const response = new ResponseObject().created(result.data, message);
+      const response = new ResponseObject().created(result.data, 'Registration successful');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error('[Register Route Error]', error.message);
 
-      // Provide specific error messages for validation
-      if (error.message.includes('validation failed')) {
+      // Provide specific error messages for username validation
+      if (error.message.includes('User name')) {
         const response = new ResponseObject().badRequest(error.message);
         return reply.code(response.statusCode).send(response.getResponse());
       }
@@ -211,7 +173,6 @@ export default async function authRoutes(fastify, options) {
   // Update password endpoint
   fastify.put('/password', {
     onRequest: [fastify.authenticate],
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -244,7 +205,6 @@ export default async function authRoutes(fastify, options) {
 
   // Forgot password endpoint
   fastify.post('/forgot-password', {
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -256,7 +216,7 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const result = await requestPasswordReset(request.body.email, fastify.userManager);
+      await requestPasswordReset(request.body.email, fastify.userManager);
       const response = new ResponseObject().success({
         success: true,
         message: 'If an account exists with this email, you will receive password reset instructions.'
@@ -271,7 +231,6 @@ export default async function authRoutes(fastify, options) {
 
   // Reset password endpoint
   fastify.post('/reset-password', {
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -301,9 +260,8 @@ export default async function authRoutes(fastify, options) {
     }
   });
 
-  // Request email verification endpoint
-  fastify.post('/request-email-verification', {
-    preHandler: [createRateLimiter()],
+  // Verify email endpoint
+  fastify.post('/verify-email', {
     schema: {
       body: {
         type: 'object',
@@ -315,11 +273,11 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const result = await requestEmailVerification(request.body.email, fastify.userManager);
+      await verifyEmail(request.body.email, fastify.userManager);
       const response = new ResponseObject().success({
         success: true,
-        message: result.message
-      }, 'Email verification request processed');
+        message: 'If an account exists with this email, you will receive verification instructions.'
+      }, 'Verification email sent');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -330,7 +288,6 @@ export default async function authRoutes(fastify, options) {
 
   // Verify email token endpoint
   fastify.get('/verify-email/:token', {
-    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -342,23 +299,15 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const updatedUser = await verifyEmail(request.params.token, fastify.userManager);
-      const response = new ResponseObject().success({ 
-        success: true,
-        user: {
-          id: updatedUser.id,
-          name: updatedUser.name,
-          email: updatedUser.email,
-          emailVerified: updatedUser.emailVerified
-        }
-      }, 'Email verified successfully');
-      return reply.code(response.statusCode).send(response.getResponse());
-    } catch (error) {
-      fastify.log.error(error);
-      if (error.code === 'ERR_INVALID_TOKEN') {
+      const success = await authService.verifyEmailToken(request.params.token, fastify.userManager);
+      if (!success) {
         const response = new ResponseObject().badRequest('Invalid or expired verification token');
         return reply.code(response.statusCode).send(response.getResponse());
       }
+      const response = new ResponseObject().success({ success: true }, 'Email verified successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
       const response = new ResponseObject().serverError('Failed to verify email');
       return reply.code(response.statusCode).send(response.getResponse());
     }
@@ -366,8 +315,8 @@ export default async function authRoutes(fastify, options) {
 
   // List API tokens endpoint
   fastify.get('/tokens', {
-    onRequest: [fastify.authenticate],
-    preHandler: [createRateLimiter()]
+    onRequest: [fastify.authenticate]
+
   }, async (request, reply) => {
     try {
       const tokens = await authService.listTokens(request.user.id);
@@ -383,7 +332,6 @@ export default async function authRoutes(fastify, options) {
   // Create API token endpoint
   fastify.post('/tokens', {
     onRequest: [fastify.authenticate],
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -415,7 +363,6 @@ export default async function authRoutes(fastify, options) {
   // Delete API token endpoint
   fastify.delete('/tokens/:tokenId', {
     onRequest: [fastify.authenticate],
-    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -444,7 +391,6 @@ export default async function authRoutes(fastify, options) {
   // Update API token endpoint
   fastify.put('/tokens/:tokenId', {
     onRequest: [fastify.authenticate],
-    preHandler: [createRateLimiter()],
     schema: {
       params: {
         type: 'object',
@@ -479,7 +425,6 @@ export default async function authRoutes(fastify, options) {
 
   // Verify token endpoint (no auth required)
   fastify.post('/token/verify', {
-    preHandler: [createRateLimiter()],
     schema: {
       body: {
         type: 'object',
@@ -516,8 +461,8 @@ export default async function authRoutes(fastify, options) {
 
   // Get current user endpoint
   fastify.get('/me', {
-    onRequest: [fastify.authenticateCustom],
-    preHandler: [createRateLimiter()]
+    onRequest: [fastify.authenticateCustom]
+
   }, async (request, reply) => {
     // Check if reply has already been sent by auth middleware or other mechanism
     if (reply.sent) {
