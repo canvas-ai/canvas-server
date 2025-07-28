@@ -228,19 +228,24 @@ class Agent extends EventEmitter {
         }
 
         try {
-            // Prepare context from memory if requested
+            // Prepare context messages (memory disabled for now)
             let contextMessages = options.context || [];
-
+            /*
             if (options.mcpContext) {
-                // Query agent memory for relevant context
-                const memoryResults = await this.queryMemory(message);
-                if (memoryResults && memoryResults.length > 0) {
-                    contextMessages.unshift({
-                        role: 'system',
-                        content: `Relevant memory: ${JSON.stringify(memoryResults)}`
-                    });
+                try {
+                    // Query agent memory for relevant context (DISABLED TEMPORARILY)
+                    const memoryResults = await this.queryMemory(message);
+                    if (Array.isArray(memoryResults) && memoryResults.length > 0) {
+                        contextMessages.unshift({
+                            role: 'system',
+                            content: `Relevant memory: ${JSON.stringify(memoryResults)}`
+                        });
+                    }
+                } catch (memErr) {
+                    debug(`Memory query error (ignored): ${memErr.message}`);
                 }
             }
+            */
 
             // Build the full conversation
             const messages = [
@@ -257,31 +262,45 @@ class Agent extends EventEmitter {
                 maxTokens: options.maxTokens || 4096
             });
 
-            // Store the conversation in memory
-            await this.storeMemory({
-                type: 'conversation',
-                user_message: message,
-                agent_response: response.content,
-                timestamp: new Date().toISOString(),
-                metadata: {
-                    model: this.model,
-                    provider: this.llmProvider
-                }
-            });
+            // Check if we got a valid response
+            if (!response || typeof response !== 'object') {
+                throw new Error(`Invalid response from LLM connector (${this.llmProvider}): ${response}`);
+            }
+
+            if (!response.content) {
+                throw new Error(`LLM connector (${this.llmProvider}) returned response without content: ${JSON.stringify(response)}`);
+            }
+
+            // Try to store the conversation in memory
+            try {
+                await this.storeMemory({
+                    type: 'conversation',
+                    user_message: message,
+                    agent_response: response?.content || '',
+                    timestamp: new Date().toISOString(),
+                    metadata: {
+                        model: this.model,
+                        provider: this.llmProvider
+                    }
+                });
+            } catch (storeErr) {
+                debug(`storeMemory failed (ignored): ${storeErr.message}`);
+            }
 
             this.emit('chat.message', {
                 agentId: this.id,
                 message,
-                response: response.content,
+                response: response?.content || '',
                 timestamp: new Date().toISOString()
             });
 
             return {
-                content: response.content,
+                content: response?.content || '',
                 metadata: {
                     model: this.model,
                     provider: this.llmProvider,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    response: response || null
                 }
             };
         } catch (err) {
@@ -305,11 +324,24 @@ class Agent extends EventEmitter {
             throw new Error('Agent is not active');
         }
 
+        // Wrap the data in the proper SynapsD document format
         const document = {
-            ...data,
-            id: data.id || `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            stored_at: new Date().toISOString(),
-            agent_id: this.id
+            schema: 'data/abstraction/document',
+            schemaVersion: '2.1',
+            data: {
+                ...data,
+                id: data.id || `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                stored_at: new Date().toISOString(),
+                agent_id: this.id
+            },
+            metadata: {
+                contentType: 'application/json',
+                agent: {
+                    id: this.id,
+                    name: this.name,
+                    label: this.label
+                }
+            }
         };
 
         return await this.db.insertDocument(document, contextSpec, [], true);
@@ -330,11 +362,20 @@ class Agent extends EventEmitter {
         try {
             // Use full-text search if available
             const results = await this.db.ftsQuery(query, [], [], [], false);
-            return results || [];
+            // Extract data from wrapped documents, handle null/undefined results
+            if (!results || !Array.isArray(results)) {
+                return [];
+            }
+            return results.map(doc => doc.data || doc);
         } catch (err) {
             debug(`Memory query failed, falling back to document search: ${err.message}`);
             // Fallback to document search
-            return await this.db.findDocuments(contextSpec, [], [], { parse: true });
+            const docs = await this.db.findDocuments(contextSpec, [], [], { parse: true });
+            // Extract data from wrapped documents, handle null/undefined results
+            if (!docs || !Array.isArray(docs)) {
+                return [];
+            }
+            return docs.map(doc => doc.data || doc);
         }
     }
 

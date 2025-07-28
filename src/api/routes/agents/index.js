@@ -42,36 +42,7 @@ export default async function agentRoutes(fastify, options) {
 
   // Create a new agent
   fastify.post('/', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name'],
-        properties: {
-          name: {
-            type: 'string',
-            minLength: 3,
-            maxLength: 39,
-            pattern: '^[a-z0-9_-]+$',
-            description: 'Agent name (3-39 chars, lowercase letters, numbers, underscores, hyphens only)'
-          },
-          label: { type: 'string' },
-          description: { type: 'string' },
-          color: { type: 'string', pattern: '^#[0-9A-Fa-f]{3,6}$' },
-          llmProvider: {
-            type: 'string',
-            enum: ['anthropic', 'openai', 'ollama'],
-            default: 'anthropic'
-          },
-          model: { type: 'string' },
-          connectors: { type: 'object' },
-          prompts: { type: 'object' },
-          tools: { type: 'object' },
-          mcp: { type: 'object' },
-          metadata: { type: 'object' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
@@ -126,21 +97,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Get agent by ID or name
   fastify.get('/:agentIdentifier', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -161,16 +124,7 @@ export default async function agentRoutes(fastify, options) {
 
   // Start an agent
   fastify.post('/:agentIdentifier/start', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
@@ -197,16 +151,7 @@ export default async function agentRoutes(fastify, options) {
 
   // Stop an agent
   fastify.post('/:agentIdentifier/stop', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
@@ -233,21 +178,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Get agent status
   fastify.get('/:agentIdentifier/status', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -278,32 +215,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Chat with an agent
   fastify.post('/:agentIdentifier/chat', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      },
-      body: {
-        type: 'object',
-        required: ['message'],
-        properties: {
-          message: { type: 'string' },
-          context: { type: 'array' },
-          mcpContext: { type: 'boolean', default: true },
-          maxTokens: { type: 'number' },
-          temperature: { type: 'number' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -338,29 +256,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Get agent memory
   fastify.get('/:agentIdentifier/memory', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      },
-      querystring: {
-        type: 'object',
-        properties: {
-          query: { type: 'string' },
-          context: { type: 'string', default: '/' },
-          limit: { type: 'number', default: 50 }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -397,21 +299,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Clear agent memory
   fastify.delete('/:agentIdentifier/memory', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -439,21 +333,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Get agent MCP tools
   fastify.get('/:agentIdentifier/mcp/tools', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier'],
-        properties: {
-          agentIdentifier: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );
@@ -481,29 +367,13 @@ export default async function agentRoutes(fastify, options) {
 
   // Call an MCP tool
   fastify.post('/:agentIdentifier/mcp/tools/:toolName', {
-    onRequest: [fastify.authenticate],
-    schema: {
-      params: {
-        type: 'object',
-        required: ['agentIdentifier', 'toolName'],
-        properties: {
-          agentIdentifier: { type: 'string' },
-          toolName: { type: 'string' }
-        }
-      },
-      body: {
-        type: 'object',
-        properties: {
-          arguments: { type: 'object' },
-          source: { type: 'string' }
-        }
-      }
-    }
+    onRequest: [fastify.authenticate]
   }, async (request, reply) => {
     try {
       if (!validateUserWithResponse(request, reply)) return;
 
-      const agent = await fastify.agentManager.getAgentById(
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
         request.params.agentIdentifier,
         request.user.id
       );

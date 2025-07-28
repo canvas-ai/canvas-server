@@ -166,7 +166,7 @@ class Server extends EventEmitter {
         });
 
         this.#agentManager = new AgentManager({
-            defaultRootPath: env.user.home,
+            defaultRootPath: path.join(env.server.home, 'agents'),
             indexStore: jim.createIndex('agents'),
             userManager: this.#userManager,
         });

@@ -264,6 +264,61 @@ class AgentManager extends EventEmitter {
      */
 
     /**
+     * Validate agent creation data
+     * @param {Object} data - Agent data to validate
+     * @throws {Error} If validation fails
+     */
+    #validateAgentData(data) {
+        if (!data) {
+            throw new Error('Agent data is required');
+        }
+
+        // Name validation
+        if (!data.name || typeof data.name !== 'string') {
+            throw new Error('Agent name is required and must be a string');
+        }
+
+        if (data.name.length < 3 || data.name.length > 39) {
+            throw new Error('Agent name must be 3-39 characters long');
+        }
+
+        if (!/^[a-z0-9_-]+$/.test(data.name)) {
+            throw new Error('Agent name can only contain lowercase letters, numbers, underscores, and hyphens');
+        }
+
+        // Color validation (if provided)
+        if (data.color && !/^#[0-9A-Fa-f]{3,6}$/.test(data.color)) {
+            throw new Error('Color must be a valid hex color (e.g., #ff0000)');
+        }
+
+        // LLM Provider validation (if provided)
+        if (data.llmProvider && !['anthropic', 'openai', 'ollama'].includes(data.llmProvider)) {
+            throw new Error('LLM provider must be one of: anthropic, openai, ollama');
+        }
+
+        // Type validation for objects (if provided)
+        if (data.connectors && typeof data.connectors !== 'object') {
+            throw new Error('Connectors must be an object');
+        }
+
+        if (data.prompts && typeof data.prompts !== 'object') {
+            throw new Error('Prompts must be an object');
+        }
+
+        if (data.tools && typeof data.tools !== 'object') {
+            throw new Error('Tools must be an object');
+        }
+
+        if (data.mcp && typeof data.mcp !== 'object') {
+            throw new Error('MCP configuration must be an object');
+        }
+
+        if (data.metadata && typeof data.metadata !== 'object') {
+            throw new Error('Metadata must be an object');
+        }
+    }
+
+    /**
      * Creates a new agent directory, config file, and adds it to the index.
      * @param {string} userId - The user ID for key prefix
      * @param {string} agentName - The desired agent name (slug-like identifier)
@@ -274,6 +329,10 @@ class AgentManager extends EventEmitter {
         if (!this.#initialized) throw new Error('AgentManager not initialized');
         if (!userId) throw new Error('userId required to create an agent.');
         if (!agentName) throw new Error('Agent name required to create an agent.');
+
+        // Validate the agent data
+        const agentData = { name: agentName, ...options };
+        this.#validateAgentData(agentData);
 
         // Resolve userId
         const ownerId = await this.#userManager.resolveToUserId(userId);
@@ -297,7 +356,7 @@ class AgentManager extends EventEmitter {
         // Determine agent directory path
         const agentDir = options.agentPath ||
                         (options.rootPath ? path.join(options.rootPath, agentName) :
-                        path.join(this.#defaultRootPath, ownerId, 'agents', agentName));
+                        path.join(this.#defaultRootPath, ownerId, agentName));
         debug(`Using agent path: ${agentDir} for agent ${agentId}`);
 
         // Validate and create agent
@@ -361,7 +420,7 @@ class AgentManager extends EventEmitter {
         this.#referenceIndex.set(referenceKey, agentId);
 
         // Add to name index
-        const nameKey = `${userId}@${host}:${agentName}`;
+        const nameKey = `${ownerId}@${host}:${agentName}`;
         this.#nameIndex.set(nameKey, agentId);
 
         // Add reference field to the index entry
@@ -417,7 +476,7 @@ class AgentManager extends EventEmitter {
             if (isNewAgentId || isLegacyAgentId) {
                 agentId = agentIdentifier;
             } else {
-                agentId = this.resolveAgentId(userId, agentIdentifier);
+                agentId = await this.resolveAgentId(userId, agentIdentifier);
                 if (!agentId) {
                     debug(`openAgent failed: No agent found with name "${agentIdentifier}" for user ${userId}`);
                     return null;
@@ -503,7 +562,7 @@ class AgentManager extends EventEmitter {
         if (isNewAgentId || isLegacyAgentId) {
             agentId = agentIdentifier;
         } else {
-            agentId = this.resolveAgentId(userId, agentIdentifier);
+            agentId = await this.resolveAgentId(userId, agentIdentifier);
             if (!agentId) {
                 debug(`startAgent: No agent found with name "${agentIdentifier}" for user ${userId}`);
                 return null;
@@ -515,7 +574,7 @@ class AgentManager extends EventEmitter {
 
         if (!agent) {
             debug(`startAgent: Agent ${agentId} not found in memory, attempting to open...`);
-            agent = await this.openAgent(ownerId, agentIdentifier, requestingUserId);
+            agent = await this.openAgent(userId, agentIdentifier, requestingUserId);
             if (!agent) {
                 debug(`startAgent: Could not open agent ${agentIdentifier} for user ${userId}.`);
                 return null;
@@ -575,7 +634,7 @@ class AgentManager extends EventEmitter {
         if (isNewAgentId || isLegacyAgentId) {
             agentId = agentIdentifier;
         } else {
-            agentId = this.resolveAgentId(userId, agentIdentifier);
+            agentId = await this.resolveAgentId(userId, agentIdentifier);
             if (!agentId) {
                 debug(`stopAgent: No agent found with name "${agentIdentifier}" for user ${userId}`);
                 return false;
@@ -673,9 +732,30 @@ class AgentManager extends EventEmitter {
      * @param {string} [host=DEFAULT_HOST] - Host
      * @returns {string|null} The agent ID if found, null otherwise
      */
-    resolveAgentId(userIdentifier, agentName, host = DEFAULT_HOST) {
-        const nameKey = `${userIdentifier}@${host}:${agentName}`;
-        return this.#nameIndex.get(nameKey) || null;
+    async resolveAgentId(userIdentifier, agentName, host = DEFAULT_HOST) {
+        // First try direct lookup with the provided userIdentifier
+        let nameKey = `${userIdentifier}@${host}:${agentName}`;
+        let agentId = this.#nameIndex.get(nameKey);
+
+        if (agentId) {
+            return agentId;
+        }
+
+        // If not found, resolve the userIdentifier to the actual user ID and try again
+        try {
+            const resolvedUserId = await this.#userManager.resolveToUserId(userIdentifier);
+            if (resolvedUserId && resolvedUserId !== userIdentifier) {
+                nameKey = `${resolvedUserId}@${host}:${agentName}`;
+                agentId = this.#nameIndex.get(nameKey);
+                if (agentId) {
+                    return agentId;
+                }
+            }
+        } catch (err) {
+            debug(`Error resolving user identifier ${userIdentifier}: ${err.message}`);
+        }
+
+        return null;
     }
 
     /**
