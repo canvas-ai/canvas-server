@@ -41,7 +41,11 @@ class OllamaConnector extends BaseLLMConnector {
                         model: model,
                         messages: formattedMessages,
                         stream: false,
-                        temperature: options.temperature || 0.7
+                        temperature: options.temperature || 0.7,
+                        top_p: options.topP || 1.0,
+                        frequency_penalty: options.frequencyPenalty || 0.0,
+                        presence_penalty: options.presencePenalty || 0.0,
+                        num_ctx: options.numCtx || 4096
                     }),
                     timeout: this.timeout
                 });
@@ -82,7 +86,7 @@ class OllamaConnector extends BaseLLMConnector {
         // For now, fallback to regular chat and emit the full response as a single chunk
         // TODO: Implement proper streaming when Ollama streaming API is integrated
         const response = await this.chat(messages, options);
-        
+
         // Emit the full content as a single chunk
         if (response.content) {
             onChunk({
@@ -91,7 +95,7 @@ class OllamaConnector extends BaseLLMConnector {
                 delta: response.content
             });
         }
-        
+
         return response;
     }
 
@@ -120,7 +124,11 @@ class OllamaConnector extends BaseLLMConnector {
                 prompt: prompt,
                 stream: false,
                 options: {
-                    temperature: options.temperature || 0.7
+                    temperature: options.temperature || 0.7,
+                    top_p: options.topP || 1.0,
+                    frequency_penalty: options.frequencyPenalty || 0.0,
+                    presence_penalty: options.presencePenalty || 0.0,
+                    num_ctx: options.numCtx || 4096
                 }
             }),
             timeout: this.timeout

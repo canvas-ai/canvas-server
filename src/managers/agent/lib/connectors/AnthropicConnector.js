@@ -47,7 +47,9 @@ class AnthropicConnector extends BaseLLMConnector {
                 body: JSON.stringify({
                     model: model,
                     max_tokens: maxTokens,
-                    messages: formattedMessages
+                    messages: formattedMessages,
+                    temperature: options.temperature || 0.7,
+                    top_p: options.topP || 1.0
                 })
             });
 
@@ -103,6 +105,8 @@ class AnthropicConnector extends BaseLLMConnector {
                     model: model,
                     max_tokens: maxTokens,
                     messages: formattedMessages,
+                    temperature: options.temperature || 0.7,
+                    top_p: options.topP || 1.0,
                     stream: true
                 })
             });
@@ -135,11 +139,11 @@ class AnthropicConnector extends BaseLLMConnector {
 
                             try {
                                 const data = JSON.parse(dataStr);
-                                
+
                                 if (data.type === 'content_block_delta' && data.delta?.text) {
                                     const textChunk = data.delta.text;
                                     fullContent += textChunk;
-                                    
+
                                     // Call the chunk callback
                                     onChunk({
                                         type: 'content',

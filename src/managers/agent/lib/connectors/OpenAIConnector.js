@@ -41,7 +41,10 @@ class OpenAIConnector extends BaseLLMConnector {
                 model: model,
                 messages: formattedMessages,
                 max_tokens: maxTokens,
-                temperature: options.temperature || 0.7
+                temperature: options.temperature || 0.7,
+                top_p: options.topP || 1.0,
+                frequency_penalty: options.frequencyPenalty || 0.0,
+                presence_penalty: options.presencePenalty || 0.0
             };
 
             const response = await fetch(`${this.baseURL}/chat/completions`, {
@@ -100,6 +103,9 @@ class OpenAIConnector extends BaseLLMConnector {
                 messages: formattedMessages,
                 max_tokens: maxTokens,
                 temperature: options.temperature || 0.7,
+                top_p: options.topP || 1.0,
+                frequency_penalty: options.frequencyPenalty || 0.0,
+                presence_penalty: options.presencePenalty || 0.0,
                 stream: true
             };
 
@@ -141,11 +147,11 @@ class OpenAIConnector extends BaseLLMConnector {
 
                             try {
                                 const data = JSON.parse(dataStr);
-                                
+
                                 if (data.choices?.[0]?.delta?.content) {
                                     const textChunk = data.choices[0].delta.content;
                                     fullContent += textChunk;
-                                    
+
                                     // Call the chunk callback
                                     onChunk({
                                         type: 'content',

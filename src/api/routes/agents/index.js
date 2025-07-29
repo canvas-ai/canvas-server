@@ -201,7 +201,7 @@ export default async function agentRoutes(fastify, options) {
         isActive: agent.isActive,
         llmProvider: agent.llmProvider,
         model: agent.model,
-        lastAccessed: agent.metadata?.lastAccessed || null
+        lastAccessed: agent.lastAccessed
       };
 
       const response = new ResponseObject().found(status, 'Agent status retrieved successfully');
@@ -209,6 +209,112 @@ export default async function agentRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error(error);
       const response = new ResponseObject().serverError('Failed to get agent status');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Update agent configuration
+  fastify.put('/:agentIdentifier', {
+    onRequest: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      if (!validateUserWithResponse(request, reply)) return;
+
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
+        request.params.agentIdentifier,
+        request.user.id
+      );
+
+      if (!agent) {
+        const response = new ResponseObject().notFound('Agent not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const {
+        label,
+        description,
+        color,
+        llmProvider,
+        model,
+        connectors,
+        prompts,
+        tools,
+        mcp,
+        metadata
+      } = request.body;
+
+      // Update agent configuration
+      const updateData = {};
+      if (label !== undefined) updateData.label = label;
+      if (description !== undefined) updateData.description = description;
+      if (color !== undefined) updateData.color = color;
+      if (llmProvider !== undefined) updateData.llmProvider = llmProvider;
+      if (model !== undefined) updateData.model = model;
+      if (connectors !== undefined) updateData.connectors = connectors;
+      if (prompts !== undefined) updateData.prompts = prompts;
+      if (tools !== undefined) updateData.tools = tools;
+      if (mcp !== undefined) updateData.mcp = mcp;
+      if (metadata !== undefined) updateData.metadata = metadata;
+
+      const updatedAgent = await fastify.agentManager.updateAgent(
+        request.user.id,
+        request.params.agentIdentifier,
+        updateData
+      );
+
+      const response = new ResponseObject().success(updatedAgent.toJSON(), 'Agent updated successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError(error.message || 'Failed to update agent');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Delete agent (permanent removal)
+  fastify.delete('/:agentIdentifier', {
+    onRequest: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      if (!validateUserWithResponse(request, reply)) return;
+
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
+        request.params.agentIdentifier,
+        request.user.id
+      );
+
+      if (!agent) {
+        const response = new ResponseObject().notFound('Agent not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Stop agent if it's running before deletion
+      if (agent.isActive) {
+        await fastify.agentManager.stopAgent(
+          request.user.id,
+          request.params.agentIdentifier,
+          request.user.id
+        );
+      }
+
+      // Delete the agent
+      const success = await fastify.agentManager.deleteAgent(
+        request.user.id,
+        request.params.agentIdentifier
+      );
+
+      if (!success) {
+        const response = new ResponseObject().serverError('Failed to delete agent');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().success({ success: true }, 'Agent deleted successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError(error.message || 'Failed to delete agent');
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });

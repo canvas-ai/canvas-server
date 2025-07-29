@@ -106,6 +106,13 @@ class Agent extends EventEmitter {
     get metadata() { return this.#configStore?.get('metadata', {}); }
     get agentConfig() { return this.#configStore?.get('config', {}); }
 
+    // LLM Configuration Getters
+    get systemPrompt() { return this.agentConfig?.prompts?.system || ''; }
+    get llmConfig() {
+        const provider = this.llmProvider;
+        return this.agentConfig?.connectors?.[provider] || {};
+    }
+
     // Runtime Status Getters & Setters
     get status() { return this.#status; }
     get isConfigLoaded() { return !!this.#configStore; }
@@ -247,20 +254,43 @@ class Agent extends EventEmitter {
             }
             */
 
-            // Build the full conversation
-            const messages = [
-                ...contextMessages,
-                {
-                    role: 'user',
-                    content: message
-                }
-            ];
+            // Build the full conversation with system prompt
+            const messages = [];
+
+            // Add system prompt if available
+            if (this.systemPrompt) {
+                messages.push({
+                    role: 'system',
+                    content: this.systemPrompt
+                });
+            }
+
+            // Add context messages
+            messages.push(...contextMessages);
+
+            // Add user message
+            messages.push({
+                role: 'user',
+                content: message
+            });
+
+            // Prepare LLM options with agent configuration
+            const llmOptions = {
+                model: this.model,
+                maxTokens: options.maxTokens || this.llmConfig.maxTokens || 4096,
+                temperature: options.temperature || this.llmConfig.temperature || 0.7,
+                topP: options.topP || this.llmConfig.topP || 1.0,
+                frequencyPenalty: options.frequencyPenalty || this.llmConfig.frequencyPenalty || 0.0,
+                presencePenalty: options.presencePenalty || this.llmConfig.presencePenalty || 0.0
+            };
+
+            // Add Ollama-specific options
+            if (this.llmProvider === 'ollama') {
+                llmOptions.numCtx = options.numCtx || this.llmConfig.numCtx || 4096;
+            }
 
             // Send to LLM
-            const response = await this.#llmConnector.chat(messages, {
-                model: this.model,
-                maxTokens: options.maxTokens || 4096
-            });
+            const response = await this.#llmConnector.chat(messages, llmOptions);
 
             // Check if we got a valid response
             if (!response || typeof response !== 'object') {
@@ -325,7 +355,7 @@ class Agent extends EventEmitter {
 
         try {
             const { onChunk } = options;
-            
+
             // Prepare context messages (memory disabled for now)
             let contextMessages = options.context || [];
             /*
@@ -345,20 +375,43 @@ class Agent extends EventEmitter {
             }
             */
 
-            // Build the full conversation
-            const messages = [
-                ...contextMessages,
-                {
-                    role: 'user',
-                    content: message
-                }
-            ];
+            // Build the full conversation with system prompt
+            const messages = [];
+
+            // Add system prompt if available
+            if (this.systemPrompt) {
+                messages.push({
+                    role: 'system',
+                    content: this.systemPrompt
+                });
+            }
+
+            // Add context messages
+            messages.push(...contextMessages);
+
+            // Add user message
+            messages.push({
+                role: 'user',
+                content: message
+            });
+
+            // Prepare LLM options with agent configuration
+            const llmOptions = {
+                model: this.model,
+                maxTokens: options.maxTokens || this.llmConfig.maxTokens || 4096,
+                temperature: options.temperature || this.llmConfig.temperature || 0.7,
+                topP: options.topP || this.llmConfig.topP || 1.0,
+                frequencyPenalty: options.frequencyPenalty || this.llmConfig.frequencyPenalty || 0.0,
+                presencePenalty: options.presencePenalty || this.llmConfig.presencePenalty || 0.0
+            };
+
+            // Add Ollama-specific options
+            if (this.llmProvider === 'ollama') {
+                llmOptions.numCtx = options.numCtx || this.llmConfig.numCtx || 4096;
+            }
 
             // Send to LLM with streaming
-            const response = await this.#llmConnector.chatStream(messages, {
-                model: this.model,
-                maxTokens: options.maxTokens || 4096
-            }, onChunk);
+            const response = await this.#llmConnector.chatStream(messages, llmOptions, onChunk);
 
             // Check if we got a valid response
             if (!response || typeof response !== 'object') {

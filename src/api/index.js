@@ -140,7 +140,7 @@ export async function createServer(options = {}) {
     origin: options.corsOrigin || true, // Default to allowing all origins, customize in production
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-App-Name', 'X-Selected-Session'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-App-Name', 'X-Selected-Session', 'Cache-Control'],
     exposedHeaders: ['Authorization', 'Content-Type'],
     maxAge: 86400 // 24 hours
   });
