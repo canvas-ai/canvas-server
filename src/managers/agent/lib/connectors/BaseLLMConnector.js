@@ -29,6 +29,17 @@ class BaseLLMConnector {
     }
 
     /**
+     * Chat with the LLM using streaming
+     * @param {Array} messages - Array of message objects
+     * @param {Object} options - Chat options
+     * @param {Function} onChunk - Callback for each streaming chunk
+     * @returns {Promise<Object>} Final response object
+     */
+    async chatStream(messages, options = {}, onChunk = () => {}) {
+        throw new Error('chatStream() method must be implemented by subclass');
+    }
+
+    /**
      * Check if the connector is available
      * @returns {Promise<boolean>} Availability status
      */

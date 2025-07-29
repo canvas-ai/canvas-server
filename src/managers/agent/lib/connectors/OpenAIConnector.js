@@ -77,6 +77,122 @@ class OpenAIConnector extends BaseLLMConnector {
     }
 
     /**
+     * Chat with GPT using streaming
+     * @param {Array} messages - Array of message objects
+     * @param {Object} options - Chat options
+     * @param {Function} onChunk - Callback for each streaming chunk
+     * @returns {Promise<Object>} Final response object
+     */
+    async chatStream(messages, options = {}, onChunk = () => {}) {
+        try {
+            if (!this.apiKey) {
+                throw new Error('OpenAI API key not configured');
+            }
+
+            const { default: fetch } = await import('node-fetch');
+
+            const formattedMessages = this.formatMessages(messages);
+            const model = options.model || this.model;
+            const maxTokens = options.maxTokens || this.maxTokens;
+
+            const requestBody = {
+                model: model,
+                messages: formattedMessages,
+                max_tokens: maxTokens,
+                temperature: options.temperature || 0.7,
+                stream: true
+            };
+
+            const response = await fetch(`${this.baseURL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`,
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+            }
+
+            let fullContent = '';
+            let usage = null;
+            let responseModel = model;
+            let finishReason = null;
+
+            // Process the streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            if (dataStr === '[DONE]') continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                
+                                if (data.choices?.[0]?.delta?.content) {
+                                    const textChunk = data.choices[0].delta.content;
+                                    fullContent += textChunk;
+                                    
+                                    // Call the chunk callback
+                                    onChunk({
+                                        type: 'content',
+                                        content: textChunk,
+                                        delta: textChunk
+                                    });
+                                }
+
+                                if (data.choices?.[0]?.finish_reason) {
+                                    finishReason = data.choices[0].finish_reason;
+                                }
+
+                                if (data.usage) {
+                                    usage = data.usage;
+                                }
+
+                                if (data.model) {
+                                    responseModel = data.model;
+                                }
+                            } catch (parseError) {
+                                // Ignore parse errors for malformed chunks
+                                continue;
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+
+            return {
+                content: fullContent,
+                usage: usage,
+                model: responseModel,
+                metadata: {
+                    provider: 'openai',
+                    model: responseModel,
+                    usage: usage,
+                    finish_reason: finishReason
+                }
+            };
+        } catch (error) {
+            this.handleError(error, 'chatStream');
+        }
+    }
+
+    /**
      * Check if OpenAI is available
      * @returns {Promise<boolean>} Availability status
      */

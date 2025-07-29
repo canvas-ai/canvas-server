@@ -3,6 +3,7 @@
 import { createDebug } from '../../utils/log/index.js';
 import registerContextWebSocket from './channels/context.js';
 import registerWorkspaceWebSocket from './channels/workspace.js';
+import registerAgentWebSocket from './channels/agent.js';
 
 const debug = createDebug('canvas-server:websocket:main');
 
@@ -174,6 +175,8 @@ export default function setupWebSocketHandlers(fastify) {
     registerContextWebSocket(fastify, socket);
     debug(`📋 Registering workspace WebSocket for socket ${socket.id}`);
     registerWorkspaceWebSocket(fastify, socket);
+    debug(`📋 Registering agent WebSocket for socket ${socket.id}`);
+    registerAgentWebSocket(fastify, socket);
 
     socket.emit('authenticated', { userId: user.id, email: user.email });
     debug(`✅ Sent authentication confirmation to ${socket.id}`);

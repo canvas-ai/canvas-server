@@ -310,6 +310,104 @@ class Agent extends EventEmitter {
     }
 
     /**
+     * Chat with streaming support
+     * @param {string} message - User message
+     * @param {Object} options - Chat options
+     * @param {Array} [options.context] - Additional context messages
+     * @param {Object} [options.mcpContext] - MCP context to include
+     * @param {Function} [options.onChunk] - Callback for streaming chunks
+     * @returns {Promise<Object>} The agent's response
+     */
+    async chatStream(message, options = {}) {
+        if (!this.isActive) {
+            throw new Error('Agent is not active');
+        }
+
+        try {
+            const { onChunk } = options;
+            
+            // Prepare context messages (memory disabled for now)
+            let contextMessages = options.context || [];
+            /*
+            if (options.mcpContext) {
+                try {
+                    // Query agent memory for relevant context (DISABLED TEMPORARILY)
+                    const memoryResults = await this.queryMemory(message);
+                    if (Array.isArray(memoryResults) && memoryResults.length > 0) {
+                        contextMessages.unshift({
+                            role: 'system',
+                            content: `Relevant memory: ${JSON.stringify(memoryResults)}`
+                        });
+                    }
+                } catch (memErr) {
+                    debug(`Memory query error (ignored): ${memErr.message}`);
+                }
+            }
+            */
+
+            // Build the full conversation
+            const messages = [
+                ...contextMessages,
+                {
+                    role: 'user',
+                    content: message
+                }
+            ];
+
+            // Send to LLM with streaming
+            const response = await this.#llmConnector.chatStream(messages, {
+                model: this.model,
+                maxTokens: options.maxTokens || 4096
+            }, onChunk);
+
+            // Check if we got a valid response
+            if (!response || typeof response !== 'object') {
+                throw new Error(`Invalid response from LLM connector (${this.llmProvider}): ${response}`);
+            }
+
+            if (!response.content) {
+                throw new Error(`LLM connector (${this.llmProvider}) returned response without content: ${JSON.stringify(response)}`);
+            }
+
+            // Try to store the conversation in memory
+            try {
+                await this.storeMemory({
+                    type: 'conversation',
+                    user_message: message,
+                    agent_response: response?.content || '',
+                    timestamp: new Date().toISOString(),
+                    metadata: {
+                        model: this.model,
+                        provider: this.llmProvider
+                    }
+                });
+            } catch (storeErr) {
+                debug(`storeMemory failed (ignored): ${storeErr.message}`);
+            }
+
+            this.emit('chat.message', {
+                agentId: this.id,
+                message,
+                response: response?.content || '',
+                timestamp: new Date().toISOString()
+            });
+
+            return {
+                content: response?.content || '',
+                metadata: {
+                    model: this.model,
+                    provider: this.llmProvider,
+                    timestamp: new Date().toISOString(),
+                    response: response || null
+                }
+            };
+        } catch (err) {
+            console.error(`Chat stream error for agent ${this.id}: ${err.message}`);
+            throw new Error(`Chat stream failed: ${err.message}`);
+        }
+    }
+
+    /**
      * Memory Methods
      */
 
