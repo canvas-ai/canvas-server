@@ -72,6 +72,30 @@ class OllamaConnector extends BaseLLMConnector {
     }
 
     /**
+     * Chat with streaming (fallback to regular chat for now)
+     * @param {Array} messages - Array of message objects
+     * @param {Object} options - Chat options
+     * @param {Function} onChunk - Callback for each streaming chunk
+     * @returns {Promise<Object>} Response object
+     */
+    async chatStream(messages, options = {}, onChunk = () => {}) {
+        // For now, fallback to regular chat and emit the full response as a single chunk
+        // TODO: Implement proper streaming when Ollama streaming API is integrated
+        const response = await this.chat(messages, options);
+        
+        // Emit the full content as a single chunk
+        if (response.content) {
+            onChunk({
+                type: 'content',
+                content: response.content,
+                delta: response.content
+            });
+        }
+        
+        return response;
+    }
+
+    /**
      * Chat using native Ollama API
      * @param {Array} messages - Array of message objects
      * @param {Object} options - Chat options

@@ -74,6 +74,110 @@ class AnthropicConnector extends BaseLLMConnector {
     }
 
     /**
+     * Chat with Claude using streaming
+     * @param {Array} messages - Array of message objects
+     * @param {Object} options - Chat options
+     * @param {Function} onChunk - Callback for each streaming chunk
+     * @returns {Promise<Object>} Final response object
+     */
+    async chatStream(messages, options = {}, onChunk = () => {}) {
+        try {
+            if (!this.apiKey) {
+                throw new Error('Anthropic API key not configured');
+            }
+
+            const { default: fetch } = await import('node-fetch');
+
+            const formattedMessages = this.formatMessages(messages);
+            const model = options.model || this.model;
+            const maxTokens = options.maxTokens || this.maxTokens;
+
+            const response = await fetch(`${this.baseURL}/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model: model,
+                    max_tokens: maxTokens,
+                    messages: formattedMessages,
+                    stream: true
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
+            }
+
+            let fullContent = '';
+            let usage = null;
+            let responseModel = model;
+
+            // Process the streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            if (dataStr === '[DONE]') continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                
+                                if (data.type === 'content_block_delta' && data.delta?.text) {
+                                    const textChunk = data.delta.text;
+                                    fullContent += textChunk;
+                                    
+                                    // Call the chunk callback
+                                    onChunk({
+                                        type: 'content',
+                                        content: textChunk,
+                                        delta: textChunk
+                                    });
+                                } else if (data.type === 'message_delta' && data.usage) {
+                                    usage = data.usage;
+                                } else if (data.model) {
+                                    responseModel = data.model;
+                                }
+                            } catch (parseError) {
+                                // Ignore parse errors for malformed chunks
+                                continue;
+                            }
+                        }
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+
+            return {
+                content: fullContent,
+                usage: usage,
+                model: responseModel,
+                metadata: {
+                    provider: 'anthropic',
+                    model: responseModel,
+                    usage: usage
+                }
+            };
+        } catch (error) {
+            this.handleError(error, 'chatStream');
+        }
+    }
+
+    /**
      * Check if Anthropic is available
      * @returns {Promise<boolean>} Availability status
      */

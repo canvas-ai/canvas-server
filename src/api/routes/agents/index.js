@@ -254,6 +254,82 @@ export default async function agentRoutes(fastify, options) {
     }
   });
 
+  // Chat with an agent using streaming (Server-Sent Events fallback)
+  fastify.post('/:agentIdentifier/chat/stream', {
+    onRequest: [fastify.authenticate]
+  }, async (request, reply) => {
+    try {
+      if (!validateUserWithResponse(request, reply)) return;
+
+      const agent = await fastify.agentManager.openAgent(
+        request.user.id,
+        request.params.agentIdentifier,
+        request.user.id
+      );
+
+      if (!agent) {
+        const response = new ResponseObject().notFound('Agent not found');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      if (!agent.isActive) {
+        const response = new ResponseObject().badRequest('Agent is not active. Please start the agent first.');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const { message, context, mcpContext = true, maxTokens, temperature } = request.body;
+
+      // Set up Server-Sent Events
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
+      });
+
+      // Send initial event
+      reply.raw.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
+
+      const onChunk = (chunk) => {
+        reply.raw.write(`data: ${JSON.stringify({
+          type: 'chunk',
+          content: chunk.content,
+          delta: chunk.delta
+        })}\n\n`);
+      };
+
+      try {
+        const result = await agent.chatStream(message, {
+          context,
+          mcpContext,
+          maxTokens,
+          temperature,
+          onChunk
+        });
+
+        // Send completion event
+        reply.raw.write(`data: ${JSON.stringify({
+          type: 'complete',
+          result
+        })}\n\n`);
+
+        reply.raw.write(`data: [DONE]\n\n`);
+      } catch (streamError) {
+        reply.raw.write(`data: ${JSON.stringify({
+          type: 'error',
+          error: streamError.message
+        })}\n\n`);
+      }
+
+      reply.raw.end();
+    } catch (error) {
+      fastify.log.error(error);
+      const response = new ResponseObject().serverError(error.message || 'Failed to start chat stream');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
   // Get agent memory
   fastify.get('/:agentIdentifier/memory', {
     onRequest: [fastify.authenticate]
