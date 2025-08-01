@@ -1,6 +1,7 @@
 'use strict';
 
 import { createDebug } from '../../utils/log/index.js';
+import { authService } from '../auth/strategies.js';
 import registerContextWebSocket from './channels/context.js';
 import registerWorkspaceWebSocket from './channels/workspace.js';
 import registerAgentWebSocket from './channels/agent.js';
@@ -62,7 +63,7 @@ export default function setupWebSocketHandlers(fastify) {
       let user;
       if (token.startsWith('canvas-')) {
         debug(`🎫 Verifying Canvas API token for ${clientIp}`);
-        const apiRes = await fastify.authService.verifyApiToken(token);
+        const apiRes = await authService.verifyApiToken(token);
         if (!apiRes) {
           const error = new Error('Invalid API token');
           debug(`❌ Invalid Canvas API token for ${clientIp}`);
@@ -74,8 +75,16 @@ export default function setupWebSocketHandlers(fastify) {
         user = await fastify.userManager.getUserById(apiRes.userId);
       } else {
         debug(`🎫 Verifying JWT token for ${clientIp}`);
-        const decoded = fastify.jwt.verify(token);
-        user = await fastify.userManager.getUserById(decoded.sub);
+        // Use authService to verify JWT token consistently with REST API
+        const verificationResult = await authService.verifyToken(token);
+        if (!verificationResult.valid) {
+          const error = new Error(`JWT verification failed: ${verificationResult.message}`);
+          debug(`❌ JWT verification failed for ${clientIp}: ${verificationResult.message}`);
+          next(error);
+          socket.disconnect(true);
+          return;
+        }
+        user = verificationResult.user;
       }
 
       if (!user || user.status !== 'active') {
