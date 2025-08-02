@@ -79,6 +79,194 @@ export default async function workspaceDotfilesRoutes(fastify, options) {
   };
 
   /**
+   * CRUD: List dotfile documents
+   * GET /workspaces/:id/dotfiles
+   */
+  fastify.get('/', {
+    onRequest: [fastify.authenticate, requireWorkspaceRead()],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { workspace } = extractRequestInfo(request);
+      const contextSpec = request.query.contextSpec || '/';
+      const featureArrayInput = request.query.featureArray || [];
+      const derivedFeatureArray = ['data/abstraction/dotfile', ...featureArrayInput];
+
+      const documents = await workspace.findDocuments(
+        contextSpec,
+        derivedFeatureArray
+      );
+
+      const responseObject = new ResponseObject().found(documents, 'Dotfiles retrieved successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to list dotfiles');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  /**
+   * CRUD: Create dotfile documents
+   * POST /workspaces/:id/dotfiles
+   */
+  fastify.post('/', {
+    onRequest: [fastify.authenticate, requireWorkspaceWrite()],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['dotfiles'],
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
+          dotfiles: {
+            oneOf: [
+              { type: 'object' },
+              { type: 'array', items: { type: 'object' } }
+            ]
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { workspace } = extractRequestInfo(request);
+      const contextSpec = request.body.contextSpec || '/';
+      const featureArrayInput = request.body.featureArray || [];
+      const dotfilesInput = request.body.dotfiles;
+      const dotfileArray = Array.isArray(dotfilesInput) ? dotfilesInput : [dotfilesInput];
+
+      const documentArray = dotfileArray.map(df => ({
+        schema: 'data/abstraction/dotfile',
+        data: df
+      }));
+
+      const inserted = await workspace.insertDocumentArray(
+        documentArray,
+        contextSpec,
+        ['data/abstraction/dotfile', ...featureArrayInput]
+      );
+
+      const responseObject = new ResponseObject().created(inserted, 'Dotfiles created successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to create dotfiles');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  /**
+   * CRUD: Update dotfile documents
+   * PUT /workspaces/:id/dotfiles
+   */
+  fastify.put('/', {
+    onRequest: [fastify.authenticate, requireWorkspaceWrite()],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['documents'],
+        properties: {
+          documents: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id'],
+              properties: {
+                id: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { workspace } = extractRequestInfo(request);
+      const result = await workspace.updateDocumentArray(request.body.documents);
+      const responseObject = new ResponseObject().updated(result, 'Dotfiles updated successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to update dotfiles');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  /**
+   * CRUD: Delete dotfile documents
+   * DELETE /workspaces/:id/dotfiles
+   */
+  fastify.delete('/', {
+    onRequest: [fastify.authenticate, requireWorkspaceWrite()],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { workspace } = extractRequestInfo(request);
+      const docIds = Array.isArray(request.body) ? request.body : [request.body];
+      const success = await workspace.deleteDocumentArray(docIds);
+      const responseObject = success ?
+        new ResponseObject().deleted(null, 'Dotfiles deleted successfully') :
+        new ResponseObject().badRequest('Failed to delete dotfiles');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to delete dotfiles');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  /**
    * GET /workspaces/:id/dotfiles/status
    * Check if dotfiles repository is initialized for the workspace
    */
