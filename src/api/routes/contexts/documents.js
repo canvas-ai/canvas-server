@@ -508,6 +508,40 @@ export default async function documentRoutes(fastify, options) {
     }
   });
 
+  // Direct delete multiple documents (legacy POST /delete route)
+  fastify.post('/delete', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: 'Array of document IDs to delete directly from DB (legacy endpoint)'
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const docIds = Array.isArray(request.body) ? request.body : [request.body];
+      const result = await context.deleteDocumentArrayFromDb(request.user.id, docIds);
+      const response = new ResponseObject().deleted(result, 'Documents deleted successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (err) {
+      fastify.log.error(err);
+      if (err.message.startsWith('Access denied')) {
+        const response = new ResponseObject().forbidden(err.message);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to delete documents');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
   // Delete single document by ID
   // Path: /:docId (relative to /:id/documents)
   fastify.delete('/:docId', {
