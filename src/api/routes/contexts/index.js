@@ -16,6 +16,11 @@ export default async function contextRoutes(fastify, options) {
     prefix: '/:id/documents',
     onRequest: [resolveContextAddress]
   });
+  fastify.register(import('./dotfiles.js'), {
+    prefix: '/:id/dotfiles',
+    onRequest: [resolveContextAddress]
+  });
+
   fastify.register(treeRoutes, {
     prefix: '/:id/tree',
     onRequest: [resolveContextAddress]

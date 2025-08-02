@@ -23,6 +23,7 @@ import {
 import authRoutes from './routes/auth.js';
 import workspaceRoutes from './routes/workspaces/index.js';
 import contextRoutes from './routes/contexts/index.js';
+import agentRoutes from './routes/agents/index.js';
 import pubRoutes from './routes/pub/index.js';
 import pingRoute from './routes/ping.js';
 import schemaRoutes from './routes/schemas.js';
@@ -131,6 +132,7 @@ export async function createServer(options = {}) {
   if (options.userManager) server.decorate('userManager', options.userManager);
   if (options.workspaceManager) server.decorate('workspaceManager', options.workspaceManager);
   if (options.contextManager) server.decorate('contextManager', options.contextManager);
+  if (options.dotfileManager) server.decorate('dotfileManager', options.dotfileManager);
   if (options.authService) server.decorate('authService', options.authService);
 
   // Register plugins
@@ -138,7 +140,7 @@ export async function createServer(options = {}) {
     origin: options.corsOrigin || true, // Default to allowing all origins, customize in production
     methods: ['GET', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-App-Name', 'X-Selected-Session'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-App-Name', 'X-Selected-Session', 'Cache-Control'],
     exposedHeaders: ['Authorization', 'Content-Type'],
     maxAge: 86400 // 24 hours
   });
@@ -237,6 +239,7 @@ export async function createServer(options = {}) {
   server.register(authRoutes, { prefix: '/rest/v2/auth' });
   server.register(workspaceRoutes, { prefix: '/rest/v2/workspaces' });
   server.register(contextRoutes, { prefix: '/rest/v2/contexts' });
+  server.register(agentRoutes, { prefix: '/rest/v2/agents' });
   server.register(pubRoutes, { prefix: '/rest/v2/pub' });
   server.register(schemaRoutes, { prefix: '/rest/v2/schemas' });
   server.register(adminRoutes, { prefix: '/rest/v2/admin' });
@@ -317,6 +320,10 @@ export async function startApiServer(options = {}) {
     fastify.decorate('workspaceManager', options.workspaceManager);
   if (!fastify.hasDecorator('contextManager') && options.contextManager)
     fastify.decorate('contextManager', options.contextManager);
+  if (!fastify.hasDecorator('dotfileManager') && options.dotfileManager)
+    fastify.decorate('dotfileManager', options.dotfileManager);
+  if (!fastify.hasDecorator('agentManager') && options.agentManager)
+    fastify.decorate('agentManager', options.agentManager);
   if (!fastify.hasDecorator('authService') && options.authService)
     fastify.decorate('authService', options.authService);
 

@@ -27,6 +27,7 @@ Sorry Universe for the delay..
 ```bash
 $ git clone https://github.com/canvas-ai/canvas-server /path/to/canvas-server
 $ cd /path/to/canvas-server
+$ npm run update-submodules
 $ npm install
 $ npm run dev # or
 $ npm run start
@@ -100,6 +101,7 @@ $ npm run stop # or npm run pm2:stop
 $ rm -rf ./node_modules # Ensure we have a clean slate
 # Fetch the latest version of canvas-server from Github
 $ git pull origin main # or dev if you are feeling adventurous
+$ npm run update-submodules
 $ npm install
 $ npm start # or npm run pm2:start
 ```

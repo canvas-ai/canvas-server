@@ -214,10 +214,13 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
+      // Create derived feature array with abstraction path
+      const derivedFeatureArray = [`data/abstraction/${request.params.abstraction}`, ...request.query.featureArray];
+
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
-        request.query.featureArray,
-        [request.params.abstraction]
+        derivedFeatureArray,
+        [] // empty filterArray
       );
       const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -243,6 +246,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         type: 'object',
         required: ['documents'],
         properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
           documents: {
             type: 'array',
             items: {
@@ -296,6 +305,17 @@ export default async function workspaceDocumentRoutes(fastify, options) {
           id: { type: 'string' }
         }
       },
+      querystring: {
+        type: 'object',
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
+        }
+      },
       body: {
         type: 'array',
         items: { type: ['string', 'number'] },
@@ -344,6 +364,17 @@ export default async function workspaceDocumentRoutes(fastify, options) {
           id: { type: 'string' }
         }
       },
+      querystring: {
+        type: 'object',
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
+        }
+      },
       body: {
         type: 'array',
         items: { type: ['string', 'number'] },
@@ -381,6 +412,72 @@ export default async function workspaceDocumentRoutes(fastify, options) {
     }
   });
 
+  // Get document by ID (direct route)
+  fastify.get('/:docId', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id', 'docId'],
+        properties: {
+          id: { type: 'string' },
+          docId: { type: 'string' }
+        }
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await fastify.workspaceManager.getWorkspace(
+        request.user.id,
+        request.params.id,
+        request.user.id
+      );
+
+      if (!workspace) {
+        const responseObject = new ResponseObject().notFound(`Workspace with ID ${request.params.id} not found`);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      // Convert docId to number if it's a string number
+      const documentId = parseInt(request.params.docId, 10);
+      if (isNaN(documentId)) {
+        const responseObject = new ResponseObject().badRequest(`Invalid document ID: ${request.params.docId}. Must be a number.`);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const document = await workspace.getDocumentById(
+        documentId,
+        {
+          contextSpec: request.query.contextSpec,
+          featureArray: request.query.featureArray
+        }
+      );
+
+      if (!document) {
+        const responseObject = new ResponseObject().notFound(`Document with ID ${request.params.docId} not found`);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().found(document, 'Document retrieved successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(error);
+      const responseObject = new ResponseObject().serverError('Failed to get document');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
   // Get document by hash
   fastify.get('/by-hash/:algo/:hash', {
     onRequest: [fastify.authenticate],
@@ -392,6 +489,17 @@ export default async function workspaceDocumentRoutes(fastify, options) {
           id: { type: 'string' },
           algo: { type: 'string' },
           hash: { type: 'string' }
+        }
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          contextSpec: { type: 'string', default: '/' },
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
         }
       }
     }

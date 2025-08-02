@@ -22,6 +22,8 @@ const debug = createDebug('canvas:server');
 import WorkspaceManager from './managers/workspace/index.js';
 import UserManager from './managers/user/index.js';
 import ContextManager from './managers/context/index.js';
+import DotfileManager from './managers/dotfile/index.js';
+import AgentManager from './managers/agent/index.js';
 import EventEmitter from 'eventemitter2';
 import { authService } from './api/auth/service.js';
 import { startApiServer } from './api/index.js';
@@ -40,6 +42,8 @@ class Server extends EventEmitter {
     #userManager;
     #workspaceManager;
     #contextManager;
+    #dotfileManager;
+    #agentManager;
 
     // Global services
     #authService;
@@ -87,6 +91,14 @@ class Server extends EventEmitter {
         return this.#contextManager;
     }
 
+    get agentManager() {
+        if (!this.#initialized) {
+            throw new Error('AgentManager not initialized');
+        }
+
+        return this.#agentManager;
+    }
+
     get authService() {
         if (!this.#initialized) {
             throw new Error('AuthService not initialized');
@@ -122,6 +134,8 @@ class Server extends EventEmitter {
                 userManager: this.#userManager,
                 workspaceManager: this.#workspaceManager,
                 contextManager: this.#contextManager,
+                dotfileManager: this.#dotfileManager,
+                agentManager: this.#agentManager,
                 authService: this.#authService
             });
         }
@@ -147,12 +161,24 @@ class Server extends EventEmitter {
             workspaceManager: this.#workspaceManager
         });
 
+        this.#dotfileManager = new DotfileManager({
+            workspaceManager: this.#workspaceManager
+        });
+
+        this.#agentManager = new AgentManager({
+            defaultRootPath: path.join(env.server.home, 'agents'),
+            indexStore: jim.createIndex('agents'),
+            userManager: this.#userManager,
+        });
+
         this.#userManager.setWorkspaceManager(this.#workspaceManager);
         this.#userManager.setContextManager(this.#contextManager);
 
         await this.#userManager.initialize();
         await this.#workspaceManager.initialize();
         await this.#contextManager.initialize();
+        await this.#dotfileManager.initialize();
+        await this.#agentManager.initialize();
     }
 
     async #createAdminUser() {

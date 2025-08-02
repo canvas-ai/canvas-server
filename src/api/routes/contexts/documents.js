@@ -406,6 +406,11 @@ export default async function documentRoutes(fastify, options) {
       querystring: {
         type: 'object',
         properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
           filterArray: {
             type: 'array',
             items: { type: 'string' }
@@ -428,7 +433,8 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const derivedFeatureArray = [`data/abstraction/${abstraction}`];
+      // Create derived feature array with abstraction path and merge with additional features
+      const derivedFeatureArray = [`data/abstraction/${abstraction}`, ...request.query.featureArray];
       const { filterArray = [], includeServerContext, includeClientContext, limit } = request.query;
       const options = {
         includeServerContext,
@@ -499,6 +505,40 @@ export default async function documentRoutes(fastify, options) {
       }
       const response = new ResponseObject().error('Failed to get document by ID');
         return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Direct delete multiple documents (legacy POST /delete route)
+  fastify.post('/delete', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'array',
+        items: { type: ['string', 'number'] },
+        minItems: 1,
+        description: 'Array of document IDs to delete directly from DB (legacy endpoint)'
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const docIds = Array.isArray(request.body) ? request.body : [request.body];
+      const result = await context.deleteDocumentArrayFromDb(request.user.id, docIds);
+      const response = new ResponseObject().deleted(result, 'Documents deleted successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (err) {
+      fastify.log.error(err);
+      if (err.message.startsWith('Access denied')) {
+        const response = new ResponseObject().forbidden(err.message);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to delete documents');
+      return reply.code(response.statusCode).send(response.getResponse());
     }
   });
 
