@@ -119,8 +119,8 @@ class Url {
             let workspacePart = cleaned.substring(0, colonSlashIndex);
             let pathPart = cleaned.substring(colonSlashIndex + 3);
 
-            // Clean workspace part - only allow alphanumeric and underscores
-            workspacePart = workspacePart.replace(/[^a-zA-Z0-9_]/g, '');
+            // Clean workspace part - only allow alphanumeric, underscores, and hyphens
+            workspacePart = workspacePart.replace(/[^a-zA-Z0-9_-]/g, '');
 
             // If workspace name becomes empty after cleaning, return just the path
             if (!workspacePart) {
