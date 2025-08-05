@@ -179,6 +179,76 @@ export default function setupWebSocketHandlers(fastify) {
     debug(`🔌 New WebSocket connection: ${socket.id} for user ${user.email} (${user.id})`);
     debug(`👥 Total connections: ${connections.size}`);
 
+    // Initialize per-socket subscription set
+    if (!socket.subscriptions) {
+      socket.subscriptions = new Set();
+    }
+
+    /* ----------------------------------------------------
+     * Generic subscribe / unsubscribe implementation
+     * -------------------------------------------------- */
+    socket.on('subscribe', async (data = {}) => {
+      try {
+        const { channel } = data;
+        if (!channel || typeof channel !== 'string') {
+          socket.emit('error', { message: 'Channel name required for subscription' });
+          return;
+        }
+
+        // Skip if already subscribed
+        if (socket.subscriptions.has(channel)) {
+          return;
+        }
+
+        // Basic ACL checks for context / workspace channels
+        if (channel.startsWith('context:')) {
+          const contextId = channel.split(':')[1];
+          try {
+            // Throws if user has no access
+            await fastify.contextManager.getContext(user.id, contextId);
+          } catch (err) {
+            socket.emit('error', { message: `Access denied to context ${contextId}` });
+            return;
+          }
+        } else if (channel.startsWith('workspace:')) {
+          const workspaceId = channel.split(':')[1];
+          try {
+            const workspace = await fastify.workspaceManager.getWorkspace(user.id, workspaceId, user.id);
+            if (!workspace) {
+              socket.emit('error', { message: `Access denied to workspace ${workspaceId}` });
+              return;
+            }
+          } catch (err) {
+            socket.emit('error', { message: `Access denied to workspace ${workspaceId}` });
+            return;
+          }
+        }
+
+        socket.subscriptions.add(channel);
+        socket.join(channel);
+        debug(`🛎️  Socket ${socket.id} subscribed to ${channel}`);
+        socket.emit('subscribed', { channel });
+      } catch (err) {
+        debug(`❌ Subscription error on socket ${socket.id}: ${err.message}`);
+        socket.emit('error', { message: 'Subscription failed' });
+      }
+    });
+
+    socket.on('unsubscribe', (data = {}) => {
+      try {
+        const { channel } = data;
+        if (!channel || typeof channel !== 'string') {
+          return;
+        }
+        socket.subscriptions.delete(channel);
+        socket.leave(channel);
+        debug(`🔕 Socket ${socket.id} unsubscribed from ${channel}`);
+        socket.emit('unsubscribed', { channel });
+      } catch (err) {
+        debug(`❌ Unsubscribe error on socket ${socket.id}: ${err.message}`);
+      }
+    });
+
     // Register push modules
     debug(`📋 Registering context WebSocket for socket ${socket.id}`);
     registerContextWebSocket(fastify, socket);

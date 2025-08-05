@@ -41,7 +41,16 @@ export default function registerContextWebSocket(fastify, socket) {
             debug(`❌ User ${userId} lacks access to context ${contextId} – skip ${eventName}`);
             return;
           }
-          debug(`✅ User ${userId} has access to context ${contextId} – forwarding ${eventName}`);
+          debug(`✅ User ${userId} has access to context ${contextId}`);
+
+          // Forward only if this socket explicitly subscribed to this context
+          const subscriptionKey = `context:${contextId}`;
+          if (!socket.subscriptions?.has(subscriptionKey)) {
+            debug(`📭 Socket ${socket.id} not subscribed to ${subscriptionKey} – skip ${eventName}`);
+            return;
+          }
+
+          debug(`➡️  Forwarding ${eventName} to socket ${socket.id}`);
         } catch (error) {
           debug(`❌ Access check failed for user ${userId} to context ${contextId}: ${error.message} – skip ${eventName}`);
           return;
