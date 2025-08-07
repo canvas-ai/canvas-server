@@ -1,7 +1,42 @@
 'use strict';
 
-import { authService, imapAuthStrategy, login, register, verifyEmail, requestPasswordReset, resetPassword, validateUser } from '../auth/strategies.js';
+import { authService, imapAuthStrategy, login, register, verifyEmail, requestPasswordReset, resetPassword, validateUser, requestEmailVerification } from '../auth/strategies.js';
 import ResponseObject from '../ResponseObject.js';
+
+// Persistent rate limiter (per-IP) using jim index store to survive process restarts
+const rateLimitBuckets = new Map(); // fallback in-memory
+function rateLimit({ max, windowMs }, keyName = 'generic') {
+  return async function onRequest(request, reply) {
+    try {
+      const ip = request.ip || request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown';
+      const key = `${keyName}:${request.routerPath || request.url}:${ip}`;
+      const now = Date.now();
+      // Prefer persistent limiter via authService if available
+      if (request.server?.authService?.checkAndIncrementRateLimit) {
+        const result = await request.server.authService.checkAndIncrementRateLimit(key, max, windowMs);
+        if (result.limited) {
+          const response = new ResponseObject().tooManyRequests('Too many requests, please try again later');
+          return reply.code(response.statusCode).send(response.getResponse());
+        }
+      } else {
+        // Fallback in-memory limiter
+        const bucket = rateLimitBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+        if (now > bucket.resetAt) {
+          bucket.count = 0;
+          bucket.resetAt = now + windowMs;
+        }
+        bucket.count += 1;
+        rateLimitBuckets.set(key, bucket);
+        if (bucket.count > max) {
+          const response = new ResponseObject().tooManyRequests('Too many requests, please try again later');
+          return reply.code(response.statusCode).send(response.getResponse());
+        }
+      }
+    } catch (e) {
+      // If rate limiter fails, do not block request
+    }
+  };
+}
 
 /**
  * Auth routes handler for the API
@@ -35,13 +70,14 @@ export default async function authRoutes(fastify, options) {
 
   // Login endpoint
   fastify.post('/login', {
+    onRequest: [rateLimit({ max: authService.getRateLimitConfig('loginAttempts')?.maxAttempts || 5, windowMs: authService.getRateLimitConfig('loginAttempts')?.windowMs || 15 * 60 * 1000 }, 'login')],
     schema: {
       body: {
         type: 'object',
         required: ['email', 'password'],
         properties: {
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 },
+          password: { type: 'string', minLength: 8 },
           strategy: { type: 'string', enum: ['local', 'imap', 'auto'] }
         }
       }
@@ -128,6 +164,7 @@ export default async function authRoutes(fastify, options) {
 
   // Register endpoint
   fastify.post('/register', {
+    onRequest: [rateLimit({ max: authService.getRateLimitConfig('registration')?.maxAttempts || 3, windowMs: authService.getRateLimitConfig('registration')?.windowMs || 60 * 60 * 1000 }, 'register')],
     schema: {
       body: {
         type: 'object',
@@ -141,7 +178,7 @@ export default async function authRoutes(fastify, options) {
             description: 'Username (3-39 chars, lowercase letters, numbers, underscores, hyphens only)'
           },
           email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 8 }
+          password: { type: 'string', minLength: 12 }
         }
       }
     }
@@ -154,7 +191,16 @@ export default async function authRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().created(result.data, 'Registration successful');
+      // If a verification token was created, try sending email but never expose the token
+      if (result.data?.token) {
+        try {
+          await authService.sendVerificationEmail(result.data.user, result.data.token, request);
+        } catch (e) {
+          fastify.log.warn('[Register] Failed to send verification email:', e?.message);
+        }
+      }
+
+      const response = new ResponseObject().created({ user: result.data.user }, 'Registration successful');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error('[Register Route Error]', error.message);
@@ -179,7 +225,7 @@ export default async function authRoutes(fastify, options) {
         required: ['currentPassword', 'newPassword'],
         properties: {
           currentPassword: { type: 'string', minLength: 1 },
-          newPassword: { type: 'string', minLength: 8 }
+          newPassword: { type: 'string', minLength: 12 }
         }
       }
     }
@@ -205,6 +251,7 @@ export default async function authRoutes(fastify, options) {
 
   // Forgot password endpoint
   fastify.post('/forgot-password', {
+    onRequest: [rateLimit({ max: authService.getRateLimitConfig('passwordReset')?.maxAttempts || 3, windowMs: authService.getRateLimitConfig('passwordReset')?.windowMs || 60 * 60 * 1000 }, 'forgot-password')],
     schema: {
       body: {
         type: 'object',
@@ -237,7 +284,7 @@ export default async function authRoutes(fastify, options) {
         required: ['token', 'newPassword'],
         properties: {
           token: { type: 'string' },
-          newPassword: { type: 'string', minLength: 8 }
+          newPassword: { type: 'string', minLength: 12 }
         }
       }
     }
@@ -260,8 +307,9 @@ export default async function authRoutes(fastify, options) {
     }
   });
 
-  // Verify email endpoint
+  // Request verification email endpoint
   fastify.post('/verify-email', {
+    onRequest: [rateLimit({ max: authService.getRateLimitConfig('tokenOperations')?.maxAttempts || 5, windowMs: authService.getRateLimitConfig('tokenOperations')?.windowMs || 5 * 60 * 1000 }, 'verify-email')],
     schema: {
       body: {
         type: 'object',
@@ -273,7 +321,7 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      await verifyEmail(request.body.email, fastify.userManager);
+      await requestEmailVerification(request.body.email, fastify.userManager);
       const response = new ResponseObject().success({
         success: true,
         message: 'If an account exists with this email, you will receive verification instructions.'
@@ -299,11 +347,7 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      const success = await authService.verifyEmailToken(request.params.token, fastify.userManager);
-      if (!success) {
-        const response = new ResponseObject().badRequest('Invalid or expired verification token');
-        return reply.code(response.statusCode).send(response.getResponse());
-      }
+      await verifyEmail(request.params.token, fastify.userManager);
       const response = new ResponseObject().success({ success: true }, 'Email verified successfully');
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {

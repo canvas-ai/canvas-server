@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
+import nodemailer from 'nodemailer';
 import { env } from '../../env.js';
 
 // Import jim from Server.js
@@ -28,6 +29,9 @@ class AuthService {
   #initialized = false;
   #defaultSaltRounds = 10;
   #tokenCreationLock = new Map();
+  #authConfig = null;
+  #smtpConfig = null;
+  #rateLimitStore;
 
   constructor() {
     // Init happens in initialize() to ensure env is loaded
@@ -38,7 +42,7 @@ class AuthService {
    * @private
    */
   #ensureAuthConfig() {
-    const configPath = path.join(process.cwd(), 'server/config/auth.json'); // TODO: Move to a common config module
+    const configPath = path.join(process.cwd(), 'server/config/auth.json');
 
     // Create default auth configuration if it doesn't exist
     if (!fs.existsSync(configPath)) {
@@ -50,34 +54,86 @@ class AuthService {
         fs.mkdirSync(configDir, { recursive: true });
       }
 
-      // Create default configuration with all supported strategies
+      // Create default configuration with all supported strategies and security settings
       const defaultConfig = {
         strategies: {
           local: {
-            enabled: true
+            enabled: true,
+            requireEmailVerification: false,
+            passwordPolicy: {
+              minLength: 12,
+              requireUppercase: true,
+              requireLowercase: true,
+              requireNumbers: true,
+              requireSpecialChars: true,
+              maxLength: 128
+            },
+            rateLimiting: {
+              loginAttempts: { maxAttempts: 5, windowMs: 15 * 60 * 1000, lockoutDuration: 30 * 60 * 1000 },
+              registration: { maxAttempts: 3, windowMs: 60 * 60 * 1000 },
+              passwordReset: { maxAttempts: 3, windowMs: 60 * 60 * 1000 },
+              tokenOperations: { maxAttempts: 5, windowMs: 5 * 60 * 1000 },
+              apiOperations: { maxAttempts: 10, windowMs: 5 * 60 * 1000 },
+              userProfile: { maxAttempts: 30, windowMs: 60 * 1000 }
+            }
           },
           imap: {
             enabled: false,
             domains: {
               "acmedomain.tld": {
                 "host": "mail.acmedomain.tld",
-                "port": "465",
+                "port": 465,
                 "secure": true
               }
             },
             defaultUserType: 'user',
             defaultStatus: 'active'
           }
-          // Future strategies like OAuth can be added here
-          // oauth: {
-          //   enabled: false,
-          //   providers: {}
-          // }
+        },
+        jwt: {
+          secret: 'your-secure-jwt-secret-here',
+          expiresIn: '1d'
         }
       };
 
       fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');
       console.log('[AuthService] Default auth configuration created at:', configPath);
+    }
+
+    try {
+      const data = fs.readFileSync(configPath, 'utf8');
+      this.#authConfig = JSON.parse(data);
+    } catch (e) {
+      console.warn('[AuthService] Failed to read auth configuration, using defaults only:', e.message);
+      this.#authConfig = null;
+    }
+  }
+
+  /**
+   * Ensure SMTP configuration exists with default values
+   * @private
+   */
+  #ensureSmtpConfig() {
+    const smtpPath = path.join(process.cwd(), 'server/config/smtp.json');
+    if (!fs.existsSync(smtpPath)) {
+      console.log('[AuthService] SMTP configuration file not found, creating default configuration...');
+      const defaultSmtp = {
+        enabled: false,
+        host: 'smtp.example.com',
+        port: 587,
+        secure: true,
+        auth: { user: 'your-email@example.com', pass: 'your-password' },
+        from: { name: 'Canvas Server', email: 'noreply@example.com' }
+      };
+      fs.writeFileSync(smtpPath, JSON.stringify(defaultSmtp, null, 2), 'utf8');
+      console.log('[AuthService] Default SMTP configuration created at:', smtpPath);
+    }
+    try {
+      const data = fs.readFileSync(smtpPath, 'utf8');
+      this.#smtpConfig = JSON.parse(data);
+    } catch (e) {
+      console.warn('[AuthService] Failed to read SMTP configuration, email sending will be disabled:', e.message);
+      this.#smtpConfig = null;
     }
   }
 
@@ -89,10 +145,12 @@ class AuthService {
 
     // Ensure auth configuration exists with defaults
     this.#ensureAuthConfig();
+    this.#ensureSmtpConfig();
 
     // Initialize storage for tokens and passwords using jim
     this.#tokensStore = jim.createIndex('tokens');
     this.#passwordsStore = jim.createIndex('passwords');
+    this.#rateLimitStore = jim.createIndex('rateLimits');
 
     this.#initialized = true;
   }
@@ -430,6 +488,24 @@ class AuthService {
       throw new Error('User ID and password are required');
     }
 
+    // Enforce password policy (configurable later via server/config/auth.json)
+    const policy = this.getPasswordPolicy();
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    const tooLong = policy.maxLength ? password.length > policy.maxLength : false;
+    if (
+      (policy.minLength && password.length < policy.minLength) ||
+      (policy.requireUppercase && !hasUpper) ||
+      (policy.requireLowercase && !hasLower) ||
+      (policy.requireNumbers && !hasDigit) ||
+      (policy.requireSpecialChars && !hasSpecial) ||
+      tooLong
+    ) {
+      throw new Error('Password does not meet complexity requirements');
+    }
+
     const passwordHash = await this.hashPassword(password);
 
     // Store password
@@ -473,6 +549,11 @@ class AuthService {
       throw new Error('JWT secret key is not configured');
     }
 
+    // Warn loudly if using the insecure default secret
+    if (env.auth.jwtSecret === 'canvas-jwt-secret-change-in-production') {
+      console.warn('[Security] Insecure default JWT secret is in use. Please set CANVAS_JWT_SECRET or server/config/auth.json');
+    }
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -488,9 +569,107 @@ class AuthService {
       payload,
       env.auth.jwtSecret,
       {
-        expiresIn: options.expiresIn || '1d'
+        expiresIn: options.expiresIn || this.getJwtExpiry() || env.auth.tokenExpiry || '1d'
       }
     );
+  }
+
+  /**
+   * Get password policy from config with safe defaults
+   */
+  getPasswordPolicy() {
+    const policy = this.#authConfig?.strategies?.local?.passwordPolicy || {};
+    return {
+      minLength: policy.minLength ?? 12,
+      requireUppercase: policy.requireUppercase ?? true,
+      requireLowercase: policy.requireLowercase ?? true,
+      requireNumbers: policy.requireNumbers ?? true,
+      requireSpecialChars: policy.requireSpecialChars ?? true,
+      maxLength: policy.maxLength ?? 128
+    };
+  }
+
+  /**
+   * Get rate limiting config for a given key
+   */
+  getRateLimitConfig(key) {
+    const rl = this.#authConfig?.strategies?.local?.rateLimiting || {};
+    return rl[key] || null;
+  }
+
+  /**
+   * Get JWT expiry from config if set
+   */
+  getJwtExpiry() {
+    return this.#authConfig?.jwt?.expiresIn || null;
+  }
+
+  /**
+   * Whether local strategy requires email verification
+   */
+  isEmailVerificationRequired() {
+    return !!this.#authConfig?.strategies?.local?.requireEmailVerification;
+  }
+
+  /**
+   * Send an email using SMTP or sendmail fallback
+   */
+  async sendEmail(to, subject, text, html) {
+    if (!this.#smtpConfig || this.#smtpConfig.enabled === false) {
+      console.log('[Email] SMTP disabled; skipping send to', to);
+      return false;
+    }
+    const from = `${this.#smtpConfig.from?.name || 'Canvas Server'} <${this.#smtpConfig.from?.email || 'noreply@example.com'}>`;
+    let transporter;
+    try {
+      if (this.#smtpConfig.host) {
+        transporter = nodemailer.createTransport({
+          host: this.#smtpConfig.host,
+          port: this.#smtpConfig.port || 587,
+          secure: !!this.#smtpConfig.secure,
+          auth: this.#smtpConfig.auth || undefined
+        });
+      } else {
+        transporter = nodemailer.createTransport({ sendmail: true, newline: 'unix', path: '/usr/sbin/sendmail' });
+      }
+      await transporter.sendMail({ from, to, subject, text, html });
+      return true;
+    } catch (e) {
+      console.error('[Email] Failed to send email:', e.message);
+      return false;
+    }
+  }
+
+  /**
+   * Send verification email to user with token
+   */
+  async sendVerificationEmail(user, token, request) {
+    const origin = `${request.protocol}://${request.headers.host}`;
+    const verifyUrl = `${origin}/rest/v2/auth/verify-email/${token.value}`;
+    const subject = 'Verify your email address';
+    const text = `Hello ${user.name || user.email},\n\nPlease verify your email by clicking the link below:\n${verifyUrl}\n\nThis link expires in 48 hours.`;
+    const html = `<p>Hello ${user.name || user.email},</p><p>Please verify your email by clicking the link below:</p><p><a href="${verifyUrl}">Verify Email</a></p><p>This link expires in 48 hours.</p>`;
+    return this.sendEmail(user.email, subject, text, html);
+  }
+
+  /**
+   * Persistent rate limiter using jim index
+   * @param {string} bucketKey
+   * @param {number} max
+   * @param {number} windowMs
+   * @returns {Promise<{limited: boolean, resetAt: number}>}
+   */
+  async checkAndIncrementRateLimit(bucketKey, max, windowMs) {
+    this.#ensureInitialized();
+    const now = Date.now();
+    const existing = this.#rateLimitStore.get(bucketKey) || { count: 0, resetAt: now + windowMs };
+    if (now > existing.resetAt) {
+      existing.count = 0;
+      existing.resetAt = now + windowMs;
+    }
+    existing.count += 1;
+    this.#rateLimitStore.set(bucketKey, existing);
+    return { limited: existing.count > max, resetAt: existing.resetAt };
   }
 
   /**

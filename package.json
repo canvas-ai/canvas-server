@@ -1,7 +1,7 @@
 {
   "name": "canvas-server",
   "productName": "Canvas Server",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Context layer on top of your unstructured universe",
   "main": "./src/init.js",
   "type": "module",
@@ -47,6 +47,7 @@
     "imapflow": "^1.0.187",
     "jsonwebtoken": "^9.0.2",
     "nanoid": "^5.1.5",
+    "nodemailer": "^6.9.13",
     "node-machine-id": "^1.1.12",
     "pino-pretty": "^10.3.1",
     "randomcolor": "^0.6.2",

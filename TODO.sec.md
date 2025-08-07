@@ -3,8 +3,8 @@ We need to make canvas-server more secure
 1) Review the current auth implementation in ./src/api/auth and ./src/api/routes, ./src/api/middleware/workspace-acl.js with the 3 supported auth strategies - JWT(user+pass), API Token, IMAP - for security best prectices
 
 2) Implement toggable email address validation on user registration for non-IMAP accounts using a simple email + link
-- This requires a dedicated smtp configration in server/config/smtp.json, defaults to systems smtp
-- server/config/auth.json
+- This requires a dedicated smtp configration in server/config/smtp.json, defaults to sendmail
+- Draft/idea server/config/auth.json
   - local
     enabled: bool, default true
     requireEmailVerification: bool, default false
@@ -27,13 +27,13 @@ Current Security Issues:
   - Uppercase letters (A-Z)
   - Lowercase letters (a-z)
   - Numbers (0-9)
-  - Special characters (!@#$%^&*()_+-=[]{}|;':",./<>?)
+  - Special characters (!@#$%^&*()_+-=[]{};:,./<>?)
 - **Weak Password Detection**: Blocks common weak passwords
 - **Maximum Length**: 128 characters
 
 #### JWT Token Security
 - **Secure Secret Generation**: Uses crypto.randomBytes(64) for JWT secrets
-- **Token Expiration**: Configurable expiration (default: 1 day)
+- **Token Expiration**: Configurable expiration (default: 7 days)
 - **Token Versioning**: Includes user version for invalidation on data changes
 - **Secret Validation**: Warns about insecure default secrets
 
@@ -62,7 +62,6 @@ Current Security Issues:
 #### Login Protection
 - **Max Attempts**: 5 attempts per 15 minutes (configurable)
 - **Lockout Duration**: 30 minutes after max attempts
-- **IP-based Tracking**: Rate limiting by IP address
 
 #### Registration Protection
 - **Max Attempts**: 3 attempts per hour (configurable)

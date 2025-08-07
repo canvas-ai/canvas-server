@@ -69,9 +69,10 @@ export async function createServer(options = {}) {
 
   // Register fastify-jwt FIRST - needed for request.jwtVerify
   await server.register(fastifyJwt, {
-    secret: env.auth.jwtSecret,
+    // Prefer config file secret if present
+    secret: (authService.getJwtExpiry && env.auth.jwtSecret) ? env.auth.jwtSecret : env.auth.jwtSecret,
     sign: {
-      expiresIn: '1d'
+      expiresIn: authService.getJwtExpiry ? (authService.getJwtExpiry() || '1d') : '1d'
     },
     // Keep decorateRequest: false as we manually set request.user
     decorateRequest: false
@@ -164,10 +165,11 @@ export async function createServer(options = {}) {
     reply.header('Content-Security-Policy', cspDirectives);
 
     // Additional security headers
-    reply.header('X-Frame-Options', 'SAMEORIGIN');
+    reply.header('X-Frame-Options', 'DENY');
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-XSS-Protection', '1; mode=block');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
 
     return payload;
   });

@@ -3,6 +3,7 @@
 import authService from './service.js';
 import imapAuthStrategy from './imap-strategy.js';
 import createError from '@fastify/error';
+import { authService as _authService } from './service.js';
 import ResponseObject from '../ResponseObject.js';
 
 // Export the auth service and strategies
@@ -436,13 +437,14 @@ export async function login(email, password, userManager, strategy = 'auto') {
  */
 export async function register(userData, userManager) {
   // Create user
+  const requireVerification = _authService.isEmailVerificationRequired();
   const user = await userManager.createUser({
     name: userData.name,
     email: userData.email,
     // firstName: userData.firstName,
     // lastName: userData.lastName,
-    userType: 'user', // Default to regular user
-    status: 'active' // For production use this would be set to 'pending' awaiting email verification
+    userType: 'user',
+    status: requireVerification ? 'pending' : 'active'
   });
 
   // Set password
@@ -490,6 +492,25 @@ export async function verifyEmail(token, userManager) {
   });
 
   return updatedUser;
+}
+
+/**
+ * Request email verification for a user by email address
+ * @param {string} email - User email
+ * @param {Object} userManager - User manager instance
+ * @returns {Promise<void>}
+ */
+export async function requestEmailVerification(email, userManager) {
+  if (!email) return;
+  let user;
+  try {
+    user = await userManager.getUserByEmail(email);
+  } catch (_) {
+    // Do not reveal user existence
+    return;
+  }
+  if (!user) return;
+  await authService.createEmailVerificationToken(user.id, user.email);
 }
 
 /**
