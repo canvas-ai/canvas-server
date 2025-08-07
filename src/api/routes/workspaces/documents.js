@@ -70,7 +70,6 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'object',
-        required: ['documents'],
         properties: {
           contextSpec: { type: 'string', default: '/' },
           featureArray: {
@@ -88,6 +87,16 @@ export default async function workspaceDocumentRoutes(fastify, options) {
                 data: { type: 'object' }
               }
             }
+          },
+          documentIds: {
+            oneOf: [
+              {
+                type: 'array',
+                items: { type: ['string', 'number'] },
+                minItems: 1
+              },
+              { type: ['string', 'number'] }
+            ]
           }
         }
       }
@@ -105,11 +114,26 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const documents = await workspace.insertDocumentArray(
-        request.body.documents,
-        request.body.contextSpec,
-        request.body.featureArray
-      );
+      let documents;
+      if (request.body.documentIds) {
+        // Handle insertion of existing documents by ID (paste operation)
+        const docIds = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+        // Fetch documents from DB
+        const existingDocs = await Promise.all(docIds.map(async (id) => await workspace.getDocumentById(id, { parse: false })));
+        // Filter out any nulls in case a document wasn't found
+        const validDocs = existingDocs.filter(Boolean);
+        documents = await workspace.insertDocumentArray(
+          validDocs,
+          request.body.contextSpec,
+          request.body.featureArray
+        );
+      } else {
+        documents = await workspace.insertDocumentArray(
+          request.body.documents,
+          request.body.contextSpec,
+          request.body.featureArray
+        );
+      }
       const responseObject = new ResponseObject().created(documents, 'Documents inserted successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
@@ -244,7 +268,6 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'object',
-        required: ['documents'],
         properties: {
           contextSpec: { type: 'string', default: '/' },
           featureArray: {
@@ -262,6 +285,16 @@ export default async function workspaceDocumentRoutes(fastify, options) {
                 data: { type: 'object' }
               }
             }
+          },
+          documentIds: {
+            oneOf: [
+              {
+                type: 'array',
+                items: { type: ['string', 'number'] },
+                minItems: 1
+              },
+              { type: ['string', 'number'] }
+            ]
           }
         }
       }

@@ -88,12 +88,12 @@ export default async function documentRoutes(fastify, options) {
     schema: {
       body: {
         type: 'object',
-        required: ['documents'],
         properties: {
           featureArray: {
             type: 'array',
             items: { type: 'string' }
           },
+          // Original direct insert (full docs)
           documents: {
             oneOf: [
               { type: 'object' },
@@ -101,6 +101,17 @@ export default async function documentRoutes(fastify, options) {
                 type: 'array',
                 items: { type: 'object' }
               }
+            ]
+          },
+          // New: paste existing docs by ID
+          documentIds: {
+            oneOf: [
+              {
+                type: 'array',
+                items: { type: ['string', 'number'] },
+                minItems: 1
+              },
+              { type: ['string', 'number'] }
             ]
           }
         }
@@ -116,9 +127,24 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { featureArray = [], documents } = request.body;
-      // Convert single document to array if needed
-      const documentArray = Array.isArray(documents) ? documents : [documents];
+      const { featureArray = [] } = request.body;
+      let documentArray = [];
+
+      if (request.body.documentIds) {
+        // Handle paste operation (existing IDs)
+        const idArray = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+        // Fetch raw docs (unparsed) from database so we can re-insert them
+        const fetchedDocs = await Promise.all(
+          idArray.map(async (id) => await context.getDocumentById(request.user.id, id, { parse: false }))
+        );
+        documentArray = fetchedDocs.filter(Boolean);
+      } else if (request.body.documents) {
+        // Normal create workflow
+        documentArray = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else {
+        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
 
       const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
 
