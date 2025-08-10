@@ -495,15 +495,30 @@ class AuthService {
     const hasDigit = /[0-9]/.test(password);
     const hasSpecial = /[^A-Za-z0-9]/.test(password);
     const tooLong = policy.maxLength ? password.length > policy.maxLength : false;
-    if (
-      (policy.minLength && password.length < policy.minLength) ||
-      (policy.requireUppercase && !hasUpper) ||
-      (policy.requireLowercase && !hasLower) ||
-      (policy.requireNumbers && !hasDigit) ||
-      (policy.requireSpecialChars && !hasSpecial) ||
-      tooLong
-    ) {
-      throw new Error('Password does not meet complexity requirements');
+    const unmet = {
+      minLength: policy.minLength ? password.length < policy.minLength : false,
+      maxLength: tooLong,
+      uppercase: policy.requireUppercase ? !hasUpper : false,
+      lowercase: policy.requireLowercase ? !hasLower : false,
+      number: policy.requireNumbers ? !hasDigit : false,
+      special: policy.requireSpecialChars ? !hasSpecial : false,
+    };
+    const failed = Object.values(unmet).some(Boolean);
+    if (failed) {
+      const parts = [];
+      if (unmet.minLength) parts.push(`at least ${policy.minLength} characters`);
+      if (unmet.maxLength) parts.push(`no more than ${policy.maxLength} characters`);
+      if (unmet.uppercase) parts.push('an uppercase letter');
+      if (unmet.lowercase) parts.push('a lowercase letter');
+      if (unmet.number) parts.push('a number');
+      if (unmet.special) parts.push('a special character');
+      const message = parts.length
+        ? `Password must contain ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`
+        : 'Password does not meet complexity requirements';
+      const error = new Error(message);
+      error.code = 'ERR_PASSWORD_COMPLEXITY';
+      error.details = { policy, unmet };
+      throw error;
     }
 
     const passwordHash = await this.hashPassword(password);
@@ -514,6 +529,52 @@ class AuthService {
       updatedAt: new Date().toISOString()
     });
 
+    return true;
+  }
+
+  /**
+   * Validate a password against the current policy without persisting
+   * @param {string} password
+   * @returns {Promise<boolean>} - true if password satisfies policy, otherwise throws
+   */
+  async validatePasswordComplexity(password) {
+    this.#ensureInitialized();
+    if (!password) {
+      const err = new Error('Password is required');
+      err.code = 'ERR_PASSWORD_REQUIRED';
+      throw err;
+    }
+    const policy = this.getPasswordPolicy();
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    const tooLong = policy.maxLength ? password.length > policy.maxLength : false;
+    const unmet = {
+      minLength: policy.minLength ? password.length < policy.minLength : false,
+      maxLength: tooLong,
+      uppercase: policy.requireUppercase ? !hasUpper : false,
+      lowercase: policy.requireLowercase ? !hasLower : false,
+      number: policy.requireNumbers ? !hasDigit : false,
+      special: policy.requireSpecialChars ? !hasSpecial : false,
+    };
+    const failed = Object.values(unmet).some(Boolean);
+    if (failed) {
+      const parts = [];
+      if (unmet.minLength) parts.push(`at least ${policy.minLength} characters`);
+      if (unmet.maxLength) parts.push(`no more than ${policy.maxLength} characters`);
+      if (unmet.uppercase) parts.push('an uppercase letter');
+      if (unmet.lowercase) parts.push('a lowercase letter');
+      if (unmet.number) parts.push('a number');
+      if (unmet.special) parts.push('a special character');
+      const message = parts.length
+        ? `Password must contain ${parts.join(', ').replace(/, ([^,]*)$/, ' and $1')}.`
+        : 'Password does not meet complexity requirements';
+      const error = new Error(message);
+      error.code = 'ERR_PASSWORD_COMPLEXITY';
+      error.details = { policy, unmet };
+      throw error;
+    }
     return true;
   }
 

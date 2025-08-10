@@ -436,6 +436,17 @@ export async function login(email, password, userManager, strategy = 'auto') {
  * @returns {Promise<Object>} - Created user and verification token
  */
 export async function register(userData, userManager) {
+  // Validate password FIRST to avoid creating a user if it fails policy
+  try {
+    await authService.validatePasswordComplexity(userData.password);
+  } catch (error) {
+    return {
+      success: false,
+      message: error?.message || 'Password does not meet complexity requirements',
+      details: error?.details || undefined,
+    };
+  }
+
   // Create user
   const requireVerification = _authService.isEmailVerificationRequired();
   const user = await userManager.createUser({
@@ -447,11 +458,32 @@ export async function register(userData, userManager) {
     status: requireVerification ? 'pending' : 'active'
   });
 
-  // Set password
-  await authService.setPassword(user.id, userData.password);
+  // Set password with rollback on failure
+  try {
+    await authService.setPassword(user.id, userData.password);
+  } catch (error) {
+    // Best-effort rollback to avoid leaving a partially created user
+    try {
+      await userManager.deleteUser(user.id);
+    } catch (_) {
+      // ignore rollback errors
+    }
 
-  // Create verification token
-  const verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+    // Return validation error in a structured way so the route can respond 400
+    return {
+      success: false,
+      message: error?.message || 'Password does not meet complexity requirements',
+      details: error?.details || undefined,
+    };
+  }
+
+  // Create verification token (non-fatal if this fails)
+  let verificationToken;
+  try {
+    verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+  } catch (_) {
+    verificationToken = undefined;
+  }
 
   return {
     success: true,

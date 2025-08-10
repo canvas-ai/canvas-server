@@ -9,7 +9,8 @@ function rateLimit({ max, windowMs }, keyName = 'generic') {
   return async function onRequest(request, reply) {
     try {
       const ip = request.ip || request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown';
-      const key = `${keyName}:${request.routerPath || request.url}:${ip}`;
+      const routeUrl = request.routeOptions?.url || request.url;
+      const key = `${keyName}:${routeUrl}:${ip}`;
       const now = Date.now();
       // Prefer persistent limiter via authService if available
       if (request.server?.authService?.checkAndIncrementRateLimit) {
@@ -51,7 +52,11 @@ export default async function authRoutes(fastify, options) {
 
       const config = {
         strategies: {
-          local: { enabled: true },
+          local: {
+            enabled: true,
+            passwordPolicy: authService.getPasswordPolicy(),
+            requireEmailVerification: authService.isEmailVerificationRequired()
+          },
           imap: {
             enabled: imapAuthStrategy.isEnabled(),
             domains: imapAuthStrategy.getAvailableDomains()
@@ -187,7 +192,8 @@ export default async function authRoutes(fastify, options) {
       const result = await register(request.body, fastify.userManager);
 
       if (!result.success) {
-        const response = new ResponseObject().badRequest(result.message);
+        // Include server-provided details when available
+        const response = new ResponseObject().badRequest(result.message || 'Registration failed', result.details || null);
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
