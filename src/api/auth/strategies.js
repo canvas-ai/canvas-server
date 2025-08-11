@@ -533,16 +533,30 @@ export async function verifyEmail(token, userManager) {
  * @returns {Promise<void>}
  */
 export async function requestEmailVerification(email, userManager) {
-  if (!email) return;
+  if (!email) return null;
   let user;
   try {
     user = await userManager.getUserByEmail(email);
   } catch (_) {
     // Do not reveal user existence
-    return;
+    return null;
   }
-  if (!user) return;
-  await authService.createEmailVerificationToken(user.id, user.email);
+  if (!user) return null;
+
+  // Remove any existing verification tokens so we can issue a fresh one
+  try {
+    const tokens = await authService.listTokens(user.id);
+    for (const t of tokens) {
+      if (t?.type === 'verification' && t?.name === 'Email Verification') {
+        await authService.deleteToken(user.id, t.id);
+      }
+    }
+  } catch (_) {
+    // Best effort cleanup; continue even if this fails
+  }
+
+  const token = await authService.createEmailVerificationToken(user.id, user.email);
+  return { user, token };
 }
 
 /**

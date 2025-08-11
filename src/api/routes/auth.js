@@ -327,7 +327,17 @@ export default async function authRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      await requestEmailVerification(request.body.email, fastify.userManager);
+      const result = await requestEmailVerification(request.body.email, fastify.userManager);
+
+      // Try to send the email if we could create a token
+      if (result?.token && result?.user) {
+        try {
+          await authService.sendVerificationEmail(result.user, result.token, request);
+        } catch (e) {
+          fastify.log.warn('[Verify Email] Failed to send verification email:', e?.message);
+        }
+      }
+
       const response = new ResponseObject().success({
         success: true,
         message: 'If an account exists with this email, you will receive verification instructions.'
