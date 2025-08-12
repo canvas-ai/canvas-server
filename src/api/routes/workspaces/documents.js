@@ -89,7 +89,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             }
           },
           documentIds: {
-            oneOf: [
+            anyOf: [
               {
                 type: 'array',
                 items: { type: ['string', 'number'] },
@@ -287,7 +287,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             }
           },
           documentIds: {
-            oneOf: [
+            anyOf: [
               {
                 type: 'array',
                 items: { type: ['string', 'number'] },
