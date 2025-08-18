@@ -1,0 +1,16 @@
+# OS trash
+.DS_Store
+Thumbs.db
+
+# Caches / temp
+*.log
+*.sock
+*.tmp
+.cache/
+.tmp/
+.local/share/Trash/
+
+# Compiled
+*.pyc
+*.o
+*.swp
