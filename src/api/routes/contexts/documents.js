@@ -87,34 +87,44 @@ export default async function documentRoutes(fastify, options) {
     onRequest: [fastify.authenticate],
     schema: {
       body: {
-        type: 'object',
-        properties: {
-          featureArray: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          // Original direct insert (full docs)
-          documents: {
-            oneOf: [
-              { type: 'object' },
-              {
+        oneOf: [
+          {
+            type: 'object',
+            properties: {
+              featureArray: {
                 type: 'array',
-                items: { type: 'object' }
-              }
-            ]
-          },
-          // New: paste existing docs by ID
-          documentIds: {
-            oneOf: [
-              {
-                type: 'array',
-                items: { type: ['string', 'number'] },
-                minItems: 1
+                items: { type: 'string' }
               },
-              { type: ['string', 'number'] }
-            ]
+              // Original direct insert (full docs)
+              documents: {
+                oneOf: [
+                  { type: 'object' },
+                  {
+                    type: 'array',
+                    items: { type: 'object' }
+                  }
+                ]
+              },
+              // New: paste existing docs by ID
+              documentIds: {
+                oneOf: [
+                  {
+                    type: 'array',
+                    items: { type: ['string', 'number'] },
+                    minItems: 1
+                  },
+                  { type: ['string', 'number'] }
+                ]
+              }
+            }
+          },
+          {
+            type: 'array',
+            items: { type: ['string', 'number'] },
+            minItems: 1,
+            description: 'Top-level array of document IDs to insert into the current context (paste operation).'
           }
-        }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -127,26 +137,27 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { featureArray = [] } = request.body;
-      let documentArray = [];
+      // Support featureArray only when object body is used; default to [] for top-level array mode
+      const featureArray = Array.isArray(request.body) ? [] : (request.body.featureArray || []);
 
-      if (request.body.documentIds) {
-        // Handle paste operation (existing IDs)
-        const idArray = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
-        // Fetch raw docs (unparsed) from database so we can re-insert them
-        const fetchedDocs = await Promise.all(
-          idArray.map(async (id) => await context.getDocumentById(request.user.id, id, { parse: false }))
-        );
-        documentArray = fetchedDocs.filter(Boolean);
+      // Determine the payload to insert: can be IDs or full documents
+      let itemsToInsert;
+      if (Array.isArray(request.body)) {
+        // Top-level array of IDs
+        itemsToInsert = request.body;
+      } else if (request.body.documentIds) {
+        // IDs provided in object form
+        itemsToInsert = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
       } else if (request.body.documents) {
-        // Normal create workflow
-        documentArray = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+        // Full documents provided
+        itemsToInsert = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
       } else {
-        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
+        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds", or be an array of IDs');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
+      // Directly pass IDs or documents to SynapsD; IDs are now supported natively
+      const result = await context.insertDocumentArray(request.user.id, itemsToInsert, featureArray);
 
       const response = new ResponseObject().created(result, 'Documents inserted successfully');
       return reply.code(response.statusCode).send(response.getResponse());
