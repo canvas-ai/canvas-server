@@ -87,23 +87,59 @@ export default async function documentRoutes(fastify, options) {
     onRequest: [fastify.authenticate],
     schema: {
       body: {
-        type: 'object',
-        required: ['documents'],
-        properties: {
-          featureArray: {
-            type: 'array',
-            items: { type: 'string' }
-          },
-          documents: {
-            oneOf: [
-              { type: 'object' },
-              {
+        oneOf: [
+          {
+            type: 'object',
+            properties: {
+              featureArray: {
                 type: 'array',
-                items: { type: 'object' }
+                items: { type: 'string' }
+              },
+              // Original direct insert (full docs)
+              documents: {
+                oneOf: [
+                  { type: 'object' },
+                  {
+                    type: 'array',
+                    items: { type: 'object' }
+                  }
+                ]
+              },
+              // New: paste existing docs by ID
+              documentIds: {
+                anyOf: [
+                  {
+                    type: 'array',
+                    items: {
+                      anyOf: [
+                        { type: 'string' },
+                        { type: 'number' }
+                      ]
+                    },
+                    minItems: 1
+                  },
+                  { type: 'string' },
+                  { type: 'number' }
+                ]
               }
+            },
+            anyOf: [
+              { required: ['documents'] },
+              { required: ['documentIds'] }
             ]
+          },
+          {
+            type: 'array',
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' }
+              ]
+            },
+            minItems: 1,
+            description: 'Top-level array of document IDs to insert into the current context (paste operation).'
           }
-        }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -116,11 +152,27 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { featureArray = [], documents } = request.body;
-      // Convert single document to array if needed
-      const documentArray = Array.isArray(documents) ? documents : [documents];
+      // Support featureArray only when object body is used; default to [] for top-level array mode
+      const featureArray = Array.isArray(request.body) ? [] : (request.body.featureArray || []);
 
-      const result = await context.insertDocumentArray(request.user.id, documentArray, featureArray);
+      // Determine the payload to insert: can be IDs or full documents
+      let itemsToInsert;
+      if (Array.isArray(request.body)) {
+        // Top-level array of IDs
+        itemsToInsert = request.body;
+      } else if (request.body.documentIds) {
+        // IDs provided in object form
+        itemsToInsert = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else if (request.body.documents) {
+        // Full documents provided
+        itemsToInsert = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else {
+        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds", or be an array of IDs');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      // Directly pass IDs or documents to SynapsD; IDs are now supported natively
+      const result = await context.insertDocumentArray(request.user.id, itemsToInsert, featureArray);
 
       const response = new ResponseObject().created(result, 'Documents inserted successfully');
       return reply.code(response.statusCode).send(response.getResponse());
@@ -210,9 +262,28 @@ export default async function documentRoutes(fastify, options) {
               }
             }
           },
+          documentIds: {
+            anyOf: [
+              {
+                type: 'array',
+                items: {
+                  anyOf: [
+                    { type: 'string' },
+                    { type: 'number' }
+                  ]
+                },
+                minItems: 1
+              },
+              { type: 'string' },
+              { type: 'number' }
+            ]
+          },
           featureArray: { type: 'array', items: { type: 'string' } }
         },
-        required: ['documents']
+        anyOf: [
+          { required: ['documents'] },
+          { required: ['documentIds'] }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -226,13 +297,20 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { documents, featureArray = [] } = request.body;
-      if (!Array.isArray(documents)) {
-        const response = new ResponseObject().badRequest('Request body must contain an array of documents.');
+      const { featureArray = [] } = request.body;
+
+      // Determine what to update: either documents or documentIds
+      let itemsToUpdate;
+      if (request.body.documents) {
+        itemsToUpdate = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else if (request.body.documentIds) {
+        itemsToUpdate = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else {
+        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const result = await context.updateDocumentArray(request.user.id, documents, featureArray);
+      const result = await context.updateDocumentArray(request.user.id, itemsToUpdate, featureArray);
 
       const response = new ResponseObject().updated(result, 'Documents updated successfully');
         return reply.code(response.statusCode).send(response.getResponse());
@@ -255,7 +333,12 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to delete directly from the database."
       }
@@ -303,7 +386,12 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to remove from the context."
       }
@@ -514,7 +602,12 @@ export default async function documentRoutes(fastify, options) {
     schema: {
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: 'Array of document IDs to delete directly from DB (legacy endpoint)'
       }
@@ -551,7 +644,12 @@ export default async function documentRoutes(fastify, options) {
         type: 'object',
         required: ['docId'],
         properties: {
-          docId: { type: ['string', 'number'] }
+          docId: {
+            anyOf: [
+              { type: 'string' },
+              { type: 'number' }
+            ]
+          }
         }
       }
     }

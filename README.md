@@ -158,3 +158,10 @@ Canvas Server supports two types of authentication:
 
 - https://avahi.org/
 - https://www.npmjs.com/package/mdns
+
+### CRDT
+
+- https://automerge.org/blog/automerge-3/
+- https://jsonjoy.com/
+- https://docs.yjs.dev/
+

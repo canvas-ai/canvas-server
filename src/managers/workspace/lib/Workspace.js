@@ -714,10 +714,10 @@ class Workspace extends EventEmitter {
         return this.tree?.getLayerById(id);
     }
 
-    renameLayer(currentName, newName) {
+    renameLayer(nameOrId, newName) {
         this.#ensureActiveForTreeOp('renameLayer');
-        const success = this.tree.renameLayer(currentName, newName);
-        return this.#emitTreeUpdateAndRespond('renameLayer', { oldName: currentName, newName }, success);
+        const success = this.tree.renameLayer(nameOrId, newName);
+        return this.#emitTreeUpdateAndRespond('renameLayer', { oldNameOrId: nameOrId, newName }, success);
     }
 
     updateLayer(nameOrId, updates) {

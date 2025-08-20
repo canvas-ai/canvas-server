@@ -150,7 +150,7 @@ export default async function workspaceDotfilesRoutes(fastify, options) {
             default: []
           },
           dotfiles: {
-            oneOf: [
+            anyOf: [
               { type: 'object' },
               { type: 'array', items: { type: 'object' } }
             ]

@@ -69,27 +69,65 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         }
       },
       body: {
-        type: 'object',
-        required: ['documents'],
-        properties: {
-          contextSpec: { type: 'string', default: '/' },
-          featureArray: {
-            type: 'array',
-            items: { type: 'string' },
-            default: []
+        oneOf: [
+          {
+            type: 'object',
+            properties: {
+              contextSpec: { type: 'string' },
+              featureArray: {
+                type: 'array',
+                items: { type: 'string' }
+              },
+              documents: {
+                oneOf: [
+                  { type: 'object' },
+                  {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['schema', 'data'],
+                      properties: {
+                        schema: { type: 'string' },
+                        data: { type: 'object' }
+                      }
+                    }
+                  }
+                ]
+              },
+              documentIds: {
+                anyOf: [
+                  {
+                    type: 'array',
+                    items: {
+                      anyOf: [
+                        { type: 'string' },
+                        { type: 'number' }
+                      ]
+                    },
+                    minItems: 1
+                  },
+                  { type: 'string' },
+                  { type: 'number' }
+                ]
+              }
+            },
+            anyOf: [
+              { required: ['documents'] },
+              { required: ['documentIds'] }
+            ]
           },
-          documents: {
+          {
             type: 'array',
             items: {
-              type: 'object',
-              required: ['schema', 'data'],
-              properties: {
-                schema: { type: 'string' },
-                data: { type: 'object' }
-              }
-            }
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' }
+              ]
+            },
+            minItems: 1,
+            description: 'Top-level array of document IDs to insert into the workspace (paste operation).'
           }
-        }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -105,10 +143,27 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
+      // Normalize input: allow top-level array of IDs, or object with documentIds/documents
+      const isTopLevelArray = Array.isArray(request.body);
+      const contextSpec = isTopLevelArray ? '/' : (request.body.contextSpec || '/');
+      const featureArray = isTopLevelArray ? [] : (request.body.featureArray || []);
+
+      let itemsToInsert;
+      if (isTopLevelArray) {
+        itemsToInsert = request.body; // IDs
+      } else if (request.body.documentIds) {
+        itemsToInsert = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else if (request.body.documents) {
+        itemsToInsert = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else {
+        const responseObject = new ResponseObject().badRequest('Body must include either "documents" or "documentIds", or be an array of IDs');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
       const documents = await workspace.insertDocumentArray(
-        request.body.documents,
-        request.body.contextSpec,
-        request.body.featureArray
+        itemsToInsert,
+        contextSpec,
+        featureArray
       );
       const responseObject = new ResponseObject().created(documents, 'Documents inserted successfully');
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -244,7 +299,6 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'object',
-        required: ['documents'],
         properties: {
           contextSpec: { type: 'string', default: '/' },
           featureArray: {
@@ -262,8 +316,28 @@ export default async function workspaceDocumentRoutes(fastify, options) {
                 data: { type: 'object' }
               }
             }
+          },
+          documentIds: {
+            anyOf: [
+              {
+                type: 'array',
+                items: {
+                  anyOf: [
+                    { type: 'string' },
+                    { type: 'number' }
+                  ]
+                },
+                minItems: 1
+              },
+              { type: 'string' },
+              { type: 'number' }
+            ]
           }
-        }
+        },
+        anyOf: [
+          { required: ['documents'] },
+          { required: ['documentIds'] }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -279,7 +353,18 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const success = await workspace.updateDocumentArray(request.body.documents);
+      // Determine what to update: either documents or documentIds
+      let itemsToUpdate;
+      if (request.body.documents) {
+        itemsToUpdate = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else if (request.body.documentIds) {
+        itemsToUpdate = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else {
+        const responseObject = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const success = await workspace.updateDocumentArray(itemsToUpdate);
       if (!success) {
         const responseObject = new ResponseObject().badRequest('Failed to update documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -318,7 +403,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to delete from the workspace."
       }
@@ -377,7 +467,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to remove from the workspace."
       }

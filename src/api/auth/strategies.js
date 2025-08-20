@@ -3,6 +3,7 @@
 import authService from './service.js';
 import imapAuthStrategy from './imap-strategy.js';
 import createError from '@fastify/error';
+import { authService as _authService } from './service.js';
 import ResponseObject from '../ResponseObject.js';
 
 // Export the auth service and strategies
@@ -435,21 +436,54 @@ export async function login(email, password, userManager, strategy = 'auto') {
  * @returns {Promise<Object>} - Created user and verification token
  */
 export async function register(userData, userManager) {
+  // Validate password FIRST to avoid creating a user if it fails policy
+  try {
+    await authService.validatePasswordComplexity(userData.password);
+  } catch (error) {
+    return {
+      success: false,
+      message: error?.message || 'Password does not meet complexity requirements',
+      details: error?.details || undefined,
+    };
+  }
+
   // Create user
+  const requireVerification = _authService.isEmailVerificationRequired();
   const user = await userManager.createUser({
     name: userData.name,
     email: userData.email,
     // firstName: userData.firstName,
     // lastName: userData.lastName,
-    userType: 'user', // Default to regular user
-    status: 'active' // For production use this would be set to 'pending' awaiting email verification
+    userType: 'user',
+    status: requireVerification ? 'pending' : 'active'
   });
 
-  // Set password
-  await authService.setPassword(user.id, userData.password);
+  // Set password with rollback on failure
+  try {
+    await authService.setPassword(user.id, userData.password);
+  } catch (error) {
+    // Best-effort rollback to avoid leaving a partially created user
+    try {
+      await userManager.deleteUser(user.id);
+    } catch (_) {
+      // ignore rollback errors
+    }
 
-  // Create verification token
-  const verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+    // Return validation error in a structured way so the route can respond 400
+    return {
+      success: false,
+      message: error?.message || 'Password does not meet complexity requirements',
+      details: error?.details || undefined,
+    };
+  }
+
+  // Create verification token (non-fatal if this fails)
+  let verificationToken;
+  try {
+    verificationToken = await authService.createEmailVerificationToken(user.id, user.email);
+  } catch (_) {
+    verificationToken = undefined;
+  }
 
   return {
     success: true,
@@ -490,6 +524,39 @@ export async function verifyEmail(token, userManager) {
   });
 
   return updatedUser;
+}
+
+/**
+ * Request email verification for a user by email address
+ * @param {string} email - User email
+ * @param {Object} userManager - User manager instance
+ * @returns {Promise<void>}
+ */
+export async function requestEmailVerification(email, userManager) {
+  if (!email) return null;
+  let user;
+  try {
+    user = await userManager.getUserByEmail(email);
+  } catch (_) {
+    // Do not reveal user existence
+    return null;
+  }
+  if (!user) return null;
+
+  // Remove any existing verification tokens so we can issue a fresh one
+  try {
+    const tokens = await authService.listTokens(user.id);
+    for (const t of tokens) {
+      if (t?.type === 'verification' && t?.name === 'Email Verification') {
+        await authService.deleteToken(user.id, t.id);
+      }
+    }
+  } catch (_) {
+    // Best effort cleanup; continue even if this fails
+  }
+
+  const token = await authService.createEmailVerificationToken(user.id, user.email);
+  return { user, token };
 }
 
 /**

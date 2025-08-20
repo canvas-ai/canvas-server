@@ -2,6 +2,7 @@
 
 // Core dependencies
 import path from 'path';
+import os from 'os';
 import { existsSync } from 'fs';
 import * as fsPromises from 'fs/promises';
 import { spawn } from 'child_process';
@@ -12,6 +13,45 @@ import logger, { createDebug } from '../../utils/log/index.js';
 const debug = createDebug('dotfile-manager');
 
 const DOTFILES_DIR = 'dotfiles.git';
+const TEMPLATE_DIRNAME = 'files'; // relative to this module directory
+
+async function spawnPromise(command, args, options = {}) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], ...options });
+        let stdout = '';
+        let stderr = '';
+        if (child.stdout) child.stdout.on('data', (d) => (stdout += d.toString()));
+        if (child.stderr) child.stderr.on('data', (d) => (stderr += d.toString()));
+        child.on('close', (code) => {
+            if (code === 0) resolve({ stdout, stderr });
+            else reject(new Error(`${command} ${args.join(' ')} failed (${code}): ${stderr || stdout}`));
+        });
+        child.on('error', reject);
+    });
+}
+
+function getModuleDir() {
+    const url = new URL(import.meta.url);
+    return path.dirname(url.pathname);
+}
+
+async function copyTemplateInto(targetDir) {
+    const moduleDir = getModuleDir();
+    const templateRoot = path.resolve(moduleDir, TEMPLATE_DIRNAME);
+    // Ensure target exists
+    await fsPromises.mkdir(targetDir, { recursive: true });
+    // Copy .gitignore template (no backward compatibility)
+    const gitignoreSrc = path.join(templateRoot, '.gitignore');
+    if (existsSync(gitignoreSrc)) {
+        const gitignoreDst = path.join(targetDir, '.gitignore');
+        await fsPromises.copyFile(gitignoreSrc, gitignoreDst);
+    }
+    // Copy .dot directory (if present)
+    const dotDirSrc = path.join(templateRoot, '.dot');
+    if (existsSync(dotDirSrc)) {
+        await fsPromises.cp(dotDirSrc, path.join(targetDir, '.dot'), { recursive: true, force: true });
+    }
+}
 
 /**
  * DotfileManager - Manages workspace-based Git repositories for dotfiles
@@ -52,7 +92,7 @@ class DotfileManager extends EventEmitter {
         return existsSync(repoPath);
     }
 
-    // Initialize bare Git repository
+    // Initialize Git repositories (bare and seed working repo)
     async initializeRepository(userId, workspaceIdOrObject, requestingUserId) {
         // Handle workspace object vs ID
         let workspace;
@@ -66,28 +106,55 @@ class DotfileManager extends EventEmitter {
         }
         const repoPath = this.#getDotfilesRepoPath(workspace);
 
-        if (existsSync(repoPath)) {
-            return { success: true, message: 'Repository already initialized', path: repoPath };
+        if (!existsSync(repoPath)) {
+            await fsPromises.mkdir(repoPath, { recursive: true });
+            // Initialize bare repository with native git
+            await spawnPromise('git', ['init', '--bare', '--initial-branch=main'], { cwd: repoPath });
+        } else {
+            // If repository already exists and has any refs, treat as initialized and skip seeding
+            let hasRefs = false;
+            try {
+                const { stdout } = await spawnPromise('git', ['show-ref'], { cwd: repoPath });
+                if (stdout && stdout.trim().length > 0) hasRefs = true;
+            } catch (err) {
+                // show-ref exits non-zero for empty repos; keep hasRefs=false
+            }
+            if (hasRefs) {
+                this.emit('repository.initialized', { userId, workspace: workspace.id, path: repoPath });
+                return { success: true, message: 'Repository already initialized', path: repoPath };
+            }
         }
 
-                await fsPromises.mkdir(repoPath, { recursive: true });
+        // Seed a working repository with template files and push to bare repo (only for empty repos)
+        const tmpWorkDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'canvas-dotfiles-'));
+        try {
+            // Initialize a non-bare repo
+            await spawnPromise('git', ['init', '--initial-branch=main'], { cwd: tmpWorkDir });
 
-        // Initialize bare repository with native git
-        const gitInit = spawn('git', ['init', '--bare', '--initial-branch=main'], {
-            cwd: repoPath,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+            // Materialize template files into working directory
+            await copyTemplateInto(tmpWorkDir);
 
-        await new Promise((resolve, reject) => {
-            gitInit.on('close', (code) => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`git init failed with code ${code}`));
-                }
-            });
-            gitInit.on('error', reject);
-        });
+            // Ensure .dot/encrypted.index exists
+            const encIndexPath = path.join(tmpWorkDir, '.dot', 'encrypted.index');
+            await fsPromises.mkdir(path.dirname(encIndexPath), { recursive: true });
+            if (!existsSync(encIndexPath)) {
+                await fsPromises.writeFile(encIndexPath, '');
+            }
+
+            // Stage and commit
+            await spawnPromise('git', ['add', '.'], { cwd: tmpWorkDir });
+            // Configure identity unconditionally (simpler)
+            await spawnPromise('git', ['config', 'user.name', 'canvas-server'], { cwd: tmpWorkDir });
+            await spawnPromise('git', ['config', 'user.email', 'noreply@canvas.local'], { cwd: tmpWorkDir });
+            await spawnPromise('git', ['commit', '-m', 'Initialize Canvas dotfiles repository'], { cwd: tmpWorkDir });
+
+            // Add bare repo as remote and push
+            await spawnPromise('git', ['remote', 'add', 'origin', repoPath], { cwd: tmpWorkDir });
+            await spawnPromise('git', ['push', '-u', 'origin', 'main'], { cwd: tmpWorkDir });
+        } finally {
+            // Cleanup temp workdir
+            try { await fsPromises.rm(tmpWorkDir, { recursive: true, force: true }); } catch (_) {}
+        }
 
         this.emit('repository.initialized', { userId, workspace: workspace.id, path: repoPath });
         return { success: true, message: 'Repository initialized successfully', path: repoPath };
