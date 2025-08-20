@@ -107,20 +107,35 @@ export default async function documentRoutes(fastify, options) {
               },
               // New: paste existing docs by ID
               documentIds: {
-                oneOf: [
+                anyOf: [
                   {
                     type: 'array',
-                    items: { type: ['string', 'number'] },
+                    items: {
+                      anyOf: [
+                        { type: 'string' },
+                        { type: 'number' }
+                      ]
+                    },
                     minItems: 1
                   },
-                  { type: ['string', 'number'] }
+                  { type: 'string' },
+                  { type: 'number' }
                 ]
               }
-            }
+            },
+            anyOf: [
+              { required: ['documents'] },
+              { required: ['documentIds'] }
+            ]
           },
           {
             type: 'array',
-            items: { type: ['string', 'number'] },
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' }
+              ]
+            },
             minItems: 1,
             description: 'Top-level array of document IDs to insert into the current context (paste operation).'
           }
@@ -247,9 +262,28 @@ export default async function documentRoutes(fastify, options) {
               }
             }
           },
+          documentIds: {
+            anyOf: [
+              {
+                type: 'array',
+                items: {
+                  anyOf: [
+                    { type: 'string' },
+                    { type: 'number' }
+                  ]
+                },
+                minItems: 1
+              },
+              { type: 'string' },
+              { type: 'number' }
+            ]
+          },
           featureArray: { type: 'array', items: { type: 'string' } }
         },
-        required: ['documents']
+        anyOf: [
+          { required: ['documents'] },
+          { required: ['documentIds'] }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -263,13 +297,20 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { documents, featureArray = [] } = request.body;
-      if (!Array.isArray(documents)) {
-        const response = new ResponseObject().badRequest('Request body must contain an array of documents.');
+      const { featureArray = [] } = request.body;
+
+      // Determine what to update: either documents or documentIds
+      let itemsToUpdate;
+      if (request.body.documents) {
+        itemsToUpdate = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else if (request.body.documentIds) {
+        itemsToUpdate = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else {
+        const response = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const result = await context.updateDocumentArray(request.user.id, documents, featureArray);
+      const result = await context.updateDocumentArray(request.user.id, itemsToUpdate, featureArray);
 
       const response = new ResponseObject().updated(result, 'Documents updated successfully');
         return reply.code(response.statusCode).send(response.getResponse());
@@ -292,7 +333,12 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to delete directly from the database."
       }
@@ -340,7 +386,12 @@ export default async function documentRoutes(fastify, options) {
       // params.id is implicitly available
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to remove from the context."
       }
@@ -551,7 +602,12 @@ export default async function documentRoutes(fastify, options) {
     schema: {
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: 'Array of document IDs to delete directly from DB (legacy endpoint)'
       }
@@ -588,7 +644,12 @@ export default async function documentRoutes(fastify, options) {
         type: 'object',
         required: ['docId'],
         properties: {
-          docId: { type: ['string', 'number'] }
+          docId: {
+            anyOf: [
+              { type: 'string' },
+              { type: 'number' }
+            ]
+          }
         }
       }
     }

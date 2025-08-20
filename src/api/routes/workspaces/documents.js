@@ -95,20 +95,35 @@ export default async function workspaceDocumentRoutes(fastify, options) {
                 ]
               },
               documentIds: {
-                oneOf: [
+                anyOf: [
                   {
                     type: 'array',
-                    items: { type: ['string', 'number'] },
+                    items: {
+                      anyOf: [
+                        { type: 'string' },
+                        { type: 'number' }
+                      ]
+                    },
                     minItems: 1
                   },
-                  { type: ['string', 'number'] }
+                  { type: 'string' },
+                  { type: 'number' }
                 ]
               }
-            }
+            },
+            anyOf: [
+              { required: ['documents'] },
+              { required: ['documentIds'] }
+            ]
           },
           {
             type: 'array',
-            items: { type: ['string', 'number'] },
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' }
+              ]
+            },
             minItems: 1,
             description: 'Top-level array of document IDs to insert into the workspace (paste operation).'
           }
@@ -306,13 +321,23 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             anyOf: [
               {
                 type: 'array',
-                items: { type: ['string', 'number'] },
+                items: {
+                  anyOf: [
+                    { type: 'string' },
+                    { type: 'number' }
+                  ]
+                },
                 minItems: 1
               },
-              { type: ['string', 'number'] }
+              { type: 'string' },
+              { type: 'number' }
             ]
           }
-        }
+        },
+        anyOf: [
+          { required: ['documents'] },
+          { required: ['documentIds'] }
+        ]
       }
     }
   }, async (request, reply) => {
@@ -328,7 +353,18 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const success = await workspace.updateDocumentArray(request.body.documents);
+      // Determine what to update: either documents or documentIds
+      let itemsToUpdate;
+      if (request.body.documents) {
+        itemsToUpdate = Array.isArray(request.body.documents) ? request.body.documents : [request.body.documents];
+      } else if (request.body.documentIds) {
+        itemsToUpdate = Array.isArray(request.body.documentIds) ? request.body.documentIds : [request.body.documentIds];
+      } else {
+        const responseObject = new ResponseObject().badRequest('Body must include either "documents" or "documentIds"');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const success = await workspace.updateDocumentArray(itemsToUpdate);
       if (!success) {
         const responseObject = new ResponseObject().badRequest('Failed to update documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
@@ -367,7 +403,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to delete from the workspace."
       }
@@ -426,7 +467,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       },
       body: {
         type: 'array',
-        items: { type: ['string', 'number'] },
+        items: {
+          anyOf: [
+            { type: 'string' },
+            { type: 'number' }
+          ]
+        },
         minItems: 1,
         description: "An array of document IDs to remove from the workspace."
       }
