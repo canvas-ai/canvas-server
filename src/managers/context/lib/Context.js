@@ -131,22 +131,26 @@ class Context extends EventEmitter {
                 this.#url = baseUrl.url;
                 this.#path = baseUrl.path;
                 this.#pathArray = baseUrl.pathArray;
+                this.#contextBitmapArray = [...baseUrl.pathArray]; // Initialize contextBitmapArray
             } else {
                 // If no workspaceId in URL, use current workspace name
                 if (!parsedUrl.workspaceId) {
                     this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                 } else if (parsedUrl.workspaceId === this.#workspace.name) {
                     // Same workspace, use as-is
                     this.#url = parsedUrl.url;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                 } else {
                     // Different workspace, store as pending for later switching
                     this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                     this.#pendingUrl = url;
                 }
             }
@@ -156,6 +160,7 @@ class Context extends EventEmitter {
             this.#url = null;
             this.#path = null;
             this.#pathArray = [];
+            this.#contextBitmapArray = [];
             throw new Error(`Failed to initialize context: ${error.message}`);
         }
 
