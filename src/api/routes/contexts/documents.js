@@ -1,6 +1,7 @@
 'use strict';
 
 import ResponseObject from '../../ResponseObject.js';
+import { parseDocumentId } from '../../../utils/documentId.js';
 import { validateUser } from '../../auth/strategies.js';
 import { resolveContextAddress } from '../../middleware/address-resolver.js';
 
@@ -384,6 +385,16 @@ export default async function documentRoutes(fastify, options) {
     onRequest: [fastify.authenticate],
     schema: {
       // params.id is implicitly available
+      querystring: {
+        type: 'object',
+        properties: {
+          featureArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          }
+        }
+      },
       body: {
         type: 'array',
         items: {
@@ -417,7 +428,17 @@ export default async function documentRoutes(fastify, options) {
       const documentIdArray = Array.isArray(request.body) ? request.body : [request.body];
 
       // Let the Context.removeDocumentArray method handle the ID validation and conversion
-      const result = await context.removeDocumentArray(request.user.id, documentIdArray);
+      const result = await context.removeDocumentArray(
+        request.user.id,
+        documentIdArray,
+        request.query.featureArray || []
+      );
+
+      // Check if any documents were successfully removed
+      if (result.failed.length > 0 && result.successful.length === 0) {
+        const response = new ResponseObject().badRequest('Failed to remove documents from context');
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
 
       const response = new ResponseObject().success(result, 'Documents removed from context successfully');
         return reply.code(response.statusCode).send(response.getResponse());
@@ -664,10 +685,12 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      // Convert docId to number if it's a string number
-      const documentId = parseInt(docId, 10);
-      if (isNaN(documentId)) {
-        const response = new ResponseObject().badRequest(`Invalid document ID: ${docId}. Must be a number.`);
+      // Parse and validate document ID
+      let documentId;
+      try {
+        documentId = parseDocumentId(docId, 'Document ID parameter');
+      } catch (error) {
+        const response = new ResponseObject().badRequest(error.message);
         return reply.code(response.statusCode).send(response.getResponse());
       }
 

@@ -10,6 +10,7 @@ const debug = createDebug('workspace-manager:workspace');
 
 // Includes
 import Db from '../../../services/synapsd/src/index.js';
+import { parseDocumentIdArray } from '../../../utils/documentId.js';
 
 // Constants
 import {
@@ -400,7 +401,10 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace is not active');
         }
 
-        const result = await this.db.removeDocumentArray(docIdArray, contextSpec, featureBitmapArray);
+        // Parse and validate document IDs
+        const numericDocumentIdArray = parseDocumentIdArray(docIdArray, 'Document ID array');
+
+        const result = await this.db.removeDocumentArray(numericDocumentIdArray, contextSpec, featureBitmapArray);
         return result;
     }
 

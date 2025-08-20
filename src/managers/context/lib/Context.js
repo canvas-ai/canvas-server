@@ -10,6 +10,7 @@ const debug = createDebug('context-manager:context');
 
 // Includes
 import Url from './Url.js';
+import { parseDocumentId, parseDocumentIdArray } from '../../../utils/documentId.js';
 
 // Constants
 const DEFAULT_BASE_URL = '/';
@@ -993,16 +994,9 @@ class Context extends EventEmitter {
         debug(`#removeDocumentArray: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
         try {
-            // Ensure all document IDs are numbers
+            // Parse and validate document IDs
             debug(`#removeDocumentArray: Converting document IDs to numbers`);
-            const numericDocumentIdArray = documentIdArray.map((id, index) => {
-                const numId = parseInt(id, 10);
-                if (isNaN(numId)) {
-                    debug(`#removeDocumentArray: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
-                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-                }
-                return numId;
-            });
+            const numericDocumentIdArray = parseDocumentIdArray(documentIdArray, 'Document ID array');
             debug(`#removeDocumentArray: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
 
             // We remove documents from the current context not from the database
@@ -1062,12 +1056,8 @@ class Context extends EventEmitter {
         }
         debug(`#deleteDocumentFromDb: Workspace and database available`);
 
-        // Ensure document ID is a number (consistent with array version)
-        const numericDocumentId = parseInt(documentId, 10);
-        if (isNaN(numericDocumentId)) {
-            debug(`#deleteDocumentFromDb: Invalid document ID conversion - original: ${documentId}, parsed: ${numericDocumentId}`);
-            throw new Error(`Invalid document ID: ${documentId}. Must be a number or a string coercible to a number.`);
-        }
+        // Parse and validate document ID
+        const numericDocumentId = parseDocumentId(documentId, 'Document ID');
         debug(`#deleteDocumentFromDb: Document ID validation passed - using: ${numericDocumentId}`);
         debug(`#deleteDocumentFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
@@ -1130,16 +1120,9 @@ class Context extends EventEmitter {
         debug(`#deleteDocumentArrayFromDb: Input validation passed - array length: ${documentIdArray.length}`);
 
         try {
-            // Ensure all document IDs are numbers (same validation as removeDocumentArray)
+            // Parse and validate document IDs
             debug(`#deleteDocumentArrayFromDb: Converting document IDs to numbers`);
-            const numericDocumentIdArray = documentIdArray.map((id, index) => {
-                const numId = parseInt(id, 10);
-                if (isNaN(numId)) {
-                    debug(`#deleteDocumentArrayFromDb: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
-                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-                }
-                return numId;
-            });
+            const numericDocumentIdArray = parseDocumentIdArray(documentIdArray, 'Document ID array');
             debug(`#deleteDocumentArrayFromDb: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
             debug(`#deleteDocumentArrayFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
