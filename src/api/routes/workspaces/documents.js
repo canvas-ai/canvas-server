@@ -429,8 +429,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
 
       // Convert array of IDs to the format workspace expects
       const documentIds = Array.isArray(request.body) ? request.body : [request.body];
-      const success = await workspace.deleteDocumentArray(documentIds);
-      if (!success) {
+      const result = await workspace.deleteDocumentArray(documentIds);
+
+      // Check if any documents were successfully deleted
+      if (result.failed.length > 0 && result.successful.length === 0) {
         const responseObject = new ResponseObject().badRequest('Failed to delete documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
