@@ -1,4 +1,44 @@
-# TODO
+# Browser extension
+
+Optional sync settings
+Sync only tabs for the current browser [toggle] -> you add client/app/browser-identity-string to the featureArray when fetching tabs
+Sync only tabs with tag: [tag] -> you add custom/tag/<tag> to both, when storing and
+
+Context tree refactor
+- Standard FS methods: Cut/Copy/Paste/Remove/Delete + MergeUp/MergeDown
+- Fix MergeUp/Down functionality @synapsd?
+
+# Server
+
+## SynapsD
+
+- Add snapshot/snapshot restore functionality
+
+## API
+
+- Fix response object mess-up! De-matriyoshka the pyaload
+- Add a workspaces/:wid/db endpoint 
+  - /stats
+  - /status
+  - /dump
+  - /snapshots
+    - /timestamp
+      - /dump
+      - /restore
+
+## Dotfile Manager
+
+- Re-think > re-work the indexing scheme
+- Simplify the CLI
+- gitea test with a push and/or pull repo config
+
+# WebUI
+
+Close tab (closing a single tab) should not deselect all previously selected items in the popup nor delete tab
+Sync selected should also not deactivate the selection, so that we can use Close selected right after sync
+
+SyncEngine: Already fetching documents for context:default - skipping duplicate request
+For fast changes of context this is a problem
 
 ## This repo
 
