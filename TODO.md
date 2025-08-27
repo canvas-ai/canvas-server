@@ -6,18 +6,58 @@ Sync only tabs with tag: [tag] -> you add custom/tag/<tag> to both, when storing
 
 Context tree refactor
 - Standard FS methods: Cut/Copy/Paste/Remove/Delete + MergeUp/MergeDown
-- Fix MergeUp/Down functionality @synapsd?
+- Cut
+- Copy
+- Paste
+- Remove
+- Delete
+- MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz)
+- MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb)
+- SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz)
+- SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb)
+
+
+It should also be possible to drag+drop documents from the document table view to the tree folders directly(copy) or drag+drop holding shift for move
+
+API routes
+
+/workspaces/:workspace_id/tree/paths/merge-up
+/workspaces/:workspace_id/tree/paths/merge-down
+/workspaces/:workspace_id/tree/paths/subtract-up
+/workspaces/:workspace_id/tree/paths/subtract-down
+
+/paths/move
+    from: string
+    to: string
+    recursive: bool
+    
+/paths/copy
+    from: string
+    to: string
+    recursive: bool
+    
+
+
+
+Generic
+- Right click on tab > Move to (Context tree for the current workspace)
+- Popup > Right click on tab entry > Move to (Context tree for the current workspace)
 
 # Server
 
+
 ## SynapsD
 
-- Add snapshot/snapshot restore functionality
+- Add backup policy, backup DB every day at 2AM server time, keep 7 days of backups(default, configurable for each workspace, config in workspace.json at each workspace path, should work on an active workspace only)
+- Add backup/restore functionality internally (full db backup/restore, we'll implement snapshoting for undo/redo ops later)
+- Add pagination support!
+- Check/Fix MergeUp/Down functionality
+- Implement subractUp/subtractDown (untick all bitmaps of layer l from all layers above or below)
 
 ## API
 
 - Fix response object mess-up! De-matriyoshka the pyaload
-- Add a workspaces/:wid/db endpoint 
+- Add a workspaces/:wid/db endpoint
   - /stats
   - /status
   - /dump
