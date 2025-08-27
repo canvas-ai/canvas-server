@@ -1,3 +1,17 @@
+We need to change the interface for Tree operations in
+
+- MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz)
+- MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb)
+- SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz)
+- SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb)
+
+And the following comsumers:
+
+- Workspace class
+- Browser extension api client
+
+
+
 # Browser extension
 
 Optional sync settings
