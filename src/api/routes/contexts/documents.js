@@ -75,7 +75,7 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully', 200, dbResult.count);
+      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully', 200, dbResult.count, dbResult.totalCount);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -569,7 +569,7 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully by abstraction', 200, dbResult.count);
+      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully by abstraction', 200, dbResult.count, dbResult.totalCount);
         return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);

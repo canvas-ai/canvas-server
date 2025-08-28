@@ -54,7 +54,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         [],
         { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
-      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents?.count ?? null);
+      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

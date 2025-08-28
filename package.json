@@ -58,7 +58,7 @@
     "zod": "^3.23.8"
   },
   "engines": {
-    "node": ">=20.0.0 <21.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "@types/socket.io-client": "^3.0.0",
