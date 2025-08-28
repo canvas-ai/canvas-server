@@ -1,3 +1,36 @@
+Add Canvas support
+  GET /contexts/:cid/canvases/foo  will create a context-bound canvas within context cid(cid.url) with ID foo
+  GET /workspaces/:wid/canvases/foo will create a unbound canvas with contextPath / (or ?contextPath=/foo/bar/baz) with ID "foo"
+
+  canvas IDs have to be unique 
+
+Add Task support
+  - Useful for episodic memory / agentic workloads and AI integration
+  - Simillar semantics as Canvas
+
+
+Context
+- /documents
+- /agents
+- /dotfiles
+    in-repo index .dot/index
+      - repoPath:type:encryption
+
+    local
+      - localPath:remotePath:type:encryption
+
+    db
+      - localPath:remotePath:type:encryption:priority
+    
+
+ctx dotfiles // ctx = /
+  ~/.bashrc -> common/shell/bashrc priority 0
+  ~/.bashrc -> mb/shell/bashrc priority 1
+
+ctx dotfiles // ctx = /work/mb
+  ~/.bashrc -> mb/shell/bashrc
+
+
 We need to change the interface for Tree operations in
 
 - MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz)
@@ -63,10 +96,15 @@ Generic
 ## SynapsD
 
 - Add backup policy, backup DB every day at 2AM server time, keep 7 days of backups(default, configurable for each workspace, config in workspace.json at each workspace path, should work on an active workspace only)
+
 - Add backup/restore functionality internally (full db backup/restore, we'll implement snapshoting for undo/redo ops later)
-- Add pagination support!
-- Check/Fix MergeUp/Down functionality
-- Implement subractUp/subtractDown (untick all bitmaps of layer l from all layers above or below)
+
+- Update mergeUp/Down + subtractUp/Down methods to use layerName, contextPath  instead of contextPath only
+
+- Add support for layer type Label -> label type does not have a bitmap and should be removed form contextSpec as its not counted
+- Ensure locked layers can not be moved/removed/deleted/renamed
+
+
 
 ## API
 
