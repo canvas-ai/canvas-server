@@ -44,56 +44,56 @@ And the following comsumers:
 - Browser extension api client
 
 
+# WebUI
 
-# Browser extension
-
-Optional sync settings
-Sync only tabs for the current browser [toggle] -> you add client/app/browser-identity-string to the featureArray when fetching tabs
-Sync only tabs with tag: [tag] -> you add custom/tag/<tag> to both, when storing and
-
-Context tree refactor
-- Standard FS methods: Cut/Copy/Paste/Remove/Delete + MergeUp/MergeDown
-- Cut
-- Copy
-- Paste
-- Remove
-- Delete
-- MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz)
-- MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb)
-- SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz)
-- SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb)
-
+We should implement a more complex tree-view + data view component resembling a full-fledged file manager.
+- Our new filemanager-like interface should support a tree view on the left and a document view on the right(we'll extend the functionality to support multiple open document views for different tree paths later)
+- There should be a right side-pane with filters for the current schemas (this we already have, we just nead to streamline it), with additional input fields for custom tags, we should also create a for-now empty tab for Filters
+- Interface should support standard FS methods: Cut/Copy/Paste/Remove/Delete + in the tree view MergeUp/MergeDown, SubtractUp/SubtractDown
+  - Cut
+  - Copy
+  - Paste
+  - Remove
+  - Delete
+  - MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz), API Route /workspaces/:workspace_id/tree/paths/merge-up
+  - MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb), API Route /workspaces/:workspace_id/tree/paths/merge-down
+  - SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz), API Route /workspaces/:workspace_id/tree/paths/subtract-up
+  - SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb), API Route /workspaces/:workspace_id/tree/paths/subtract-down
 
 It should also be possible to drag+drop documents from the document table view to the tree folders directly(copy) or drag+drop holding shift for move
 
-API routes
-
-/workspaces/:workspace_id/tree/paths/merge-up
-/workspaces/:workspace_id/tree/paths/merge-down
-/workspaces/:workspace_id/tree/paths/subtract-up
-/workspaces/:workspace_id/tree/paths/subtract-down
-
-/paths/move
+API Routes for the currently supported operations
+/workspaces/:workspace_id/tree/paths/move
     from: string
     to: string
     recursive: bool
     
-/paths/copy
+/workspaces/:workspace_id/tree/paths/copy
     from: string
     to: string
     recursive: bool
     
 
+# Browser extension
 
+Lets pick a couple of low-hanging fruit for the browser extension codebase:
+- Close tab (closing a single tab) nor delete tab should not deselect all previously selected items in the popup/
+- Sync selected should also not deactivate the selection, so that we can use Close selected right after sync ()
 
-Generic
-- Right click on tab > Move to (Context tree for the current workspace)
-- Popup > Right click on tab entry > Move to (Context tree for the current workspace)
+Optional sync settings
+- "Sync only tabs for the current browser [toggle]" -> you add client/app/browser-identity-string to the featureArray when fetching tabs
+- "Sync only tabs with tag: [tag]" -> you add custom/tag/<tag> to both, when storing and
+
+Generic UX improvements(if possible)
+- Right click on a browser tab in browser should support a context options "Insert to Canvas" - submenu should be the context tree for the current workspace
+- In the popup, same as above, right click on tab entry should also support "Insert to" with a context tree for the current workspace
 
 # Server
 
 
 ## SynapsD
+
+- 
 
 - Add backup policy, backup DB every day at 2AM server time, keep 7 days of backups(default, configurable for each workspace, config in workspace.json at each workspace path, should work on an active workspace only)
 
@@ -123,14 +123,6 @@ Generic
 - Re-think > re-work the indexing scheme
 - Simplify the CLI
 - gitea test with a push and/or pull repo config
-
-# WebUI
-
-Close tab (closing a single tab) should not deselect all previously selected items in the popup nor delete tab
-Sync selected should also not deactivate the selection, so that we can use Close selected right after sync
-
-SyncEngine: Already fetching documents for context:default - skipping duplicate request
-For fast changes of context this is a problem
 
 ## This repo
 

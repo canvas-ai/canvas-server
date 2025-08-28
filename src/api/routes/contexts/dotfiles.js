@@ -43,7 +43,10 @@ export default async function contextDotfileRoutes(fastify, options) {
             default: []
           },
           includeServerContext: { type: 'boolean' },
-          includeClientContext: { type: 'boolean' }
+          includeClientContext: { type: 'boolean' },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -61,7 +64,10 @@ export default async function contextDotfileRoutes(fastify, options) {
 
       const dbResult = await context.listDocuments(request.user.id, derivedFeatureArray, request.query.filterArray || [], {
         includeServerContext: request.query.includeServerContext,
-        includeClientContext: request.query.includeClientContext
+        includeClientContext: request.query.includeClientContext,
+        limit: request.query.limit,
+        offset: request.query.offset,
+        page: request.query.page
       });
 
       if (dbResult.error) {
@@ -70,7 +76,7 @@ export default async function contextDotfileRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success(dbResult.data, 'Dotfiles retrieved successfully', 200, dbResult.count);
+      const response = new ResponseObject().success(dbResult, 'Dotfiles retrieved successfully', 200, dbResult.count);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);

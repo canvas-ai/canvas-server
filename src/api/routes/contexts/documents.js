@@ -41,7 +41,10 @@ export default async function documentRoutes(fastify, options) {
             items: { type: 'string' }
           },
           includeServerContext: { type: 'boolean' },
-          includeClientContext: { type: 'boolean' }
+          includeClientContext: { type: 'boolean' },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -58,7 +61,10 @@ export default async function documentRoutes(fastify, options) {
       const { featureArray = [], filterArray = [] } = request.query;
       const options = {
         includeServerContext: request.query.includeServerContext,
-        includeClientContext: request.query.includeClientContext
+        includeClientContext: request.query.includeClientContext,
+        limit: request.query.limit,
+        offset: request.query.offset,
+        page: request.query.page
       };
 
       const dbResult = await context.listDocuments(request.user.id, featureArray, filterArray, options);
@@ -69,7 +75,7 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success(dbResult.data, 'Documents retrieved successfully', 200, dbResult.count);
+      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully', 200, dbResult.count);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -526,7 +532,9 @@ export default async function documentRoutes(fastify, options) {
           },
           includeServerContext: { type: 'boolean' },
           includeClientContext: { type: 'boolean' },
-          limit: { type: 'integer' }
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -544,11 +552,13 @@ export default async function documentRoutes(fastify, options) {
 
       // Create derived feature array with abstraction path and merge with additional features
       const derivedFeatureArray = [`data/abstraction/${abstraction}`, ...request.query.featureArray];
-      const { filterArray = [], includeServerContext, includeClientContext, limit } = request.query;
+      const { filterArray = [], includeServerContext, includeClientContext, limit, offset, page } = request.query;
       const options = {
         includeServerContext,
         includeClientContext,
-        limit
+        limit,
+        offset,
+        page
       };
 
       const dbResult = await context.listDocuments(request.user.id, derivedFeatureArray, filterArray, options);
@@ -559,7 +569,7 @@ export default async function documentRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success({ documents: dbResult.data, count: dbResult.count }, 'Documents retrieved successfully by abstraction');
+      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully by abstraction', 200, dbResult.count);
         return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
