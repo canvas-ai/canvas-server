@@ -33,10 +33,18 @@ ctx dotfiles // ctx = /work/mb
 
 We need to change the interface for Tree operations in
 
-- MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz)
-- MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb)
-- SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz)
-- SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb)
+current API
+- mergeUp(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
+- mergeDown(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
+- subtractUp(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
+- subtractDown(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
+
+new API
+- mergeUp(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
+- mergeDown(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
+- subtractUp(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
+- subtractDown(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
+
 
 And the following comsumers:
 
