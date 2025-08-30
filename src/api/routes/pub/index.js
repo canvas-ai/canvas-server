@@ -312,7 +312,7 @@ export default async function pubRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found(dbResult, 'Documents retrieved successfully from shared context', 200, dbResult.count);
+      const response = new ResponseObject().found(dbResult, 'Documents retrieved successfully from shared context', 200, dbResult.count, dbResult.totalCount);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Error in GET /users/${request.params.targetUserId}/contexts/${request.params.contextId}/documents: ${error.message}`);

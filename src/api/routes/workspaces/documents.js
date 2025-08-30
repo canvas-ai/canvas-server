@@ -258,7 +258,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             type: 'array',
             items: { type: 'string' },
             default: []
-          }
+          },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -281,9 +284,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
         derivedFeatureArray,
-        [] // empty filterArray
+        [], // empty filterArray
+        { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
-      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully');
+      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

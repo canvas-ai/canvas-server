@@ -841,8 +841,8 @@ class Context extends EventEmitter {
         // Combine them into a flat array
         const contextArray = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
 
-        // Filters are out of scope for now
-        const documents = this.#db.findDocuments(contextArray, featureArray, filterArray, options);
+        // Pass options through to enable pagination
+        const documents = await this.#db.findDocuments(contextArray, featureArray, filterArray, options);
         return documents;
     }
 
