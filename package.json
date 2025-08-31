@@ -18,11 +18,11 @@
     ".",
     "src/ui/cli",
     "src/ui/web",
-    "src/ui/browser-extension",
     "src/ui/shell",
     "src/services/synapsd",
     "src/services/neurald",
-    "src/services/stored"
+    "src/services/stored",
+    "extensions/browser-extension"
   ],
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
