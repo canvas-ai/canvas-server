@@ -285,9 +285,13 @@ class DotfileManager extends EventEmitter {
         reply.send(response);
     }
 
-    // Handle git-upload-pack requests
+        // Handle git-upload-pack requests
     async #handleUploadPack(repoPath, request, reply) {
-        reply.type('application/x-git-upload-pack-result');
+        // Set headers manually like the agent streaming implementation
+        reply.raw.writeHead(200, {
+            'Content-Type': 'application/x-git-upload-pack-result',
+            'Cache-Control': 'no-cache'
+        });
 
         const gitProcess = spawn('git', ['upload-pack', '--stateless-rpc', repoPath], {
             stdio: ['pipe', 'pipe', 'pipe']
@@ -304,8 +308,12 @@ class DotfileManager extends EventEmitter {
             debug(`upload-pack stderr: ${data.toString()}`);
         });
 
-                // Properly pipe the git process stdout to the reply
-        gitProcess.stdout.pipe(reply.raw);
+        // Stream data directly to reply.raw as it comes
+        gitProcess.stdout.on('data', (chunk) => {
+            if (!reply.raw.destroyed) {
+                reply.raw.write(chunk);
+            }
+        });
 
         // Handle process errors and completion
         gitProcess.on('error', (error) => {
@@ -317,23 +325,25 @@ class DotfileManager extends EventEmitter {
 
         gitProcess.on('close', (code) => {
             debug(`upload-pack process closed with code: ${code}`);
-            if (code !== 0) {
-                debug(`upload-pack process failed with code: ${code}`);
-                if (!reply.raw.destroyed) {
+            if (!reply.raw.destroyed) {
+                if (code !== 0) {
+                    debug(`upload-pack process failed with code: ${code}`);
                     reply.raw.destroy();
-                }
-            } else {
-                // Process completed successfully, ensure the response is properly ended
-                if (!reply.raw.destroyed) {
+                } else {
+                    // Process completed successfully, properly end the response
                     reply.raw.end();
                 }
             }
         });
     }
 
-    // Handle git-receive-pack requests
+        // Handle git-receive-pack requests
     async #handleReceivePack(repoPath, request, reply) {
-        reply.type('application/x-git-receive-pack-result');
+        // Set headers manually like the agent streaming implementation
+        reply.raw.writeHead(200, {
+            'Content-Type': 'application/x-git-receive-pack-result',
+            'Cache-Control': 'no-cache'
+        });
 
         const gitProcess = spawn('git', ['receive-pack', '--stateless-rpc', repoPath], {
             stdio: ['pipe', 'pipe', 'pipe']
@@ -350,8 +360,12 @@ class DotfileManager extends EventEmitter {
             debug(`receive-pack stderr: ${data.toString()}`);
         });
 
-                // Properly pipe the git process stdout to the reply
-        gitProcess.stdout.pipe(reply.raw);
+        // Stream data directly to reply.raw as it comes
+        gitProcess.stdout.on('data', (chunk) => {
+            if (!reply.raw.destroyed) {
+                reply.raw.write(chunk);
+            }
+        });
 
         // Handle process errors and completion
         gitProcess.on('error', (error) => {
@@ -363,14 +377,12 @@ class DotfileManager extends EventEmitter {
 
         gitProcess.on('close', (code) => {
             debug(`receive-pack process closed with code: ${code}`);
-            if (code !== 0) {
-                debug(`receive-pack process failed with code: ${code}`);
-                if (!reply.raw.destroyed) {
+            if (!reply.raw.destroyed) {
+                if (code !== 0) {
+                    debug(`receive-pack process failed with code: ${code}`);
                     reply.raw.destroy();
-                }
-            } else {
-                // Process completed successfully, ensure the response is properly ended
-                if (!reply.raw.destroyed) {
+                } else {
+                    // Process completed successfully, properly end the response
                     reply.raw.end();
                 }
             }
