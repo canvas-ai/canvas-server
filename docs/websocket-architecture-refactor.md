@@ -179,9 +179,9 @@ Remove manual event handlers in:
 - `src/managers/context/lib/Context.js` (event consistency)
 
 ### Frontend  
-- `src/ui/browser/src/general/constants-simplified.ts` (new)
-- `src/ui/browser/src/background/socket.ts` (add listeners)
-- `src/ui/browser/src/popup/listener.ts` (use new constants)
+- `extensions/browser-extensions/src/general/constants-simplified.ts` (new)
+- `extensions/browser-extensions/src/background/socket.ts` (add listeners)
+- `extensions/browser-extensions/src/popup/listener.ts` (use new constants)
 
 ### Tests
 - `tests/test-current-websocket-events.js` (verify current state) ✅
