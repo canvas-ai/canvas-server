@@ -42,10 +42,22 @@ if [ ! -f "$DOCKERFILE" ]; then
     exit 1
 fi
 
+# Check if required files exist
+if [ ! -f "package.json" ]; then
+    echo "Error: package.json not found in current directory."
+    exit 1
+fi
+
+if [ ! -f "bin/start-server.sh" ]; then
+    echo "Error: bin/start-server.sh not found."
+    exit 1
+fi
+
 # Build the Docker image
 echo "Building Docker image: $IMAGE_NAME:$IMAGE_TAG"
 echo "Using config directory: $CONFIG_DIR"
 echo "Using Dockerfile: $DOCKERFILE"
+echo "Node.js version: $(grep -o '"node": ">=[^"]*"' package.json | grep -o '[0-9]\+\.[0-9]\+')"
 
 if ! docker build -t "$IMAGE_NAME:$IMAGE_TAG" -f "$DOCKERFILE" --build-arg CONFIG_DIR="$CONFIG_DIR" .; then
     echo "Error: Docker image build failed."
@@ -53,3 +65,12 @@ if ! docker build -t "$IMAGE_NAME:$IMAGE_TAG" -f "$DOCKERFILE" --build-arg CONFI
 fi
 
 echo "Docker image $IMAGE_NAME:$IMAGE_TAG built successfully!"
+echo ""
+echo "To run the container:"
+echo "  docker run -d \\"
+echo "    -p 8001:8001 \\"
+echo "    -p 8002:8002 \\"
+echo "    -v \$(pwd)/server:/opt/canvas-server/server \\"
+echo "    -v \$(pwd)/users:/opt/canvas-server/users \\"
+echo "    --name canvas-server \\"
+echo "    $IMAGE_NAME:$IMAGE_TAG"

@@ -9,8 +9,8 @@
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
     "dev": "cross-env DEBUG=* NODE_ENV=development node ./src/init.js",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
-    "build": "npm run build -w src/ui/web && npm run build -w src/ui/browser-extension",
-    "postinstall": "npm run build -w src/ui/web && npm run build -w src/ui/browser-extension",
+    "build": "npm run build -w src/ui/web",
+    "postinstall": "npm run build -w src/ui/web",
     "lint": "eslint \"**/*.{js,ts}\"",
     "lint:fix": "eslint \"**/*.{js,ts}\" --fix"
   },
