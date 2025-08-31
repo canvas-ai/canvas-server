@@ -304,22 +304,28 @@ class DotfileManager extends EventEmitter {
             debug(`upload-pack stderr: ${data.toString()}`);
         });
 
-        // Properly pipe the git process stdout to the reply
+                // Properly pipe the git process stdout to the reply
         gitProcess.stdout.pipe(reply.raw);
 
-        // Handle process errors
+        // Handle process errors and completion
         gitProcess.on('error', (error) => {
             debug(`upload-pack process error: ${error.message}`);
-            if (!reply.sent) {
-                reply.code(500).send('Git process error');
+            if (!reply.raw.destroyed) {
+                reply.raw.destroy();
             }
         });
 
         gitProcess.on('close', (code) => {
+            debug(`upload-pack process closed with code: ${code}`);
             if (code !== 0) {
-                debug(`upload-pack process exited with code: ${code}`);
-                if (!reply.sent) {
-                    reply.code(500).send('Git process failed');
+                debug(`upload-pack process failed with code: ${code}`);
+                if (!reply.raw.destroyed) {
+                    reply.raw.destroy();
+                }
+            } else {
+                // Process completed successfully, ensure the response is properly ended
+                if (!reply.raw.destroyed) {
+                    reply.raw.end();
                 }
             }
         });
@@ -344,22 +350,28 @@ class DotfileManager extends EventEmitter {
             debug(`receive-pack stderr: ${data.toString()}`);
         });
 
-        // Properly pipe the git process stdout to the reply
+                // Properly pipe the git process stdout to the reply
         gitProcess.stdout.pipe(reply.raw);
 
-        // Handle process errors
+        // Handle process errors and completion
         gitProcess.on('error', (error) => {
             debug(`receive-pack process error: ${error.message}`);
-            if (!reply.sent) {
-                reply.code(500).send('Git process error');
+            if (!reply.raw.destroyed) {
+                reply.raw.destroy();
             }
         });
 
         gitProcess.on('close', (code) => {
+            debug(`receive-pack process closed with code: ${code}`);
             if (code !== 0) {
-                debug(`receive-pack process exited with code: ${code}`);
-                if (!reply.sent) {
-                    reply.code(500).send('Git process failed');
+                debug(`receive-pack process failed with code: ${code}`);
+                if (!reply.raw.destroyed) {
+                    reply.raw.destroy();
+                }
+            } else {
+                // Process completed successfully, ensure the response is properly ended
+                if (!reply.raw.destroyed) {
+                    reply.raw.end();
                 }
             }
         });
