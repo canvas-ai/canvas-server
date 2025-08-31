@@ -39,23 +39,21 @@ current API
 - subtractUp(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
 - subtractDown(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
 
-new API
+alternative API
 - mergeUp(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
 - mergeDown(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
 - subtractUp(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
 - subtractDown(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
 
-
-And the following comsumers:
-
-- Workspace class
-- Browser extension api client
+SynapsD methods?
+- mergeLayer(source, dst|dstArray)
+- subtractLayers(source, dst|dstArray)
 
 
 # WebUI
 
 We should implement a more complex tree-view + data view component resembling a full-fledged file manager.
-- Our new filemanager-like interface should support a tree view on the left and a document view on the right(we'll extend the functionality to support multiple open document views for different tree paths later)
+- Our update workspaces-details interface should support a tree view on the left and a document view on the right(we'll extend the functionality to support multiple open document views for different tree paths later)
 - There should be a right side-pane with filters for the current schemas (this we already have, we just nead to streamline it), with additional input fields for custom tags, we should also create a for-now empty tab for Filters
 - Interface should support standard FS methods: Cut/Copy/Paste/Remove/Delete + in the tree view MergeUp/MergeDown, SubtractUp/SubtractDown
   - Cut
@@ -63,10 +61,10 @@ We should implement a more complex tree-view + data view component resembling a 
   - Paste
   - Remove
   - Delete
-  - MergeUp (this will merge the bitmap of "foo" in /work/foo/bar/baz to bar and baz), API Route /workspaces/:workspace_id/tree/paths/merge-up
-  - MergeDown (this will merge the bitmap of "foo" in /work/mb/foo to work and mb), API Route /workspaces/:workspace_id/tree/paths/merge-down
-  - SubtractUp (subtracts the current bitmap "foo" in "/work/foo/bar/baz" from bar and baz), API Route /workspaces/:workspace_id/tree/paths/subtract-up
-  - SubtractDown (subtracts the current bitmap "foo" in "/work/mb/foo" from work and mb), API Route /workspaces/:workspace_id/tree/paths/subtract-down
+  - mergeUp(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
+  - mergeDown(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
+  - subtractUp(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
+  - subtractDown(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
 
 It should also be possible to drag+drop documents from the document table view to the tree folders directly(copy) or drag+drop holding shift for move
 
@@ -80,6 +78,7 @@ API Routes for the currently supported operations
     from: string
     to: string
     recursive: bool
+    
     
 
 # Browser extension
@@ -130,9 +129,42 @@ Optional sync settings
 
 ## Dotfile Manager
 
-- Re-think > re-work the indexing scheme
-- Simplify the CLI
-- gitea test with a push and/or pull repo config
+We need to update our CLI dotfile manager (dot.js) as follows:
+- Currently, when a dotfile is added from a computer, its copied to the locally cloned dotfile dot repo, comited and pushed, additionally a new document is created and stored the DB
+
+This is the authoritative Source → lives in the canvas-server DB with files stored/available in the cloned git repo (~/.canvas/data/.../dotfiles/). This defines what dotfiles exist and their metadata. It’s declarative.
+
+Runtime State (per-host index) → lives in ~/.canvas/db/dotfiles.json. This defines what’s currently active on this host. It’s imperative.
+
+Both, DB document and index should contain the normalized localPath($HOME/.bashrc for example) and repo-local path(common/shell/bashrc), type (file or folder) and encryption - (bool), maybe algo but we use simple aes here. 
+
+
+
+The per-host index should track only activation state
+
+Suggested Flow
+
+dot activate universe
+Pull dotfiles from workspace DB/repo.
+Walk them one-by-one, prompt y/n, update the per-host index.
+Apply symlinks/config changes accordingly.
+
+context set universe://customera/foo/bar --update-dotfiles
+Look up dotfiles in that context.
+For any conflicts (same localPath), deactivate the current one (update per-host index), activate the contextual one.
+
+When evaluating dotfiles to apply:
+Start with workspace dotfiles (from DB/repo).
+Apply per-host active state (from ~/.canvas/db/dotfiles.json).
+Apply context overrides (runtime decision, not persisted globally).
+
+---
+
+
+
+DB
+ - dotfile
+ - 
 
 ## This repo
 
