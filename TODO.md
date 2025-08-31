@@ -33,87 +33,7 @@ ctx dotfiles // ctx = /work/mb
 
 We need to change the interface for Tree operations in
 
-current API
-- mergeUp(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
-- mergeDown(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
-- subtractUp(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
-- subtractDown(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
-
-alternative API
-- mergeUp(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
-- mergeDown(layerName, contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
-- subtractUp(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
-- subtractDown(layerName, contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
-
-SynapsD methods?
-- mergeLayer(source, dst|dstArray)
-- subtractLayers(source, dst|dstArray)
-
-
-# WebUI
-
-We should implement a more complex tree-view + data view component resembling a full-fledged file manager.
-- Our update workspaces-details interface should support a tree view on the left and a document view on the right(we'll extend the functionality to support multiple open document views for different tree paths later)
-- There should be a right side-pane with filters for the current schemas (this we already have, we just nead to streamline it), with additional input fields for custom tags, we should also create a for-now empty tab for Filters
-- Interface should support standard FS methods: Cut/Copy/Paste/Remove/Delete + in the tree view MergeUp/MergeDown, SubtractUp/SubtractDown
-  - Cut
-  - Copy
-  - Paste
-  - Remove
-  - Delete
-  - mergeUp(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmaps "bar" and "baz"
-  - mergeDown(contextPath): merge the bitmap of layer "foo" in context path "/work/foo/bar/baz" to bitmap "work"
-  - subtractUp(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmaps "bar" and "baz"
-  - subtractDown(contextPath): subtract the bitmap of layer "foo" in context path "/work/foo/bar/baz" from bitmap "work"
-
-It should also be possible to drag+drop documents from the document table view to the tree folders directly(copy) or drag+drop holding shift for move
-
-API Routes for the currently supported operations
-/workspaces/:workspace_id/tree/paths/move
-    from: string
-    to: string
-    recursive: bool
-    
-/workspaces/:workspace_id/tree/paths/copy
-    from: string
-    to: string
-    recursive: bool
-    
-    
-
-# Browser extension
-
-Lets pick a couple of low-hanging fruit for the browser extension codebase:
-- Close tab (closing a single tab) nor delete tab should not deselect all previously selected items in the popup/
-- Sync selected should also not deactivate the selection, so that we can use Close selected right after sync ()
-
-Generic UX improvements(if possible)
-- Right click on a browser tab in browser should support a context options "Insert to Canvas" - submenu should be the context tree for the current workspace
-- In the popup, same as above, right click on tab entry should also support "Insert to" with a context tree for the current workspace
-
-Optional sync settings
-- "Sync only tabs for the current browser [toggle]" -> you add client/app/browser-identity-string to the featureArray when fetching tabs
-- "Sync only tabs with tag: [tag]" -> you add custom/tag/<tag> to both, when storing and
-
-
-
 # Server
-
-
-## SynapsD
-
-- 
-
-- Add backup policy, backup DB every day at 2AM server time, keep 7 days of backups(default, configurable for each workspace, config in workspace.json at each workspace path, should work on an active workspace only)
-
-- Add backup/restore functionality internally (full db backup/restore, we'll implement snapshoting for undo/redo ops later)
-
-- Update mergeUp/Down + subtractUp/Down methods to use layerName, contextPath  instead of contextPath only
-
-- Add support for layer type Label -> label type does not have a bitmap and should be removed form contextSpec as its not counted
-- Ensure locked layers can not be moved/removed/deleted/renamed
-
-
 
 ## API
 
@@ -160,23 +80,11 @@ Apply context overrides (runtime decision, not persisted globally).
 
 ---
 
-
-
 DB
  - dotfile
  - 
 
-## This repo
-
-- Remove unnecessary submodules, create / reuse our "canvas" repo for development across multiple modules instead, server should link to canvas-web only
-- Remove old/stale code
-- Cleanup README.md
-- Test/fix Dockerfile / docker-compose
-
 ## Architectural changes
-
-- Integrate stored into synapsd
-- Use https://unstorage.unjs.io/ instead of a custom lmdb wrapper?, in worst cases we can write a small lmdb driver for unstorage if we'll feel its justified
 
 ## Utils/config
 
@@ -206,8 +114,3 @@ Workspace config paths
 
     workspace directories relative to the workspace.json location
 ```
-
-## Global
-
-- !!! SIMPLIFY (as in, make things as simple as possible but not simpler)
-

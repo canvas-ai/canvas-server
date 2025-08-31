@@ -1,22 +1,23 @@
-# Official Node.js 20.x image as base
-FROM node:20-slim
+# Use Node.js 20 Alpine for smaller image size
+FROM node:20-alpine
 
-# Working directory
-WORKDIR /opt
-
-# Install basic dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apk add --no-cache \
     git \
     curl \
-    ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    openssl \
+    bash
 
-# Clone the repository
-RUN git clone --branch dev https://github.com/canvas-ai/canvas-server.git canvas-server
-
-# Switch workdir
+# Set working directory
 WORKDIR /opt/canvas-server
+
+# Copy package files first for better layer caching
+COPY package*.json ./
+COPY bin/ ./bin/
+
+# Copy source code
+COPY src/ ./src/
+COPY extensions/ ./extensions/
 
 # Create necessary directories
 RUN mkdir -p \
@@ -28,18 +29,32 @@ RUN mkdir -p \
     server/data \
     server/users
 
-# Update submodules
-RUN npm run update-submodules
+# Install dependencies
+RUN npm ci --only=production && npm cache clean --force
 
-# Install application dependencies
-RUN npm install
+# Build UI components
+RUN npm run build
 
-# Expose canvas-server ports
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Change ownership of the app directory
+RUN chown -R nodejs:nodejs /opt/canvas-server
+
+# Switch to non-root user
+USER nodejs
+
+# Expose ports
 EXPOSE 8001 8002
 
-# Start the server
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8001/ping || exit 1
+
+# Set entrypoint
 ENTRYPOINT ["bin/start-server.sh"]
 
-# Default command (can be overridden)
+# Default command
 CMD ["npm", "run", "start"]
 

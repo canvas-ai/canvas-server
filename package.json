@@ -1,7 +1,7 @@
 {
   "name": "canvas-server",
   "productName": "Canvas Server",
-  "version": "2.0.7",
+  "version": "2.0.9",
   "description": "Context layer on top of your unstructured universe",
   "main": "./src/init.js",
   "type": "module",
@@ -22,7 +22,7 @@
     "src/services/synapsd",
     "src/services/neurald",
     "src/services/stored",
-    "extensions/browser-extension"
+    "extensions/browser-extensions"
   ],
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
