@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Canvas Browser Extension",
+  "version": "2.0.9",
+  "description": "Seamlessly sync browser tabs with Canvas server contexts",
+
+  "permissions": [
+    "tabs",
+    "storage",
+    "contextMenus"
+  ],
+
+  "host_permissions": [
+    "*://localhost/*",
+    "*://127.0.0.1/*",
+    "<all_urls>"
+  ],
+
+  "background": {
+    "scripts": ["background.js"]
+  },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Canvas Browser Extension",
+    "default_icon": {
+      "64": "assets/icons/logo-br_64x64.png",
+      "128": "assets/icons/logo-br_128x128.png"
+    }
+  },
+
+  "icons": {
+    "64": "assets/icons/logo-br_64x64.png",
+    "128": "assets/icons/logo-br_128x128.png"
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http: https: ws: wss:; style-src 'self' 'unsafe-inline';"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["settings/settings.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "canvas-browser-extension@getcanvas.org",
+      "strict_min_version": "109.0"
+    }
+  }
+}
