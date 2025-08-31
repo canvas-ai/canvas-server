@@ -304,7 +304,25 @@ class DotfileManager extends EventEmitter {
             debug(`upload-pack stderr: ${data.toString()}`);
         });
 
-        return reply.send(gitProcess.stdout);
+        // Properly pipe the git process stdout to the reply
+        gitProcess.stdout.pipe(reply.raw);
+
+        // Handle process errors
+        gitProcess.on('error', (error) => {
+            debug(`upload-pack process error: ${error.message}`);
+            if (!reply.sent) {
+                reply.code(500).send('Git process error');
+            }
+        });
+
+        gitProcess.on('close', (code) => {
+            if (code !== 0) {
+                debug(`upload-pack process exited with code: ${code}`);
+                if (!reply.sent) {
+                    reply.code(500).send('Git process failed');
+                }
+            }
+        });
     }
 
     // Handle git-receive-pack requests
@@ -326,7 +344,25 @@ class DotfileManager extends EventEmitter {
             debug(`receive-pack stderr: ${data.toString()}`);
         });
 
-        return reply.send(gitProcess.stdout);
+        // Properly pipe the git process stdout to the reply
+        gitProcess.stdout.pipe(reply.raw);
+
+        // Handle process errors
+        gitProcess.on('error', (error) => {
+            debug(`receive-pack process error: ${error.message}`);
+            if (!reply.sent) {
+                reply.code(500).send('Git process error');
+            }
+        });
+
+        gitProcess.on('close', (code) => {
+            if (code !== 0) {
+                debug(`receive-pack process exited with code: ${code}`);
+                if (!reply.sent) {
+                    reply.code(500).send('Git process failed');
+                }
+            }
+        });
     }
 }
 
