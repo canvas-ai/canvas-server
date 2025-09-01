@@ -272,7 +272,9 @@ export default async function pubRoutes(fastify, options) {
           filterArray: { type: 'array', items: { type: 'string' } },
           includeServerContext: { type: 'boolean' },
           includeClientContext: { type: 'boolean' },
-          limit: { type: 'integer' }
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -299,8 +301,8 @@ export default async function pubRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const { featureArray = [], filterArray = [], includeServerContext, includeClientContext, limit } = request.query;
-      const options = { includeServerContext, includeClientContext, limit };
+      const { featureArray = [], filterArray = [], includeServerContext, includeClientContext, limit, offset, page } = request.query;
+      const options = { includeServerContext, includeClientContext, limit, offset, page };
 
       const dbResult = await context.listDocuments(accessingUserId, featureArray, filterArray, options);
 
@@ -310,7 +312,7 @@ export default async function pubRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().found(dbResult.data, 'Documents retrieved successfully from shared context', 200, dbResult.count);
+      const response = new ResponseObject().found(dbResult, 'Documents retrieved successfully from shared context', 200, dbResult.count, dbResult.totalCount);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(`Error in GET /users/${request.params.targetUserId}/contexts/${request.params.contextId}/documents: ${error.message}`);

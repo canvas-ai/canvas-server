@@ -1,6 +1,7 @@
 'use strict';
 
 import ResponseObject from '../../ResponseObject.js';
+import { parseDocumentId } from '../../../utils/documentId.js';
 
 /**
  * Workspace document routes handler for the API
@@ -27,7 +28,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             type: 'array',
             items: { type: 'string' },
             default: []
-          }
+          },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -46,9 +50,11 @@ export default async function workspaceDocumentRoutes(fastify, options) {
 
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
-        request.query.featureArray
+        request.query.featureArray,
+        [],
+        { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
-      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully');
+      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -252,7 +258,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             type: 'array',
             items: { type: 'string' },
             default: []
-          }
+          },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -275,9 +284,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
         derivedFeatureArray,
-        [] // empty filterArray
+        [], // empty filterArray
+        { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
-      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully');
+      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -428,8 +438,10 @@ export default async function workspaceDocumentRoutes(fastify, options) {
 
       // Convert array of IDs to the format workspace expects
       const documentIds = Array.isArray(request.body) ? request.body : [request.body];
-      const success = await workspace.deleteDocumentArray(documentIds);
-      if (!success) {
+      const result = await workspace.deleteDocumentArray(documentIds);
+
+      // Check if any documents were successfully deleted
+      if (result.failed.length > 0 && result.successful.length === 0) {
         const responseObject = new ResponseObject().badRequest('Failed to delete documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
@@ -492,8 +504,14 @@ export default async function workspaceDocumentRoutes(fastify, options) {
 
       // Convert array of IDs to the format workspace expects
       const documentIds = Array.isArray(request.body) ? request.body : [request.body];
-      const success = await workspace.removeDocumentArray(documentIds);
-      if (!success) {
+      const result = await workspace.removeDocumentArray(
+        documentIds,
+        request.query.contextSpec,
+        request.query.featureArray
+      );
+
+      // Check if any documents were successfully removed
+      if (result.failed.length > 0 && result.successful.length === 0) {
         const responseObject = new ResponseObject().badRequest('Failed to remove documents');
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
@@ -544,10 +562,12 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      // Convert docId to number if it's a string number
-      const documentId = parseInt(request.params.docId, 10);
-      if (isNaN(documentId)) {
-        const responseObject = new ResponseObject().badRequest(`Invalid document ID: ${request.params.docId}. Must be a number.`);
+      // Parse and validate document ID
+      let documentId;
+      try {
+        documentId = parseDocumentId(request.params.docId, 'Document ID parameter');
+      } catch (error) {
+        const responseObject = new ResponseObject().badRequest(error.message);
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 

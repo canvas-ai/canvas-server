@@ -1,7 +1,7 @@
 {
   "name": "canvas-server",
   "productName": "Canvas Server",
-  "version": "2.0.6",
+  "version": "2.0.9",
   "description": "Context layer on top of your unstructured universe",
   "main": "./src/init.js",
   "type": "module",
@@ -9,8 +9,8 @@
     "start": "cross-env DEBUG=canvas* node ./src/init.js",
     "dev": "cross-env DEBUG=* NODE_ENV=development node ./src/init.js",
     "update-submodules": "git submodule update --init --remote && git submodule foreach \"git add .\"",
-    "build": "npm run build -w src/ui/web && npm run build -w src/ui/browser-extension",
-    "postinstall": "npm run build -w src/ui/web && npm run build -w src/ui/browser-extension",
+    "build": "npm run build -w src/ui/web",
+    "postinstall": "npm run build -w src/ui/web",
     "lint": "eslint \"**/*.{js,ts}\"",
     "lint:fix": "eslint \"**/*.{js,ts}\" --fix"
   },
@@ -18,11 +18,11 @@
     ".",
     "src/ui/cli",
     "src/ui/web",
-    "src/ui/browser-extension",
     "src/ui/shell",
     "src/services/synapsd",
     "src/services/neurald",
-    "src/services/stored"
+    "src/services/stored",
+    "extensions/browser-extensions"
   ],
   "author": "me@idnc.sk",
   "license": "AGPL-3.0-or-later",
@@ -58,7 +58,7 @@
     "zod": "^3.23.8"
   },
   "engines": {
-    "node": ">=20.0.0 <21.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "@types/socket.io-client": "^3.0.0",

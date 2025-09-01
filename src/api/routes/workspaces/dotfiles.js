@@ -100,7 +100,10 @@ export default async function workspaceDotfilesRoutes(fastify, options) {
             type: 'array',
             items: { type: 'string' },
             default: []
-          }
+          },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+          page: { type: 'integer' }
         }
       }
     }
@@ -113,10 +116,12 @@ export default async function workspaceDotfilesRoutes(fastify, options) {
 
       const documents = await workspace.findDocuments(
         contextSpec,
-        derivedFeatureArray
+        derivedFeatureArray,
+        [], // empty filterArray
+        { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
 
-      const responseObject = new ResponseObject().found(documents, 'Dotfiles retrieved successfully');
+      const responseObject = new ResponseObject().found(documents, 'Dotfiles retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

@@ -222,8 +222,18 @@ class Server extends EventEmitter {
             debug(`Setting password for admin user ${user.id}`);
             await this.#authService.setPassword(user.id, password);
 
-            // Create API token
+            // Create API token (remove existing one if force reset)
             debug(`Creating API token for admin user ${user.id}`);
+            if (forceReset) {
+                // Find and remove existing Admin API Token
+                const existingTokens = await this.#authService.listTokens(user.id);
+                const existingAdminToken = existingTokens.find(token => token.name === 'Admin API Token');
+                if (existingAdminToken) {
+                    debug(`Removing existing Admin API Token ${existingAdminToken.id}`);
+                    await this.#authService.deleteToken(user.id, existingAdminToken.id);
+                }
+            }
+
             const apiToken = await this.#authService.createToken(user.id, {
                 name: 'Admin API Token',
                 description: 'Default admin token',

@@ -341,4 +341,90 @@ export default async function workspaceTreeRoutes(fastify, options) {
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
+
+  // Subtract layer bitmaps upwards
+  fastify.post('/paths/subtract-up', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
+
+      const success = await workspace.subtractUp(request.body.path);
+      if (!success) {
+        const responseObject = new ResponseObject().badRequest('Failed to subtract layer bitmaps upwards in workspace.');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().success(true, 'Layer bitmaps subtracted upwards successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(`Subtract up workspace error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
+      const responseObject = new ResponseObject().serverError('Failed to subtract layer bitmaps upwards');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  // Subtract layer bitmaps downwards
+  fastify.post('/paths/subtract-down', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
+
+      const success = await workspace.subtractDown(request.body.path);
+      if (!success) {
+        const responseObject = new ResponseObject().badRequest('Failed to subtract layer bitmaps downwards in workspace.');
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().success(true, 'Layer bitmaps subtracted downwards successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(`Subtract down workspace error for ID ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
+      const responseObject = new ResponseObject().serverError('Failed to subtract layer bitmaps downwards');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
 }

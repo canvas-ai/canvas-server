@@ -10,15 +10,17 @@ export default class ResponseObject {
         this.message = null;
         this.payload = null;
         this.count = null; // Initialize count property
+        this.totalCount = null; // Initialize totalCount property
     }
 
     // Success: Generic success
-    success(payload, message = 'Request successful', statusCode = 200, count = null) {
+    success(payload, message = 'Request successful', statusCode = 200, count = null, totalCount = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
         this.count = count;
+        this.totalCount = totalCount;
         return this;
     }
 
@@ -33,12 +35,13 @@ export default class ResponseObject {
     }
 
     // Read: Successful retrieval of a resource
-    found(payload, message = 'Resource found', statusCode = 200, count = null) {
+    found(payload, message = 'Resource found', statusCode = 200, count = null, totalCount = null) {
         this.status = 'success';
         this.statusCode = statusCode;
         this.message = message;
         this.payload = payload;
         this.count = count;
+        this.totalCount = totalCount;
         return this;
     }
 
@@ -133,6 +136,7 @@ export default class ResponseObject {
             message: this.message,
             payload: this.payload,
             count: this.count,
+            totalCount: this.totalCount,
         };
     }
 }

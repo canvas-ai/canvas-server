@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 services:
   app:
     build:
@@ -7,12 +7,10 @@ services:
     container_name: canvas-server
     image: canvas-server:latest
     ports:
-      - "8001:8001"
-      - "8002:8002"
-      - "8003:8003"
-      - "8004:8004"
+      - "8001:8001"  # API port
+      - "8002:8002"  # Web UI port (if different)
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-standalone}
       CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
@@ -23,8 +21,18 @@ services:
       CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
       CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
       CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
-      CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 16)}
+      CANVAS_DISABLE_WEB: ${CANVAS_DISABLE_WEB:-false}
+      CANVAS_WEB_PORT: ${CANVAS_WEB_PORT:-8001}
+      CANVAS_WEB_HOST: ${CANVAS_WEB_HOST:-0.0.0.0}
+      CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 32)}
       CANVAS_JWT_TOKEN_EXPIRY: ${CANVAS_JWT_TOKEN_EXPIRY:-7d}
     volumes:
       - ${CANVAS_SERVER_HOME:-./server}:/opt/canvas-server/server
       - ${CANVAS_USER_HOME:-./users}:/opt/canvas-server/users
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

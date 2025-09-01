@@ -238,95 +238,213 @@ class DotfileManager extends EventEmitter {
         }
     }
 
-        // Handle info/refs requests
+            // Handle info/refs requests
     async #handleInfoRefs(repoPath, request, reply) {
         const service = request.query.service;
 
-        // Set correct content type based on service
-        const contentType = service === 'git-receive-pack'
-            ? 'application/x-git-receive-pack-advertisement'
-            : 'application/x-git-upload-pack-advertisement';
+        if (!service || (service !== 'git-upload-pack' && service !== 'git-receive-pack')) {
+            return reply.code(400).send('Invalid service');
+        }
 
+        // Set correct content type based on service
+        const contentType = `application/x-${service}-advertisement`;
         reply
             .type(contentType)
-            .header('cache-control', 'no-cache');
+            .header('cache-control', 'no-cache, max-age=0, must-revalidate');
 
-        // Build proper Git protocol response
-        let response = '';
+        // Setup environment for git process
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1'
+        };
 
-        // Service announcement
-        const serviceHeader = `# service=${service}\n`;
-        const headerLength = (serviceHeader.length + 4).toString(16).padStart(4, '0');
-        response += headerLength + serviceHeader + '0000';
-
-        // Add refs if any exist
-        try {
-            const refsHeadsPath = path.join(repoPath, 'refs', 'heads');
-            if (existsSync(refsHeadsPath)) {
-                const refFiles = await fsPromises.readdir(refsHeadsPath);
-                for (const file of refFiles) {
-                    const filePath = path.join(refsHeadsPath, file);
-                    const stats = await fsPromises.stat(filePath);
-                    if (stats.isFile()) {
-                        const refContent = await fsPromises.readFile(filePath, 'utf8');
-                        const oid = refContent.trim();
-                        const refLine = `${oid} refs/heads/${file}\n`;
-                        const refLength = (refLine.length + 4).toString(16).padStart(4, '0');
-                        response += refLength + refLine;
-                    }
-                }
-            }
-        } catch (error) {
-            // Empty repository - no refs to add
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
         }
 
-        // Final terminator
-        response += '0000';
-        reply.send(response);
-    }
+        const serviceName = service.replace('git-', '');
+        const gitProcess = spawn('git', [serviceName, '--stateless-rpc', '--advertise-refs', repoPath], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
+        });
 
-    // Handle git-upload-pack requests
+        // Return a Promise that resolves when the git process completes
+        return new Promise((resolve, reject) => {
+            const chunks = [];
+            let totalSize = 0;
+
+            gitProcess.stdout.on('data', (chunk) => {
+                chunks.push(chunk);
+                totalSize += chunk.length;
+            });
+
+            gitProcess.stderr.on('data', (data) => {
+                debug(`Git ${serviceName}: ${data.toString().trim()}`);
+            });
+
+            gitProcess.on('error', (error) => {
+                debug(`Git ${serviceName} error: ${error.message}`);
+                reject(error);
+            });
+
+            gitProcess.on('close', (code) => {
+                if (code !== 0) {
+                    reply.code(500).send('Git process failed');
+                    resolve();
+                    return;
+                }
+
+                // Combine output
+                const refs = Buffer.concat(chunks, totalSize);
+
+                // Build the complete response with service header
+                const serviceHeader = `# service=${service}\n`;
+                const headerLength = (serviceHeader.length + 4).toString(16).padStart(4, '0');
+
+                // Create the final response
+                const response = Buffer.concat([
+                    Buffer.from(headerLength + serviceHeader),
+                    Buffer.from('0000'),
+                    refs
+                ]);
+
+                reply.send(response);
+                resolve();
+            });
+
+            gitProcess.stdin.end();
+        });
+    }
+                                                // Handle git-upload-pack requests
     async #handleUploadPack(repoPath, request, reply) {
-        reply.type('application/x-git-upload-pack-result');
+        // Hijack the response to prevent Fastify from interfering with binary data
+        reply.hijack();
+
+        // Write headers directly to raw response
+        reply.raw.writeHead(200, {
+            'Content-Type': 'application/x-git-upload-pack-result',
+            'Cache-Control': 'no-cache, max-age=0, must-revalidate'
+        });
+
+        // Setup environment for git process
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1',
+            'SSH_ORIGINAL_COMMAND': 'upload-pack'
+        };
+
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
+        }
 
         const gitProcess = spawn('git', ['upload-pack', '--stateless-rpc', repoPath], {
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
+        });
+
+        // Pipe git stdout directly to the raw response
+        gitProcess.stdout.pipe(reply.raw, { end: false });
+
+        gitProcess.stderr.on('data', (data) => {
+            debug(`Git upload-pack: ${data.toString().trim()}`);
         });
 
         // Handle request body
-        if (request.body && Buffer.isBuffer(request.body)) {
-            gitProcess.stdin.end(request.body);
+        if (request.body) {
+            const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
+            gitProcess.stdin.write(bodyBuffer);
+            gitProcess.stdin.end();
         } else {
             request.raw.pipe(gitProcess.stdin);
         }
 
-        gitProcess.stderr.on('data', (data) => {
-            debug(`upload-pack stderr: ${data.toString()}`);
-        });
+        // Wait for git process to complete
+        return new Promise((resolve, reject) => {
+            gitProcess.on('error', (error) => {
+                debug(`Git upload-pack error: ${error.message}`);
+                reply.raw.end();
+                reject(error);
+            });
 
-        return reply.send(gitProcess.stdout);
+            gitProcess.on('close', (code) => {
+                reply.raw.end();
+
+                if (code !== 0) {
+                    reject(new Error(`Git upload-pack failed with code ${code}`));
+                } else {
+                    resolve();
+                }
+            });
+        });
     }
 
-    // Handle git-receive-pack requests
+                                // Handle git-receive-pack requests
     async #handleReceivePack(repoPath, request, reply) {
-        reply.type('application/x-git-receive-pack-result');
+        // Hijack the response to prevent Fastify from interfering with binary data
+        reply.hijack();
+
+        // Write headers directly to raw response
+        reply.raw.writeHead(200, {
+            'Content-Type': 'application/x-git-receive-pack-result',
+            'Cache-Control': 'no-cache, max-age=0, must-revalidate'
+        });
+
+        // Setup environment for git process
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1',
+            'SSH_ORIGINAL_COMMAND': 'receive-pack'
+        };
+
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
+        }
 
         const gitProcess = spawn('git', ['receive-pack', '--stateless-rpc', repoPath], {
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
+        });
+
+        // Pipe git stdout directly to the raw response
+        gitProcess.stdout.pipe(reply.raw, { end: false });
+
+        gitProcess.stderr.on('data', (data) => {
+            debug(`Git receive-pack: ${data.toString().trim()}`);
         });
 
         // Handle request body
-        if (request.body && Buffer.isBuffer(request.body)) {
-            gitProcess.stdin.end(request.body);
+        if (request.body) {
+            const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
+            gitProcess.stdin.write(bodyBuffer);
+            gitProcess.stdin.end();
         } else {
             request.raw.pipe(gitProcess.stdin);
         }
 
-        gitProcess.stderr.on('data', (data) => {
-            debug(`receive-pack stderr: ${data.toString()}`);
-        });
+        // Wait for git process to complete
+        return new Promise((resolve, reject) => {
+            gitProcess.on('error', (error) => {
+                debug(`Git receive-pack error: ${error.message}`);
+                reply.raw.end();
+                reject(error);
+            });
 
-        return reply.send(gitProcess.stdout);
+            gitProcess.on('close', (code) => {
+                reply.raw.end();
+
+                if (code !== 0) {
+                    reject(new Error(`Git receive-pack failed with code ${code}`));
+                } else {
+                    resolve();
+                }
+            });
+        });
     }
 }
 

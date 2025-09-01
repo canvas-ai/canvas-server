@@ -10,6 +10,7 @@ const debug = createDebug('context-manager:context');
 
 // Includes
 import Url from './Url.js';
+import { parseDocumentId, parseDocumentIdArray } from '../../../utils/documentId.js';
 
 // Constants
 const DEFAULT_BASE_URL = '/';
@@ -130,22 +131,26 @@ class Context extends EventEmitter {
                 this.#url = baseUrl.url;
                 this.#path = baseUrl.path;
                 this.#pathArray = baseUrl.pathArray;
+                this.#contextBitmapArray = [...baseUrl.pathArray]; // Initialize contextBitmapArray
             } else {
                 // If no workspaceId in URL, use current workspace name
                 if (!parsedUrl.workspaceId) {
                     this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                 } else if (parsedUrl.workspaceId === this.#workspace.name) {
                     // Same workspace, use as-is
                     this.#url = parsedUrl.url;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                 } else {
                     // Different workspace, store as pending for later switching
                     this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
+                    this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                     this.#pendingUrl = url;
                 }
             }
@@ -155,6 +160,7 @@ class Context extends EventEmitter {
             this.#url = null;
             this.#path = null;
             this.#pathArray = [];
+            this.#contextBitmapArray = [];
             throw new Error(`Failed to initialize context: ${error.message}`);
         }
 
@@ -835,8 +841,8 @@ class Context extends EventEmitter {
         // Combine them into a flat array
         const contextArray = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
 
-        // Filters are out of scope for now
-        const documents = this.#db.findDocuments(contextArray, featureArray, filterArray, options);
+        // Pass options through to enable pagination
+        const documents = await this.#db.findDocuments(contextArray, featureArray, filterArray, options);
         return documents;
     }
 
@@ -993,16 +999,9 @@ class Context extends EventEmitter {
         debug(`#removeDocumentArray: Context bitmap array: ${JSON.stringify(this.#contextBitmapArray)}`);
 
         try {
-            // Ensure all document IDs are numbers
+            // Parse and validate document IDs
             debug(`#removeDocumentArray: Converting document IDs to numbers`);
-            const numericDocumentIdArray = documentIdArray.map((id, index) => {
-                const numId = parseInt(id, 10);
-                if (isNaN(numId)) {
-                    debug(`#removeDocumentArray: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
-                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-                }
-                return numId;
-            });
+            const numericDocumentIdArray = parseDocumentIdArray(documentIdArray, 'Document ID array');
             debug(`#removeDocumentArray: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
 
             // We remove documents from the current context not from the database
@@ -1062,12 +1061,8 @@ class Context extends EventEmitter {
         }
         debug(`#deleteDocumentFromDb: Workspace and database available`);
 
-        // Ensure document ID is a number (consistent with array version)
-        const numericDocumentId = parseInt(documentId, 10);
-        if (isNaN(numericDocumentId)) {
-            debug(`#deleteDocumentFromDb: Invalid document ID conversion - original: ${documentId}, parsed: ${numericDocumentId}`);
-            throw new Error(`Invalid document ID: ${documentId}. Must be a number or a string coercible to a number.`);
-        }
+        // Parse and validate document ID
+        const numericDocumentId = parseDocumentId(documentId, 'Document ID');
         debug(`#deleteDocumentFromDb: Document ID validation passed - using: ${numericDocumentId}`);
         debug(`#deleteDocumentFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 
@@ -1130,16 +1125,9 @@ class Context extends EventEmitter {
         debug(`#deleteDocumentArrayFromDb: Input validation passed - array length: ${documentIdArray.length}`);
 
         try {
-            // Ensure all document IDs are numbers (same validation as removeDocumentArray)
+            // Parse and validate document IDs
             debug(`#deleteDocumentArrayFromDb: Converting document IDs to numbers`);
-            const numericDocumentIdArray = documentIdArray.map((id, index) => {
-                const numId = parseInt(id, 10);
-                if (isNaN(numId)) {
-                    debug(`#deleteDocumentArrayFromDb: Invalid document ID at index ${index} - original: ${id}, parsed: ${numId}`);
-                    throw new Error(`Invalid document ID: ${id}. Must be a number or a string coercible to a number.`);
-                }
-                return numId;
-            });
+            const numericDocumentIdArray = parseDocumentIdArray(documentIdArray, 'Document ID array');
             debug(`#deleteDocumentArrayFromDb: Document ID conversion successful - using: ${JSON.stringify(numericDocumentIdArray)}`);
             debug(`#deleteDocumentArrayFromDb: Context pathArray: ${JSON.stringify(this.#pathArray)}`);
 

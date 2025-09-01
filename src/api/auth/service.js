@@ -184,21 +184,65 @@ class AuthService {
   }
 
   /**
-   * Generate a secure random password
+   * Generate a secure random password that meets complexity requirements
    * @param {number} length - Password length
    * @returns {string} - Generated password
    */
   generateSecurePassword(length = 12) {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?@%&*()_+-';
+    const policy = this.getPasswordPolicy();
+    const minLength = Math.max(length, policy.minLength);
+    
+    // Character sets for each requirement
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!?@%&*()_+-';
+    
     let password = '';
-    const randomBytes = crypto.randomBytes(length);
-
-    for (let i = 0; i < length; i++) {
-      const index = randomBytes[i] % chars.length;
-      password += chars[index];
+    const requiredChars = [];
+    
+    // Add required characters first
+    if (policy.requireLowercase) {
+      const char = lowercase[crypto.randomInt(lowercase.length)];
+      requiredChars.push(char);
+      password += char;
     }
-
-    return password;
+    
+    if (policy.requireUppercase) {
+      const char = uppercase[crypto.randomInt(uppercase.length)];
+      requiredChars.push(char);
+      password += char;
+    }
+    
+    if (policy.requireNumbers) {
+      const char = numbers[crypto.randomInt(numbers.length)];
+      requiredChars.push(char);
+      password += char;
+    }
+    
+    if (policy.requireSpecialChars) {
+      const char = special[crypto.randomInt(special.length)];
+      requiredChars.push(char);
+      password += char;
+    }
+    
+    // Fill remaining length with random characters from all sets
+    const allChars = lowercase + uppercase + numbers + special;
+    const remainingLength = minLength - password.length;
+    
+    for (let i = 0; i < remainingLength; i++) {
+      const char = allChars[crypto.randomInt(allChars.length)];
+      password += char;
+    }
+    
+    // Shuffle the password to avoid predictable patterns
+    const passwordArray = password.split('');
+    for (let i = passwordArray.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [passwordArray[i], passwordArray[j]] = [passwordArray[j], passwordArray[i]];
+    }
+    
+    return passwordArray.join('');
   }
 
   /**

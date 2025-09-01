@@ -44,6 +44,27 @@ check_node_version() {
     fi
 }
 
+# Function to recursively clean all node_modules directories
+clean_node_modules() {
+    log_message "Recursively cleaning all node_modules directories..."
+
+    # Find and remove all node_modules directories
+    local node_modules_dirs
+    node_modules_dirs=$(find "$CANVAS_ROOT" -type d -name "node_modules" 2>/dev/null)
+
+    if [ -n "$node_modules_dirs" ]; then
+        echo "$node_modules_dirs" | while IFS= read -r dir; do
+            if [ -d "$dir" ]; then
+                log_message "Removing: $dir"
+                rm -rf "$dir"
+            fi
+        done
+        log_message "Successfully cleaned $(echo "$node_modules_dirs" | wc -l) node_modules directories"
+    else
+        log_message "No node_modules directories found to clean"
+    fi
+}
+
 # Create log file if it doesn't exist
 touch "$LOG_FILE"
 chown "$CANVAS_USER:$CANVAS_GROUP" "$LOG_FILE"
@@ -94,8 +115,7 @@ log_message "Stopping canvas-server service..."
 systemctl stop canvas-server || log_message "Service was not running"
 
 # Clean installation
-log_message "Cleaning node_modules..."
-rm -rf "$CANVAS_ROOT/node_modules"
+clean_node_modules
 
 # Make sure permissions are correct
 log_message "Setting permissions on $CANVAS_ROOT..."

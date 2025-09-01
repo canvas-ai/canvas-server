@@ -10,6 +10,7 @@ const debug = createDebug('workspace-manager:workspace');
 
 // Includes
 import Db from '../../../services/synapsd/src/index.js';
+import { parseDocumentId, parseDocumentIdArray } from '../../../utils/documentId.js';
 
 // Constants
 import {
@@ -19,33 +20,6 @@ import {
 
 /**
  * Canvas Workspace
- *
- * PROPOSED: Token-Based ACL Schema
- * Instead of storing user emails, store token hashes with permissions:
- *
- * "acl": {
- *   "tokens": {
- *     "sha256:abc123...": {
- *       "permissions": ["read", "write"],
- *       "description": "John's home laptop",
- *       "createdAt": "2024-01-01T00:00:00Z",
- *       "expiresAt": null
- *     },
- *     "sha256:def456...": {
- *       "permissions": ["read"],
- *       "description": "Family member token",
- *       "createdAt": "2024-01-01T00:00:00Z",
- *       "expiresAt": "2025-01-01T00:00:00Z"
- *     }
- *   }
- * }
- *
- * Benefits:
- * - Workspace is truly portable (no server user dependency)
- * - Tokens travel with clients, not workspace
- * - Fine-grained permissions per token
- * - Can revoke/rotate individual tokens
- * - Self-contained ACL within workspace.json
  */
 
 class Workspace extends EventEmitter {
@@ -400,7 +374,10 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace is not active');
         }
 
-        const result = await this.db.removeDocumentArray(docIdArray, contextSpec, featureBitmapArray);
+        // Parse and validate document IDs
+        const numericDocumentIdArray = parseDocumentIdArray(docIdArray, 'Document ID array');
+
+        const result = await this.db.removeDocumentArray(numericDocumentIdArray, contextSpec, featureBitmapArray);
         return result;
     }
 
@@ -409,7 +386,10 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace is not active');
         }
 
-        const result = await this.db.deleteDocument(docId);
+        // Parse and validate document ID
+        const numericDocumentId = parseDocumentId(docId, 'Document ID');
+
+        const result = await this.db.deleteDocument(numericDocumentId);
         return result;
     }
 
@@ -418,7 +398,10 @@ class Workspace extends EventEmitter {
             throw new Error('Workspace is not active');
         }
 
-        const result = await this.db.deleteDocumentArray(docIdArray);
+        // Parse and validate document IDs
+        const numericDocumentIdArray = parseDocumentIdArray(docIdArray, 'Document ID array');
+
+        const result = await this.db.deleteDocumentArray(numericDocumentIdArray);
         return result;
     }
 
@@ -606,6 +589,20 @@ class Workspace extends EventEmitter {
     async mergeDown(path) {
         this.#ensureActiveForTreeOp('mergeDown');
         const result = await this.tree.mergeDown(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
+    }
+
+    async subtractUp(path) {
+        this.#ensureActiveForTreeOp('subtractUp');
+        const result = await this.tree.subtractUp(path);
+        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
+        return result && !result.error && result.count > 0;
+    }
+
+    async subtractDown(path) {
+        this.#ensureActiveForTreeOp('subtractDown');
+        const result = await this.tree.subtractDown(path);
         // ContextTree returns {data, count, error} - convert to boolean for API compatibility
         return result && !result.error && result.count > 0;
     }

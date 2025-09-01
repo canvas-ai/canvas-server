@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script installs and sets up the Canvas Server on an Ubuntu system.
-# It installs Node.js, clones the Canvas Server repository, and sets up the service.
+# It installs Node.js 20, clones the Canvas Server repository, and sets up the service.
 
 # Set default values for environment variables
 CANVAS_ROOT="${CANVAS_ROOT:-/opt/canvas-server}"
@@ -61,17 +61,21 @@ handle_error() {
     exit $exit_code
 }
 
-# Function to install Node.js
+# Function to install Node.js 20
 setup_nodejs_repository() {
+    echo "Setting up Node.js $NODEJS_VERSION repository..."
+
     if ! mkdir -p /usr/share/keyrings; then
         handle_error "$?" "Failed to create /usr/share/keyrings directory"
     fi
 
+    # Clean up any existing NodeSource configurations
     rm -f /usr/share/keyrings/nodesource.gpg || true
     rm -f /etc/apt/sources.list.d/nodesource.list || true
     rm -f /etc/apt/preferences.d/nsolid || true
     rm -f /etc/apt/preferences.d/nodejs || true
 
+    # Download and import the NodeSource signing key
     if ! curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg; then
         handle_error "$?" "Failed to download and import the NodeSource signing key"
     fi
@@ -80,8 +84,10 @@ setup_nodejs_repository() {
         handle_error "$?" "Failed to set correct permissions on /usr/share/keyrings/nodesource.gpg"
     fi
 
+    # Add NodeSource repository
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODEJS_VERSION.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list > /dev/null
 
+    # Set package preferences
     echo "Package: nsolid" | tee /etc/apt/preferences.d/nsolid > /dev/null
     echo "Pin: origin deb.nodesource.com" | tee -a /etc/apt/preferences.d/nsolid > /dev/null
     echo "Pin-Priority: 600" | tee -a /etc/apt/preferences.d/nsolid > /dev/null
@@ -98,6 +104,7 @@ setup_nodejs_repository() {
 # Function to install Canvas service
 install_canvas_service() {
     if [ ! -f /etc/systemd/system/canvas-server.service ]; then
+        echo "Creating systemd service for Canvas Server..."
         cat > /etc/systemd/system/canvas-server.service <<EOF
 [Unit]
 Description=Canvas Server
@@ -112,6 +119,8 @@ ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=30
 Environment=NODE_ENV=production
+Environment=CANVAS_SERVER_HOME=$CANVAS_ROOT/server
+Environment=CANVAS_USER_HOME=$CANVAS_ROOT/users
 
 [Install]
 WantedBy=multi-user.target
@@ -119,23 +128,28 @@ EOF
 
         systemctl daemon-reload
         systemctl enable canvas-server
+        echo "Canvas Server systemd service created and enabled"
     fi
 }
 
 # Function to update Canvas Server
 update_canvas() {
+    echo "Updating Canvas Server in $CANVAS_ROOT..."
     cd $CANVAS_ROOT || handle_error "$?" "Failed to change directory to $CANVAS_ROOT"
 
     install_canvas_service
 
     if systemctl is-active --quiet canvas-server; then
+        echo "Stopping Canvas Server..."
         systemctl stop canvas-server
     fi
 
     if [ -d node_modules ]; then
+        echo "Removing old node_modules..."
         rm -rf node_modules
     fi
 
+    echo "Pulling latest changes from git (branch: $CANVAS_REPO_TARGET_BRANCH)..."
     if ! git pull origin $CANVAS_REPO_TARGET_BRANCH; then
         handle_error "$?" "Failed to pull latest changes from git"
     fi
@@ -155,13 +169,22 @@ update_canvas() {
         handle_error "$?" "Failed to install dependencies via npm as $CANVAS_USER"
     fi
 
+    echo "Building UI components as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm run build"; then
+        handle_error "$?" "Failed to build UI components"
+    fi
+
+    echo "Starting Canvas Server..."
     if ! systemctl start canvas-server; then
         handle_error "$?" "Failed to start canvas-server"
     fi
+
+    echo "Canvas Server updated and started successfully"
 }
 
 # Function to install Canvas Server
 install_canvas() {
+    echo "Installing Canvas Server to $CANVAS_ROOT..."
     if ! git clone $CANVAS_REPO_URL $CANVAS_ROOT; then
         handle_error "$?" "Failed to clone Canvas Server repository"
     fi
@@ -187,80 +210,123 @@ install_canvas() {
         handle_error "$?" "Failed to install dependencies via npm as $CANVAS_USER"
     fi
 
+    echo "Building UI components as $CANVAS_USER..."
+    if ! su -s /bin/bash "$CANVAS_USER" -c "cd $CANVAS_ROOT && npm run build"; then
+        handle_error "$?" "Failed to build UI components"
+    fi
+
     install_canvas_service
 
+    echo "Starting Canvas Server..."
     if ! systemctl start canvas-server; then
         handle_error "$?" "Failed to start canvas-server"
     fi
+
+    echo "Canvas Server installed and started successfully"
 }
 
+# Main installation process
+echo "Starting Canvas Server installation on Ubuntu..."
+
 # Ensure system is up-to-date
+echo "Updating system packages..."
 if ! apt-get update && apt-get upgrade -y; then
     handle_error "$?" "Failed to update and upgrade system"
 fi
 
 # Install system utilities
+echo "Installing system utilities..."
 if ! apt-get install -y apt-transport-https ca-certificates gnupg openssh-server bridge-utils vnstat ethtool bind9-utils bind9-dnsutils socat whois ufw curl wget git unattended-upgrades update-notifier-common postfix build-essential nano; then
     handle_error "$?" "Failed to install system utilities"
 fi
 
-# Install Node.js
+# Install Node.js 20
+echo "Checking Node.js installation..."
 if [ ! $(command -v node) ] || [ ! $(node --version | grep -o "v$NODEJS_VERSION") ]; then
+    echo "Node.js $NODEJS_VERSION not found or incorrect version. Installing..."
     setup_nodejs_repository
     if ! apt-get install -y nodejs; then
         handle_error "$?" "Failed to install Node.js"
     fi
+
+    # Verify installation
     if ! node --version; then
         handle_error "$?" "Failed to verify Node.js installation"
     fi
     if ! npm --version; then
         handle_error "$?" "Failed to verify npm installation"
     fi
+
+    echo "Node.js $NODEJS_VERSION installed successfully"
+else
+    echo "Node.js $(node --version) already installed"
 fi
 
 # Install pm2 globally
+echo "Checking PM2 installation..."
 if [ ! $(command -v pm2) ]; then
+    echo "Installing PM2 globally..."
     if ! npm install -g pm2; then
         handle_error "$?" "Failed to install pm2 globally"
     fi
+    echo "PM2 installed successfully"
+else
+    echo "PM2 already installed"
 fi
 
-# Install nginx and certbot (optional)
-# if ! apt-get install -y certbot python3-certbot-nginx nginx-full; then
-#     handle_error "$?" "Failed to install nginx and certbot"
-# fi
-
-# Certbot setup (optional)
-# if ! certbot certonly --nginx -d $WEB_FQDN --non-interactive --agree-tos -m $WEB_ADMIN_EMAIL; then
-#     handle_error "$?" "Failed to setup certbot"
-# fi
-
 # Create service group
+echo "Creating service group $CANVAS_GROUP..."
 if ! getent group $CANVAS_GROUP > /dev/null 2>&1; then
     if ! groupadd $CANVAS_GROUP; then
         handle_error "$?" "Failed to create service group $CANVAS_GROUP"
     fi
+    echo "Service group $CANVAS_GROUP created"
+else
+    echo "Service group $CANVAS_GROUP already exists"
 fi
 
 # Create service user
+echo "Creating service user $CANVAS_USER..."
 if ! id $CANVAS_USER > /dev/null 2>&1; then
     if ! useradd --comment "Canvas Server User" --system --shell /bin/false --gid $CANVAS_GROUP --home $CANVAS_ROOT $CANVAS_USER; then
         handle_error "$?" "Failed to create service user $CANVAS_USER"
     fi
+    echo "Service user $CANVAS_USER created"
+else
+    echo "Service user $CANVAS_USER already exists"
 fi
 
 # Add canvas-server path to git config
+echo "Configuring git safe directory..."
 if ! git config --global --add safe.directory $CANVAS_ROOT; then
-    handle_error "$?" "Failed to add canvas-server path to git config"
+    echo "Warning: Failed to add canvas-server path to git config"
 fi
 
 # Install or update Canvas Server
 if [ ! -d $CANVAS_ROOT ]; then
     install_canvas
 else
+    echo "Existing Canvas Server installation found. Updating..."
     update_canvas
 fi
 
+# Final status check
+echo "Checking Canvas Server status..."
 if ! systemctl status canvas-server; then
     handle_error "$?" "Failed to check canvas-server status"
 fi
+
+echo ""
+echo "Canvas Server installation/update completed successfully!"
+echo "Service status: $(systemctl is-active canvas-server)"
+echo "Service enabled: $(systemctl is-enabled canvas-server)"
+echo ""
+echo "Canvas Server should be accessible on:"
+echo "  - API: http://localhost:8001"
+echo "  - Web UI: http://localhost:8002"
+echo ""
+echo "Useful commands:"
+echo "  - Check status: systemctl status canvas-server"
+echo "  - View logs: journalctl -u canvas-server -f"
+echo "  - Restart: systemctl restart canvas-server"
+echo "  - Stop: systemctl stop canvas-server"
