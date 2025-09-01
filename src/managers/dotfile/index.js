@@ -242,150 +242,232 @@ class DotfileManager extends EventEmitter {
     async #handleInfoRefs(repoPath, request, reply) {
         const service = request.query.service;
 
+        if (!service || (service !== 'git-upload-pack' && service !== 'git-receive-pack')) {
+            return reply.code(400).send('Invalid service');
+        }
+
         // Set correct content type based on service
-        const contentType = service === 'git-receive-pack'
-            ? 'application/x-git-receive-pack-advertisement'
-            : 'application/x-git-upload-pack-advertisement';
+        const contentType = `application/x-${service}-advertisement`;
 
         reply
             .type(contentType)
-            .header('cache-control', 'no-cache');
+            .header('cache-control', 'no-cache, max-age=0, must-revalidate');
 
-        // Build proper Git protocol response
-        let response = '';
+        // Use git command to generate the refs advertisement (like Gitea does)
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1'
+        };
 
-        // Service announcement
-        const serviceHeader = `# service=${service}\n`;
-        const headerLength = (serviceHeader.length + 4).toString(16).padStart(4, '0');
-        response += headerLength + serviceHeader + '0000';
-
-        // Add refs if any exist
-        try {
-            const refsHeadsPath = path.join(repoPath, 'refs', 'heads');
-            if (existsSync(refsHeadsPath)) {
-                const refFiles = await fsPromises.readdir(refsHeadsPath);
-                for (const file of refFiles) {
-                    const filePath = path.join(refsHeadsPath, file);
-                    const stats = await fsPromises.stat(filePath);
-                    if (stats.isFile()) {
-                        const refContent = await fsPromises.readFile(filePath, 'utf8');
-                        const oid = refContent.trim();
-                        const refLine = `${oid} refs/heads/${file}\n`;
-                        const refLength = (refLine.length + 4).toString(16).padStart(4, '0');
-                        response += refLength + refLine;
-                    }
-                }
-            }
-        } catch (error) {
-            // Empty repository - no refs to add
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
         }
 
-        // Final terminator
-        response += '0000';
-        reply.send(response);
-    }
+        const serviceName = service.replace('git-', '');
+        const gitProcess = spawn('git', [serviceName, '--stateless-rpc', '--advertise-refs', repoPath], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
+        });
 
-        // Handle git-upload-pack requests
+        // Return a Promise that resolves when the git process completes
+        return new Promise((resolve, reject) => {
+            // Collect the output
+            const chunks = [];
+            let totalSize = 0;
+
+            gitProcess.stdout.on('data', (chunk) => {
+                chunks.push(chunk);
+                totalSize += chunk.length;
+            });
+
+            gitProcess.stderr.on('data', (data) => {
+                debug(`${serviceName} advertise-refs stderr: ${data.toString()}`);
+            });
+
+            gitProcess.on('error', (error) => {
+                debug(`${serviceName} advertise-refs error: ${error.message}`);
+                reject(error);
+            });
+
+            gitProcess.on('close', (code) => {
+                if (code !== 0) {
+                    reply.code(500).send('Git process failed');
+                    resolve();
+                    return;
+                }
+
+                // Combine output
+                const refs = Buffer.concat(chunks, totalSize);
+
+                // Build the complete response with service header
+                const serviceHeader = `# service=${service}\n`;
+                const headerLength = (serviceHeader.length + 4).toString(16).padStart(4, '0');
+
+                // Create the final response
+                const response = Buffer.concat([
+                    Buffer.from(headerLength + serviceHeader),
+                    Buffer.from('0000'),
+                    refs
+                ]);
+
+                reply.send(response);
+                resolve();
+            });
+
+            gitProcess.stdin.end();
+        });
+    }
+                                            // Handle git-upload-pack requests
     async #handleUploadPack(repoPath, request, reply) {
-        // Set headers manually like the agent streaming implementation
+        // CRITICAL: Hijack the response to prevent Fastify from interfering with binary data
+        reply.hijack();
+
+        // Write headers directly to raw response
         reply.raw.writeHead(200, {
             'Content-Type': 'application/x-git-upload-pack-result',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache, max-age=0, must-revalidate'
         });
+
+        // Pass environment variables to git (like Gitea does)
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1',
+            'SSH_ORIGINAL_COMMAND': 'upload-pack'
+        };
+
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
+        }
 
         const gitProcess = spawn('git', ['upload-pack', '--stateless-rpc', repoPath], {
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
         });
 
-        // Handle request body
-        if (request.body && Buffer.isBuffer(request.body)) {
-            gitProcess.stdin.end(request.body);
-        } else {
-            request.raw.pipe(gitProcess.stdin);
-        }
+        // Pipe git stdout directly to the raw response
+        gitProcess.stdout.pipe(reply.raw, { end: false });
 
         gitProcess.stderr.on('data', (data) => {
             debug(`upload-pack stderr: ${data.toString()}`);
         });
 
-        // Stream data directly to reply.raw as it comes
-        gitProcess.stdout.on('data', (chunk) => {
-            if (!reply.raw.destroyed) {
-                reply.raw.write(chunk);
-            }
-        });
+        // Handle request body
+        if (request.body) {
+            // Fastify has parsed the body
+            const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
+            debug(`Request body: ${bodyBuffer.length} bytes, isBuffer: ${Buffer.isBuffer(request.body)}`);
 
-        // Handle process errors and completion
-        gitProcess.on('error', (error) => {
-            debug(`upload-pack process error: ${error.message}`);
-            if (!reply.raw.destroyed) {
-                reply.raw.destroy();
+            // Debug first few bytes to ensure it's git protocol data
+            if (bodyBuffer.length > 0) {
+                const preview = bodyBuffer.toString('utf8', 0, Math.min(100, bodyBuffer.length));
+                debug(`Request preview: ${preview}`);
             }
-        });
 
-        gitProcess.on('close', (code) => {
-            debug(`upload-pack process closed with code: ${code}`);
-            if (!reply.raw.destroyed) {
+            gitProcess.stdin.write(bodyBuffer);
+            gitProcess.stdin.end();
+        } else {
+            debug('No request body, piping raw request');
+            request.raw.pipe(gitProcess.stdin);
+        }
+
+        // Wait for git process to complete
+        return new Promise((resolve, reject) => {
+            gitProcess.on('error', (error) => {
+                debug(`upload-pack process error: ${error.message}`);
+                reply.raw.end();
+                reject(error);
+            });
+
+            gitProcess.on('close', (code) => {
+                debug(`upload-pack completed with code: ${code}`);
+                reply.raw.end();
+
                 if (code !== 0) {
-                    debug(`upload-pack process failed with code: ${code}`);
-                    reply.raw.destroy();
+                    reject(new Error(`Git upload-pack failed with code ${code}`));
                 } else {
-                    // Process completed successfully, properly end the response
-                    reply.raw.end();
+                    resolve();
                 }
-            }
+            });
         });
     }
 
-        // Handle git-receive-pack requests
+                            // Handle git-receive-pack requests
     async #handleReceivePack(repoPath, request, reply) {
-        // Set headers manually like the agent streaming implementation
+        // CRITICAL: Hijack the response to prevent Fastify from interfering with binary data
+        reply.hijack();
+
+        // Write headers directly to raw response
         reply.raw.writeHead(200, {
             'Content-Type': 'application/x-git-receive-pack-result',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache, max-age=0, must-revalidate'
         });
+
+        // Pass environment variables to git (like Gitea does)
+        const env = {
+            ...process.env,
+            'GIT_HTTP_EXPORT_ALL': '1',
+            'SSH_ORIGINAL_COMMAND': 'receive-pack'
+        };
+
+        // Handle Git-Protocol header if present
+        const gitProtocol = request.headers['git-protocol'];
+        if (gitProtocol) {
+            env['GIT_PROTOCOL'] = gitProtocol;
+        }
 
         const gitProcess = spawn('git', ['receive-pack', '--stateless-rpc', repoPath], {
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: env
         });
 
-        // Handle request body
-        if (request.body && Buffer.isBuffer(request.body)) {
-            gitProcess.stdin.end(request.body);
-        } else {
-            request.raw.pipe(gitProcess.stdin);
-        }
+        // Pipe git stdout directly to the raw response
+        gitProcess.stdout.pipe(reply.raw, { end: false });
 
         gitProcess.stderr.on('data', (data) => {
             debug(`receive-pack stderr: ${data.toString()}`);
         });
 
-        // Stream data directly to reply.raw as it comes
-        gitProcess.stdout.on('data', (chunk) => {
-            if (!reply.raw.destroyed) {
-                reply.raw.write(chunk);
-            }
-        });
+        // Handle request body
+        if (request.body) {
+            // Fastify has parsed the body
+            const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
+            debug(`Request body: ${bodyBuffer.length} bytes, isBuffer: ${Buffer.isBuffer(request.body)}`);
 
-        // Handle process errors and completion
-        gitProcess.on('error', (error) => {
-            debug(`receive-pack process error: ${error.message}`);
-            if (!reply.raw.destroyed) {
-                reply.raw.destroy();
+            // Debug first few bytes to ensure it's git protocol data
+            if (bodyBuffer.length > 0) {
+                const preview = bodyBuffer.toString('utf8', 0, Math.min(100, bodyBuffer.length));
+                debug(`Request preview: ${preview}`);
             }
-        });
 
-        gitProcess.on('close', (code) => {
-            debug(`receive-pack process closed with code: ${code}`);
-            if (!reply.raw.destroyed) {
+            gitProcess.stdin.write(bodyBuffer);
+            gitProcess.stdin.end();
+        } else {
+            debug('No request body, piping raw request');
+            request.raw.pipe(gitProcess.stdin);
+        }
+
+        // Wait for git process to complete
+        return new Promise((resolve, reject) => {
+            gitProcess.on('error', (error) => {
+                debug(`receive-pack process error: ${error.message}`);
+                reply.raw.end();
+                reject(error);
+            });
+
+            gitProcess.on('close', (code) => {
+                debug(`receive-pack completed with code: ${code}`);
+                reply.raw.end();
+
                 if (code !== 0) {
-                    debug(`receive-pack process failed with code: ${code}`);
-                    reply.raw.destroy();
+                    reject(new Error(`Git receive-pack failed with code ${code}`));
                 } else {
-                    // Process completed successfully, properly end the response
-                    reply.raw.end();
+                    resolve();
                 }
-            }
+            });
         });
     }
 }
