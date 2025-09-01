@@ -1,8 +1,21 @@
+We need to reintroduce the importWorkspace(workspacePath, destroyExisting = bool) and exportWorkspace(nameOrID, destinationPath) methods in our workspace manager.
+
+The design should be as follows(I'm open to suggestsions here):
+- importWorkspace(workspacePath, ): Takes a extracted local folder path or a zip or tar file. If the path is a zip or tar/tar.gz we'd first extract it to a temporary folder (not sure where, maybe in users "home" but users "home" is actually his Universe workspace which would prevent the user from ever bee able to import(and replace)/export his universe) - once extracted or in case a path is supplied, we'd check if there is a workspace.json and fail if its not found or not correct. We'd rewrite the original owner with the current owner
+ID, update rootPath, configPath and the updatedAt timestamp. store the original owner and details into metadata: {}. On success we'd initialize it the same way as we do for a new workspace
+
+- exportWorkspace(nameOrId, dstPath, format = zip|tar|gzip) would first stop the workspace, then create a archive - again question is where to store it, "cache" folder which would be excluded from zip
+
+
 Add Canvas support
   GET /contexts/:cid/canvases/foo  will create a context-bound canvas within context cid(cid.url) with ID foo
   GET /workspaces/:wid/canvases/foo will create a unbound canvas with contextPath / (or ?contextPath=/foo/bar/baz) with ID "foo"
-
+  
   canvas IDs have to be unique 
+  Every canvas will setup a websocket connection to canvas-server
+  Canvas open on your tablet, another on your phone, another on your desktop and laptop can all be controllable centraly
+  $ hi lucy "can you play me that podcast we started listening to yesterday evening on the tv" # canvas ID "tv"
+  $ hi carmack "show me the last emails from that idiot yesterday on my laptop" # canvas ID "laptop"
 
 Add Task support
   - Useful for episodic memory / agentic workloads and AI integration
