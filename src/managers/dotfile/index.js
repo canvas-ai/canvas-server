@@ -238,7 +238,7 @@ class DotfileManager extends EventEmitter {
         }
     }
 
-        // Handle info/refs requests
+            // Handle info/refs requests
     async #handleInfoRefs(repoPath, request, reply) {
         const service = request.query.service;
 
@@ -248,12 +248,11 @@ class DotfileManager extends EventEmitter {
 
         // Set correct content type based on service
         const contentType = `application/x-${service}-advertisement`;
-
         reply
             .type(contentType)
             .header('cache-control', 'no-cache, max-age=0, must-revalidate');
 
-        // Use git command to generate the refs advertisement (like Gitea does)
+        // Setup environment for git process
         const env = {
             ...process.env,
             'GIT_HTTP_EXPORT_ALL': '1'
@@ -273,7 +272,6 @@ class DotfileManager extends EventEmitter {
 
         // Return a Promise that resolves when the git process completes
         return new Promise((resolve, reject) => {
-            // Collect the output
             const chunks = [];
             let totalSize = 0;
 
@@ -283,11 +281,11 @@ class DotfileManager extends EventEmitter {
             });
 
             gitProcess.stderr.on('data', (data) => {
-                debug(`${serviceName} advertise-refs stderr: ${data.toString()}`);
+                debug(`Git ${serviceName}: ${data.toString().trim()}`);
             });
 
             gitProcess.on('error', (error) => {
-                debug(`${serviceName} advertise-refs error: ${error.message}`);
+                debug(`Git ${serviceName} error: ${error.message}`);
                 reject(error);
             });
 
@@ -319,9 +317,9 @@ class DotfileManager extends EventEmitter {
             gitProcess.stdin.end();
         });
     }
-                                            // Handle git-upload-pack requests
+                                                // Handle git-upload-pack requests
     async #handleUploadPack(repoPath, request, reply) {
-        // CRITICAL: Hijack the response to prevent Fastify from interfering with binary data
+        // Hijack the response to prevent Fastify from interfering with binary data
         reply.hijack();
 
         // Write headers directly to raw response
@@ -330,7 +328,7 @@ class DotfileManager extends EventEmitter {
             'Cache-Control': 'no-cache, max-age=0, must-revalidate'
         });
 
-        // Pass environment variables to git (like Gitea does)
+        // Setup environment for git process
         const env = {
             ...process.env,
             'GIT_HTTP_EXPORT_ALL': '1',
@@ -352,38 +350,27 @@ class DotfileManager extends EventEmitter {
         gitProcess.stdout.pipe(reply.raw, { end: false });
 
         gitProcess.stderr.on('data', (data) => {
-            debug(`upload-pack stderr: ${data.toString()}`);
+            debug(`Git upload-pack: ${data.toString().trim()}`);
         });
 
         // Handle request body
         if (request.body) {
-            // Fastify has parsed the body
             const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
-            debug(`Request body: ${bodyBuffer.length} bytes, isBuffer: ${Buffer.isBuffer(request.body)}`);
-
-            // Debug first few bytes to ensure it's git protocol data
-            if (bodyBuffer.length > 0) {
-                const preview = bodyBuffer.toString('utf8', 0, Math.min(100, bodyBuffer.length));
-                debug(`Request preview: ${preview}`);
-            }
-
             gitProcess.stdin.write(bodyBuffer);
             gitProcess.stdin.end();
         } else {
-            debug('No request body, piping raw request');
             request.raw.pipe(gitProcess.stdin);
         }
 
         // Wait for git process to complete
         return new Promise((resolve, reject) => {
             gitProcess.on('error', (error) => {
-                debug(`upload-pack process error: ${error.message}`);
+                debug(`Git upload-pack error: ${error.message}`);
                 reply.raw.end();
                 reject(error);
             });
 
             gitProcess.on('close', (code) => {
-                debug(`upload-pack completed with code: ${code}`);
                 reply.raw.end();
 
                 if (code !== 0) {
@@ -395,9 +382,9 @@ class DotfileManager extends EventEmitter {
         });
     }
 
-                            // Handle git-receive-pack requests
+                                // Handle git-receive-pack requests
     async #handleReceivePack(repoPath, request, reply) {
-        // CRITICAL: Hijack the response to prevent Fastify from interfering with binary data
+        // Hijack the response to prevent Fastify from interfering with binary data
         reply.hijack();
 
         // Write headers directly to raw response
@@ -406,7 +393,7 @@ class DotfileManager extends EventEmitter {
             'Cache-Control': 'no-cache, max-age=0, must-revalidate'
         });
 
-        // Pass environment variables to git (like Gitea does)
+        // Setup environment for git process
         const env = {
             ...process.env,
             'GIT_HTTP_EXPORT_ALL': '1',
@@ -428,38 +415,27 @@ class DotfileManager extends EventEmitter {
         gitProcess.stdout.pipe(reply.raw, { end: false });
 
         gitProcess.stderr.on('data', (data) => {
-            debug(`receive-pack stderr: ${data.toString()}`);
+            debug(`Git receive-pack: ${data.toString().trim()}`);
         });
 
         // Handle request body
         if (request.body) {
-            // Fastify has parsed the body
             const bodyBuffer = Buffer.isBuffer(request.body) ? request.body : Buffer.from(request.body);
-            debug(`Request body: ${bodyBuffer.length} bytes, isBuffer: ${Buffer.isBuffer(request.body)}`);
-
-            // Debug first few bytes to ensure it's git protocol data
-            if (bodyBuffer.length > 0) {
-                const preview = bodyBuffer.toString('utf8', 0, Math.min(100, bodyBuffer.length));
-                debug(`Request preview: ${preview}`);
-            }
-
             gitProcess.stdin.write(bodyBuffer);
             gitProcess.stdin.end();
         } else {
-            debug('No request body, piping raw request');
             request.raw.pipe(gitProcess.stdin);
         }
 
         // Wait for git process to complete
         return new Promise((resolve, reject) => {
             gitProcess.on('error', (error) => {
-                debug(`receive-pack process error: ${error.message}`);
+                debug(`Git receive-pack error: ${error.message}`);
                 reply.raw.end();
                 reject(error);
             });
 
             gitProcess.on('close', (code) => {
-                debug(`receive-pack completed with code: ${code}`);
                 reply.raw.end();
 
                 if (code !== 0) {
