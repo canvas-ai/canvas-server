@@ -4,12 +4,10 @@
  * Context URL Parser
  *
  * Formats supported:
- * - workspace-name://path - Format with workspace and path
- * - workspace-name:/// - Format with workspace and root path
- * - /path or path - Simple path format (uses current workspace)
+ * - workspace://path - Format with workspace and path
+ * - /path - Simple path format (uses current workspace)
  *
- * The parser is designed to be forgiving and will clean up malformed URLs
- * rather than rejecting them.
+ * The parser enforces standard URL structure and rejects malformed URLs.
  */
 
 // Constants
@@ -104,7 +102,7 @@ class Url {
         return url;
     }
 
-    // Clean and normalize malformed URLs
+    // Clean and normalize URLs to standard format
     cleanUrl(url) {
         // Start with basic cleanup
         let cleaned = url
@@ -112,9 +110,14 @@ class Url {
             .replace(/\\/g, '/') // Standardize on forward slashes
             .replace(/ +/g, '_'); // Replace spaces with underscores
 
+        // Reject URLs with multiple :// sequences - these are malformed
+        const protocolMatches = cleaned.match(/:\/\//g);
+        if (protocolMatches && protocolMatches.length > 1) {
+            throw new Error(`Malformed URL: Multiple '://' sequences found in '${url}'`);
+        }
+
         // Handle workspace URL format
         if (cleaned.includes('://')) {
-            // Split into workspace and path parts
             const colonSlashIndex = cleaned.indexOf('://');
             let workspacePart = cleaned.substring(0, colonSlashIndex);
             let pathPart = cleaned.substring(colonSlashIndex + 3);
@@ -122,9 +125,9 @@ class Url {
             // Clean workspace part - only allow alphanumeric, underscores, and hyphens
             workspacePart = workspacePart.replace(/[^a-zA-Z0-9_-]/g, '');
 
-            // If workspace name becomes empty after cleaning, return just the path
+            // Reject if workspace name becomes empty after cleaning
             if (!workspacePart) {
-                return this.cleanPath(pathPart) || '/';
+                throw new Error(`Invalid workspace name in URL: '${url}'`);
             }
 
             // Clean path part
@@ -180,7 +183,7 @@ class Url {
     // Parse the workspace portion of the url if present
     parseWorkspace(url) {
         // Check for workspace format with protocol
-        const workspaceRegex = /^([a-zA-Z0-9_]+):\/\/(.*)$/;
+        const workspaceRegex = /^([a-zA-Z0-9_-]+):\/\/(.*)$/;
         const workspaceMatch = url.match(workspaceRegex);
 
         if (workspaceMatch && workspaceMatch.length >= 2) {
@@ -193,8 +196,8 @@ class Url {
 
     // Parse the path portion of the url
     parsePath(url) {
-        // Handle workspace format: workspace-name://path
-        const workspaceRegex = /^([a-zA-Z0-9_]+):\/\/(.*)$/;
+        // Handle workspace format: workspace://path
+        const workspaceRegex = /^([a-zA-Z0-9_-]+):\/\/(.*)$/;
         const workspaceMatch = url.match(workspaceRegex);
 
         if (workspaceMatch && workspaceMatch.length >= 3) {

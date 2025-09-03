@@ -49,11 +49,9 @@ $ docker-compose down --rmi all
 Supported ENV vars with their defaults:
 
 ```bash
-# Runtime variables (user | standalone)
-CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-"standalone"} 
-
-# Canvas server dirs
-NODE_ENV: ${NODE_ENV:-development}
+NODE_ENV: ${NODE_ENV:-production}
+LOG_LEVEL: ${LOG_LEVEL:-info}
+CANVAS_SERVER_MODE: ${CANVAS_SERVER_MODE:-standalone}
 CANVAS_SERVER_HOME: ${CANVAS_SERVER_HOME:-/opt/canvas-server/server}
 CANVAS_USER_HOME: ${CANVAS_USER_HOME:-/opt/canvas-server/users}
 CANVAS_ADMIN_EMAIL: ${CANVAS_ADMIN_EMAIL:-admin@canvas.local}
@@ -62,19 +60,14 @@ CANVAS_ADMIN_RESET: ${CANVAS_ADMIN_RESET:-false}
 CANVAS_DISABLE_API: ${CANVAS_DISABLE_API:-false}
 CANVAS_API_PORT: ${CANVAS_API_PORT:-8001}
 CANVAS_API_HOST: ${CANVAS_API_HOST:-0.0.0.0}
-CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 16)}
+CANVAS_DISABLE_WEB: ${CANVAS_DISABLE_WEB:-false}
+CANVAS_WEB_PORT: ${CANVAS_WEB_PORT:-8001}
+CANVAS_WEB_HOST: ${CANVAS_WEB_HOST:-0.0.0.0}
+CANVAS_JWT_SECRET: ${CANVAS_JWT_SECRET:-$(openssl rand -base64 32)}
 CANVAS_JWT_TOKEN_EXPIRY: ${CANVAS_JWT_TOKEN_EXPIRY:-7d}
-
-# Canvas USER dirs for single-user mode
-# See env.js for more info
-
 ```
 
 ## Configuration
-
-- Rename example-*.json to *.json and amend as needed
-- Configuration files can be split into multiple files adhering to the original JSON structure
-  - config/data.json maybe be split into config/data.backends.json, config/data.sources.json etc
 
 ### Initial Admin User Creation
 
