@@ -147,11 +147,12 @@ class Context extends EventEmitter {
                     this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
                 } else {
                     // Different workspace, store as pending for later switching
+                    this.#pendingUrl = url;
+                    // For now, use current workspace as temporary URL
                     this.#url = `${this.#workspace.name}://${parsedUrl.path.replace(/^\//, '')}`;
                     this.#path = parsedUrl.path;
                     this.#pathArray = parsedUrl.pathArray;
                     this.#contextBitmapArray = [...parsedUrl.pathArray]; // Initialize contextBitmapArray
-                    this.#pendingUrl = url;
                 }
             }
         } catch (error) {
@@ -405,8 +406,8 @@ class Context extends EventEmitter {
         this.#contextBitmapArray = parsed.pathArray;
         debug(`ContextPath: ${parsed.path}, contextLayer IDs: ${JSON.stringify(contextLayers)}`);
 
-        // Update the internal URL state
-        this.#url = `${this.#workspace.name}://${parsed.path.replace(/^\//, '')}`;
+        // Update the internal URL state - always use the target workspace name
+        this.#url = `${targetWorkspaceName}://${parsed.path.replace(/^\//, '')}`;
         this.#path = parsed.path;
         this.#pathArray = parsed.pathArray;
 
