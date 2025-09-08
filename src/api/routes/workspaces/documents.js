@@ -29,6 +29,11 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             items: { type: 'string' },
             default: []
           },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
           limit: { type: 'integer' },
           offset: { type: 'integer' },
           page: { type: 'integer' }
@@ -51,7 +56,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
         request.query.featureArray,
-        [],
+        request.query.filterArray || [],
         { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
       const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
@@ -259,6 +264,11 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             items: { type: 'string' },
             default: []
           },
+          filterArray: {
+            type: 'array',
+            items: { type: 'string' },
+            default: []
+          },
           limit: { type: 'integer' },
           offset: { type: 'integer' },
           page: { type: 'integer' }
@@ -284,7 +294,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
       const documents = await workspace.findDocuments(
         request.query.contextSpec,
         derivedFeatureArray,
-        [], // empty filterArray
+        request.query.filterArray || [],
         { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
       );
       const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
