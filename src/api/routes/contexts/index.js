@@ -3,6 +3,7 @@
 import lifecycleRoutes from './lifecycle.js';
 import documentRoutes from './documents.js';
 import treeRoutes from './tree.js';
+import tokenRoutes from './tokens.js';
 import { resolveContextAddress } from '../../middleware/address-resolver.js';
 
 /**
@@ -23,6 +24,11 @@ export default async function contextRoutes(fastify, options) {
 
   fastify.register(treeRoutes, {
     prefix: '/:id/tree',
+    onRequest: [resolveContextAddress]
+  });
+
+  fastify.register(tokenRoutes, {
+    prefix: '/',
     onRequest: [resolveContextAddress]
   });
 
