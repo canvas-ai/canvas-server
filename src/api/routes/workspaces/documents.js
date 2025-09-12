@@ -92,17 +92,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
               documents: {
                 oneOf: [
                   { type: 'object' },
-                  {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      required: ['schema', 'data'],
-                      properties: {
-                        schema: { type: 'string' },
-                        data: { type: 'object' }
-                      }
-                    }
-                  }
+                  { type: 'array' }
                 ]
               },
               documentIds: {
@@ -326,17 +316,7 @@ export default async function workspaceDocumentRoutes(fastify, options) {
             items: { type: 'string' },
             default: []
           },
-          documents: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['schema', 'data'],
-              properties: {
-                schema: { type: 'string' },
-                data: { type: 'object' }
-              }
-            }
-          },
+          documents: { type: 'array' },
           documentIds: {
             anyOf: [
               {

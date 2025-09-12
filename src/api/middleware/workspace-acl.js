@@ -120,7 +120,28 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read') {
         }
       }
 
-      // 6. Access denied
+      // 6. Try email-based user access (for JWT tokens only)
+      if (isJwtToken && userId) {
+        const userAccess = await tryUserAccess(
+          request.server.workspaceManager,
+          request.server.userManager,
+          workspaceId,
+          userId,
+          requiredPermission
+        );
+
+        if (userAccess) {
+          debug(`User email access granted for workspace ${workspaceId}: ${userAccess.access.description}`);
+          request.workspace = userAccess.workspace;
+          request.workspaceAccess = {
+            ...userAccess.access,
+            isOwner: false
+          };
+          return; // Continue to route handler
+        }
+      }
+
+      // 7. Access denied
       debug(`Access denied for workspace ${workspaceId}`);
       if (isJwtToken) {
         const response = new ResponseObject().forbidden(
@@ -309,6 +330,133 @@ async function loadWorkspaceForTokenAccess(workspaceManager, workspaceEntry) {
 
   } catch (error) {
     debug(`Error loading workspace for token access: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Try to access workspace via email-based user sharing
+ * @param {WorkspaceManager} workspaceManager - Workspace manager instance
+ * @param {UserManager} userManager - User manager instance
+ * @param {string} workspaceIdentifier - Workspace ID or name
+ * @param {string} userId - User ID
+ * @param {string} requiredPermission - Required permission
+ * @returns {Promise<Object|null>} Access info if valid, null otherwise
+ */
+async function tryUserAccess(workspaceManager, userManager, workspaceIdentifier, userId, requiredPermission) {
+  try {
+    // Get user email to check against workspace ACL
+    const user = await userManager.getUser(userId);
+    if (!user || !user.email) {
+      debug(`User not found or missing email: ${userId}`);
+      return null;
+    }
+
+    // Find workspace and check user ACL
+    const workspaceEntry = await findWorkspaceByUserEmail(workspaceManager, workspaceIdentifier, user.email);
+    if (!workspaceEntry) {
+      debug(`User ${user.email} not found in any workspace ACL for workspace: ${workspaceIdentifier}`);
+      return null;
+    }
+
+    // Validate user permissions
+    const userData = workspaceEntry.acl.users[user.email];
+    if (!userData.permissions.includes(requiredPermission)) {
+      debug(`User ${user.email} lacks required permission. Has: ${userData.permissions}, needs: ${requiredPermission}`);
+      return null;
+    }
+
+    // Load the actual workspace instance
+    const workspace = await loadWorkspaceForUserAccess(workspaceManager, workspaceEntry, userId);
+    if (!workspace) {
+      debug(`Failed to load workspace for user access: ${workspaceIdentifier}`);
+      return null;
+    }
+
+    return {
+      workspace,
+      access: {
+        permissions: userData.permissions,
+        description: userData.description || `Email-based access for ${user.email}`,
+        grantedAt: userData.grantedAt,
+        grantedBy: userData.grantedBy
+      }
+    };
+
+  } catch (error) {
+    debug(`User access validation error: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Find workspace by searching for user email in ACLs
+ * @param {WorkspaceManager} workspaceManager - Workspace manager instance
+ * @param {string} workspaceIdentifier - Workspace ID or name
+ * @param {string} userEmail - User email to search for
+ * @returns {Promise<Object|null>} Workspace config if found, null otherwise
+ */
+async function findWorkspaceByUserEmail(workspaceManager, workspaceIdentifier, userEmail) {
+  try {
+    // Check if workspaceIdentifier is a UUID (workspace ID)
+    const isWorkspaceId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workspaceIdentifier);
+
+    if (isWorkspaceId) {
+      // Direct lookup by workspace ID
+      const allWorkspaces = workspaceManager.getAllWorkspacesWithKeys();
+
+      // Search for workspace by ID across all users
+      for (const [indexKey, workspaceEntry] of Object.entries(allWorkspaces)) {
+        if (workspaceEntry.id === workspaceIdentifier) {
+          // Check if user email exists in this workspace's user ACL
+          const users = workspaceEntry.acl?.users || {};
+          if (users[userEmail]) {
+            debug(`Found user ${userEmail} in workspace ACL: ${workspaceIdentifier}`);
+            return workspaceEntry;
+          }
+        }
+      }
+    } else {
+      // Search through all workspaces for a matching name and user email
+      const allWorkspaces = workspaceManager.getAllWorkspacesWithKeys();
+
+      for (const [indexKey, workspaceEntry] of Object.entries(allWorkspaces)) {
+        // Check if this workspace has the matching name and user email
+        if (workspaceEntry.name === workspaceIdentifier) {
+          const users = workspaceEntry.acl?.users || {};
+          if (users[userEmail]) {
+            debug(`Found user ${userEmail} in workspace ACL: ${workspaceEntry.id} (name: ${workspaceIdentifier})`);
+            return workspaceEntry;
+          }
+        }
+      }
+    }
+
+    debug(`User ${userEmail} not found in workspace ACL for: ${workspaceIdentifier}`);
+    return null;
+
+  } catch (error) {
+    debug(`Error finding workspace by user email: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Load workspace instance for user-based access
+ * @param {WorkspaceManager} workspaceManager - Workspace manager instance
+ * @param {Object} workspaceEntry - Workspace entry from index
+ * @param {string} userId - Accessing user ID
+ * @returns {Promise<Workspace|null>} Workspace instance if successful, null otherwise
+ */
+async function loadWorkspaceForUserAccess(workspaceManager, workspaceEntry, userId) {
+  try {
+    // Load the workspace by ID with the owner as the requesting user
+    // This allows the user to access a workspace they have email-based permissions for
+    const workspace = await workspaceManager.getWorkspaceById(workspaceEntry.id, workspaceEntry.owner);
+    return workspace;
+
+  } catch (error) {
+    debug(`Error loading workspace for user access: ${error.message}`);
     return null;
   }
 }

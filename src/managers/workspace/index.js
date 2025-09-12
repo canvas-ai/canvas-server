@@ -384,7 +384,7 @@ class WorkspaceManager extends EventEmitter {
             label: isUniverse ? 'Universe' : (options.label || workspaceName),
             description: options.description || '',
             owner: ownerId,
-            color: isUniverse ? '#ffffff' : (options.color || this.getRandomColor()),
+            color: isUniverse ? '#ffffff' : (options.color || WorkspaceManager.getRandomColor()),
             type: isUniverse ? 'universe' : 'workspace',
             status: 'inactive',
             host: host, // Add host field to workspace data

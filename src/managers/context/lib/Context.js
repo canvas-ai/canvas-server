@@ -276,6 +276,24 @@ class Context extends EventEmitter {
     }
 
     /**
+     * Update the complete ACL for this context
+     * @param {Object} newACL - The new ACL object
+     */
+    async updateACL(newACL) {
+        if (!newACL || typeof newACL !== 'object') {
+            throw new Error('Invalid ACL object provided.');
+        }
+
+        this.#acl = { ...newACL };
+        this.#updatedAt = new Date().toISOString();
+        this.emit('context.acl.updated', { id: this.#id, acl: this.#acl });
+
+        // Save changes to index
+        await this.#contextManager.saveContext(this.#userId, this);
+        return Promise.resolve(this);
+    }
+
+    /**
      * Check if a user has a specific permission level for this context.
      * The context owner always has all permissions.
      * @param {string} accessingUserId - The ID of the user attempting to access.

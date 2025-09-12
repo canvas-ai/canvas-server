@@ -285,6 +285,50 @@ class ContextManager extends EventEmitter {
     }
 
     /**
+     * Find a context by ID across all users (for sharing/pub access)
+     * @param {string} contextId - Context ID to find
+     * @returns {Promise<Object|null>} Context metadata if found, null otherwise
+     */
+    async findContextById(contextId) {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+        if (!contextId) {
+            throw new Error('Context ID is required');
+        }
+
+        try {
+            // Search in-memory cache first
+            for (const [contextKey, contextInstance] of this.#contexts) {
+                if (contextInstance.id === contextId) {
+                    return {
+                        contextKey,
+                        contextData: contextInstance.toJSON(),
+                        userId: contextInstance.userId
+                    };
+                }
+            }
+
+            // Search persistent store
+            const allContextsInStore = this.#indexStore.store || {};
+            for (const [contextKey, contextData] of Object.entries(allContextsInStore)) {
+                if (contextData.id === contextId) {
+                    return {
+                        contextKey,
+                        contextData,
+                        userId: contextData.userId
+                    };
+                }
+            }
+
+            return null;
+        } catch (error) {
+            debug(`Error finding context by ID ${contextId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
      * List all contexts for a user
      * @param {string} userId - User ID
      * @returns {Promise<Array<Object>>} Array of context metadata
@@ -628,6 +672,96 @@ class ContextManager extends EventEmitter {
             debug(`Error revoking access from context ${targetContextIdentifier}: ${error.message}`);
             throw error;
         }
+    }
+
+    /**
+     * Token Management API - Public methods for token operations
+     */
+
+    /**
+     * Get all contexts with their metadata (for token searches)
+     * This provides a proper public API instead of direct store access
+     * @returns {Array<Object>} Array of context metadata objects
+     */
+    getAllContexts() {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+
+        const contexts = [];
+
+        // Get contexts from in-memory cache
+        for (const [contextKey, contextInstance] of this.#contexts) {
+            contexts.push({
+                contextKey,
+                id: contextInstance.id,
+                userId: contextInstance.userId,
+                acl: contextInstance.acl,
+                name: contextInstance.name || contextInstance.id,
+                url: contextInstance.url
+            });
+        }
+
+        // Get contexts from persistent store that aren't in memory
+        const allContextsInStore = this.#indexStore.store || {};
+        for (const [contextKey, contextData] of Object.entries(allContextsInStore)) {
+            // Skip if already in memory cache
+            if (!this.#contexts.has(contextKey)) {
+                contexts.push({
+                    contextKey,
+                    id: contextData.id,
+                    userId: contextData.userId,
+                    acl: contextData.acl,
+                    name: contextData.name,
+                    url: contextData.url
+                });
+            }
+        }
+
+        return contexts;
+    }
+
+    /**
+     * Get contexts owned by a specific user
+     * @param {string} userId - User ID to get contexts for
+     * @returns {Array<Object>} Array of context metadata objects owned by the user
+     */
+    getContextsForUser(userId) {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+        if (!userId) {
+            throw new Error('User ID is required');
+        }
+
+        return this.getAllContexts().filter(context => context.userId === userId);
+    }
+
+    /**
+     * Find context by token hash (for token validation)
+     * @param {string} tokenHash - SHA256 hash of the token
+     * @returns {Object|null} Context metadata if token found, null otherwise
+     */
+    findContextByTokenHash(tokenHash) {
+        if (!this.#initialized) {
+            throw new Error('ContextManager not initialized');
+        }
+        if (!tokenHash) {
+            throw new Error('Token hash is required');
+        }
+
+        const allContexts = this.getAllContexts();
+
+        for (const context of allContexts) {
+            if (context.acl?.tokens?.[tokenHash]) {
+                return {
+                    ...context,
+                    tokenData: context.acl.tokens[tokenHash]
+                };
+            }
+        }
+
+        return null;
     }
 
 }
