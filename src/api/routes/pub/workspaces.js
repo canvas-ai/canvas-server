@@ -40,11 +40,12 @@ export default async function pubWorkspaceRoutes(fastify, options) {
         const allWorkspaces = fastify.workspaceManager.getAllWorkspacesWithKeys();
 
         for (const [indexKey, workspaceEntry] of Object.entries(allWorkspaces)) {
-          if (workspaceEntry.id === workspaceId) {
+          const isMatch = (workspaceEntry.id === workspaceId) || (workspaceEntry.name === workspaceId);
+          if (isMatch) {
             const tokenAccess = checkTokenAccess(request, workspaceEntry.acl, requiredPermission);
             if (tokenAccess) {
               // Load the actual workspace instance
-              const workspace = await fastify.workspaceManager.getWorkspaceById(workspaceId);
+              const workspace = await fastify.workspaceManager.getWorkspaceById(workspaceEntry.id);
               if (workspace) {
                 return {
                   workspace,
