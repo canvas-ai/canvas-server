@@ -36,7 +36,9 @@ export default async function workspaceDocumentRoutes(fastify, options) {
           },
           limit: { type: 'integer' },
           offset: { type: 'integer' },
-          page: { type: 'integer' }
+          page: { type: 'integer' },
+          q: { type: 'string' },
+          search: { type: 'string' }
         }
       }
     }
@@ -53,13 +55,30 @@ export default async function workspaceDocumentRoutes(fastify, options) {
         return reply.code(responseObject.statusCode).send(responseObject.getResponse());
       }
 
-      const documents = await workspace.findDocuments(
-        request.query.contextSpec,
-        request.query.featureArray,
-        request.query.filterArray || [],
-        { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
-      );
-      const responseObject = new ResponseObject().found(documents, 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
+      // Check if this is a search query
+      const searchQuery = request.query.q || request.query.search;
+      let documents;
+
+      if (searchQuery) {
+        // Use full-text search
+        documents = await workspace.ftsQuery(
+          searchQuery,
+          request.query.contextSpec,
+          request.query.featureArray,
+          request.query.filterArray || [],
+          { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
+        );
+      } else {
+        // Use regular document listing
+        documents = await workspace.findDocuments(
+          request.query.contextSpec,
+          request.query.featureArray,
+          request.query.filterArray || [],
+          { limit: request.query.limit, offset: request.query.offset, page: request.query.page }
+        );
+      }
+
+      const responseObject = new ResponseObject().found(documents, searchQuery ? 'Search results retrieved successfully' : 'Documents retrieved successfully', 200, documents.count, documents.totalCount);
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     } catch (error) {
       fastify.log.error(error);

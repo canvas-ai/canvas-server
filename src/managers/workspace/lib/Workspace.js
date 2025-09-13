@@ -477,12 +477,12 @@ class Workspace extends EventEmitter {
         return result;
     }
 
-    async ftsQuery(query, contextBitmapArray = [], featureBitmapArray = [], filterArray = [], metadataOnly = false) {
+    async ftsQuery(queryString, contextSpec = null, featureBitmapArray = [], filterArray = [], options = { parse: true, limit: 50, offset: 0 }) {
         if (!this.isActive) {
             throw new Error('Workspace is not active');
         }
 
-        const result = await this.db.ftsQuery(query, contextBitmapArray, featureBitmapArray, filterArray, metadataOnly);
+        const result = await this.db.ftsQuery(queryString, contextSpec, featureBitmapArray, filterArray, options);
         return result;
     }
 
