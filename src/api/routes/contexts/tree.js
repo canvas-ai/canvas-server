@@ -477,4 +477,108 @@ export default async function treeRoutes(fastify, options) {
         return reply.code(response.statusCode).send(response.getResponse());
     }
   });
+
+  // Merge layer into target layers
+  fastify.post('/layers/merge', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['layerId', 'targetLayers'],
+        properties: {
+          layerId: { type: 'string' },
+          targetLayers: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const workspace = context.workspace;
+      if (!workspace) {
+        fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const result = await workspace.mergeLayer(request.body.layerId, request.body.targetLayers);
+      if (result.error) {
+        const response = new ResponseObject().error(result.error);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().success(result, 'Layer merged successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(`Merge layer error for context ${contextId}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to merge layer');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
+
+  // Subtract layer from target layers
+  fastify.post('/layers/subtract', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['layerId', 'targetLayers'],
+        properties: {
+          layerId: { type: 'string' },
+          targetLayers: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const contextId = request.params.id;
+
+    try {
+      const context = await fastify.contextManager.getContext(request.user.id, contextId);
+      if (!context) {
+        const response = new ResponseObject().notFound(`Context with ID ${contextId} not found`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const workspace = context.workspace;
+      if (!workspace) {
+        fastify.log.error(`Workspace not found or not loaded for context ${contextId}, user ${request.user.id}`);
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not available.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const result = await workspace.subtractLayer(request.body.layerId, request.body.targetLayers);
+      if (result.error) {
+        const response = new ResponseObject().error(result.error);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+
+      const response = new ResponseObject().success(result, 'Layer subtracted successfully');
+      return reply.code(response.statusCode).send(response.getResponse());
+    } catch (error) {
+      fastify.log.error(`Subtract layer error for context ${contextId}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const response = new ResponseObject().error(`Workspace for context ${contextId} is not active. Cannot perform tree operation.`);
+        return reply.code(response.statusCode).send(response.getResponse());
+      }
+      const response = new ResponseObject().error('Failed to subtract layer');
+      return reply.code(response.statusCode).send(response.getResponse());
+    }
+  });
 }

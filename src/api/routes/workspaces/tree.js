@@ -427,4 +427,100 @@ export default async function workspaceTreeRoutes(fastify, options) {
       return reply.code(responseObject.statusCode).send(responseObject.getResponse());
     }
   });
+
+  // Merge layer into target layers
+  fastify.post('/layers/merge', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['layerId', 'targetLayers'],
+        properties: {
+          layerId: { type: 'string' },
+          targetLayers: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
+
+      const result = await workspace.mergeLayer(request.body.layerId, request.body.targetLayers);
+      if (result.error) {
+        const responseObject = new ResponseObject().badRequest(result.error);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().success(result, 'Layer merged successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(`Merge layer error for workspace ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
+      const responseObject = new ResponseObject().serverError('Failed to merge layer');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  // Subtract layer from target layers
+  fastify.post('/layers/subtract', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' }
+        }
+      },
+      body: {
+        type: 'object',
+        required: ['layerId', 'targetLayers'],
+        properties: {
+          layerId: { type: 'string' },
+          targetLayers: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const workspace = await getWorkspaceInstance(request, reply);
+      if (!workspace) return;
+
+      const result = await workspace.subtractLayer(request.body.layerId, request.body.targetLayers);
+      if (result.error) {
+        const responseObject = new ResponseObject().badRequest(result.error);
+        return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+      }
+
+      const responseObject = new ResponseObject().success(result, 'Layer subtracted successfully');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    } catch (error) {
+      fastify.log.error(`Subtract layer error for workspace ${request.params.id}: ${error.message}`);
+      if (error.message.includes('is not active')) {
+        const errResponse = new ResponseObject().serverError(`Workspace ${request.params.id} is not active. Cannot perform tree operation.`);
+        return reply.code(errResponse.statusCode).send(errResponse.getResponse());
+      }
+      const responseObject = new ResponseObject().serverError('Failed to subtract layer');
+      return reply.code(responseObject.statusCode).send(responseObject.getResponse());
+    }
+  });
+
+  // [duplicate removed]
 }

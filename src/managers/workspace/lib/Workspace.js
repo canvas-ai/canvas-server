@@ -582,29 +582,35 @@ class Workspace extends EventEmitter {
     async mergeUp(path) {
         this.#ensureActiveForTreeOp('mergeUp');
         const result = await this.tree.mergeUp(path);
-        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
         return result && !result.error && result.count > 0;
     }
 
     async mergeDown(path) {
         this.#ensureActiveForTreeOp('mergeDown');
         const result = await this.tree.mergeDown(path);
-        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
         return result && !result.error && result.count > 0;
     }
 
     async subtractUp(path) {
         this.#ensureActiveForTreeOp('subtractUp');
         const result = await this.tree.subtractUp(path);
-        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
         return result && !result.error && result.count > 0;
     }
 
     async subtractDown(path) {
         this.#ensureActiveForTreeOp('subtractDown');
         const result = await this.tree.subtractDown(path);
-        // ContextTree returns {data, count, error} - convert to boolean for API compatibility
         return result && !result.error && result.count > 0;
+    }
+
+    async mergeLayer(layerId, layerArray) {
+        this.#ensureActiveForTreeOp('mergeLayer');
+        return await this.tree.mergeLayer(layerId, layerArray);
+    }
+
+    async subtractLayer(layerId, layerArray) {
+        this.#ensureActiveForTreeOp('subtractLayer');
+        return await this.tree.subtractLayer(layerId, layerArray);
     }
 
     get paths() {
