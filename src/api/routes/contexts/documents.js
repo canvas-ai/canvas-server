@@ -44,7 +44,9 @@ export default async function documentRoutes(fastify, options) {
           includeClientContext: { type: 'boolean' },
           limit: { type: 'integer' },
           offset: { type: 'integer' },
-          page: { type: 'integer' }
+          page: { type: 'integer' },
+          q: { type: 'string' },
+          search: { type: 'string' }
         }
       }
     }
@@ -67,15 +69,25 @@ export default async function documentRoutes(fastify, options) {
         page: request.query.page
       };
 
-      const dbResult = await context.listDocuments(request.user.id, featureArray, filterArray, options);
+      // Check if this is a search query
+      const searchQuery = request.query.q || request.query.search;
+      let dbResult;
+
+      if (searchQuery) {
+        // Use full-text search
+        dbResult = await context.ftsQuery(request.user.id, searchQuery, featureArray, filterArray, options);
+      } else {
+        // Use regular document listing
+        dbResult = await context.listDocuments(request.user.id, featureArray, filterArray, options);
+      }
 
       if (dbResult.error) {
-        fastify.log.error(`SynapsD error in listDocuments: ${dbResult.error}`);
-        const response = new ResponseObject().error('Failed to list documents due to a database error.', dbResult.error);
+        fastify.log.error(`SynapsD error in ${searchQuery ? 'ftsQuery' : 'listDocuments'}: ${dbResult.error}`);
+        const response = new ResponseObject().error(`Failed to ${searchQuery ? 'search' : 'list'} documents due to a database error.`, dbResult.error);
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
-      const response = new ResponseObject().success(dbResult, 'Documents retrieved successfully', 200, dbResult.count, dbResult.totalCount);
+      const response = new ResponseObject().success(dbResult, searchQuery ? 'Search results retrieved successfully' : 'Documents retrieved successfully', 200, dbResult.count, dbResult.totalCount);
       return reply.code(response.statusCode).send(response.getResponse());
     } catch (error) {
       fastify.log.error(error);
@@ -83,7 +95,7 @@ export default async function documentRoutes(fastify, options) {
         const response = new ResponseObject().forbidden(error.message);
         return reply.code(response.statusCode).send(response.getResponse());
       }
-      const response = new ResponseObject().error('Failed to list documents');
+      const response = new ResponseObject().error(`Failed to ${request.query.q || request.query.search ? 'search' : 'list'} documents`);
       return reply.code(response.statusCode).send(response.getResponse());
     }
   });

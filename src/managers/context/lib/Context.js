@@ -865,6 +865,34 @@ class Context extends EventEmitter {
         return documents;
     }
 
+    async ftsQuery(accessingUserId, queryString, featureArray = [], filterArray = [], options = {}) {
+        if (!this.checkPermission(accessingUserId, 'documentRead')) {
+            throw new Error('Access denied: User requires documentRead permission.');
+        }
+
+        if (!this.#workspace || !this.#workspace.db) {
+            throw new Error('Workspace or database not available');
+        }
+
+        let baseContexts = [...this.#contextBitmapArray]; // Start with a copy
+
+        let serverContexts = [];
+        if (options.includeServerContext && this.#serverContextArray && this.#serverContextArray.length > 0) {
+            serverContexts = this.#serverContextArray;
+        }
+
+        let clientContexts = [];
+        if (options.includeClientContext && this.#clientContextArray && this.#clientContextArray.length > 0) {
+            clientContexts = this.#clientContextArray;
+        }
+
+        // Combine them into a flat array
+        const contextSpec = [...new Set([...baseContexts, ...serverContexts, ...clientContexts])];
+
+        const documents = await this.#db.ftsQuery(queryString, contextSpec, featureArray, filterArray, options);
+        return documents;
+    }
+
 
 
     updateDocument(accessingUserId, document, featureArray = [], options = {}) {
