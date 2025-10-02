@@ -513,7 +513,7 @@ export default async function treeRoutes(fastify, options) {
 
       const result = await workspace.mergeLayer(request.body.layerId, request.body.targetLayers);
       if (result.error) {
-        const response = new ResponseObject().error(result.error);
+        const response = new ResponseObject().badRequest(result.error);
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
@@ -565,7 +565,7 @@ export default async function treeRoutes(fastify, options) {
 
       const result = await workspace.subtractLayer(request.body.layerId, request.body.targetLayers);
       if (result.error) {
-        const response = new ResponseObject().error(result.error);
+        const response = new ResponseObject().badRequest(result.error);
         return reply.code(response.statusCode).send(response.getResponse());
       }
 
