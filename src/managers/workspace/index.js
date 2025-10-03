@@ -356,10 +356,23 @@ class WorkspaceManager extends EventEmitter {
             throw new Error(`Workspace with name "${workspaceName}" already exists for user ${userId} on host ${host}.`);
         }
 
-        // Determine workspace directory path (using name for filesystem)
-        const workspaceDir = options.workspacePath ||
-                            (options.rootPath ? path.join(options.rootPath, workspaceName) :
-                            path.join(this.#defaultRootPath, ownerId, WORKSPACE_DIRECTORIES.workspaces, workspaceName));
+        // Determine workspace directory path
+        // For regular workspaces, place them in user's universe workspace under /workspaces/<name>
+        let workspaceDir;
+        if (options.workspacePath) {
+            // Explicit path provided (used for universe workspaces)
+            workspaceDir = options.workspacePath;
+        } else if (options.rootPath) {
+            // Legacy: custom root path provided
+            workspaceDir = path.join(options.rootPath, workspaceName);
+        } else {
+            // Get user's home path (universe workspace location) and create workspace within it
+            const user = await this.#userManager.getUser(ownerId);
+            if (!user || !user.homePath) {
+                throw new Error(`Could not determine home path for user ${ownerId}`);
+            }
+            workspaceDir = path.join(user.homePath, WORKSPACE_DIRECTORIES.workspaces, workspaceName);
+        }
         debug(`Using workspace path: ${workspaceDir} for workspace ${workspaceId}`);
 
         // Validate and create workspace
