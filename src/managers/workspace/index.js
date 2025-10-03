@@ -1588,14 +1588,15 @@ class WorkspaceManager extends EventEmitter {
 
     /**
      * Performs the initial scan of workspaces listed in the index.
-     * Updates statuses (NOT_FOUND, ERROR, AVAILABLE).
+     * Re-validates all workspace paths and updates statuses accordingly.
+     * Recovers workspaces that were NOT_FOUND or ERROR if paths are now valid.
      * Does NOT load workspaces into memory.
      * @private
      */
     async #scanIndexedWorkspaces() {
         debug('Performing initial workspace scan...');
         const allWorkspaces = this.#indexStore.store;
-        let requiresSave = false; // To track if any changes were made to the index
+        let statusChanges = 0;
 
         for (const indexKey in allWorkspaces) {
             const workspaceEntry = allWorkspaces[indexKey];
@@ -1608,43 +1609,56 @@ class WorkspaceManager extends EventEmitter {
             }
 
             const workspaceId = parsed.workspaceId;
-            debug(`Scanning workspace ${workspaceId} (Name: ${workspaceEntry.name}, Owner: ${workspaceEntry.owner})`);
-            let currentStatus = workspaceEntry.status;
-            let newStatus = currentStatus;
+            const currentStatus = workspaceEntry.status;
 
-            // Skip already processed states unless we need to re-validate
+            // Skip permanently removed/destroyed workspaces
             if ([WORKSPACE_STATUS_CODES.REMOVED, WORKSPACE_STATUS_CODES.DESTROYED].includes(currentStatus)) {
-                debug(`Workspace ${workspaceId} is in status ${currentStatus}, skipping.`);
+                debug(`Workspace ${workspaceId} is ${currentStatus}, skipping scan.`);
                 continue;
             }
 
-            if (!workspaceEntry.rootPath || !existsSync(workspaceEntry.rootPath)) {
-                debug(`Workspace path not found for ${workspaceId} at path ${workspaceEntry.rootPath}, marking as NOT_FOUND`);
+            debug(`Scanning workspace ${workspaceId} (Name: ${workspaceEntry.name}, Status: ${currentStatus})`);
+
+            // Determine new status based on filesystem state
+            let newStatus;
+            const rootPathExists = workspaceEntry.rootPath && existsSync(workspaceEntry.rootPath);
+            const configPathExists = workspaceEntry.configPath && existsSync(workspaceEntry.configPath);
+
+            if (!rootPathExists) {
+                // Workspace directory missing
                 newStatus = WORKSPACE_STATUS_CODES.NOT_FOUND;
-            } else if (!workspaceEntry.configPath || !existsSync(workspaceEntry.configPath)) {
-                debug(`Workspace config not found for ${workspaceId} at path ${workspaceEntry.configPath}, marking as ERROR`);
+                debug(`Workspace ${workspaceId} path not found: ${workspaceEntry.rootPath}`);
+            } else if (!configPathExists) {
+                // Workspace directory exists but config missing
                 newStatus = WORKSPACE_STATUS_CODES.ERROR;
-            } else if (![WORKSPACE_STATUS_CODES.ACTIVE, WORKSPACE_STATUS_CODES.INACTIVE, WORKSPACE_STATUS_CODES.ERROR, WORKSPACE_STATUS_CODES.NOT_FOUND].includes(currentStatus)) {
-                // If it's not in a definitive error/active/inactive state, mark as available (implies it passed path checks)
-                newStatus = WORKSPACE_STATUS_CODES.AVAILABLE;
-            } else if (newStatus === WORKSPACE_STATUS_CODES.ERROR && existsSync(workspaceEntry.rootPath) && existsSync(workspaceEntry.configPath)){
-                // If it was in ERROR but paths are now fine, it could become AVAILABLE (unless it's meant to be ACTIVE/INACTIVE)
-                 if (![WORKSPACE_STATUS_CODES.ACTIVE, WORKSPACE_STATUS_CODES.INACTIVE].includes(workspaceEntry.status)) {
+                debug(`Workspace ${workspaceId} config not found: ${workspaceEntry.configPath}`);
+            } else {
+                // Both paths exist - workspace is valid
+                // Preserve ACTIVE/INACTIVE status if set, otherwise mark as AVAILABLE
+                if ([WORKSPACE_STATUS_CODES.ACTIVE, WORKSPACE_STATUS_CODES.INACTIVE].includes(currentStatus)) {
+                    newStatus = WORKSPACE_STATUS_CODES.INACTIVE; // Reset ACTIVE to INACTIVE on startup
+                } else {
                     newStatus = WORKSPACE_STATUS_CODES.AVAILABLE;
-                 }
+                }
+
+                // Log recovery if workspace was previously in error state
+                if ([WORKSPACE_STATUS_CODES.NOT_FOUND, WORKSPACE_STATUS_CODES.ERROR].includes(currentStatus)) {
+                    debug(`Workspace ${workspaceId} recovered: ${currentStatus} -> ${newStatus}`);
+                }
             }
 
+            // Update status if changed
             if (newStatus !== currentStatus) {
                 this.#updateWorkspaceIndexEntry(indexKey, { status: newStatus });
-                requiresSave = true; // Conf usually saves on set, but this flag is for conceptual grouping.
-                debug(`Updated status for ${workspaceId} from ${currentStatus} to ${newStatus}`);
+                statusChanges++;
+                debug(`Updated workspace ${workspaceId} status: ${currentStatus} -> ${newStatus}`);
             }
         }
 
-        if (requiresSave) {
-             debug('Workspace scan complete. Index potentially updated.');
+        if (statusChanges > 0) {
+            debug(`Workspace scan complete. Updated ${statusChanges} workspace status(es).`);
         } else {
-            debug('Workspace scan complete. No changes required to the index.');
+            debug('Workspace scan complete. No status changes needed.');
         }
     }
 
