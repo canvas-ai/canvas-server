@@ -176,7 +176,7 @@ export default class BaseConnector {
      * runtime keys identity off; `links` are informational (an issue's
      * html_url, an event's web link) and never treated as identity.
      */
-    document({ schema, data, metadata = {}, provenanceUrl, links = [], containerSegment }) {
+    document({ schema, data, metadata = {}, provenanceUrl, links = [], containerSegment, parentProvenanceUrl = null }) {
         if (!provenanceUrl) throw new Error(`${this.driver}: document() requires a provenanceUrl`);
         return {
             schema,
@@ -187,6 +187,11 @@ export default class BaseConnector {
                 ...links.filter(Boolean).map((url) => ({ url, metadata: {} })),
             ],
             containerSegment,
+            // Threading: the provenance URL of the message this one replies to.
+            // The runtime resolves it to a document id (same identity checksum
+            // convention) and asserts a `replies-to` edge — drivers never see
+            // ids. Null for thread roots and unthreaded messages.
+            ...(parentProvenanceUrl ? { parentProvenanceUrl } : {}),
         };
     }
 }

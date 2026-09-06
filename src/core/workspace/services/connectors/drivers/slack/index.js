@@ -11,6 +11,14 @@
  * identity checksum (slack://team/channel/ts) upserts them when they surface
  * again (e.g. inside the initialSyncDays window of a resync).
  *
+ * Threads: `conversations.history` returns thread ROOTS only (plus broadcast
+ * replies, which carry a subtype and are skipped). For every root whose
+ * `latest_reply` is newer than the cursor the driver pulls
+ * `conversations.replies` and emits each reply with `parentProvenanceUrl`
+ * pointing at the root (`thread_ts` IS the root's ts), so the runtime asserts
+ * `replies-to`. Known gap: a reply to a root older than the cursor is not
+ * seen, because the root no longer surfaces in history.
+ *
  * Auth: `config.token` (xoxb-/xoxp-) with channels:read + channels:history
  * (+ groups:* for private channels).
  */
@@ -113,21 +121,59 @@ export default class SlackConnector extends BaseConnector {
             if (message.type !== 'message' || message.subtype) continue;
             documents.push(this.#toDocument(team, container, message));
             if (!maxTs || parseFloat(message.ts) > parseFloat(maxTs)) maxTs = message.ts;
+
+            // Root first, then its replies: the runtime resolves the parent by
+            // checksum at ingest, so order within the page is what makes the
+            // `replies-to` edge land on the first pass.
+            if (this.#hasNewReplies(message, cursor)) {
+                documents.push(...await this.#fetchReplies(team, container, message));
+            }
         }
 
         return { documents, nextCursor: maxTs, done: page.has_more !== true };
     }
 
-    #toDocument(team, container, message) {
+    #hasNewReplies(message, cursor) {
+        if (!(message.reply_count > 0)) return false;
+        if (!cursor) return true;
+        return parseFloat(message.latest_reply || '0') > parseFloat(cursor);
+    }
+
+    async #fetchReplies(team, container, root) {
+        const documents = [];
+        let cursor;
+        do {
+            const page = await this.#call('conversations.replies', {
+                channel: container.id,
+                ts: root.ts,
+                limit: PAGE_LIMIT,
+                cursor,
+            });
+            for (const reply of page.messages || []) {
+                // The root itself comes back as the first element.
+                if (reply.ts === root.ts || reply.type !== 'message') continue;
+                if (reply.subtype && reply.subtype !== 'thread_broadcast') continue;
+                documents.push(this.#toDocument(team, container, reply, { root }));
+            }
+            cursor = page.response_metadata?.next_cursor || null;
+        } while (cursor);
+        return documents;
+    }
+
+    #toDocument(team, container, message, { root = null } = {}) {
+        // A reply's thread_ts is the ROOT's ts (Slack threads are one level).
+        const isReply = Boolean(message.thread_ts && message.thread_ts !== message.ts);
         return this.document({
             schema: 'data/schema/message',
             data: {
                 text: message.text || '',
                 sender: { id: message.user, username: message.username },
-                channel: { id: container.id, name: container.name, type: 'channel' },
+                channel: { id: container.id, name: container.name, type: isReply ? 'thread' : 'channel' },
                 platform: 'slack',
                 timestamp: new Date(parseFloat(message.ts) * 1000).toISOString(),
                 threadId: message.thread_ts,
+                parentMessageId: isReply ? message.thread_ts : undefined,
+                replyCount: message.reply_count ?? undefined,
                 reactions: message.reactions?.map((r) => ({ emoji: r.name, count: r.count })),
             },
             metadata: {
@@ -137,6 +183,7 @@ export default class SlackConnector extends BaseConnector {
                     : undefined,
             },
             provenanceUrl: this.provenance(team, container.id, message.ts),
+            parentProvenanceUrl: isReply ? this.provenance(team, container.id, root?.ts || message.thread_ts) : null,
             containerSegment: container.name || container.id,
         });
     }

@@ -123,6 +123,39 @@ Every synced document carries:
 - Filed **only** into the backends tree (`context: null` + directory selector),
   exactly like imap.
 
+## Threads
+
+One document per message, the thread as an edge. Not one document per
+thread: membership, identity/upsert, FTS, embedding and timeline position are
+all per document, and a thread document would fork its checksum and re-embed
+on every reply while making "link one message into this context" impossible.
+
+- A driver names a reply's PARENT by provenance URL (`parentProvenanceUrl` on
+  the `document()` spec). The runtime resolves it to a doc id through the
+  identity checksum (connector identity IS the provenance checksum) and
+  asserts `replies-to` through the reply's own `data.relations` — row-owned,
+  so a rebuild reconstructs it and a re-sync upsert keeps it. Drivers never
+  see ids. Both Slack (`thread_ts`) and Teams (`replyToId`) point every reply
+  at the thread ROOT, so the thread is one hop over the incoming axis:
+  `list({ rel: { p: 'replies-to', of: rootId, dir: 'in' } })`.
+- Roots are emitted before their replies so the lookup hits on the first
+  pass; a reply whose root is not indexed (outside the sync window) lands
+  without the edge and picks it up on its next upsert. `threadId` /
+  `parentMessageId` stay in `data` regardless — they are what a re-sync writes
+  the edge from.
+- **The thread is the unit of work.** Filing a ROOT into a context pulls its
+  replies along and unfiling takes them out (Workspace link/unlink cascade,
+  context tree only, one hop). A reply that arrives after its root was filed
+  lands where the root is (ingest-side inheritance). Directory (backends)
+  placement is never cascaded: the reply already lives beside its root there.
+- Channels and threads have no document of their own — the channel is
+  backends-tree placement. If a thread ever needs its own identity (a summary,
+  an agent hand-off), that is a Note that `includes` the messages.
+- Known gap, both drivers: a new reply does not surface its root in the
+  incremental fetch (Slack history returns roots by their own ts; a Teams
+  reply does not bump the root's `lastModifiedDateTime`), so replies to roots
+  older than the cursor are missed. Teams `/messages/delta` would close it.
+
 ## Sync
 
 Poll-based (no inbound webhooks — outbound HTTPS to fixed API hosts only, per
@@ -182,13 +215,16 @@ against a non-empty mirror is refused.
   `data.recurrence` (envelope model — synapsd never expands series);
   `status: cancelled` instances are skipped.
 - **Slack / Teams message → Message**: text, sender, channel, platform,
-  timestamp, threadId/replyCount, reactions/mentions — matching the Message
-  schema's checksumFields, but identity still comes from the provenance URL.
+  timestamp, threadId/parentMessageId/replyCount, reactions/mentions —
+  matching the Message schema's checksumFields, but identity still comes from
+  the provenance URL. Replies get `channel.type: 'thread'` and a `replies-to`
+  relation to their root (see Threads).
 
 ## Not covered yet (deliberate)
 
 Write-back for slack/gcal/teams (post message, RSVP), webhook/event push, GH issue
-comments as child docs, Slack threads expansion, deletion-sync for
+comments as child docs, replies to roots older than the cursor (see Threads),
+deletion-sync for
 slack/gcal/caldav/teams (needs per-driver `listIdentities`; github shipped),
 WhatsApp (device-side concern — canvas-edge, not a server connector).
 

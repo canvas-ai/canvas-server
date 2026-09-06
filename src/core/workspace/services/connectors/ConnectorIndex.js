@@ -53,13 +53,17 @@ export class WorkspaceConnectorIndex extends EventEmitter {
     #listDocumentIdsUnderBackendPath;
     #getDocumentsByIdArray;
     #reconcileRemovedLocations;
+    // Threading seams: provenance-checksum -> doc id, and "reply inherits the
+    // root's context placements" (see #ingest).
+    #resolveDocumentIdByChecksum;
+    #inheritThreadMemberships;
 
     #started = false;
     #backends = new Map(); // name (`<driver>:<address>`) -> { driver, address, config, instance }
     #status = new Map();   // name -> { syncing, lastSyncAt, lastError, backoff }
     #timers = new Map();   // name -> timeout handle
 
-    constructor({ rootPath, workspaceId, logger, put, getBackendsTreeSelector, insertBackendPath = null, lockBackendNode = null, unlockBackendNode = null, listDocumentIdsUnderBackendPath = null, getDocumentsByIdArray = null, reconcileRemovedLocations = null }) {
+    constructor({ rootPath, workspaceId, logger, put, getBackendsTreeSelector, insertBackendPath = null, lockBackendNode = null, unlockBackendNode = null, listDocumentIdsUnderBackendPath = null, getDocumentsByIdArray = null, reconcileRemovedLocations = null, resolveDocumentIdByChecksum = null, inheritThreadMemberships = null }) {
         super({ wildcard: true, delimiter: '.', maxListeners: 100 });
         if (!rootPath) throw new Error('rootPath is required');
         if (!put || !getBackendsTreeSelector) throw new Error('put and getBackendsTreeSelector are required');
@@ -73,6 +77,8 @@ export class WorkspaceConnectorIndex extends EventEmitter {
         this.#unlockBackendNode = unlockBackendNode;
         this.#listDocumentIdsUnderBackendPath = listDocumentIdsUnderBackendPath;
         this.#getDocumentsByIdArray = getDocumentsByIdArray;
+        this.#resolveDocumentIdByChecksum = resolveDocumentIdByChecksum;
+        this.#inheritThreadMemberships = inheritThreadMemberships;
         this.#reconcileRemovedLocations = reconcileRemovedLocations;
     }
 
@@ -567,10 +573,42 @@ export class WorkspaceConnectorIndex extends EventEmitter {
         return `sha256/${crypto.createHash('sha256').update(String(provenanceUrl)).digest('hex')}`;
     }
 
+    /**
+     * Threading. A driver names the PARENT by provenance URL; the parent's doc
+     * id is the checksum lookup of that URL, because connector identity IS the
+     * provenance checksum. The reply then asserts `replies-to` through its own
+     * `data.relations` — row-owned, so a rebuild reconstructs it and an edit of
+     * the reply (same identity, upsert) keeps it. Roots are ingested before
+     * their replies (both drivers order that way), so the lookup normally hits;
+     * when it does not (root outside the sync window), the reply lands without
+     * the edge and picks it up on its next upsert. `threadId` /
+     * `parentMessageId` stay in `data` regardless — they are the platform's
+     * own ids and what a re-sync writes the edge from.
+     */
+    async #resolveParentId(name, spec) {
+        if (!spec.parentProvenanceUrl || !this.#resolveDocumentIdByChecksum) return null;
+        const checksum = WorkspaceConnectorIndex.identityChecksum(spec.parentProvenanceUrl);
+        const parentId = await this.#resolveDocumentIdByChecksum(checksum).catch(() => null);
+        if (!parentId) {
+            this.#logger.debug?.({ workspaceId: this.#workspaceId, backend: name, parent: spec.parentProvenanceUrl }, 'Connector thread parent not indexed yet; reply lands without replies-to');
+            return null;
+        }
+        return Number(parentId);
+    }
+
+    static #withRepliesTo(data, parentId) {
+        const relations = Array.isArray(data?.relations) ? data.relations : [];
+        if (relations.some((r) => r?.p === 'replies-to' && Number(r.to) === parentId)) return data;
+        return { ...data, relations: [...relations, { p: 'replies-to', to: parentId }] };
+    }
+
     async #ingest(name, entry, container, spec, { features = [] } = {}) {
-        const { schema, data, metadata = {}, locations = [], containerSegment } = spec;
+        const { schema, metadata = {}, locations = [], containerSegment } = spec;
         const provenance = locations.find((l) => l?.metadata?.provenance)?.url;
         if (!provenance) throw new Error(`Connector document without provenance location (${name})`);
+
+        const parentId = await this.#resolveParentId(name, spec);
+        const data = parentId ? WorkspaceConnectorIndex.#withRepliesTo(spec.data, parentId) : spec.data;
 
         const doc = {
             schema,
@@ -587,6 +625,15 @@ export class WorkspaceConnectorIndex extends EventEmitter {
             emitEvent: true,
             ...(features.length ? { features } : {}),
         });
+        // A reply arriving AFTER its root was filed into a context follows it
+        // there (the thread is the unit of work, see docs/connectors.md). The
+        // mirror direction — filing the root later — is the Workspace's
+        // link-time cascade; this covers the steady state where the root is
+        // already curated and replies keep coming.
+        if (parentId && this.#inheritThreadMemberships) {
+            await this.#inheritThreadMemberships(docId, parentId).catch((error) =>
+                this.#logger.warn({ workspaceId: this.#workspaceId, backend: name, docId, parentId, error: error.message }, 'Connector thread membership inherit failed'));
+        }
         this.emit('object:add', { kind: entry.driver, docId, source: name, payload: { container: container.id } });
         return docId;
     }

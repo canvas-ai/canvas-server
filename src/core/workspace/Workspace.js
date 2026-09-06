@@ -926,7 +926,80 @@ class Workspace extends EventEmitter {
             ...(provenance ? { provenance } : {}),
         });
         await this.#untrashOnLink(id).catch(() => {});
+        await this.#cascadeThreadContext('link', [id], context, emitEvent);
         return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Threads — the thread is the unit of work, the message is the unit of
+    // storage. See docs/connectors.md "Threads".
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Ids of the messages that `replies-to` this document: one hop over the
+     * incoming axis. Both chat drivers point every reply at the THREAD ROOT
+     * (Slack `thread_ts`, Graph `replyToId`), so one hop is the whole thread;
+     * nothing here walks further, and nothing needs to.
+     */
+    #threadReplyIds(id) {
+        const docId = parseDocumentId(id, 'Document ID');
+        try {
+            return [...this.#getActiveDb().edges.incoming(docId, 'replies-to')].map(Number);
+        } catch { return []; }
+    }
+
+    /**
+     * Filing a thread root into a context pulls its replies along; taking it
+     * out takes them out. CONTEXT tree only: directory (backends) placement is
+     * where the bytes came from, and a reply already lives beside its root
+     * there. One hop, no recursion, and a reply that fails to follow never
+     * fails the caller's own link. `/` is skipped — every document is at the
+     * context root already and unlink refuses to remove it.
+     */
+    async #cascadeThreadContext(op, ids, context, emitEvent = true) {
+        if (context == null) return;
+        if (typeof context === 'string' && (context.trim() === '' || context.trim() === '/')) return;
+        const db = this.#getActiveDb();
+        for (const id of ids) {
+            const replies = this.#threadReplyIds(id);
+            if (!replies.length) continue;
+            const spec = { ...Workspace.#buildWriteSpec(context, null), features: [], emitEvent };
+            for (const replyId of replies) {
+                if (Number(replyId) === Number(id)) continue;
+                await (op === 'link' ? db.link(replyId, spec) : db.unlink(replyId, spec)).catch((error) =>
+                    this.#logger.warn({ workspaceId: this.id, root: id, reply: replyId, op, error: error.message }, 'Thread membership cascade failed'));
+            }
+        }
+    }
+
+    /** Paths from `paths` that are not a strict prefix (ancestor) of another. */
+    static leafPaths(paths = []) {
+        const list = [...new Set((paths || []).filter(Boolean))];
+        return list.filter((p) => !list.some((q) => q !== p && q.startsWith(p.endsWith('/') ? p : `${p}/`)));
+    }
+
+    /**
+     * Copy a thread root's CONTEXT placements onto a reply. The ingest-side
+     * half of the thread rule: a reply that arrives after its root was curated
+     * lands where the root is. Directory placements are deliberately not
+     * copied — the connector already filed the reply under its channel.
+     */
+    async inheritThreadMemberships(replyId, rootId) {
+        const reply = parseDocumentId(replyId, 'Reply document ID');
+        const root = parseDocumentId(rootId, 'Root document ID');
+        if (reply === root) return 0;
+        let copied = 0;
+        for (const placement of await this.listDocumentPlacements(root)) {
+            if (placement.type !== 'context') continue;
+            // A context path ANDs the layers along it, so memberships list
+            // every ancestor too; linking the leaves ticks those already.
+            for (const treePath of Workspace.leafPaths(placement.paths)) {
+                if (!treePath || treePath === '/') continue;
+                await this.#getActiveDb().link(reply, { context: { tree: placement.treeId, path: treePath }, features: [], emitEvent: true });
+                copied++;
+            }
+        }
+        return copied;
     }
 
     /**
@@ -955,6 +1028,7 @@ class Workspace extends EventEmitter {
         });
 
         if (trashIfOrphaned) { await this.#trashIfOrphaned(id, placementsBefore); }
+        await this.#cascadeThreadContext('unlink', [id], context);
         return result;
     }
 
@@ -1415,11 +1489,14 @@ class Workspace extends EventEmitter {
 
     async linkMany(ids, { context = '/', directory = null, features = [], attributes, emitEvent = true, allowBackendsWrite = false } = {}) {
         this.#assertBackendsWriteAllowed(directory, allowBackendsWrite);
-        return await this.#getActiveDb().linkMany(parseDocumentIdArray(ids, 'Document ID array'), {
+        const docIds = parseDocumentIdArray(ids, 'Document ID array');
+        const result = await this.#getActiveDb().linkMany(docIds, {
             ...Workspace.#buildWriteSpec(context, directory),
             features: this.#normalizeFeatureInput(features, attributes),
             emitEvent,
         });
+        await this.#cascadeThreadContext('link', docIds, context, emitEvent);
+        return result;
     }
 
     /** Bulk `unlink`; `options.trashIfOrphaned` applies the same rule per document. */
@@ -1447,6 +1524,7 @@ class Workspace extends EventEmitter {
                 await this.#trashIfOrphaned(docId, placementsBefore.get(docId) || []).catch(() => {});
             }
         }
+        await this.#cascadeThreadContext('unlink', docIds, context);
         return result;
     }
 
@@ -3812,6 +3890,12 @@ class Workspace extends EventEmitter {
                 if (!this.#storedIndex?.isRunning) await this.#startStoredIndex();
                 return this.#storedIndex.reconcileRemovedLocations(doc, urls);
             },
+            // Threading: parent lookup by identity checksum + reply-follows-root.
+            resolveDocumentIdByChecksum: async (checksum) => {
+                const doc = await this.#getActiveDb().getByChecksumString(checksum, { parse: false });
+                return doc?.id ?? null;
+            },
+            inheritThreadMemberships: (replyId, rootId) => this.inheritThreadMemberships(replyId, rootId),
         });
     }
 

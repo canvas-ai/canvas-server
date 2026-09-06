@@ -10,6 +10,15 @@
  * lastModifiedDateTime with $orderby asc). Edits bump the timestamp, come
  * back, and upsert via the identity checksum.
  *
+ * Threads: the channel-messages endpoint returns ROOTS only. For every root
+ * in a page the driver pulls `/messages/{id}/replies` and emits each reply
+ * with `parentProvenanceUrl` pointing at the root (Graph's `replyToId` is
+ * always the root: Teams threads are one level), so the runtime asserts
+ * `replies-to`. Same gap as Slack: a new reply does not bump the root's
+ * lastModifiedDateTime, so replies to roots older than the cursor are not
+ * seen until the root itself is edited. The `/messages/delta` feed would
+ * close that; deferred.
+ *
  * Auth: app-only client-credentials grant (`tenantId`, `clientId`,
  * `clientSecret`) against graph.microsoft.com/.default — requires
  * admin-consented ChannelMessage.Read.All + Team.ReadBasic.All +
@@ -130,13 +139,32 @@ export default class TeamsConnector extends BaseConnector {
             documents.push(this.#toDocument(container, message));
             const modified = message.lastModifiedDateTime || message.createdDateTime;
             if (modified && (!maxModified || modified > maxModified)) maxModified = modified;
+            // Root first, then its replies (see class comment).
+            documents.push(...await this.#fetchReplies(container, message));
         }
 
         return { documents, nextCursor: maxModified, done: !page['@odata.nextLink'] };
     }
 
+    async #fetchReplies(container, root) {
+        const { teamId, channelId } = container;
+        const documents = [];
+        let next = `${GRAPH}/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(root.id)}/replies?$top=${PAGE_SIZE}`;
+        while (next) {
+            const page = await this.#get(next);
+            for (const reply of page.value || []) {
+                if (reply.messageType && reply.messageType !== 'message') continue;
+                if (reply.deletedDateTime) continue;
+                documents.push(this.#toDocument(container, { ...reply, replyToId: reply.replyToId || root.id }));
+            }
+            next = page['@odata.nextLink'] || null;
+        }
+        return documents;
+    }
+
     #toDocument(container, message) {
         const isHtml = message.body?.contentType === 'html';
+        const isReply = Boolean(message.replyToId);
         return this.document({
             schema: 'data/schema/message',
             data: {
@@ -146,11 +174,12 @@ export default class TeamsConnector extends BaseConnector {
                     id: message.from?.user?.id,
                     displayName: message.from?.user?.displayName,
                 },
-                channel: { id: container.channelId, name: container.channelName, type: 'channel' },
+                channel: { id: container.channelId, name: container.channelName, type: isReply ? 'thread' : 'channel' },
                 platform: 'teams',
                 timestamp: message.createdDateTime || new Date().toISOString(),
                 editedAt: message.lastEditedDateTime || undefined,
                 threadId: message.replyToId || undefined,
+                parentMessageId: message.replyToId || undefined,
                 mentions: message.mentions?.map((m) => ({
                     id: m.mentioned?.user?.id,
                     name: m.mentioned?.user?.displayName,
@@ -161,6 +190,7 @@ export default class TeamsConnector extends BaseConnector {
                 remoteUpdatedAt: message.lastModifiedDateTime,
             },
             provenanceUrl: this.provenance(container.teamId, container.channelId, message.id),
+            parentProvenanceUrl: isReply ? this.provenance(container.teamId, container.channelId, message.replyToId) : null,
             links: [message.webUrl],
             containerSegment: `${container.teamName}/${container.channelName}`,
         });
