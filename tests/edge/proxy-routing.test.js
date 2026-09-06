@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 
 import EdgeRegistry from '../../src/edge/registry.js';
-import EdgeClient from '../../src/edge/EdgeClient.js';
+import EdgeClient from '@augmentd-labs/canvas-edge/client';
 import { proxyRemoteWorkspaces } from '../../src/transports/middleware/edge-proxy.js';
 
 /**

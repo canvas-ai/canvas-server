@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
 import EdgeRegistry from '../../src/edge/registry.js';
-import EdgeClient from '../../src/edge/EdgeClient.js';
+import EdgeClient from '@augmentd-labs/canvas-edge/client';
 
 function fakeSocket(id = 's1', userId = 'u1') {
   const socket = new EventEmitter();

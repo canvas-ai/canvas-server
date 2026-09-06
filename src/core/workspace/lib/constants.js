@@ -15,7 +15,9 @@ const WORKSPACE_CONFIG_FILENAME = 'workspace.json';
 // Hidden per-workspace internals dir used by the `home` layout. Everything the
 // workspace needs to run (config, db, cache, data, git, var, roles) lives
 // below it, so the workspace ROOT can be handed to the user as a plain folder.
-const WORKSPACE_INTERNAL_DIRNAME = '.workspace';
+// Owned by @augmentd-labs/canvas-protocol (sync.js): the hub, canvas-fuse and
+// canvas-edge must agree on what is internal and what is never synced.
+import { WORKSPACE_INTERNAL_DIRNAME, DEFAULT_SYNC_EXCLUSIONS, WORKSPACE_INTERNAL_EXCLUSIONS } from '@augmentd-labs/canvas-protocol';
 
 /**
  * Folder-structure variants a workspace can be created with. Recorded in
@@ -94,32 +96,7 @@ const WORKSPACE_GIT_BARE_DIR = 'bare.git';
 // Merged with the per-backend `exclude` list from workspace config; applied
 // identically to the live watcher and to list()/scan() resyncs. Patterns
 // ending in /** also prune the directory itself (see stored FileBackend).
-const DEFAULT_SYNC_EXCLUSIONS = [
-    '**/.*',            // dotfiles (also covers .git, .cache, browser profiles…)
-    '**/.*/**',         // …and everything below dotdirs
-    '**/node_modules/**',
-    '**/__pycache__/**',
-    '**/bower_components/**',
-    '**/vendor/bundle/**', // ruby gems
-    '**/target/debug/**',  // cargo
-    '**/target/release/**',
-    '**/*.swp',
-    '**/*.tmp',
-    '**/Cache/**',
-    '**/Caches/**',
-    '**/CachedData/**',
-];
 
-// Structural exclusions prepended to every enumerable file backend's ignore
-// list, on top of DEFAULT_SYNC_EXCLUSIONS and regardless of layout. In the
-// `home` layout the home backend's root IS the workspace root, so without this
-// the workspace would index its own db/cache/git. Dotfiles are excluded by
-// default anyway; these are the load-bearing patterns, spelled out so they
-// survive any future relaxation of the dotfile rule.
-const WORKSPACE_INTERNAL_EXCLUSIONS = [
-    WORKSPACE_INTERNAL_DIRNAME,
-    `${WORKSPACE_INTERNAL_DIRNAME}/**`,
-];
 
 // Workspace INTERNALS — the non-service runtime dirs a workspace.json
 // `internals` map can remap (absolute, workspace-relative, or a

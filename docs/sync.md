@@ -31,7 +31,7 @@ device                                                hub (canvas-server)
 | client | where | what it gives |
 |---|---|---|
 | `canvas-fuse mount -w <ws> <root> --mirror` (0.8.0+) | Linux | a mount at `<root>/<ws>`: everything visible, pinned folders offline, the rest on demand, write-back queue, `Trees/` and `Trash/` |
-| `canvas-edge` (`bin/canvas-edge`, this package) | any OS with Node | a plain folder at `<root>/<ws>` kept fully in sync (state under `<folder>/.workspace/`), built on canvas-stored's `Mirror` engine |
+| `canvas-edge` (`@augmentd-labs/canvas-edge`, monorepo `runtimes/edge`; `npm install -g github:canvas-ui/canvas#edge-dist`) | any OS with Node | a plain folder at `<root>/<ws>` kept fully in sync (state under `<folder>/.workspace/`), built on canvas-stored's `Mirror` engine |
 | `canvas mirror …` (CLI 2.3.0+) | any | picks the client (`--client fuse|daemon`), writes `~/.canvas/config/mirrors.json`, supervises with pm2 |
 
 Both clients read the hub credentials from `~/.canvas/config/remotes.json` (the
