@@ -30,6 +30,20 @@ import { getBackendEmailContext, normalizeSegment } from '../../../../utils/back
  *   object:add | object:change | object:unlink   { kind, docId?, payload }
  *   source:state                                  { source, ... }
  *   error                                         { error, ... }
+ *
+ * Threads (docs/connectors.md "Threads"): one document per message, the
+ * thread is a `replies-to` edge to the IMMEDIATE parent (In-Reply-To, else
+ * the nearest References ancestor that is indexed), asserted through the
+ * reply's own data.relations after the row lands. Email identity is the raw
+ * .eml hash, so a Message-ID lookup needs its own key: every Email carries
+ * two alias entries in checksumArray besides the primary —
+ *   mail-id/<sha256(Message-ID)>                          Message-ID -> doc
+ *   mail-parent/<sha256(In-Reply-To)>/<sha256(Message-ID)> parent -> replies
+ * The checksum index maps every entry to the id and range-scans by prefix,
+ * which is what makes both directions side-car free: a parent arriving AFTER
+ * its replies (Sent folder synced later, initial sync newest-first) finds
+ * them by the second key and draws the edges then. Only the primary entry is
+ * ever treated as a content hash by consumers.
  */
 
 const IMAP_BACKEND_PREFIX = 'imap';
@@ -61,12 +75,14 @@ export class WorkspaceMailIndex extends EventEmitter {
     // backends tree while a mailbox on that account is enabled).
     #lockBackendNode;
     #unlockBackendNode;
+    // Threading: copy the parent's context placements onto a new reply.
+    #inheritThreadMemberships;
 
     #started = false;
     #backends = new Map(); // name -> ImapBackend
     #backendStatus = new Map();
 
-    constructor({ rootPath, workspaceId, logger, put, putMany = null, link = null, assertRelation = null, getBackendsTreeSelector, getDb, persistBlob, lockBackendNode = null, unlockBackendNode = null }) {
+    constructor({ rootPath, workspaceId, logger, put, putMany = null, link = null, assertRelation = null, getBackendsTreeSelector, getDb, persistBlob, lockBackendNode = null, unlockBackendNode = null, inheritThreadMemberships = null }) {
         super({ wildcard: true, delimiter: '.', maxListeners: 100 });
         if (!rootPath) throw new Error('rootPath is required');
         if (!put || !getBackendsTreeSelector || !getDb || !persistBlob) {
@@ -84,6 +100,41 @@ export class WorkspaceMailIndex extends EventEmitter {
         this.#persistBlob = persistBlob;
         this.#lockBackendNode = lockBackendNode;
         this.#unlockBackendNode = unlockBackendNode;
+        this.#inheritThreadMemberships = inheritThreadMemberships;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Thread identity keys (see class comment)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    static normalizeMessageId(value) {
+        const id = String(value || '').trim().replace(/^<|>$/g, '').trim();
+        return id || null;
+    }
+
+    static #sha(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+
+    static messageIdKey(messageId) {
+        const id = WorkspaceMailIndex.normalizeMessageId(messageId);
+        return id ? `mail-id/${WorkspaceMailIndex.#sha(id)}` : null;
+    }
+
+    static parentKeyPrefix(parentMessageId) {
+        const id = WorkspaceMailIndex.normalizeMessageId(parentMessageId);
+        return id ? `mail-parent/${WorkspaceMailIndex.#sha(id)}/` : null;
+    }
+
+    static parentKey(parentMessageId, messageId) {
+        const prefix = WorkspaceMailIndex.parentKeyPrefix(parentMessageId);
+        const id = WorkspaceMailIndex.normalizeMessageId(messageId);
+        return prefix && id ? `${prefix}${WorkspaceMailIndex.#sha(id)}` : null;
+    }
+
+    static threadAliases(data = {}) {
+        const own = WorkspaceMailIndex.messageIdKey(data.messageId);
+        if (!own) return [];
+        const parent = WorkspaceMailIndex.parentKey(data.inReplyTo, data.messageId);
+        return parent && parent !== own ? [own, parent] : [own];
     }
 
     get isRunning() { return this.#started; }
@@ -237,6 +288,7 @@ export class WorkspaceMailIndex extends EventEmitter {
         item.emailDoc.id = docId;
         this.emit('object:add', { kind: 'message', docId, source: account, payload: { folder, account, uid } });
         await this.#ingestAttachments(docId, item.attachmentDocs, { account, folder });
+        await this.#linkThread(docId, item.emailDoc.data);
         return docId;
     }
 
@@ -292,10 +344,64 @@ export class WorkspaceMailIndex extends EventEmitter {
                 // gets its attachments on the next non-collapsed ingest.
                 if (docId != null) {
                     await this.#ingestAttachments(docId, item.attachmentDocs, { account, folder });
+                    // After the whole group landed: a parent in the same batch
+                    // is already resolvable by its alias key.
+                    await this.#linkThread(docId, item.emailDoc.data);
                 }
             }
         }
         return docIds;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Threads — `replies-to` edges + reply-follows-parent placement
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Draw this message's thread edges once its row exists. Both directions:
+     *
+     *   1. UP: In-Reply-To, else the nearest indexed References ancestor (a
+     *      thread partner's message that never reached this mailbox leaves a
+     *      gap; the fallback keeps the reply attached to the thread). The
+     *      reply then inherits the parent's context placements — the parent
+     *      already inherited its own parent's, so chains need no walk here.
+     *   2. DOWN: replies that landed BEFORE this message (range scan on the
+     *      mail-parent/ prefix) get their edge now. No placement copy in this
+     *      direction — a parent never inherits from its replies.
+     *
+     * assertRelation is idempotent, so a re-fetch is a no-op. Never fails the
+     * ingest: an edge is worth less than the message.
+     */
+    async #linkThread(docId, data = {}) {
+        if (!docId || !this.#assertRelation) return;
+        const db = this.#getDb?.();
+        const index = db?.checksumIndex;
+        if (!index?.checksumStringToId) return;
+        const messageId = WorkspaceMailIndex.normalizeMessageId(data.messageId);
+        if (!messageId) return;
+
+        try {
+            const candidates = [data.inReplyTo, ...[...(Array.isArray(data.references) ? data.references : [])].reverse()]
+                .map(WorkspaceMailIndex.normalizeMessageId)
+                .filter((id, i, all) => id && id !== messageId && all.indexOf(id) === i);
+            for (const candidate of candidates) {
+                const parentId = await index.checksumStringToId(WorkspaceMailIndex.messageIdKey(candidate));
+                if (!parentId || Number(parentId) === Number(docId)) continue;
+                await this.#assertRelation(docId, 'replies-to', parentId);
+                if (this.#inheritThreadMemberships) await this.#inheritThreadMemberships(docId, parentId);
+                break;
+            }
+
+            const prefix = WorkspaceMailIndex.parentKeyPrefix(messageId);
+            const waiting = typeof index.list === 'function' ? await index.list(prefix) : [];
+            for (const key of waiting) {
+                const childId = await index.checksumStringToId(key);
+                if (!childId || Number(childId) === Number(docId)) continue;
+                await this.#assertRelation(childId, 'replies-to', docId);
+            }
+        } catch (error) {
+            this.#logger.warn({ workspaceId: this.#workspaceId, docId, error: error.message }, 'Email thread linking failed');
+        }
     }
 
     // Order-preserving concurrent map with a fixed worker pool.
@@ -379,7 +485,9 @@ export class WorkspaceMailIndex extends EventEmitter {
             { url: raw.url, metadata: { size: rawBuffer.length, synced: true } },
             { url: provenanceUrl, metadata: { provenance: true } },
         ];
-        emailDoc.checksumArray = [`sha256/${rawChecksum}`];
+        // Primary = raw bytes (content identity); the rest are thread alias
+        // keys (class comment). Consumers only ever read [0] as a hash.
+        emailDoc.checksumArray = [`sha256/${rawChecksum}`, ...WorkspaceMailIndex.threadAliases(emailDoc.data)];
         emailDoc.metadata = {
             ...(emailDoc.metadata || {}),
             source: 'imap',

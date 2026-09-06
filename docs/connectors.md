@@ -143,11 +143,24 @@ on every reply while making "link one message into this context" impossible.
   without the edge and picks it up on its next upsert. `threadId` /
   `parentMessageId` stay in `data` regardless — they are what a re-sync writes
   the edge from.
+- **Email (imap service) does the same, with the IMMEDIATE parent.**
+  `replies-to` points at In-Reply-To, else the nearest References ancestor
+  that is indexed, so a mail thread is a chain rather than a star. Email
+  identity is the raw .eml hash, so the Message-ID lookup rides two alias
+  entries in `checksumArray` after the primary: `mail-id/<sha256(Message-ID)>`
+  and `mail-parent/<sha256(In-Reply-To)>/<sha256(Message-ID)>`. The checksum
+  index maps every entry and range-scans by prefix, which makes ingest order
+  irrelevant: a parent that lands after its replies (Sent folder, newest-first
+  initial sync) finds them by the second key and draws the edges then.
 - **The thread is the unit of work.** Filing a ROOT into a context pulls its
   replies along and unfiling takes them out (Workspace link/unlink cascade,
-  context tree only, one hop). A reply that arrives after its root was filed
-  lands where the root is (ingest-side inheritance). Directory (backends)
-  placement is never cascaded: the reply already lives beside its root there.
+  context tree only, transitive over `replies-to` with a bound of 1000). A
+  reply that arrives after its root was filed lands where its parent is
+  (ingest-side inheritance; chains need no walk because the parent already
+  inherited). Directory (backends) placement is never cascaded: the reply
+  already lives beside its root there. For hook rules this means a `link`
+  rule matching the first message of a thread (subject, sender) categorises
+  every later reply with no rule of its own.
 - Channels and threads have no document of their own — the channel is
   backends-tree placement. If a thread ever needs its own identity (a summary,
   an agent hand-off), that is a Note that `includes` the messages.

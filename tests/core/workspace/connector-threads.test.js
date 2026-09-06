@@ -160,6 +160,23 @@ describe('connector threads (slack)', () => {
         assert.equal((await contextPaths(replyDoc.id)).includes('/ops/jira-1'), false);
     });
 
+    test('the cascade is transitive over a reply chain (email-style immediate parents)', async () => {
+        const note = (title, parent) => ({
+            schema: 'data/schema/note',
+            data: { title, content: title, ...(parent ? { relations: [{ p: 'replies-to', to: parent }] } : {}) },
+        });
+        const rootId = await ws.put(note('chain root'));
+        const midId = await ws.put(note('chain mid', rootId));
+        const leafId = await ws.put(note('chain leaf', midId));
+
+        await ws.link(rootId, { context: '/ops/chain' });
+        assert.equal((await contextPaths(midId)).includes('/ops/chain'), true);
+        assert.equal((await contextPaths(leafId)).includes('/ops/chain'), true);
+
+        await ws.unlink(rootId, { context: '/ops/chain' });
+        assert.equal((await contextPaths(leafId)).includes('/ops/chain'), false);
+    });
+
     test('a reply that arrives after the root was filed lands where the root is', async () => {
         const rootDoc = await waitForDoc(ROOT_TS);
         await ws.link(rootDoc.id, { context: '/ops/jira-2' });

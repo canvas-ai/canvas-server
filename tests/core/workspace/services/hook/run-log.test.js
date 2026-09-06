@@ -17,7 +17,7 @@ describe('HookRunLog', () => {
     });
 
     test('append + query round-trips records newest first', async () => {
-        const log = new HookRunLog(rootPath);
+        const log = new HookRunLog(path.join(rootPath, 'var/hooks'));
         log.append({ event: 'document.inserted', handlerType: 'rule', handler: 'a', status: 'ok', durationMs: 5, docIds: [1] });
         log.append({ event: 'document.inserted', handlerType: 'hook', handler: 'b.js', status: 'error', error: 'boom', durationMs: 9, docIds: [2] });
 
@@ -30,7 +30,7 @@ describe('HookRunLog', () => {
     });
 
     test('filters: failed / handler / event / runId', async () => {
-        const log = new HookRunLog(rootPath);
+        const log = new HookRunLog(path.join(rootPath, 'var/hooks'));
         log.append({ event: 'document.inserted', handlerType: 'rule', handler: 'boss-mail', status: 'ok' });
         const failedId = log.append({ event: 'document.updated', handlerType: 'hook', handler: 'x.js', status: 'error', error: 'nope' });
 
@@ -42,7 +42,7 @@ describe('HookRunLog', () => {
     });
 
     test('rotation keeps one previous generation and query spans both', async () => {
-        const log = new HookRunLog(rootPath, { maxBytes: 400 });
+        const log = new HookRunLog(path.join(rootPath, 'var/hooks'), { maxBytes: 400 });
         for (let i = 0; i < 10; i++) {
             log.append({ event: 'e', handlerType: 'rule', handler: `h${i}`, status: 'ok' });
         }
@@ -54,7 +54,7 @@ describe('HookRunLog', () => {
     });
 
     test('long error/output tails are clipped to 1 KiB', async () => {
-        const log = new HookRunLog(rootPath);
+        const log = new HookRunLog(path.join(rootPath, 'var/hooks'));
         log.append({ event: 'e', handlerType: 'hook', handler: 'h', status: 'error', error: 'x'.repeat(5000), outputTail: 'y'.repeat(5000) });
         const [run] = await log.query();
         assert.ok(run.error.length <= 1025);

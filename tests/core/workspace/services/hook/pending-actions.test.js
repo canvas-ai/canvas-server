@@ -13,6 +13,8 @@ function createWorkspace(id, rootPath) {
     workspace.name = 'test-workspace';
     workspace.rootPath = rootPath;
     workspace.hooksPath = path.join(rootPath, 'git/hooks');
+    // Resolved by the real Workspace per layout; the run log + pending store take it as-is.
+    workspace.varHooksPath = path.join(rootPath, 'var/hooks');
     workspace.isActive = false;
     return workspace;
 }

@@ -118,7 +118,10 @@ describe('WorkspaceMailIndex', () => {
         const urls = record.locations.map((l) => l.url);
         assert.ok(urls.some((u) => u.startsWith('stored://workspace:data/')), `expected stored://workspace:data location, got ${urls}`);
         assert.ok(urls.some((u) => u.startsWith('imap://alice@example.com/INBOX;UID=5')), `expected imap:// location, got ${urls}`);
-        assert.equal(record.checksumArray.length, 1);
+        // Primary = raw hash; the second entry is the Message-ID alias key
+        // (thread lookup, see threads.test.js). No parent key: not a reply.
+        assert.equal(record.checksumArray.length, 2);
+        assert.equal(record.checksumArray[1], WorkspaceMailIndex.messageIdKey('<test-1@example.com>'));
         // filed into the backends-tree path (anchor-first grammar), NOT the context root
         assert.equal(options.context, null);
         assert.equal(String(options.directory), '/imap/alice@example.com/inbox');

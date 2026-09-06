@@ -936,25 +936,42 @@ class Workspace extends EventEmitter {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Ids of the messages that `replies-to` this document: one hop over the
-     * incoming axis. Both chat drivers point every reply at the THREAD ROOT
-     * (Slack `thread_ts`, Graph `replyToId`), so one hop is the whole thread;
-     * nothing here walks further, and nothing needs to.
+     * Every message below this one on the `replies-to` incoming axis. Chat
+     * drivers point each reply at the thread ROOT (Slack `thread_ts`, Graph
+     * `replyToId`), so that is one hop; email points at the IMMEDIATE parent
+     * (In-Reply-To), so a thread is a chain and the walk is a bounded BFS.
+     * Each iterator is drained synchronously (LMDB read-txn caveat).
      */
     #threadReplyIds(id) {
-        const docId = parseDocumentId(id, 'Document ID');
+        const rootId = parseDocumentId(id, 'Document ID');
+        const seen = new Set([rootId]);
+        const queue = [rootId];
+        const out = [];
         try {
-            return [...this.#getActiveDb().edges.incoming(docId, 'replies-to')].map(Number);
-        } catch { return []; }
+            const edges = this.#getActiveDb().edges;
+            while (queue.length && out.length < Workspace.THREAD_CASCADE_LIMIT) {
+                const current = queue.shift();
+                for (const replyId of [...edges.incoming(current, 'replies-to')].map(Number)) {
+                    if (seen.has(replyId)) continue;
+                    seen.add(replyId);
+                    out.push(replyId);
+                    queue.push(replyId);
+                }
+            }
+        } catch { /* no edge plane (degraded db) — nothing to cascade */ }
+        return out;
     }
+
+    /** Upper bound on replies one link/unlink will drag along. */
+    static THREAD_CASCADE_LIMIT = 1000;
 
     /**
      * Filing a thread root into a context pulls its replies along; taking it
      * out takes them out. CONTEXT tree only: directory (backends) placement is
      * where the bytes came from, and a reply already lives beside its root
-     * there. One hop, no recursion, and a reply that fails to follow never
-     * fails the caller's own link. `/` is skipped — every document is at the
-     * context root already and unlink refuses to remove it.
+     * there. Transitive over `replies-to` (bounded), and a reply that fails to
+     * follow never fails the caller's own link. `/` is skipped — every
+     * document is at the context root already and unlink refuses to remove it.
      */
     async #cascadeThreadContext(op, ids, context, emitEvent = true) {
         if (context == null) return;
@@ -3835,6 +3852,8 @@ class Workspace extends EventEmitter {
             persistBlob: (buffer) => this.#storedIndex.persistBlob(buffer),
             lockBackendNode: (path, holder) => this.lockBackendTreeNode(path, holder),
             unlockBackendNode: (path, holder) => this.unlockBackendTreeNode(path, holder),
+            // Threading: a reply lands where its parent is filed.
+            inheritThreadMemberships: (replyId, parentId) => this.inheritThreadMemberships(replyId, parentId),
         });
     }
 
