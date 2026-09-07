@@ -94,6 +94,12 @@ Geotagging landed 2026-07-15 (`metadata.geo`, precedence manual > exif > device 
 
 ## Pinned items (renderer-agnostic pin API) — design agreed 2026-07-21
 
+> 2026-09-07: per-WORKSPACE path pins landed as `/workspaces/:id/pins` (Model B, ordered
+> `pins[]` in workspace.json, read-time resolve + `resolvable:false`, layerId self-heal on
+> rename/move, `pins.changed` event; route `transports/routes/workspaces/pins.js`). The
+> per-user global overlay list below is still the open item — keep global order in user
+> config as decided, and union workspace pins into it when that lands.
+
 Driver: the webui and a future desktop overlay (and canvas-agent "Lucy") must show the **same**
 pinned items — you log in, gesture/shortcut, and get your pinned canvases/layers as tiles with live
 stats. A pin is a **personal attention concept**, the target (layer/canvas) is a data concept — keep

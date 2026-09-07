@@ -1057,8 +1057,19 @@ class WorkspaceManager extends EventEmitter {
                 cwd: path.dirname(existing.configPath),
                 accessPropertiesByDotNotation: false
             });
-            // workspace.json never carries the index-only bookkeeping fields
-            conf.store = stripIndexOnlyFields(newEntry);
+            // workspace.json never carries the index-only bookkeeping fields.
+            // Keys the running Workspace writes straight to workspace.json
+            // (pins, semantic, links, services, ...) are not mirrored in the
+            // index entry, so a PATCH must not overwrite them with the index's
+            // (absent or stale) copy: anything not in this update keeps the
+            // on-disk value. The ACL is re-read above, updatedAt is fresh.
+            const onDisk = conf.store || {};
+            const next = stripIndexOnlyFields(newEntry);
+            for (const key of Object.keys(onDisk)) {
+                if (key in updates || key === 'acl' || key === 'updatedAt') continue;
+                next[key] = onDisk[key];
+            }
+            conf.store = next;
         } catch (err) {
             console.error(`Failed to persist workspace config for ${workspaceId}:`, err);
             return false;
