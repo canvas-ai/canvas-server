@@ -2743,6 +2743,70 @@ class Workspace extends EventEmitter {
         return this.getDirectoryTree(Workspace.BACKENDS_TREE_NAME);
     }
 
+    /**
+     * A file left the backend: walk up from its folder and drop every node
+     * that is now empty (no documents anywhere below, no children) until the
+     * backend root (`/driver/address`, never removed) or a node that still
+     * holds something. Folders are not objects — a mirror deletes a tree file
+     * by file — so without this every emptied folder stayed on as a shell.
+     * `removePath` refuses non-empty and locked nodes, so a concurrent insert
+     * simply stops the walk.
+     */
+    async pruneEmptyBackendPaths(treePath) {
+        const tree = this.getBackendsTree();
+        if (!tree) return 0;
+        // Paths here are the tree's own (getPathByNodeId / listDocumentTreePaths):
+        // case-exact, so no normalizer — it would fold `Test` to `test` and miss.
+        const segments = String(treePath || '').split('/').filter(Boolean);
+        let removed = 0;
+        while (segments.length > 2) {
+            const current = `/${segments.join('/')}`;
+            if (tree.pathExists(current)) {
+                const docs = await tree.findRecursive(current);
+                if (docs && !docs.isEmpty) break;
+                let result;
+                try { result = await tree.removePath(current, false); } catch { break; }
+                if (result?.error) break;
+                removed += 1;
+            }
+            segments.pop();
+        }
+        return removed;
+    }
+
+    /**
+     * After a resync: remove every empty folder node under a backend root that
+     * is not on disk any more (`keepDirs` = the mount's current directory
+     * skeleton, relative to the root). Deepest first, so a chain of empty
+     * shells collapses in one pass. Locked nodes are left alone.
+     */
+    async sweepEmptyBackendPaths(rootPath, keepDirs = []) {
+        const tree = this.getBackendsTree();
+        if (!tree) return 0;
+        const root = `/${String(rootPath || '').split('/').filter(Boolean).join('/')}`;
+        if (root.split('/').filter(Boolean).length < 2 || !tree.pathExists(root)) return 0;
+        // On-disk dirs resolve through the tree (segment sanitizing and all) to
+        // node ids — comparing ids sidesteps every naming difference.
+        const keep = new Set();
+        for (const dir of keepDirs) for (const id of tree.getNodeIdsForPath(`${root}/${dir}`)) keep.add(id);
+        const rootIds = new Set(tree.getNodeIdsForPath(root));
+        const paths = [];
+        for (const nodeId of tree.getNodeIdsForPath(root, { recursive: true })) {
+            if (rootIds.has(nodeId) || keep.has(nodeId)) continue;
+            const nodePath = await tree.getPathByNodeId(nodeId);
+            if (nodePath && nodePath.startsWith(`${root}/`)) paths.push(nodePath);
+        }
+        paths.sort((a, b) => b.split('/').length - a.split('/').length || a.localeCompare(b));
+        let removed = 0;
+        for (const nodePath of paths) {
+            if (!tree.pathExists(nodePath)) continue;
+            const docs = await tree.findRecursive(nodePath);
+            if (docs && !docs.isEmpty) continue;
+            try { if (!(await tree.removePath(nodePath, false))?.error) removed += 1; } catch { /* locked */ }
+        }
+        return removed;
+    }
+
     async getDocumentsByIdArray(ids, options = { parse: true }) {
         return await this.#getActiveDb().getDocumentsByIdArray(parseDocumentIdArray(ids, 'Document ID array'), options);
     }
@@ -3946,6 +4010,8 @@ class Workspace extends EventEmitter {
             // Skeleton mirroring: bare directory nodes under the backend's
             // mirror root (documents insert their own paths as they stream in).
             insertBackendPath: (treePath) => this.getBackendsTree().insertPath(treePath, { ignoreLocks: true }),
+            pruneBackendPath: (treePath) => this.pruneEmptyBackendPaths(treePath),
+            sweepBackendPaths: (rootPath, keepDirs) => this.sweepEmptyBackendPaths(rootPath, keepDirs),
             // Resync lifecycle/progress → ws clients (tree spinner, settings).
             onResyncStateChange: (state) => this.emit('backend.resync.changed', { ...state, workspaceId: this.id }),
             // Change-log advance (throttled per backend) → the nudge device
@@ -4049,6 +4115,8 @@ class Workspace extends EventEmitter {
             put: (record, options = {}) => this.put(record, { ...options, allowBackendsWrite: true }),
             getBackendsTreeSelector: this.getBackendsTreeSelector.bind(this),
             insertBackendPath: (treePath) => this.getBackendsTree().insertPath(treePath, { ignoreLocks: true }),
+            pruneBackendPath: (treePath) => this.pruneEmptyBackendPaths(treePath),
+            sweepBackendPaths: (rootPath, keepDirs) => this.sweepEmptyBackendPaths(rootPath, keepDirs),
             lockBackendNode: (path, holder) => this.lockBackendTreeNode(path, holder),
             unlockBackendNode: (path, holder) => this.unlockBackendTreeNode(path, holder),
             // Deletion-sync (pruneRemoved): enumerate a connector's mirror docs

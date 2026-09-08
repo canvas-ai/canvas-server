@@ -278,8 +278,9 @@ describe('WorkspaceStoredIndex', () => {
         assert.deepEqual([...documents.values()][0].locations, []);
         assert.equal(await fs.pathExists(path.join(rootPath, 'home', 'nested', 'a.txt')), false);
 
-        // default: last location gone → doc removed from index
-        await fs.writeFile(path.join(rootPath, 'home', 'nested', 'b.txt'), 'again');
+        // default: last location gone → doc removed from index (the driver pruned
+        // the emptied folder with its last file, so recreate it)
+        await fs.outputFile(path.join(rootPath, 'home', 'nested', 'b.txt'), 'again');
         await index.resync('workspace:home');
         const doc2 = [...documents.values()].find((d) => d.locations.length > 0);
         const destroyed = await index.destroy({ ...doc2 }, {});

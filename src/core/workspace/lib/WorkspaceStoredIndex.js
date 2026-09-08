@@ -123,6 +123,13 @@ export class WorkspaceStoredIndex {
     // (skeleton mirroring — docs create their paths themselves), and observe
     // resync lifecycle/progress (Workspace re-emits it as a ws event).
     #insertBackendPath;
+    // Empty-folder hygiene for the backends tree: `(treePath) => removed` walks
+    // up from a folder a file just left; `(rootPath, keepDirs) => removed`
+    // sweeps a whole mirror after a resync (keepDirs = what is on disk).
+    #pruneBackendPath;
+    #sweepBackendPaths;
+    #lastShapeDirs = new Map();   // backend → dirs from the last skeleton mirror
+    #prunePending = new Map();    // directory → timer for the settle-time re-prune
     #onResyncStateChange;
     // Optional: quietly persist a backend-config patch (fsid snapshot on first
     // successful liveness check) without re-triggering applyBackendConfig.
@@ -144,7 +151,7 @@ export class WorkspaceStoredIndex {
     // learns the document id behind the bytes it just landed.
     #inflightUpserts = new Map();
 
-    constructor({ rootPath, cachePath, dataPath, homePath, storedRootPath, internalPaths = [], dataBackends = {}, workspaceId, device = null, logger, put, unlink, getBackendsTreeSelector, getDb, describeImapLocation = null, destroyImapLocation = null, lockBackendNode = null, unlockBackendNode = null, insertBackendPath = null, onResyncStateChange = null, persistBackendConfig = null, getOrphanRetentionDays = null, onBackendChanged = null }) {
+    constructor({ rootPath, cachePath, dataPath, homePath, storedRootPath, internalPaths = [], dataBackends = {}, workspaceId, device = null, logger, put, unlink, getBackendsTreeSelector, getDb, describeImapLocation = null, destroyImapLocation = null, lockBackendNode = null, unlockBackendNode = null, insertBackendPath = null, pruneBackendPath = null, sweepBackendPaths = null, onResyncStateChange = null, persistBackendConfig = null, getOrphanRetentionDays = null, onBackendChanged = null }) {
         if (!dataPath || !homePath) throw new Error('dataPath and homePath are required');
         if (!put || !unlink || !getBackendsTreeSelector || !getDb) throw new Error('put, unlink, getBackendsTreeSelector, getDb are required');
 
@@ -170,6 +177,8 @@ export class WorkspaceStoredIndex {
         this.#lockBackendNode = lockBackendNode;
         this.#unlockBackendNode = unlockBackendNode;
         this.#insertBackendPath = insertBackendPath;
+        this.#pruneBackendPath = pruneBackendPath;
+        this.#sweepBackendPaths = sweepBackendPaths;
         this.#onResyncStateChange = onResyncStateChange;
         this.#persistBackendConfig = persistBackendConfig;
         this.#getOrphanRetentionDays = getOrphanRetentionDays;
@@ -568,6 +577,8 @@ export class WorkspaceStoredIndex {
 
 
     async stop() {
+        for (const timer of this.#prunePending.values()) clearTimeout(timer);
+        this.#prunePending.clear();
         this.#unbindEvents();
         if (!this.#stored) return;
 
@@ -764,6 +775,18 @@ export class WorkspaceStoredIndex {
                 await this.#purgeDeadBackendLocations().catch((error) =>
                     this.#logger.warn({ workspaceId: this.#workspaceId, error: error.message }, 'Dead-backend location purge failed'));
             }
+            // Folder shells: every empty node under the mirror root that is not a
+            // directory on disk any more goes (the skeleton pass re-inserted the
+            // ones that still exist, so those stay even when empty).
+            const shapeDirs = this.#lastShapeDirs.get(backendName);
+            const backendRoot = this.#getBackendRootPath(backendName);
+            if (backendRoot && Array.isArray(shapeDirs) && typeof this.#sweepBackendPaths === 'function') {
+                const swept = await Promise.resolve(this.#sweepBackendPaths(backendRoot, shapeDirs)).catch((error) => {
+                    this.#logger.warn({ workspaceId: this.#workspaceId, backend: backendName, error: error.message }, 'Empty backend folder sweep failed');
+                    return 0;
+                });
+                if (swept > 0) this.#logger.info({ workspaceId: this.#workspaceId, backend: backendName, swept }, 'Removed empty backend folders no longer on disk');
+            }
             this.#patchResyncState(backendName, {
                 lastScanAt: new Date().toISOString(),
                 lastError: failed > 0 ? `${failed} of ${files.length} files failed to index` : null,
@@ -819,6 +842,7 @@ export class WorkspaceStoredIndex {
             for (const dir of shape.dirs) {
                 await this.#insertBackendPath(`${root}/${dir}`);
             }
+            this.#lastShapeDirs.set(backendName, Array.isArray(shape.dirs) ? [...shape.dirs] : []);
             return shape.files;
         } catch (error) {
             this.#logger.warn({ workspaceId: this.#workspaceId, backend: backendName, error: error.message }, 'Backend skeleton mirror failed');
@@ -1546,7 +1570,34 @@ export class WorkspaceStoredIndex {
         const stalePaths = currentPaths.filter((p) => !nextPaths.includes(p));
         for (const directory of stalePaths) {
             await this.#unlink(docId, { directory: this.#getBackendsTreeSelector(directory) });
+            // The folder may have just lost its last file: drop the empty shell
+            // (and its now-empty parents) so the tree follows the disk. A burst
+            // of deletes is reconciled concurrently, so two last documents can
+            // each still see the other — the settle-time re-prune closes that.
+            await this.#pruneBackendFolder(directory);
+            this.#schedulePruneBackendFolder(directory);
         }
+    }
+
+    async #pruneBackendFolder(directory) {
+        if (typeof this.#pruneBackendPath !== 'function') return 0;
+        try {
+            return await this.#pruneBackendPath(directory);
+        } catch (error) {
+            this.#logger.debug?.({ workspaceId: this.#workspaceId, directory, error: error.message }, 'Backend folder prune failed');
+            return 0;
+        }
+    }
+
+    #schedulePruneBackendFolder(directory, delayMs = 2000) {
+        if (typeof this.#pruneBackendPath !== 'function') return;
+        clearTimeout(this.#prunePending.get(directory));
+        const timer = setTimeout(() => {
+            this.#prunePending.delete(directory);
+            this.#pruneBackendFolder(directory).catch(() => {});
+        }, delayMs);
+        timer.unref?.();
+        this.#prunePending.set(directory, timer);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
