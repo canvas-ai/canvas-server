@@ -48,7 +48,14 @@ export default async function workspaceRoutes(fastify, _options) {
       return null;
     }
 
-    return fastify.workspaceManager.getWorkspace(workspaceId, userId);
+    const workspace = await fastify.workspaceManager.getWorkspace(workspaceId, userId);
+    // Device bindings need the trees, i.e. a running workspace — start it
+    // (a mirror status report is exactly the request that comes in first).
+    if (workspace && workspace.isActive === false) {
+      try { return (await fastify.workspaceManager.startWorkspace(workspace.id, userId)) || workspace; }
+      catch (error) { fastify.log.warn({ err: error, workspaceId: workspace.id }, 'Failed to auto-start workspace for device binding'); }
+    }
+    return workspace;
   }
 
   // Agent-token binding clamp — applies to every workspace subroute (documents,

@@ -4,6 +4,25 @@ import crypto from 'crypto';
 import { createLogger } from '../../utils/log.js';
 import ResponseObject from '../ResponseObject.js';
 
+
+/*
+ * A workspace request implies a running workspace: device mirrors, WebDAV
+ * and the objects API arrive whenever they like, long after a server
+ * restart left everything stopped. An inactive workspace is started here
+ * (like the WebDAV route does) instead of half-working: the objects API
+ * would still write files while tree bookkeeping threw "Workspace not active".
+ */
+async function ensureStarted(request, workspace) {
+  if (!workspace || workspace.isActive !== false || typeof workspace.start !== 'function') return workspace;
+  try {
+    const started = await request.server.workspaceManager.startWorkspace(workspace.id, request.user?.id);
+    return started || workspace;
+  } catch (error) {
+    request.log?.warn?.({ err: error, workspaceId: workspace.id }, 'Failed to auto-start workspace for request');
+    return workspace;
+  }
+}
+
 const logger = createLogger('canvas-server:middleware:workspace-acl');
 
 /**
@@ -84,7 +103,7 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read', { allo
           return reply.code(response.statusCode).send(response.getResponse());
         }
 
-        request.workspace = workspace;
+        request.workspace = await ensureStarted(request, workspace);
         request.workspaceAccess = {
           permissions: binding.permissions,
           isOwner: false,
@@ -118,7 +137,7 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read', { allo
           return reply.code(response.statusCode).send(response.getResponse());
         }
 
-        request.workspace = workspace;
+        request.workspace = await ensureStarted(request, workspace);
         request.workspaceAccess = {
           permissions: binding.permissions,
           isOwner: false,
@@ -177,7 +196,7 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read', { allo
 
       if (workspace) {
         logger.debug(`Owner access granted for workspace ${workspaceId}`);
-        request.workspace = workspace;
+        request.workspace = await ensureStarted(request, workspace);
         request.workspaceAccess = {
           permissions: ['read', 'write', 'admin'],
           isOwner: true,
@@ -215,7 +234,7 @@ export function createWorkspaceACLMiddleware(requiredPermission = 'read', { allo
 
         if (tokenAccess) {
           logger.debug(`Token access granted for workspace ${workspaceId}: ${tokenAccess.access.description}`);
-          request.workspace = tokenAccess.workspace;
+          request.workspace = await ensureStarted(request, tokenAccess.workspace);
           request.workspaceAccess = {
             ...tokenAccess.access,
             isOwner: false
