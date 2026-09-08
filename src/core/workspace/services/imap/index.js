@@ -322,11 +322,30 @@ export class WorkspaceMailIndex extends EventEmitter {
         const docIds = [];
         for (const items of groups.values()) {
             const { folder, account } = items[0].payload;
-            const ids = await this.#putMany(items.map((i) => i.emailDoc), {
-                context: null,
-                directory: this.#directoryFor(account, folder),
-                features: items[0].features,
-            });
+            let ids;
+            try {
+                ids = await this.#putMany(items.map((i) => i.emailDoc), {
+                    context: null,
+                    directory: this.#directoryFor(account, folder),
+                    features: items[0].features,
+                });
+            } catch (error) {
+                // One malformed message (a header the schema rejects) must not
+                // sink the whole fetch batch: fall back to single puts, keep
+                // what validates, report the rest per message.
+                this.#logger?.warn?.({ workspaceId: this.#workspaceId, account, folder, count: items.length, error: error.message }, 'IMAP batch put failed, retrying messages one by one');
+                ids = [];
+                for (const item of items) {
+                    try {
+                        ids.push(await this.ingestMessage(item.payload));
+                    } catch (single) {
+                        this.#logger?.warn?.({ workspaceId: this.#workspaceId, account, folder, uid: item.payload.uid, error: single.message }, 'IMAP message skipped');
+                        ids.push(undefined);
+                    }
+                }
+                docIds.push(...ids.filter((id) => id != null));
+                continue;
+            }
             docIds.push(...ids);
             // ids align with input unless putMany's in-batch checksum dedup
             // collapsed identical raw messages — then skip per-uid attribution.
